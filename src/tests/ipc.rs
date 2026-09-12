@@ -6,9 +6,6 @@ use super::*;
 use crate::ipc::tree::{describe_outputs, describe_tree, describe_workspaces};
 
 fn assert_same_shape(expected: &Value, actual: &Value, path: &str) {
-    if expected.is_null() || actual.is_null() {
-        return;
-    }
     assert_eq!(
         json_type(expected),
         json_type(actual),
@@ -43,6 +40,121 @@ fn assert_same_shape(expected: &Value, actual: &Value, path: &str) {
             }
         }
         _ => {}
+    }
+}
+
+fn assert_focus_matches_fixture(expected: &Value, actual: &Value, path: &str) {
+    let expected_children = expected["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .chain(expected["floating_nodes"].as_array().unwrap());
+    let actual_children = actual["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .chain(actual["floating_nodes"].as_array().unwrap());
+    let id_map = expected_children
+        .zip(actual_children)
+        .map(|(expected, actual)| (expected["id"].clone(), actual["id"].clone()))
+        .collect::<Vec<_>>();
+    let expected_focus = expected["focus"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|id| {
+            id_map
+                .iter()
+                .find_map(|(expected, actual)| (expected == id).then_some(actual.clone()))
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        expected_focus.as_slice(),
+        actual["focus"].as_array().unwrap(),
+        "focus at {path}"
+    );
+
+    for key in ["nodes", "floating_nodes"] {
+        for (index, (expected, actual)) in expected[key]
+            .as_array()
+            .unwrap()
+            .iter()
+            .zip(actual[key].as_array().unwrap())
+            .enumerate()
+        {
+            assert_focus_matches_fixture(expected, actual, &format!("{path}.{key}[{index}]"));
+        }
+    }
+}
+
+fn assert_percent_value_matches_fixture(expected: &Value, actual: &Value, path: &str) {
+    match (expected["percent"].as_f64(), actual["percent"].as_f64()) {
+        (Some(expected), Some(actual)) => assert!(
+            (expected - actual).abs() < 1e-9,
+            "percent at {path}: expected {expected}, got {actual}"
+        ),
+        (None, None) => {}
+        _ => panic!(
+            "percent at {path}: expected {}, got {}",
+            expected["percent"], actual["percent"]
+        ),
+    }
+}
+
+fn assert_percent_matches_fixture(expected: &Value, actual: &Value, path: &str) {
+    if expected["type"] == "con" && !expected["nodes"].as_array().unwrap().is_empty() {
+        assert_percent_value_matches_fixture(expected, actual, path);
+    }
+
+    for key in ["nodes", "floating_nodes"] {
+        for (index, (expected, actual)) in expected[key]
+            .as_array()
+            .unwrap()
+            .iter()
+            .zip(actual[key].as_array().unwrap())
+            .enumerate()
+        {
+            assert_percent_matches_fixture(expected, actual, &format!("{path}.{key}[{index}]"));
+        }
+    }
+
+    let expected_children = expected["nodes"].as_array().unwrap();
+    let actual_children = actual["nodes"].as_array().unwrap();
+    let expected_sum = expected_children
+        .iter()
+        .map(|child| child["percent"].as_f64())
+        .sum::<Option<f64>>();
+    if expected_sum.is_some_and(|sum| (sum - 1.).abs() < 1e-9) {
+        let actual_sum = actual_children
+            .iter()
+            .map(|child| child["percent"].as_f64())
+            .sum::<Option<f64>>();
+        assert!(
+            actual_sum.is_some_and(|sum| (sum - 1.).abs() < 1e-9),
+            "percent sum at {path}: got {actual_sum:?}"
+        );
+    }
+
+    if expected["type"] != "con" || expected_children.is_empty() {
+        assert_percent_value_matches_fixture(expected, actual, path);
+    }
+}
+
+fn assert_fixture_string_values(expected: &Value, actual: &Value, path: &str) {
+    for key in ["floating", "scratchpad_state"] {
+        assert_eq!(expected[key], actual[key], "{key} at {path}");
+    }
+    for child_key in ["nodes", "floating_nodes"] {
+        for (index, (expected, actual)) in expected[child_key]
+            .as_array()
+            .unwrap()
+            .iter()
+            .zip(actual[child_key].as_array().unwrap())
+            .enumerate()
+        {
+            assert_fixture_string_values(expected, actual, &format!("{path}.{child_key}[{index}]"));
+        }
     }
 }
 
@@ -81,6 +193,33 @@ fn collect_fixture_nodes(value: &Value, nodes: &mut Vec<Value>) {
     }
 }
 
+fn nested_live_tree() -> Value {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let id = f.add_client();
+    for title in ["fixture-1", "fixture-2", "fixture-3"] {
+        let window = f.client(id).create_window();
+        window.xdg_toplevel.set_app_id(title.into());
+        window.set_title(title);
+        let surface = window.surface.clone();
+        window.commit();
+        f.roundtrip(id);
+        let window = f.client(id).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(id);
+    }
+    f.swayward().layout.consume_or_expel_window_left(None);
+    serde_json::to_value(describe_tree(&f.swayward().layout)).unwrap()
+}
+
+fn nested_fixture_tree() -> Value {
+    serde_json::from_str(include_str!(
+        "../../tests/fixtures/sway/nested_h_in_v.tree.json"
+    ))
+    .unwrap()
+}
+
 fn json_type(value: &Value) -> &'static str {
     match value {
         Value::Null => "null",
@@ -116,6 +255,7 @@ fn live_ipc_descriptions_match_sway_schema() {
     ))
     .unwrap();
     assert_same_shape(&fixture, &ours, "$tree");
+    assert_fixture_string_values(&fixture, &ours, "$tree");
     let fixture_trees = [
         include_str!("../../tests/fixtures/sway/empty.tree.json"),
         include_str!("../../tests/fixtures/sway/empty_named.tree.json"),
@@ -156,4 +296,21 @@ fn live_ipc_descriptions_match_sway_schema() {
     ))
     .unwrap();
     assert_same_shape(&fixture, &ours, "$outputs");
+}
+
+#[test]
+fn live_ipc_focus_matches_sway_mru_arrays() {
+    assert_focus_matches_fixture(&nested_fixture_tree(), &nested_live_tree(), "$tree");
+}
+
+#[test]
+fn live_ipc_percent_matches_sway_parent_shares() {
+    let expected = nested_fixture_tree();
+    let actual = nested_live_tree();
+    assert_percent_value_matches_fixture(
+        &expected["nodes"][1]["nodes"][0]["nodes"][1],
+        &actual["nodes"][1]["nodes"][0]["nodes"][1],
+        "$tree.nodes[1].nodes[0].nodes[1]",
+    );
+    assert_percent_matches_fixture(&expected, &actual, "$tree");
 }
