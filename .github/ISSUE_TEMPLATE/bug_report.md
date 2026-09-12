@@ -9,7 +9,7 @@ assignees: ''
 
 <!-- Please describe the issue here at the top, then fill in the system information below. -->
 
-<!-- Attaching your full niri config can help diagnose the problem. -->
+<!-- Attaching your full swayward config can help diagnose the problem. -->
 <details><summary>Config</summary>
 
 ```kdl
@@ -27,13 +27,13 @@ $ readlink /proc/$(swayward msg --json pick-window | jq .pid)/exe
 
 If this points to xwayland-satellite, then it's an X11 window.
 
-Please report issues with X11 apps to xwayland-satellite instead of niri: https://github.com/Supreeeme/xwayland-satellite/issues
+Please report issues with X11 apps to xwayland-satellite instead of swayward: https://github.com/Supreeeme/xwayland-satellite/issues
 -->
 
 ### System Information
 
-<!-- Paste the output of `niri -V`, e.g. niri 25.02 (b94a5db) -->
-* niri version: 
+<!-- Paste the output of `swayward -V`. -->
+* swayward version:
 
 <!-- Write your distribution, e.g. Fedora 40 Silverblue -->
 * Distro: 
