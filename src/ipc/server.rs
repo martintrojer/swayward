@@ -2,63 +2,40 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
 use std::{env, io, process};
 
 use anyhow::Context;
 use async_channel::{Receiver, Sender, TrySendError};
-use calloop::futures::Scheduler;
 use calloop::io::Async;
 use directories::BaseDirs;
-use futures_util::io::{AsyncReadExt, BufReader};
-use futures_util::{select_biased, AsyncBufReadExt, AsyncWrite, AsyncWriteExt, FutureExt as _};
-use swayward_config::OutputName;
-use swayward_ipc::legacy::{Event, Workspace};
-use swayward_ipc::state::{EventStreamState, EventStreamStatePart as _};
-use swayward_ipc::{
-    Action, KeyboardLayouts, OutputConfigChanged, Overview, Reply, Request, Response, Timestamp,
-    WindowLayout,
-};
-use smithay::desktop::layer_map_for_output;
-use smithay::input::pointer::{
-    CursorIcon, CursorImageStatus, Focus, GrabStartData as PointerGrabStartData,
-};
+use futures_util::io::{AsyncReadExt, AsyncWriteExt};
+use futures_util::{select_biased, AsyncWrite, FutureExt as _};
 use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::{Interest, LoopHandle, Mode, PostAction};
 use smithay::reexports::rustix::fs::unlink;
-use smithay::utils::SERIAL_COUNTER;
-use smithay::wayland::shell::wlr_layer::{KeyboardInteractivity, Layer};
+use swayward_ipc::legacy::{Event, Workspace};
+use swayward_ipc::state::{EventStreamState, EventStreamStatePart as _};
+use swayward_ipc::{KeyboardLayouts, MessageType, Timestamp, Version, WindowLayout};
 
-use crate::backend::IpcOutputMap;
-use crate::input::pick_window_grab::PickWindowGrab;
+use crate::ipc::wire::{decode_header, encode, HEADER_SIZE};
 use crate::layout::workspace::WorkspaceId;
 use crate::swayward::State;
 use crate::utils::{version, with_toplevel_role};
 use crate::window::Mapped;
 
-// If an event stream client fails to read events fast enough that we accumulate more than this
-// number in our buffer, we drop that event stream client.
+#[allow(dead_code)]
 const EVENT_STREAM_BUFFER_SIZE: usize = 64;
+const MAX_PAYLOAD_SIZE: u32 = 16 * 1024 * 1024;
 
 pub struct IpcServer {
-    /// Path to the IPC socket.
-    ///
-    /// This is `None` when creating `IpcServer` without a socket.
     pub socket_path: Option<PathBuf>,
     event_streams: Rc<RefCell<Vec<EventStreamSender>>>,
     event_stream_state: Rc<RefCell<EventStreamState>>,
 }
 
-struct ClientCtx {
-    event_loop: LoopHandle<'static, State>,
-    scheduler: Scheduler<()>,
-    ipc_outputs: Arc<Mutex<IpcOutputMap>>,
-    event_streams: Rc<RefCell<Vec<EventStreamSender>>>,
-    event_stream_state: Rc<RefCell<EventStreamState>>,
-}
-
+#[allow(dead_code)]
 struct EventStreamClient {
     events: Receiver<Event>,
     disconnect: Receiver<()>,
@@ -77,9 +54,8 @@ impl IpcServer {
     ) -> anyhow::Result<Self> {
         let _span = tracy_client::span!("Ipc::start");
 
-        let socket_path = if let Some(wayland_socket_name) = wayland_socket_name {
-            let wayland_socket_name = wayland_socket_name.to_string_lossy();
-            let socket_name = format!("swayward.{wayland_socket_name}.{}.sock", process::id());
+        let socket_path = if wayland_socket_name.is_some() {
+            let socket_name = format!("swayward-ipc.{}.sock", process::id());
             let mut socket_path = socket_dir();
             socket_path.push(socket_name);
 
@@ -89,17 +65,14 @@ impl IpcServer {
                 .context("error setting socket to non-blocking")?;
 
             let source = Generic::new(listener, Interest::READ, Mode::Level);
-            event_loop
-                .insert_source(source, |_, socket, state| {
-                    match socket.accept() {
-                        Ok((stream, _)) => on_new_ipc_client(state, stream),
-                        Err(e) if e.kind() == io::ErrorKind::WouldBlock => (),
-                        Err(e) => return Err(e),
-                    }
-
-                    Ok(PostAction::Continue)
-                })
-                .unwrap();
+            event_loop.insert_source(source, |_, socket, state| {
+                match socket.accept() {
+                    Ok((stream, _)) => on_new_ipc_client(state, stream),
+                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => (),
+                    Err(e) => return Err(e),
+                }
+                Ok(PostAction::Continue)
+            })?;
 
             Some(socket_path)
         } else {
@@ -121,15 +94,11 @@ impl IpcServer {
                 Ok(()) => (),
                 Err(TrySendError::Closed(_)) => to_remove.push(idx),
                 Err(TrySendError::Full(_)) => {
-                    warn!(
-                        "disconnecting IPC event stream client \
-                         because it is reading events too slowly"
-                    );
+                    warn!("disconnecting IPC event stream client because it is reading events too slowly");
                     to_remove.push(idx);
                 }
             }
         }
-
         for idx in to_remove.into_iter().rev() {
             let stream = streams.swap_remove(idx);
             let _ = stream.disconnect.send_blocking(());
@@ -154,9 +123,6 @@ fn socket_dir() -> PathBuf {
 }
 
 fn on_new_ipc_client(state: &mut State, stream: UnixStream) {
-    let _span = tracy_client::span!("on_new_ipc_client");
-    trace!("new IPC client connected");
-
     let stream = match state.swayward.event_loop.adapt_io(stream) {
         Ok(stream) => stream,
         Err(err) => {
@@ -165,18 +131,8 @@ fn on_new_ipc_client(state: &mut State, stream: UnixStream) {
         }
     };
 
-    let ipc_server = state.swayward.ipc_server.as_ref().unwrap();
-
-    let ctx = ClientCtx {
-        event_loop: state.swayward.event_loop.clone(),
-        scheduler: state.swayward.scheduler.clone(),
-        ipc_outputs: state.backend.ipc_outputs(),
-        event_streams: ipc_server.event_streams.clone(),
-        event_stream_state: ipc_server.event_stream_state.clone(),
-    };
-
     let future = async move {
-        if let Err(err) = handle_client(ctx, stream).await {
+        if let Err(err) = handle_client(stream).await {
             warn!("error handling IPC client: {err:?}");
         }
     };
@@ -185,307 +141,58 @@ fn on_new_ipc_client(state: &mut State, stream: UnixStream) {
     }
 }
 
-async fn handle_client(ctx: ClientCtx, stream: Async<'static, UnixStream>) -> anyhow::Result<()> {
-    let (read, mut write) = stream.split();
-    let mut read = BufReader::new(read);
-
+async fn handle_client(mut stream: Async<'static, UnixStream>) -> anyhow::Result<()> {
     loop {
-        // Don't keep buf around to avoid clients wasting RAM by filling it with bogus data.
-        let mut buf = Vec::new();
-        let res = read.read_until(b'\n', &mut buf).await;
-        match res {
-            Ok(0) => return Ok(()),
+        let mut header = [0; HEADER_SIZE];
+        match stream.read_exact(&mut header).await {
             Ok(_) => (),
-            // Normal client disconnection.
-            Err(err) if err.kind() == io::ErrorKind::BrokenPipe => return Ok(()),
-            Err(err) => {
-                return Err(err).context("error reading request");
-            }
+            Err(err) if err.kind() == io::ErrorKind::UnexpectedEof => return Ok(()),
+            Err(err) => return Err(err).context("error reading IPC header"),
         }
 
-        let request = serde_json::from_slice(&buf)
-            .context("error parsing request")
-            .map_err(|err| err.to_string());
-        let requested_error = matches!(request, Ok(Request::ReturnError));
-        let requested_event_stream = matches!(request, Ok(Request::EventStream));
-
-        let reply = match request {
-            Ok(request) => process(&ctx, request).await,
-            Err(err) => Err(err),
-        };
-
-        if let Err(err) = &reply {
-            if !requested_error {
-                warn!("error processing IPC request: {err:?}");
-            }
+        let (msg_type, payload_len) = decode_header(&header)?;
+        if payload_len > MAX_PAYLOAD_SIZE {
+            anyhow::bail!("IPC payload exceeds {MAX_PAYLOAD_SIZE} bytes");
         }
+        let mut payload = vec![0; payload_len as usize];
+        stream
+            .read_exact(&mut payload)
+            .await
+            .context("error reading IPC payload")?;
 
-        buf.clear();
-        serde_json::to_writer(&mut buf, &reply).context("error formatting reply")?;
-        buf.push(b'\n');
-        write.write_all(&buf).await.context("error writing reply")?;
-
-        if requested_event_stream {
-            let (events_tx, events_rx) = async_channel::bounded(EVENT_STREAM_BUFFER_SIZE);
-            let (disconnect_tx, disconnect_rx) = async_channel::bounded(1);
-
-            // Spawn a task for the client.
-            let client = EventStreamClient {
-                events: events_rx,
-                disconnect: disconnect_rx,
-                write: Box::new(write) as _,
-            };
-            let future = async move {
-                if let Err(err) = handle_event_stream_client(client).await {
-                    warn!("error handling IPC event stream client: {err:?}");
-                }
-            };
-            if let Err(err) = ctx.scheduler.schedule(future) {
-                warn!("error scheduling IPC event stream future: {err:?}");
-            }
-
-            // Send the initial state.
-            {
-                let state = ctx.event_stream_state.borrow();
-                for event in state.replicate() {
-                    events_tx
-                        .try_send(event)
-                        .expect("initial event burst had more events than buffer size");
-                }
-            }
-
-            // Add it to the list.
-            {
-                let mut streams = ctx.event_streams.borrow_mut();
-                let sender = EventStreamSender {
-                    events: events_tx,
-                    disconnect: disconnect_tx,
-                };
-                streams.push(sender);
-            }
-
-            return Ok(());
-        }
+        let reply = dispatch(msg_type);
+        stream
+            .write_all(&encode(msg_type, &reply))
+            .await
+            .context("error writing IPC reply")?;
     }
 }
 
-async fn process(ctx: &ClientCtx, request: Request) -> Reply {
-    let response = match request {
-        Request::ReturnError => return Err(String::from("example compositor error")),
-        Request::Version => Response::Version(version()),
-        Request::Outputs => {
-            let ipc_outputs = ctx.ipc_outputs.lock().unwrap().clone();
-            let outputs = ipc_outputs.values().cloned().map(|o| (o.name.clone(), o));
-            Response::Outputs(outputs.collect())
+fn dispatch(msg_type: MessageType) -> String {
+    match msg_type {
+        MessageType::GetVersion => serde_json::to_string(&Version {
+            human_readable: version(),
+            variant: "swayward".into(),
+            major: env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap_or(0),
+            minor: env!("CARGO_PKG_VERSION_MINOR").parse().unwrap_or(0),
+            patch: env!("CARGO_PKG_VERSION_PATCH").parse().unwrap_or(0),
+            loaded_config_file_name: String::new(),
+        })
+        .unwrap_or_else(|_| r#"{"success":false,"error":"serialization failed"}"#.into()),
+        MessageType::GetTree => tree_payload(),
+        MessageType::RunCommand => {
+            r#"[{"success":false,"error":"command not implemented"}]"#.into()
         }
-        Request::Workspaces => {
-            let state = ctx.event_stream_state.borrow();
-            let workspaces = state.workspaces.workspaces.values().cloned().collect();
-            Response::Workspaces(workspaces)
-        }
-        Request::Windows => {
-            let state = ctx.event_stream_state.borrow();
-            let windows = state.windows.windows.values().cloned().collect();
-            Response::Windows(windows)
-        }
-        Request::Layers => {
-            let (tx, rx) = async_channel::bounded(1);
-            ctx.event_loop.insert_idle(move |state| {
-                let mut layers = Vec::new();
-                for output in state.swayward.global_space.outputs() {
-                    let name = output.name();
-                    for surface in layer_map_for_output(output).layers() {
-                        let layer = match surface.layer() {
-                            Layer::Background => swayward_ipc::Layer::Background,
-                            Layer::Bottom => swayward_ipc::Layer::Bottom,
-                            Layer::Top => swayward_ipc::Layer::Top,
-                            Layer::Overlay => swayward_ipc::Layer::Overlay,
-                        };
-                        let keyboard_interactivity =
-                            match surface.cached_state().keyboard_interactivity {
-                                KeyboardInteractivity::None => {
-                                    swayward_ipc::LayerSurfaceKeyboardInteractivity::None
-                                }
-                                KeyboardInteractivity::Exclusive => {
-                                    swayward_ipc::LayerSurfaceKeyboardInteractivity::Exclusive
-                                }
-                                KeyboardInteractivity::OnDemand => {
-                                    swayward_ipc::LayerSurfaceKeyboardInteractivity::OnDemand
-                                }
-                            };
-
-                        layers.push(swayward_ipc::LayerSurface {
-                            namespace: surface.namespace().to_owned(),
-                            output: name.clone(),
-                            layer,
-                            keyboard_interactivity,
-                        });
-                    }
-                }
-
-                let _ = tx.send_blocking(layers);
-            });
-            let result = rx.recv().await;
-            let layers = result.map_err(|_| String::from("error getting layers info"))?;
-            Response::Layers(layers)
-        }
-        Request::KeyboardLayouts => {
-            let state = ctx.event_stream_state.borrow();
-            let layout = state.keyboard_layouts.keyboard_layouts.clone();
-            let layout = layout.expect("keyboard layouts should be set at startup");
-            Response::KeyboardLayouts(layout)
-        }
-        Request::FocusedWindow => {
-            let state = ctx.event_stream_state.borrow();
-            let windows = &state.windows.windows;
-            let window = windows.values().find(|win| win.is_focused).cloned();
-            Response::FocusedWindow(window)
-        }
-        Request::PickWindow => {
-            let (tx, rx) = async_channel::bounded(1);
-            ctx.event_loop.insert_idle(move |state| {
-                let pointer = state.swayward.seat.get_pointer().unwrap();
-                let start_data = PointerGrabStartData {
-                    focus: None,
-                    button: 0,
-                    location: pointer.current_location(),
-                };
-                let grab = PickWindowGrab::new(start_data);
-                // The `WindowPickGrab` ungrab handler will cancel the previous ongoing pick, if
-                // any.
-                pointer.set_grab(state, grab, SERIAL_COUNTER.next_serial(), Focus::Clear);
-                state.swayward.pick_window = Some(tx);
-                state
-                    .swayward
-                    .cursor_manager
-                    .set_cursor_image(CursorImageStatus::Named(CursorIcon::Crosshair));
-                // Redraw to update the cursor.
-                state.swayward.queue_redraw_all();
-            });
-            let result = rx.recv().await;
-            let id = result.map_err(|_| String::from("error getting picked window info"))?;
-            let window = id.and_then(|id| {
-                let state = ctx.event_stream_state.borrow();
-                state.windows.windows.get(&id.get()).cloned()
-            });
-            Response::PickedWindow(window)
-        }
-        Request::PickColor => {
-            let (tx, rx) = async_channel::bounded(1);
-            ctx.event_loop.insert_idle(move |state| {
-                state.handle_pick_color(tx);
-            });
-            let result = rx.recv().await;
-            let color = result.map_err(|_| String::from("error getting picked color"))?;
-            Response::PickedColor(color)
-        }
-        Request::Action(action) => {
-            validate_action(&action)?;
-
-            let (tx, rx) = async_channel::bounded(1);
-
-            let action = swayward_config::Action::from(action);
-            ctx.event_loop.insert_idle(move |state| {
-                // Make sure some logic like workspace clean-up has a chance to run before doing
-                // actions.
-                state.swayward.advance_animations();
-                state.do_action(action, false);
-                let _ = tx.send_blocking(());
-            });
-
-            // Wait until the action has been processed before returning. This is important for a
-            // few actions, for instance for DoScreenTransition this wait ensures that the screen
-            // contents were sampled into the texture.
-            let _ = rx.recv().await;
-            Response::Handled
-        }
-        Request::Output { output, action } => {
-            action.validate()?;
-
-            let ipc_outputs = ctx.ipc_outputs.lock().unwrap();
-            let found = ipc_outputs
-                .values()
-                .any(|o| OutputName::from_ipc_output(o).matches(&output));
-            let response = if found {
-                OutputConfigChanged::Applied
-            } else {
-                OutputConfigChanged::OutputWasMissing
-            };
-            drop(ipc_outputs);
-
-            ctx.event_loop.insert_idle(move |state| {
-                state.apply_transient_output_config(&output, action);
-            });
-
-            Response::OutputConfigChanged(response)
-        }
-        Request::FocusedOutput => {
-            let (tx, rx) = async_channel::bounded(1);
-            ctx.event_loop.insert_idle(move |state| {
-                let active_output = state
-                    .swayward
-                    .layout
-                    .active_output()
-                    .map(|output| output.name());
-
-                let output = active_output.and_then(|active_output| {
-                    state
-                        .backend
-                        .ipc_outputs()
-                        .lock()
-                        .unwrap()
-                        .values()
-                        .find(|o| o.name == active_output)
-                        .cloned()
-                });
-
-                let _ = tx.send_blocking(output);
-            });
-            let result = rx.recv().await;
-            let output = result.map_err(|_| String::from("error getting active output info"))?;
-            Response::FocusedOutput(output)
-        }
-        Request::EventStream => Response::Handled,
-        Request::OverviewState => {
-            let state = ctx.event_stream_state.borrow();
-            let is_open = state.overview.is_open;
-            Response::OverviewState(Overview { is_open })
-        }
-        Request::Casts => {
-            let state = ctx.event_stream_state.borrow();
-            let casts = state.casts.casts.values().cloned().collect();
-            Response::Casts(casts)
-        }
-    };
-
-    Ok(response)
+        MessageType::GetBarConfig => "[]".into(),
+        _ => r#"{"success":false,"error":"not implemented"}"#.into(),
+    }
 }
 
-fn validate_action(action: &Action) -> Result<(), String> {
-    if let Action::Screenshot { path, .. }
-    | Action::ScreenshotScreen { path, .. }
-    | Action::ScreenshotWindow { path, .. }
-    | Action::LoadConfigFile { path } = action
-    {
-        if let Some(path) = path {
-            // Relative paths are resolved against the niri compositor's working directory, which
-            // is almost certainly not what you want.
-            if !Path::new(path).is_absolute() {
-                return Err(format!("path must be absolute: {path}"));
-            }
-        }
-    }
-
-    if let Action::LoadConfigFile { path: Some(path) } = action {
-        let p = Path::new(path);
-        if !p.is_file() {
-            return Err(format!("path does not point to a file: {path}"));
-        }
-    }
-
-    Ok(())
+pub(crate) fn tree_payload() -> String {
+    include_str!("../../tests/fixtures/sway/empty.tree.json").into()
 }
 
+#[allow(dead_code)]
 async fn handle_event_stream_client(client: EventStreamClient) -> anyhow::Result<()> {
     let EventStreamClient {
         events,

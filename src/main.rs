@@ -18,7 +18,6 @@ use directories::ProjectDirs;
 use swayward::cli::{Cli, CompletionShell, Sub};
 #[cfg(feature = "dbus")]
 use swayward::dbus;
-use swayward::ipc::client::handle_msg;
 use swayward::swayward::State;
 use swayward::utils::spawning::{
     spawn, spawn_sh, store_and_increase_nofile_rlimit, CHILD_DISPLAY, CHILD_ENV,
@@ -26,7 +25,6 @@ use swayward::utils::spawning::{
 };
 use swayward::utils::{cause_panic, version, watcher, xwayland, IS_SYSTEMD_SERVICE};
 use swayward_config::{Config, ConfigPath};
-use swayward_ipc::socket::SOCKET_PATH_ENV;
 use sd_notify::NotifyState;
 use smithay::reexports::wayland_server::Display;
 use tracing_subscriber::EnvFilter;
@@ -106,9 +104,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 info!("config is valid");
                 return Ok(());
             }
-            Sub::Msg { msg, json } => {
-                handle_msg(msg, json)?;
-                return Ok(());
+            Sub::Msg { .. } => {
+                return Err("the legacy msg client was removed; use swaymsg".into());
             }
             Sub::Panic => cause_panic(),
             Sub::Completions { shell } => {
@@ -198,10 +195,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         socket_name.to_string_lossy()
     );
 
-    // Set SWAYWARD_SOCKET for children.
+    // Set sway-compatible IPC socket variables for children.
     if let Some(ipc) = &state.swayward.ipc_server {
         let socket_path = ipc.socket_path.as_deref().unwrap();
-        env::set_var(SOCKET_PATH_ENV, socket_path);
+        env::set_var("SWAYSOCK", socket_path);
+        env::set_var("I3SOCK", socket_path);
         info!("IPC listening on: {}", socket_path.to_string_lossy());
     }
 
@@ -284,7 +282,8 @@ fn import_environment() {
         "DISPLAY",
         "XDG_CURRENT_DESKTOP",
         "XDG_SESSION_TYPE",
-        SOCKET_PATH_ENV,
+        "SWAYSOCK",
+        "I3SOCK",
     ]
     .join(" ");
 
