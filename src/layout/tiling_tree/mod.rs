@@ -281,6 +281,7 @@ impl<W: LayoutElement> TilingTree<W> {
     ) -> NodeId {
         self.interactive_resize = None;
         tile.update_config(self.view_size, self.scale, self.options.clone());
+        let pending_mode = tile.window().pending_sizing_mode();
         let previous_focus = self.focus;
         let old_geometries = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
         let id = self.alloc(Node {
@@ -341,6 +342,15 @@ impl<W: LayoutElement> TilingTree<W> {
         } else {
             previous_focus.or(Some(id))
         };
+        if !pending_mode.is_normal() {
+            self.pending_modes.insert(
+                id,
+                PendingMode {
+                    fullscreen: pending_mode.is_fullscreen(),
+                    maximized: pending_mode.is_maximized(),
+                },
+            );
+        }
         self.animate_geometry_changes(old_geometries, Some(id));
         self.request_window_sizes();
         id
