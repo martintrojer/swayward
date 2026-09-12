@@ -13,12 +13,6 @@ use std::{env, mem, thread};
 use _server_decoration::server::org_kde_kwin_server_decoration_manager::Mode as KdeDecorationsMode;
 use anyhow::{bail, ensure, Context};
 use calloop::futures::Scheduler;
-use swayward_config::debug::PreviewRender;
-use swayward_config::output::MaxBpc;
-use swayward_config::{
-    Config, FloatOrInt, Key, Modifiers, OutputName, TrackLayout, WarpMouseToFocusMode,
-    WorkspaceReference, Xkb,
-};
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::input::{InputTime, Keycode};
 use smithay::backend::renderer::damage::OutputDamageTracker;
@@ -112,6 +106,12 @@ use smithay::wayland::viewporter::ViewporterState;
 use smithay::wayland::virtual_keyboard::VirtualKeyboardManagerState;
 use smithay::wayland::xdg_activation::XdgActivationState;
 use smithay::wayland::xdg_foreign::XdgForeignState;
+use swayward_config::debug::PreviewRender;
+use swayward_config::output::MaxBpc;
+use swayward_config::{
+    Config, FloatOrInt, Key, Modifiers, OutputName, TrackLayout, WarpMouseToFocusMode,
+    WorkspaceReference, Xkb,
+};
 use wayland_server::protocol::wl_output::WlOutput;
 
 #[cfg(feature = "dbus")]
@@ -145,7 +145,6 @@ use crate::layout::workspace::{Workspace, WorkspaceId};
 use crate::layout::{
     HitType, Layout, LayoutElement as _, LayoutElementRenderElement, MonitorRenderElement,
 };
-use crate::swayward_render_elements;
 use crate::protocols::ext_workspace::{self, ExtWorkspaceManagerState};
 use crate::protocols::foreign_toplevel::{self, ForeignToplevelManagerState};
 use crate::protocols::gamma_control::GammaControlManagerState;
@@ -167,6 +166,7 @@ use crate::render_helpers::{
 };
 #[cfg(feature = "xdp-gnome-screencast")]
 use crate::screencasting::Screencasting;
+use crate::swayward_render_elements;
 use crate::ui::config_error_notification::ConfigErrorNotification;
 use crate::ui::exit_confirm_dialog::{ExitConfirmDialog, ExitConfirmDialogRenderElement};
 use crate::ui::hotkey_overlay::HotkeyOverlay;
@@ -815,7 +815,9 @@ impl State {
         // Needs to be called after updating the keyboard focus.
         self.swayward.refresh_layout();
 
-        self.swayward.cursor_manager.check_cursor_image_surface_alive();
+        self.swayward
+            .cursor_manager
+            .check_cursor_image_surface_alive();
         self.swayward.refresh_pointer_outputs();
         self.swayward.global_space.refresh();
         self.swayward.refresh_idle_inhibit();
@@ -857,7 +859,8 @@ impl State {
         };
 
         // Disable the hidden pointer if the contents underneath have changed.
-        if !self.swayward.pointer_visibility.is_visible() && self.swayward.pointer_contents != under {
+        if !self.swayward.pointer_visibility.is_visible() && self.swayward.pointer_contents != under
+        {
             self.swayward.pointer_visibility = PointerVisibility::Disabled;
 
             // When setting PointerVisibility::Hidden together with pointer contents changing,
@@ -1276,7 +1279,8 @@ impl State {
                 surface: Some(surface),
             } = &self.swayward.keyboard_focus
             {
-                if let Some((mapped, _)) = self.swayward.layout.find_window_and_output_mut(surface) {
+                if let Some((mapped, _)) = self.swayward.layout.find_window_and_output_mut(surface)
+                {
                     mapped.set_is_focused(false);
                 }
             }
@@ -1284,7 +1288,8 @@ impl State {
                 surface: Some(surface),
             } = &focus
             {
-                if let Some((mapped, _)) = self.swayward.layout.find_window_and_output_mut(surface) {
+                if let Some((mapped, _)) = self.swayward.layout.find_window_and_output_mut(surface)
+                {
                     mapped.set_is_focused(true);
 
                     // If `mapped` does not have a focus timestamp, then the window is newly
@@ -1412,7 +1417,15 @@ impl State {
     }
 
     fn load_xkb_file(&mut self) {
-        let xkb_file = self.swayward.config.borrow().input.keyboard.xkb.file.clone();
+        let xkb_file = self
+            .swayward
+            .config
+            .borrow()
+            .input
+            .keyboard
+            .xkb
+            .file
+            .clone();
         if let Some(xkb_file) = xkb_file {
             if let Err(err) = self.set_xkb_file(xkb_file) {
                 warn!("error loading xkb_file: {err:?}");
@@ -1828,7 +1841,9 @@ impl State {
         }
 
         let config = self.swayward.config.borrow().outputs.clone();
-        self.swayward.output_management_state.on_config_changed(config);
+        self.swayward
+            .output_management_state
+            .on_config_changed(config);
     }
 
     pub fn modify_output_config<F>(&mut self, name: &str, fun: F)
@@ -1874,17 +1889,23 @@ impl State {
         fun(config);
     }
 
-    pub fn apply_transient_output_config(&mut self, name: &str, action: swayward_ipc::OutputAction) {
+    pub fn apply_transient_output_config(
+        &mut self,
+        name: &str,
+        action: swayward_ipc::OutputAction,
+    ) {
         self.modify_output_config(name, move |config| match action {
             swayward_ipc::OutputAction::Off => config.off = true,
             swayward_ipc::OutputAction::On => config.off = false,
             swayward_ipc::OutputAction::Mode { mode } => {
                 config.mode = match mode {
                     swayward_ipc::ModeToSet::Automatic => None,
-                    swayward_ipc::ModeToSet::Specific(mode) => Some(swayward_config::output::Mode {
-                        custom: false,
-                        mode,
-                    }),
+                    swayward_ipc::ModeToSet::Specific(mode) => {
+                        Some(swayward_config::output::Mode {
+                            custom: false,
+                            mode,
+                        })
+                    }
                 };
                 config.modeline = None;
             }
@@ -1930,10 +1951,12 @@ impl State {
             swayward_ipc::OutputAction::Position { position } => {
                 config.position = match position {
                     swayward_ipc::PositionToSet::Automatic => None,
-                    swayward_ipc::PositionToSet::Specific(position) => Some(swayward_config::Position {
-                        x: position.x,
-                        y: position.y,
-                    }),
+                    swayward_ipc::PositionToSet::Specific(position) => {
+                        Some(swayward_config::Position {
+                            x: position.x,
+                            y: position.y,
+                        })
+                    }
                 }
             }
             swayward_ipc::OutputAction::Vrr { vrr } => {
@@ -1945,7 +1968,9 @@ impl State {
                     None
                 }
             }
-            swayward_ipc::OutputAction::MaxBpc { max_bpc } => config.max_bpc = Some(MaxBpc(max_bpc)),
+            swayward_ipc::OutputAction::MaxBpc { max_bpc } => {
+                config.max_bpc = Some(MaxBpc(max_bpc))
+            }
         });
 
         self.reload_output_config();
@@ -1973,7 +1998,9 @@ impl State {
         self.swayward.on_ipc_outputs_changed();
 
         let new_config = self.backend.ipc_outputs().lock().unwrap().clone();
-        self.swayward.output_management_state.notify_changes(new_config);
+        self.swayward
+            .output_management_state
+            .notify_changes(new_config);
     }
 
     pub fn open_screenshot_ui(&mut self, show_pointer: bool, path: Option<String>) {
@@ -1991,20 +2018,19 @@ impl State {
 
         self.swayward.update_render_elements(None);
 
-        let Some(screenshots) = self
-            .backend
-            .with_primary_renderer(|renderer| self.swayward.capture_screenshots(renderer).collect())
-        else {
+        let Some(screenshots) = self.backend.with_primary_renderer(|renderer| {
+            self.swayward.capture_screenshots(renderer).collect()
+        }) else {
             return;
         };
 
         // Now that we captured the screenshots, clear grabs like drag-and-drop, etc.
         let time = InputTime::now();
-        self.swayward
-            .seat
-            .get_pointer()
-            .unwrap()
-            .unset_grab(self, SERIAL_COUNTER.next_serial(), time);
+        self.swayward.seat.get_pointer().unwrap().unset_grab(
+            self,
+            SERIAL_COUNTER.next_serial(),
+            time,
+        );
         if let Some(touch) = self.swayward.seat.get_touch() {
             touch.unset_grab(self);
         }
@@ -2014,9 +2040,13 @@ impl State {
         }
 
         self.backend.with_primary_renderer(|renderer| {
-            self.swayward
-                .screenshot_ui
-                .open(renderer, screenshots, default_output, show_pointer, path)
+            self.swayward.screenshot_ui.open(
+                renderer,
+                screenshots,
+                default_output,
+                show_pointer,
+                path,
+            )
         });
 
         self.swayward
@@ -2025,7 +2055,10 @@ impl State {
         self.swayward.queue_redraw_all();
     }
 
-    pub fn handle_pick_color(&mut self, tx: async_channel::Sender<Option<swayward_ipc::PickedColor>>) {
+    pub fn handle_pick_color(
+        &mut self,
+        tx: async_channel::Sender<Option<swayward_ipc::PickedColor>>,
+    ) {
         let pointer = self.swayward.seat.get_pointer().unwrap();
         let start_data = PointerGrabStartData {
             focus: None,
@@ -2050,7 +2083,10 @@ impl State {
         self.backend.with_primary_renderer(|renderer| {
             match self.swayward.screenshot_ui.capture(renderer) {
                 Ok((size, pixels)) => {
-                    if let Err(err) = self.swayward.save_screenshot(size, pixels, write_to_disk, path) {
+                    if let Err(err) =
+                        self.swayward
+                            .save_screenshot(size, pixels, write_to_disk, path)
+                    {
                         warn!("error saving screenshot: {err:?}");
                     }
                 }
@@ -2381,9 +2417,12 @@ impl Swayward {
             .insert_source(
                 Timer::from_duration(XDG_ACTIVATION_TOKEN_TIMEOUT),
                 |_, _, state| {
-                    state.swayward.activation_state.retain_tokens(|_, token_data| {
-                        token_data.timestamp.elapsed() < XDG_ACTIVATION_TOKEN_TIMEOUT
-                    });
+                    state
+                        .swayward
+                        .activation_state
+                        .retain_tokens(|_, token_data| {
+                            token_data.timestamp.elapsed() < XDG_ACTIVATION_TOKEN_TIMEOUT
+                        });
                     TimeoutAction::ToDuration(XDG_ACTIVATION_TOKEN_TIMEOUT)
                 },
             )
@@ -2693,7 +2732,12 @@ impl Swayward {
             "/org/freedesktop/login1",
             Some("org.freedesktop.login1.Manager"),
             "Inhibit",
-            &("handle-power-key", "swayward", "Power key handling", "block"),
+            &(
+                "handle-power-key",
+                "swayward",
+                "Power key handling",
+                "block",
+            ),
         )?;
 
         let fd: zbus::zvariant::OwnedFd = message.body().deserialize()?;

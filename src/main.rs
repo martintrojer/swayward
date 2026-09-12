@@ -15,6 +15,8 @@ use clap::{CommandFactory, Parser};
 use clap_complete::Shell;
 use clap_complete_nushell::Nushell;
 use directories::ProjectDirs;
+use sd_notify::NotifyState;
+use smithay::reexports::wayland_server::Display;
 use swayward::cli::{Cli, CompletionShell, Sub};
 #[cfg(feature = "dbus")]
 use swayward::dbus;
@@ -25,8 +27,6 @@ use swayward::utils::spawning::{
 };
 use swayward::utils::{cause_panic, version, watcher, xwayland, IS_SYSTEMD_SERVICE};
 use swayward_config::{Config, ConfigPath};
-use sd_notify::NotifyState;
-use smithay::reexports::wayland_server::Display;
 use tracing_subscriber::EnvFilter;
 
 const DEFAULT_LOG_FILTER: &str = "swayward=debug,smithay::backend::renderer::gles=error";
@@ -221,7 +221,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Inhibit power key handling so we can suspend on it.
         #[cfg(feature = "dbus")]
-        if !state.swayward.config.borrow().input.disable_power_key_handling {
+        if !state
+            .swayward
+            .config
+            .borrow()
+            .input
+            .disable_power_key_handling
+        {
             if let Err(err) = state.swayward.inhibit_power_key() {
                 warn!("error inhibiting power key: {err:?}");
             }

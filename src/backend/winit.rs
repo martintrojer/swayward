@@ -5,7 +5,6 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Context as _;
-use swayward_config::{Config, OutputName};
 use smithay::backend::allocator::dmabuf::Dmabuf;
 use smithay::backend::egl::EGLDevice;
 use smithay::backend::renderer::damage::OutputDamageTracker;
@@ -20,11 +19,12 @@ use smithay::reexports::winit::platform::wayland::WindowAttributesWayland;
 use smithay::reexports::winit::window::WindowAttributes;
 use smithay::wayland::dmabuf::{DmabufFeedbackBuilder, DmabufGlobal};
 use smithay::wayland::presentation::Refresh;
+use swayward_config::{Config, OutputName};
 
 use super::{IpcOutputMap, OutputId, RenderResult};
-use crate::swayward::{Swayward, RedrawState, State};
 use crate::render_helpers::debug::draw_damage;
 use crate::render_helpers::{resources, shaders, RenderCtx, RenderTarget};
+use crate::swayward::{RedrawState, State, Swayward};
 use crate::utils::{get_monotonic_time, logical_output};
 
 pub struct Winit {
@@ -206,7 +206,8 @@ impl Winit {
             Err(err) => {
                 debug!("failed building default dmabuf feedback, falling back to v3: {err:?}");
                 let primary_formats = renderer.dmabuf_formats();
-                swayward.dmabuf_state
+                swayward
+                    .dmabuf_state
                     .create_global::<State>(&swayward.display_handle, primary_formats)
             }
         };
@@ -271,7 +272,8 @@ impl Winit {
 
             self.backend.submit(Some(damage)).unwrap();
 
-            let mut presentation_feedbacks = swayward.take_presentation_feedbacks(output, &res.states);
+            let mut presentation_feedbacks =
+                swayward.take_presentation_feedbacks(output, &res.states);
             presentation_feedbacks.presented::<_, smithay::utils::Monotonic>(
                 get_monotonic_time(),
                 Refresh::Unknown,

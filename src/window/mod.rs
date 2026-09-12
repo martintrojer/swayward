@@ -1,5 +1,11 @@
 use std::cmp::{max, min};
 
+use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
+use smithay::utils::{Logical, Size};
+use smithay::wayland::compositor::with_states;
+use smithay::wayland::shell::xdg::{
+    SurfaceCachedState, ToplevelSurface, XdgToplevelSurfaceRoleAttributes,
+};
 use swayward_config::utils::MergeWith as _;
 use swayward_config::window_rule::{Match, OnXdgActivate, WindowRule};
 use swayward_config::{
@@ -7,12 +13,6 @@ use swayward_config::{
     ResolvedPopupsRules, ShadowRule, TabIndicatorRule,
 };
 use swayward_ipc::ColumnDisplay;
-use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
-use smithay::utils::{Logical, Size};
-use smithay::wayland::compositor::with_states;
-use smithay::wayland::shell::xdg::{
-    SurfaceCachedState, ToplevelSurface, XdgToplevelSurfaceRoleAttributes,
-};
 
 use crate::utils::with_toplevel_role;
 

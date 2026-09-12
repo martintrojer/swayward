@@ -178,7 +178,13 @@ fn setup_watch(state: &mut State) {
                     satellite.abstract_token = None;
 
                     debug!("connection to X11 abstract socket; spawning xwayland-satellite");
-                    let path = state.swayward.config.borrow().xwayland_satellite.path.clone();
+                    let path = state
+                        .swayward
+                        .config
+                        .borrow()
+                        .xwayland_satellite
+                        .path
+                        .clone();
                     spawn(path, satellite);
                 }
                 Ok(PostAction::Remove)
@@ -201,7 +207,13 @@ fn setup_watch(state: &mut State) {
                 satellite.unix_token = None;
 
                 debug!("connection to X11 unix socket; spawning xwayland-satellite");
-                let path = state.swayward.config.borrow().xwayland_satellite.path.clone();
+                let path = state
+                    .swayward
+                    .config
+                    .borrow()
+                    .xwayland_satellite
+                    .path
+                    .clone();
                 spawn(path, satellite);
             }
             Ok(PostAction::Remove)

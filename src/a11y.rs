@@ -10,7 +10,7 @@ use calloop::LoopHandle;
 use swayward_config::MruScope;
 
 use crate::layout::workspace::WorkspaceId;
-use crate::swayward::{KeyboardFocus, Swayward, State};
+use crate::swayward::{KeyboardFocus, State, Swayward};
 use crate::utils::with_toplevel_role;
 use crate::window::mapped::MappedId;
 

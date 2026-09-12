@@ -68,7 +68,6 @@ pub use crate::handlers::xdg_shell::KdeDecorationsModeState;
 use crate::input::click_grab::ClickGrab;
 use crate::layout::workspace::WorkspaceId;
 use crate::layout::{ActivateWindow, LayoutElement};
-use crate::swayward::{DndIcon, NewClient, State};
 use crate::protocols::ext_workspace::{self, ExtWorkspaceHandler, ExtWorkspaceManagerState};
 use crate::protocols::foreign_toplevel::{
     self, ForeignToplevelHandler, ForeignToplevelManagerState,
@@ -82,6 +81,7 @@ use crate::protocols::virtual_pointer::{
     VirtualPointerInputBackend, VirtualPointerManagerState, VirtualPointerMotionAbsoluteEvent,
     VirtualPointerMotionEvent,
 };
+use crate::swayward::{DndIcon, NewClient, State};
 use crate::utils::{output_size, send_scale_transform};
 
 pub const XDG_ACTIVATION_TOKEN_TIMEOUT: Duration = Duration::from_secs(10);
@@ -177,7 +177,8 @@ impl PointerConstraintsHandler for State {
         // more of a hack because pointer contents has the surface origin available.
         //
         // FIXME: use the constraint surface somehow, don't use pointer contents.
-        let Some((ref surface_under_pointer, origin)) = self.swayward.pointer_contents.surface else {
+        let Some((ref surface_under_pointer, origin)) = self.swayward.pointer_contents.surface
+        else {
             return;
         };
 
@@ -349,7 +350,8 @@ impl WaylandDndGrabHandler for State {
             dnd::GrabType::Touch => {
                 let touch = seat.get_touch().unwrap();
                 let start_data = touch.grab_start_data().unwrap();
-                let grab = DnDGrab::new_touch(&self.swayward.display_handle, start_data, source, seat);
+                let grab =
+                    DnDGrab::new_touch(&self.swayward.display_handle, start_data, source, seat);
                 touch.set_grab(self, grab, serial);
             }
         }
@@ -548,7 +550,8 @@ impl ForeignToplevelHandler for State {
     }
 
     fn set_fullscreen(&mut self, wl_surface: WlSurface, wl_output: Option<WlOutput>) {
-        if let Some((mapped, current_output)) = self.swayward.layout.find_window_and_output(&wl_surface)
+        if let Some((mapped, current_output)) =
+            self.swayward.layout.find_window_and_output(&wl_surface)
         {
             let window = mapped.window.clone();
 
@@ -598,7 +601,8 @@ impl ExtWorkspaceHandler for State {
 
     fn activate_workspace(&mut self, id: WorkspaceId) {
         let reference = swayward_config::WorkspaceReference::Id(id.get());
-        if let Some((mut output, index)) = self.swayward.find_output_and_workspace_index(reference) {
+        if let Some((mut output, index)) = self.swayward.find_output_and_workspace_index(reference)
+        {
             if let Some(active) = self.swayward.layout.active_output() {
                 if output.as_ref() == Some(active) {
                     output = None;
@@ -618,7 +622,9 @@ impl ExtWorkspaceHandler for State {
 
     fn assign_workspace(&mut self, ws_id: WorkspaceId, output: Output) {
         let reference = swayward_config::WorkspaceReference::Id(ws_id.get());
-        if let Some((old_output, old_idx)) = self.swayward.find_output_and_workspace_index(reference) {
+        if let Some((old_output, old_idx)) =
+            self.swayward.find_output_and_workspace_index(reference)
+        {
             self.swayward
                 .layout
                 .move_workspace_to_output_by_id(old_idx, old_output, &output);

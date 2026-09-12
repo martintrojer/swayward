@@ -1,6 +1,5 @@
 use std::collections::hash_map::Entry;
 
-use swayward_ipc::PositionChange;
 use smithay::backend::renderer::utils::on_commit_buffer_handler;
 use smithay::input::pointer::{CursorImageStatus, CursorImageSurfaceData};
 use smithay::reexports::calloop::Interest;
@@ -16,6 +15,7 @@ use smithay::wayland::compositor::{
 use smithay::wayland::dmabuf::get_dmabuf;
 use smithay::wayland::shell::xdg::ToplevelCachedState;
 use smithay::wayland::shm::{ShmHandler, ShmState};
+use swayward_ipc::PositionChange;
 
 use super::xdg_shell::add_mapped_toplevel_pre_commit_hook;
 use crate::handlers::XDG_ACTIVATION_TOKEN_TIMEOUT;
@@ -225,7 +225,8 @@ impl CompositorHandler for State {
                     // if the window ended up fullscreen, then we only know that it is also
                     // maximized from the is_pending_maximized variable. Tell the layout about it
                     // here so that unfullscreening the window makes it maximized.
-                    if let Some((mapped, _)) = self.swayward.layout.find_window_and_output(surface) {
+                    if let Some((mapped, _)) = self.swayward.layout.find_window_and_output(surface)
+                    {
                         if mapped.pending_sizing_mode().is_fullscreen() && is_pending_maximized {
                             self.swayward.layout.set_maximized(&window, true);
                         }
@@ -234,7 +235,9 @@ impl CompositorHandler for State {
                     }
 
                     if let Some(output) = output {
-                        self.swayward.layout.start_open_animation_for_window(&window);
+                        self.swayward
+                            .layout
+                            .start_open_animation_for_window(&window);
 
                         let new_focus = self.swayward.layout.focus().map(|m| &m.window);
                         if new_focus == Some(&window) {
@@ -294,7 +297,9 @@ impl CompositorHandler for State {
                         .stop_casts_for_target(CastTarget::Window { id: id.get() });
 
                     self.swayward.window_mru_ui.remove_window(id);
-                    self.swayward.layout.remove_window(&window, transaction.clone());
+                    self.swayward
+                        .layout
+                        .remove_window(&window, transaction.clone());
                     self.add_default_dmabuf_pre_commit_hook(surface);
 
                     // If this is the only instance, then this transaction will complete
@@ -310,7 +315,9 @@ impl CompositorHandler for State {
                     // Newly-unmapped toplevels must perform the initial commit-configure sequence
                     // afresh.
                     let unmapped = Unmapped::new(window);
-                    self.swayward.unmapped_windows.insert(surface.clone(), unmapped);
+                    self.swayward
+                        .unmapped_windows
+                        .insert(surface.clone(), unmapped);
 
                     if let Some(output) = output {
                         self.swayward.queue_redraw(&output);
@@ -341,7 +348,9 @@ impl CompositorHandler for State {
                 }
 
                 // The toplevel remains mapped.
-                self.swayward.window_mru_ui.update_window(&self.swayward.layout, id);
+                self.swayward
+                    .window_mru_ui
+                    .update_window(&self.swayward.layout, id);
                 self.swayward.layout.update_window(&window, serial);
 
                 // Move the toplevel according to the attach offset.
@@ -463,7 +472,10 @@ impl CompositorHandler for State {
         for (output, state) in &self.swayward.output_state {
             if let Some(lock_surface) = &state.lock_surface {
                 if lock_surface.wl_surface() == &root_surface {
-                    if matches!(self.swayward.lock_state, LockState::WaitingForSurfaces { .. }) {
+                    if matches!(
+                        self.swayward.lock_state,
+                        LockState::WaitingForSurfaces { .. }
+                    ) {
                         self.swayward.maybe_continue_to_locking();
                     } else {
                         self.swayward.queue_redraw(&output.clone());

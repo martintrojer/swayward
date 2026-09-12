@@ -11,8 +11,8 @@ use smithay::backend::renderer::{
 };
 use smithay::utils::{Buffer, Logical, Physical, Scale, Size, Transform};
 
-use crate::swayward::OutputRenderElements;
 use crate::render_helpers::blur::{Blur, BlurOptions};
+use crate::swayward::OutputRenderElements;
 
 #[derive(Debug)]
 pub struct EffectBuffer {

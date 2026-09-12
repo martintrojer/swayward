@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use calloop::EventLoop;
-use swayward_config::Config;
 use smithay::reexports::wayland_server::Display;
+use swayward_config::Config;
 
 use crate::swayward::State;
 

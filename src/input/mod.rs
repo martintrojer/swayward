@@ -5,10 +5,6 @@ use std::time::Duration;
 
 use calloop::timer::{TimeoutAction, Timer};
 use input::event::gesture::GestureEventCoordinates as _;
-use swayward_config::{
-    Action, Bind, Binds, Config, Key, ModKey, Modifiers, MruDirection, SwitchBinds, Trigger,
-};
-use swayward_ipc::LayoutSwitchTarget;
 use smithay::backend::input::{
     AbsolutePositionEvent, Axis, AxisSource, ButtonState, Device, DeviceCapability, Event,
     GestureBeginEvent, GestureEndEvent, GesturePinchUpdateEvent as _, GestureSwipeUpdateEvent as _,
@@ -38,6 +34,10 @@ use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Point, Rectangle, Transform, SERIAL_COUNTER};
 use smithay::wayland::keyboard_shortcuts_inhibit::KeyboardShortcutsInhibitor;
 use smithay::wayland::pointer_constraints::{with_pointer_constraint, PointerConstraint};
+use swayward_config::{
+    Action, Bind, Binds, Config, Key, ModKey, Modifiers, MruDirection, SwitchBinds, Trigger,
+};
+use swayward_ipc::LayoutSwitchTarget;
 use touch_overview_grab::TouchOverviewGrab;
 
 use self::move_grab::MoveGrab;
@@ -267,7 +267,9 @@ impl State {
             let desc = TabletDescriptor::from(&device);
             tablet_seat.add_wp_tablet(&self.swayward.display_handle, &desc);
         }
-        if device.has_capability(DeviceCapability::Touch) && self.swayward.seat.get_touch().is_none() {
+        if device.has_capability(DeviceCapability::Touch)
+            && self.swayward.seat.get_touch().is_none()
+        {
             self.swayward.seat.add_touch();
         }
     }
@@ -320,7 +322,13 @@ impl State {
 
         // If the tablet is configured to map to the focused window, use that window's geometry on
         // the mapped output (or on the focused output if no specific output is mapped).
-        let map_to_focused_window = self.swayward.config.borrow().input.tablet.map_to_focused_window;
+        let map_to_focused_window = self
+            .swayward
+            .config
+            .borrow()
+            .input
+            .tablet
+            .map_to_focused_window;
         // But only if the keyboard focus is on the layout, so that it doesn't trigger on the lock
         // screen and such.
         let window_target = if map_to_focused_window && self.swayward.keyboard_focus.is_layout() {
@@ -569,7 +577,11 @@ impl State {
                         pressed,
                         *mods,
                         &this.swayward.screenshot_ui,
-                        this.swayward.config.borrow().input.disable_power_key_handling,
+                        this.swayward
+                            .config
+                            .borrow()
+                            .input
+                            .disable_power_key_handling,
                         is_inhibiting_shortcuts,
                     )
                 };
@@ -667,7 +679,9 @@ impl State {
         };
 
         // Check this first so that it doesn't trigger the cooldown.
-        if self.swayward.is_locked() && !(bind.allow_when_locked || allowed_when_locked(&bind.action)) {
+        if self.swayward.is_locked()
+            && !(bind.allow_when_locked || allowed_when_locked(&bind.action))
+        {
             return;
         }
 
@@ -680,7 +694,12 @@ impl State {
                     .swayward
                     .event_loop
                     .insert_source(timer, move |_, _, state| {
-                        if state.swayward.bind_cooldown_timers.remove(&bind.key).is_none() {
+                        if state
+                            .swayward
+                            .bind_cooldown_timers
+                            .remove(&bind.key)
+                            .is_none()
+                        {
                             error!("bind cooldown timer entry disappeared");
                         }
                         TimeoutAction::Drop
@@ -832,11 +851,13 @@ impl State {
                 }
             }
             Action::ToggleKeyboardShortcutsInhibit => {
-                if let Some(inhibitor) = self.swayward.keyboard_focus.surface().and_then(|surface| {
-                    self.swayward
-                        .keyboard_shortcuts_inhibiting_surfaces
-                        .get(surface)
-                }) {
+                if let Some(inhibitor) =
+                    self.swayward.keyboard_focus.surface().and_then(|surface| {
+                        self.swayward
+                            .keyboard_shortcuts_inhibiting_surfaces
+                            .get(surface)
+                    })
+                {
                     if inhibitor.is_active() {
                         inhibitor.inactivate();
                     } else {
@@ -850,7 +871,11 @@ impl State {
                 }
             }
             Action::CloseWindowById(id) => {
-                let window = self.swayward.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 if let Some((_, mapped)) = window {
                     mapped.toplevel().send_close();
                 }
@@ -864,7 +889,11 @@ impl State {
                 }
             }
             Action::FullscreenWindowById(id) => {
-                let window = self.swayward.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
                     self.swayward.layout.toggle_fullscreen(&window);
@@ -881,7 +910,11 @@ impl State {
                 }
             }
             Action::ToggleWindowedFullscreenById(id) => {
-                let window = self.swayward.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
                     self.swayward.layout.toggle_windowed_fullscreen(&window);
@@ -890,7 +923,11 @@ impl State {
                 }
             }
             Action::FocusWindow(id) => {
-                let window = self.swayward.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
                     self.focus_window(&window);
@@ -1056,10 +1093,16 @@ impl State {
                 self.swayward.queue_redraw_all();
             }
             Action::ConsumeOrExpelWindowLeftById(id) => {
-                let window = self.swayward.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
-                    self.swayward.layout.consume_or_expel_window_left(Some(&window));
+                    self.swayward
+                        .layout
+                        .consume_or_expel_window_left(Some(&window));
                     self.maybe_warp_cursor_to_focus();
                     // FIXME: granular
                     self.swayward.queue_redraw_all();
@@ -1072,7 +1115,11 @@ impl State {
                 self.swayward.queue_redraw_all();
             }
             Action::ConsumeOrExpelWindowRightById(id) => {
-                let window = self.swayward.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
                     self.swayward
@@ -1357,7 +1404,9 @@ impl State {
                             self.maybe_warp_cursor_to_focus();
                         }
                     } else {
-                        self.swayward.layout.move_to_workspace(None, index, activate);
+                        self.swayward
+                            .layout
+                            .move_to_workspace(None, index, activate);
                         self.maybe_warp_cursor_to_focus();
                     }
 
@@ -1370,7 +1419,11 @@ impl State {
                 reference,
                 focus,
             } => {
-                let window = self.swayward.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
                     if let Some((output, index)) =
@@ -1521,7 +1574,9 @@ impl State {
                     } else {
                         let config = &self.swayward.config;
                         if config.borrow().input.workspace_auto_back_and_forth {
-                            self.swayward.layout.switch_workspace_auto_back_and_forth(index);
+                            self.swayward
+                                .layout
+                                .switch_workspace_auto_back_and_forth(index);
                         } else {
                             self.swayward.layout.switch_workspace(index);
                         }
@@ -1559,7 +1614,9 @@ impl State {
             Action::MoveWorkspaceToIndexByRef { new_idx, reference } => {
                 if let Some(res) = self.swayward.find_output_and_workspace_index(reference) {
                     let new_idx = new_idx.saturating_sub(1);
-                    self.swayward.layout.move_workspace_to_idx(Some(res), new_idx);
+                    self.swayward
+                        .layout
+                        .move_workspace_to_idx(Some(res), new_idx);
                     // FIXME: granular
                     self.swayward.queue_redraw_all();
                 }
@@ -1568,7 +1625,9 @@ impl State {
                 self.swayward.layout.set_workspace_name(name, None);
             }
             Action::SetWorkspaceNameByRef { name, reference } => {
-                self.swayward.layout.set_workspace_name(name, Some(reference));
+                self.swayward
+                    .layout
+                    .set_workspace_name(name, Some(reference));
             }
             Action::UnsetWorkspaceName => {
                 self.swayward.layout.unset_workspace_name(None);
@@ -1630,17 +1689,29 @@ impl State {
                 self.swayward.layout.toggle_window_width(None, false);
             }
             Action::SwitchPresetWindowWidthById(id) => {
-                let window = self.swayward.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
-                    self.swayward.layout.toggle_window_width(Some(&window), true);
+                    self.swayward
+                        .layout
+                        .toggle_window_width(Some(&window), true);
                 }
             }
             Action::SwitchPresetWindowWidthBackById(id) => {
-                let window = self.swayward.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
-                    self.swayward.layout.toggle_window_width(Some(&window), false);
+                    self.swayward
+                        .layout
+                        .toggle_window_width(Some(&window), false);
                 }
             }
             Action::SwitchPresetWindowHeight => {
@@ -1650,17 +1721,29 @@ impl State {
                 self.swayward.layout.toggle_window_height(None, false);
             }
             Action::SwitchPresetWindowHeightById(id) => {
-                let window = self.swayward.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
-                    self.swayward.layout.toggle_window_height(Some(&window), true);
+                    self.swayward
+                        .layout
+                        .toggle_window_height(Some(&window), true);
                 }
             }
             Action::SwitchPresetWindowHeightBackById(id) => {
-                let window = self.swayward.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
-                    self.swayward.layout.toggle_window_height(Some(&window), false);
+                    self.swayward
+                        .layout
+                        .toggle_window_height(Some(&window), false);
                 }
             }
             Action::CenterColumn => {
@@ -1674,7 +1757,11 @@ impl State {
                 self.swayward.queue_redraw_all();
             }
             Action::CenterWindowById(id) => {
-                let window = self.swayward.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
                     self.swayward.layout.center_window(Some(&window));
@@ -1699,7 +1786,11 @@ impl State {
                 }
             }
             Action::MaximizeWindowToEdgesById(id) => {
-                let window = self.swayward.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
                     self.swayward.layout.toggle_maximized(&window);
@@ -1872,9 +1963,12 @@ impl State {
                         self.move_cursor_to_output(&output);
                         self.swayward.screenshot_ui.move_to_output(output);
                     } else {
-                        self.swayward
-                            .layout
-                            .move_to_output(None, &output, None, ActivateWindow::Smart);
+                        self.swayward.layout.move_to_output(
+                            None,
+                            &output,
+                            None,
+                            ActivateWindow::Smart,
+                        );
                         self.swayward.layout.focus_output(&output);
                         if !self.maybe_warp_cursor_to_focus_centered() {
                             self.move_cursor_to_output(&output);
@@ -1884,7 +1978,11 @@ impl State {
             }
             Action::MoveWindowToMonitorById { id, output } => {
                 if let Some(output) = self.swayward.output_by_name_match(&output).cloned() {
-                    let window = self.swayward.layout.windows().find(|(_, m)| m.id().get() == id);
+                    let window = self
+                        .swayward
+                        .layout
+                        .windows()
+                        .find(|(_, m)| m.id().get() == id);
                     let window = window.map(|(_, m)| m.window.clone());
 
                     if let Some(window) = window {
@@ -1903,7 +2001,9 @@ impl State {
 
                         // If the active output changed (window was moved and focused).
                         #[allow(clippy::collapsible_if)]
-                        if !target_was_active && self.swayward.layout.active_output() == Some(&output) {
+                        if !target_was_active
+                            && self.swayward.layout.active_output() == Some(&output)
+                        {
                             if !self.maybe_warp_cursor_to_focus_centered() {
                                 self.move_cursor_to_output(&output);
                             }
@@ -1918,7 +2018,9 @@ impl State {
                         self.swayward.screenshot_ui.move_to_output(target_output);
                     }
                 } else if let Some(output) = self.swayward.output_left() {
-                    self.swayward.layout.move_column_to_output(&output, None, true);
+                    self.swayward
+                        .layout
+                        .move_column_to_output(&output, None, true);
                     self.swayward.layout.focus_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
@@ -1932,7 +2034,9 @@ impl State {
                         self.swayward.screenshot_ui.move_to_output(target_output);
                     }
                 } else if let Some(output) = self.swayward.output_right() {
-                    self.swayward.layout.move_column_to_output(&output, None, true);
+                    self.swayward
+                        .layout
+                        .move_column_to_output(&output, None, true);
                     self.swayward.layout.focus_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
@@ -1946,7 +2050,9 @@ impl State {
                         self.swayward.screenshot_ui.move_to_output(target_output);
                     }
                 } else if let Some(output) = self.swayward.output_down() {
-                    self.swayward.layout.move_column_to_output(&output, None, true);
+                    self.swayward
+                        .layout
+                        .move_column_to_output(&output, None, true);
                     self.swayward.layout.focus_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
@@ -1960,7 +2066,9 @@ impl State {
                         self.swayward.screenshot_ui.move_to_output(target_output);
                     }
                 } else if let Some(output) = self.swayward.output_up() {
-                    self.swayward.layout.move_column_to_output(&output, None, true);
+                    self.swayward
+                        .layout
+                        .move_column_to_output(&output, None, true);
                     self.swayward.layout.focus_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
@@ -1974,7 +2082,9 @@ impl State {
                         self.swayward.screenshot_ui.move_to_output(target_output);
                     }
                 } else if let Some(output) = self.swayward.output_previous() {
-                    self.swayward.layout.move_column_to_output(&output, None, true);
+                    self.swayward
+                        .layout
+                        .move_column_to_output(&output, None, true);
                     self.swayward.layout.focus_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
@@ -1988,7 +2098,9 @@ impl State {
                         self.swayward.screenshot_ui.move_to_output(target_output);
                     }
                 } else if let Some(output) = self.swayward.output_next() {
-                    self.swayward.layout.move_column_to_output(&output, None, true);
+                    self.swayward
+                        .layout
+                        .move_column_to_output(&output, None, true);
                     self.swayward.layout.focus_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
@@ -2001,7 +2113,9 @@ impl State {
                         self.move_cursor_to_output(&output);
                         self.swayward.screenshot_ui.move_to_output(output);
                     } else {
-                        self.swayward.layout.move_column_to_output(&output, None, true);
+                        self.swayward
+                            .layout
+                            .move_column_to_output(&output, None, true);
                         self.swayward.layout.focus_output(&output);
                         if !self.maybe_warp_cursor_to_focus_centered() {
                             self.move_cursor_to_output(&output);
@@ -2030,7 +2144,11 @@ impl State {
                 }
             }
             Action::SetWindowWidthById { id, change } => {
-                let window = self.swayward.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
                     self.swayward.layout.set_window_width(Some(&window), change);
@@ -2047,17 +2165,27 @@ impl State {
                 }
             }
             Action::SetWindowHeightById { id, change } => {
-                let window = self.swayward.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
-                    self.swayward.layout.set_window_height(Some(&window), change);
+                    self.swayward
+                        .layout
+                        .set_window_height(Some(&window), change);
                 }
             }
             Action::ResetWindowHeight => {
                 self.swayward.layout.reset_window_height(None);
             }
             Action::ResetWindowHeightById(id) => {
-                let window = self.swayward.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
                     self.swayward.layout.reset_window_height(Some(&window));
@@ -2138,7 +2266,8 @@ impl State {
                 if let Some((output, old_idx)) =
                     self.swayward.find_output_and_workspace_index(reference)
                 {
-                    if let Some(new_output) = self.swayward.output_by_name_match(&output_name).cloned()
+                    if let Some(new_output) =
+                        self.swayward.output_by_name_match(&output_name).cloned()
                     {
                         if self.swayward.layout.move_workspace_to_output_by_id(
                             old_idx,
@@ -2159,7 +2288,11 @@ impl State {
                 self.swayward.queue_redraw_all();
             }
             Action::ToggleWindowFloatingById(id) => {
-                let window = self.swayward.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
                     self.swayward.layout.toggle_window_floating(Some(&window));
@@ -2173,10 +2306,16 @@ impl State {
                 self.swayward.queue_redraw_all();
             }
             Action::MoveWindowToFloatingById(id) => {
-                let window = self.swayward.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
-                    self.swayward.layout.set_window_floating(Some(&window), true);
+                    self.swayward
+                        .layout
+                        .set_window_floating(Some(&window), true);
                     // FIXME: granular
                     self.swayward.queue_redraw_all();
                 }
@@ -2187,10 +2326,16 @@ impl State {
                 self.swayward.queue_redraw_all();
             }
             Action::MoveWindowToTilingById(id) => {
-                let window = self.swayward.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
-                    self.swayward.layout.set_window_floating(Some(&window), false);
+                    self.swayward
+                        .layout
+                        .set_window_floating(Some(&window), false);
                     // FIXME: granular
                     self.swayward.queue_redraw_all();
                 }
@@ -2215,7 +2360,11 @@ impl State {
             }
             Action::MoveFloatingWindowById { id, x, y } => {
                 let window = if let Some(id) = id {
-                    let window = self.swayward.layout.windows().find(|(_, m)| m.id().get() == id);
+                    let window = self
+                        .swayward
+                        .layout
+                        .windows()
+                        .find(|(_, m)| m.id().get() == id);
                     let window = window.map(|(_, m)| m.window.clone());
                     if window.is_none() {
                         return;
@@ -2576,7 +2725,9 @@ impl State {
         if let Some(mru_output) = self.swayward.window_mru_ui.output() {
             if let Some((output, pos_within_output)) = self.swayward.output_under(new_pos) {
                 if mru_output == output {
-                    self.swayward.window_mru_ui.pointer_motion(pos_within_output);
+                    self.swayward
+                        .window_mru_ui
+                        .pointer_motion(pos_within_output);
                 }
             }
         }
@@ -2711,7 +2862,9 @@ impl State {
         if let Some(mru_output) = self.swayward.window_mru_ui.output() {
             if let Some((output, pos_within_output)) = self.swayward.output_under(pos) {
                 if mru_output == output {
-                    self.swayward.window_mru_ui.pointer_motion(pos_within_output);
+                    self.swayward
+                        .window_mru_ui
+                        .pointer_motion(pos_within_output);
                 }
             }
         }
@@ -2805,7 +2958,10 @@ impl State {
                     let location = pointer.current_location();
                     let (output, pos_within_output) = self.swayward.output_under(location).unwrap();
                     if mru_output == output {
-                        let id = self.swayward.window_mru_ui.pointer_motion(pos_within_output);
+                        let id = self
+                            .swayward
+                            .window_mru_ui
+                            .pointer_motion(pos_within_output);
                         if id.is_some() {
                             self.confirm_mru();
                         } else {
@@ -2836,7 +2992,8 @@ impl State {
                     find_configured_bind(bindings, mod_key, trigger, mods)
                 })
                 .filter(|bind| {
-                    !self.swayward.screenshot_ui.is_open() || allowed_during_screenshot(&bind.action)
+                    !self.swayward.screenshot_ui.is_open()
+                        || allowed_during_screenshot(&bind.action)
                 }) {
                     self.swayward.suppressed_buttons.insert(button_code);
                     self.handle_bind(bind.clone());
@@ -3032,7 +3189,12 @@ impl State {
                 .then(|| self.swayward.workspace_under_cursor(false))
                 .flatten()
             {
-                let ws_idx = self.swayward.layout.find_workspace_by_id(ws.id()).unwrap().0;
+                let ws_idx = self
+                    .swayward
+                    .layout
+                    .find_workspace_by_id(ws.id())
+                    .unwrap()
+                    .0;
 
                 self.swayward.layout.focus_output(&output);
                 self.swayward.layout.toggle_overview_to_workspace(ws_idx);
@@ -3153,61 +3315,65 @@ impl State {
                 || self.swayward.mods_with_wheel_binds.contains(&modifiers);
             if should_handle {
                 let horizontal = horizontal_amount_v120.unwrap_or(0.);
-                let ticks = self.swayward.horizontal_wheel_tracker.accumulate(horizontal);
+                let ticks = self
+                    .swayward
+                    .horizontal_wheel_tracker
+                    .accumulate(horizontal);
                 if ticks != 0 {
-                    let (bind_left, bind_right) =
-                        if should_handle_in_overview && modifiers.is_empty() {
-                            let bind_left = Some(Bind {
-                                key: Key {
-                                    trigger: Trigger::WheelScrollLeft,
-                                    modifiers: Modifiers::empty(),
-                                },
-                                action: Action::FocusColumnLeftUnderMouse,
-                                repeat: true,
-                                cooldown: None,
-                                allow_when_locked: false,
-                                allow_inhibiting: false,
-                                hotkey_overlay_title: None,
-                            });
-                            let bind_right = Some(Bind {
-                                key: Key {
-                                    trigger: Trigger::WheelScrollRight,
-                                    modifiers: Modifiers::empty(),
-                                },
-                                action: Action::FocusColumnRightUnderMouse,
-                                repeat: true,
-                                cooldown: None,
-                                allow_when_locked: false,
-                                allow_inhibiting: false,
-                                hotkey_overlay_title: None,
-                            });
-                            (bind_left, bind_right)
-                        } else {
-                            let config = self.swayward.config.borrow();
-                            let bindings =
-                                make_binds_iter(&config, &mut self.swayward.window_mru_ui, modifiers);
-                            let bind_left = find_configured_bind(
-                                bindings.clone(),
-                                mod_key,
-                                Trigger::WheelScrollLeft,
-                                mods,
-                            )
-                            .filter(|bind| {
-                                !self.swayward.screenshot_ui.is_open()
-                                    || allowed_during_screenshot(&bind.action)
-                            });
-                            let bind_right = find_configured_bind(
-                                bindings,
-                                mod_key,
-                                Trigger::WheelScrollRight,
-                                mods,
-                            )
-                            .filter(|bind| {
-                                !self.swayward.screenshot_ui.is_open()
-                                    || allowed_during_screenshot(&bind.action)
-                            });
-                            (bind_left, bind_right)
-                        };
+                    let (bind_left, bind_right) = if should_handle_in_overview
+                        && modifiers.is_empty()
+                    {
+                        let bind_left = Some(Bind {
+                            key: Key {
+                                trigger: Trigger::WheelScrollLeft,
+                                modifiers: Modifiers::empty(),
+                            },
+                            action: Action::FocusColumnLeftUnderMouse,
+                            repeat: true,
+                            cooldown: None,
+                            allow_when_locked: false,
+                            allow_inhibiting: false,
+                            hotkey_overlay_title: None,
+                        });
+                        let bind_right = Some(Bind {
+                            key: Key {
+                                trigger: Trigger::WheelScrollRight,
+                                modifiers: Modifiers::empty(),
+                            },
+                            action: Action::FocusColumnRightUnderMouse,
+                            repeat: true,
+                            cooldown: None,
+                            allow_when_locked: false,
+                            allow_inhibiting: false,
+                            hotkey_overlay_title: None,
+                        });
+                        (bind_left, bind_right)
+                    } else {
+                        let config = self.swayward.config.borrow();
+                        let bindings =
+                            make_binds_iter(&config, &mut self.swayward.window_mru_ui, modifiers);
+                        let bind_left = find_configured_bind(
+                            bindings.clone(),
+                            mod_key,
+                            Trigger::WheelScrollLeft,
+                            mods,
+                        )
+                        .filter(|bind| {
+                            !self.swayward.screenshot_ui.is_open()
+                                || allowed_during_screenshot(&bind.action)
+                        });
+                        let bind_right = find_configured_bind(
+                            bindings,
+                            mod_key,
+                            Trigger::WheelScrollRight,
+                            mods,
+                        )
+                        .filter(|bind| {
+                            !self.swayward.screenshot_ui.is_open()
+                                || allowed_during_screenshot(&bind.action)
+                        });
+                        (bind_left, bind_right)
+                    };
 
                     if let Some(right) = bind_right {
                         for _ in 0..ticks {
@@ -3425,7 +3591,12 @@ impl State {
                 }
             }
 
-            if is_mru_open || self.swayward.mods_with_finger_scroll_binds.contains(&modifiers) {
+            if is_mru_open
+                || self
+                    .swayward
+                    .mods_with_finger_scroll_binds
+                    .contains(&modifiers)
+            {
                 let ticks = self
                     .swayward
                     .horizontal_finger_scroll_tracker
@@ -3611,7 +3782,9 @@ impl State {
         if let Some(mru_output) = self.swayward.window_mru_ui.output() {
             if let Some((output, pos_within_output)) = self.swayward.output_under(pos) {
                 if mru_output == output {
-                    self.swayward.window_mru_ui.pointer_motion(pos_within_output);
+                    self.swayward
+                        .window_mru_ui
+                        .pointer_motion(pos_within_output);
                 }
             }
         }
@@ -3714,7 +3887,10 @@ impl State {
                     } else if let Some(mru_output) = self.swayward.window_mru_ui.output() {
                         if let Some((output, pos_within_output)) = self.swayward.output_under(pos) {
                             if mru_output == output {
-                                let id = self.swayward.window_mru_ui.pointer_motion(pos_within_output);
+                                let id = self
+                                    .swayward
+                                    .window_mru_ui
+                                    .pointer_motion(pos_within_output);
                                 if id.is_some() {
                                     self.confirm_mru();
                                 } else {
@@ -3730,7 +3906,8 @@ impl State {
                             && under.layer.is_none()
                             && under.output.is_some()
                         {
-                            let (output, pos_within_output) = self.swayward.output_under(pos).unwrap();
+                            let (output, pos_within_output) =
+                                self.swayward.output_under(pos).unwrap();
                             let output = output.clone();
 
                             let mut matched_narrow = true;
@@ -3918,7 +4095,11 @@ impl State {
                     let mods = self.swayward.seat.get_keyboard().unwrap().modifier_state();
                     let modifiers = modifiers_from_state(mods);
 
-                    if self.swayward.mods_with_tablet_stylus_binds.contains(&modifiers) {
+                    if self
+                        .swayward
+                        .mods_with_tablet_stylus_binds
+                        .contains(&modifiers)
+                    {
                         let bind = {
                             let config = self.swayward.config.borrow();
                             let bindings = config.binds.0.iter();
@@ -4040,10 +4221,17 @@ impl State {
                         };
 
                         if let Some((output, ws)) = output_ws {
-                            let ws_idx = self.swayward.layout.find_workspace_by_id(ws.id()).unwrap().0;
-                            self.swayward
+                            let ws_idx = self
+                                .swayward
                                 .layout
-                                .view_offset_gesture_begin(&output, Some(ws_idx), true);
+                                .find_workspace_by_id(ws.id())
+                                .unwrap()
+                                .0;
+                            self.swayward.layout.view_offset_gesture_begin(
+                                &output,
+                                Some(ws_idx),
+                                true,
+                            );
                         }
                     } else {
                         self.swayward
@@ -4114,7 +4302,10 @@ impl State {
         self.swayward.gesture_swipe_3f_cumulative = None;
 
         let mut handled = false;
-        let res = self.swayward.layout.workspace_switch_gesture_end(Some(true));
+        let res = self
+            .swayward
+            .layout
+            .workspace_switch_gesture_end(Some(true));
         if let Some(output) = res {
             self.swayward.queue_redraw(&output);
             handled = true;
@@ -4314,7 +4505,10 @@ impl State {
         } else if let Some(mru_output) = self.swayward.window_mru_ui.output() {
             if let Some((output, pos_within_output)) = self.swayward.output_under(pos) {
                 if mru_output == output {
-                    let id = self.swayward.window_mru_ui.pointer_motion(pos_within_output);
+                    let id = self
+                        .swayward
+                        .window_mru_ui
+                        .pointer_motion(pos_within_output);
                     if id.is_some() {
                         self.confirm_mru();
                     } else {
@@ -4442,7 +4636,9 @@ impl State {
                 .to_physical(output.current_scale().fractional_scale())
                 .to_i32_round::<i32>();
 
-            self.swayward.screenshot_ui.pointer_motion(point, Some(slot));
+            self.swayward
+                .screenshot_ui
+                .pointer_motion(point, Some(slot));
             self.swayward.queue_redraw(&output);
         }
 

@@ -33,8 +33,8 @@ mod smithay_view;
 mod test_window;
 
 fn main() -> glib::ExitCode {
-    let directives =
-        env::var("RUST_LOG").unwrap_or_else(|_| "swayward-visual-tests=debug,swayward=debug".to_owned());
+    let directives = env::var("RUST_LOG")
+        .unwrap_or_else(|_| "swayward-visual-tests=debug,swayward=debug".to_owned());
     let env_filter = EnvFilter::builder().parse_lossy(directives);
     tracing_subscriber::fmt()
         .compact()

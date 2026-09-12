@@ -153,7 +153,8 @@ impl TouchOverviewGrab {
                 .is_some(),
             GestureState::InteractiveMove => {
                 let window = self.window.as_ref().unwrap();
-                if let Some((output, pos_within_output)) = data.swayward.output_under(self.new_location)
+                if let Some((output, pos_within_output)) =
+                    data.swayward.output_under(self.new_location)
                 {
                     let output = output.clone();
                     data.swayward.layout.interactive_move_update(

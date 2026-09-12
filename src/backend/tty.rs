@@ -14,9 +14,6 @@ use anyhow::{anyhow, bail, ensure, Context};
 use bytemuck::cast_slice_mut;
 use drm_ffi::drm_mode_modeinfo;
 use libc::dev_t;
-use swayward_config::output::{MaxBpc, Modeline};
-use swayward_config::{Config, OutputName};
-use swayward_ipc::{HSyncPolarity, VSyncPolarity};
 use smithay::backend::allocator::dmabuf::Dmabuf;
 use smithay::backend::allocator::format::FormatSet;
 use smithay::backend::allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice};
@@ -58,16 +55,19 @@ use smithay::wayland::drm_lease::{
 };
 use smithay::wayland::presentation::Refresh;
 use smithay_drm_extras::drm_scanner::{DrmScanEvent, DrmScanner};
+use swayward_config::output::{MaxBpc, Modeline};
+use swayward_config::{Config, OutputName};
+use swayward_ipc::{HSyncPolarity, VSyncPolarity};
 use wayland_protocols::wp::linux_dmabuf::zv1::server::zwp_linux_dmabuf_feedback_v1::TrancheFlags;
 use wayland_protocols::wp::presentation_time::server::wp_presentation_feedback;
 
 use super::{IpcOutputMap, RenderResult};
 use crate::backend::OutputId;
 use crate::frame_clock::FrameClock;
-use crate::swayward::{Swayward, RedrawState, State};
 use crate::render_helpers::debug::draw_damage;
 use crate::render_helpers::renderer::AsGlesRenderer;
 use crate::render_helpers::{resources, shaders, RenderCtx, RenderTarget};
+use crate::swayward::{RedrawState, State, Swayward};
 use crate::utils::{get_monotonic_time, is_laptop_panel, logical_output, PanelOrientation};
 
 // When copying from rendering Nvidia dGPU to target iGPU,
@@ -427,7 +427,10 @@ impl Tty {
         let udev_backend =
             UdevBackend::new(session.seat()).context("error creating a udev backend")?;
         let udev_dispatcher = Dispatcher::new(udev_backend, move |event, _, state: &mut State| {
-            state.backend.tty().on_udev_event(&mut state.swayward, event);
+            state
+                .backend
+                .tty()
+                .on_udev_event(&mut state.swayward, event);
         });
         event_loop
             .register_dispatcher(udev_dispatcher.clone())
@@ -459,7 +462,10 @@ impl Tty {
 
         event_loop
             .insert_source(notifier, move |event, _, state| {
-                state.backend.tty().on_session_event(&mut state.swayward, event);
+                state
+                    .backend
+                    .tty()
+                    .on_session_event(&mut state.swayward, event);
             })
             .unwrap();
 
@@ -1182,16 +1188,18 @@ impl Tty {
 
                 // Disable and destroy the dmabuf global.
                 if let Some(global) = self.dmabuf_global.take() {
-                    swayward.dmabuf_state
+                    swayward
+                        .dmabuf_state
                         .disable_global::<State>(&swayward.display_handle, &global);
-                    swayward.event_loop
+                    swayward
+                        .event_loop
                         .insert_source(
                             Timer::from_duration(Duration::from_secs(10)),
                             move |_, _, state| {
-                                state
-                                    .swayward
-                                    .dmabuf_state
-                                    .destroy_global::<State>(&state.swayward.display_handle, global);
+                                state.swayward.dmabuf_state.destroy_global::<State>(
+                                    &state.swayward.display_handle,
+                                    global,
+                                );
                                 TimeoutAction::Drop
                             },
                         )
@@ -1568,7 +1576,12 @@ impl Tty {
         Ok(())
     }
 
-    fn connector_disconnected(&mut self, swayward: &mut Swayward, node: DrmNode, crtc: crtc::Handle) {
+    fn connector_disconnected(
+        &mut self,
+        swayward: &mut Swayward,
+        node: DrmNode,
+        crtc: crtc::Handle,
+    ) {
         let Some(device) = self.devices.get_mut(&node) else {
             debug!("disconnecting connector for crtc: {crtc:?}");
             error!("missing device");
@@ -1653,7 +1666,12 @@ impl Tty {
                 Duration::ZERO
             }
         };
-        let presentation_time = if swayward.config.borrow().debug.emulate_zero_presentation_time {
+        let presentation_time = if swayward
+            .config
+            .borrow()
+            .debug
+            .emulate_zero_presentation_time
+        {
             Duration::ZERO
         } else {
             presentation_time
@@ -2276,7 +2294,12 @@ impl Tty {
         }
     }
 
-    pub fn set_output_on_demand_vrr(&mut self, swayward: &mut Swayward, output: &Output, enable_vrr: bool) {
+    pub fn set_output_on_demand_vrr(
+        &mut self,
+        swayward: &mut Swayward,
+        output: &Output,
+        enable_vrr: bool,
+    ) {
         let _span = tracy_client::span!("Tty::set_output_on_demand_vrr");
 
         let output_state = swayward.output_state.get_mut(output).unwrap();

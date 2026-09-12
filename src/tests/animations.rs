@@ -2,10 +2,10 @@ use std::fmt::Write as _;
 use std::time::Duration;
 
 use insta::assert_snapshot;
+use smithay::utils::{Point, Size};
 use swayward_config::animations::{Curve, EasingParams, Kind};
 use swayward_config::Config;
 use swayward_ipc::SizeChange;
-use smithay::utils::{Point, Size};
 use wayland_client::protocol::wl_surface::WlSurface;
 
 use super::client::ClientId;

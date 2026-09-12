@@ -6,12 +6,12 @@ use std::time::Duration;
 use bitflags::bitflags;
 use knuffel::errors::DecodeError;
 use miette::miette;
-use swayward_ipc::{
-    ColumnDisplay, LayoutSwitchTarget, PositionChange, SizeChange, WorkspaceReferenceArg,
-};
 use smithay::input::keyboard::keysyms::KEY_NoSymbol;
 use smithay::input::keyboard::xkb::{keysym_from_name, KEYSYM_CASE_INSENSITIVE, KEYSYM_NO_FLAGS};
 use smithay::input::keyboard::Keysym;
+use swayward_ipc::{
+    ColumnDisplay, LayoutSwitchTarget, PositionChange, SizeChange, WorkspaceReferenceArg,
+};
 
 use crate::recent_windows::{MruDirection, MruFilter, MruScope};
 use crate::utils::{expect_only_children, MergeWith};
@@ -403,7 +403,9 @@ impl From<swayward_ipc::Action> for Action {
             swayward_ipc::Action::PowerOnMonitors {} => Self::PowerOnMonitors,
             swayward_ipc::Action::Spawn { command } => Self::Spawn(command),
             swayward_ipc::Action::SpawnSh { command } => Self::SpawnSh(command),
-            swayward_ipc::Action::DoScreenTransition { delay_ms } => Self::DoScreenTransition(delay_ms),
+            swayward_ipc::Action::DoScreenTransition { delay_ms } => {
+                Self::DoScreenTransition(delay_ms)
+            }
             swayward_ipc::Action::Screenshot { show_pointer, path } => {
                 Self::Screenshot(show_pointer, path)
             }
@@ -435,7 +437,9 @@ impl From<swayward_ipc::Action> for Action {
             swayward_ipc::Action::CloseWindow { id: None } => Self::CloseWindow,
             swayward_ipc::Action::CloseWindow { id: Some(id) } => Self::CloseWindowById(id),
             swayward_ipc::Action::FullscreenWindow { id: None } => Self::FullscreenWindow,
-            swayward_ipc::Action::FullscreenWindow { id: Some(id) } => Self::FullscreenWindowById(id),
+            swayward_ipc::Action::FullscreenWindow { id: Some(id) } => {
+                Self::FullscreenWindowById(id)
+            }
             swayward_ipc::Action::ToggleWindowedFullscreen { id: None } => {
                 Self::ToggleWindowedFullscreen
             }
@@ -458,8 +462,12 @@ impl From<swayward_ipc::Action> for Action {
             swayward_ipc::Action::FocusColumnOrMonitorRight {} => Self::FocusColumnOrMonitorRight,
             swayward_ipc::Action::FocusWindowDown {} => Self::FocusWindowDown,
             swayward_ipc::Action::FocusWindowUp {} => Self::FocusWindowUp,
-            swayward_ipc::Action::FocusWindowDownOrColumnLeft {} => Self::FocusWindowDownOrColumnLeft,
-            swayward_ipc::Action::FocusWindowDownOrColumnRight {} => Self::FocusWindowDownOrColumnRight,
+            swayward_ipc::Action::FocusWindowDownOrColumnLeft {} => {
+                Self::FocusWindowDownOrColumnLeft
+            }
+            swayward_ipc::Action::FocusWindowDownOrColumnRight {} => {
+                Self::FocusWindowDownOrColumnRight
+            }
             swayward_ipc::Action::FocusWindowUpOrColumnLeft {} => Self::FocusWindowUpOrColumnLeft,
             swayward_ipc::Action::FocusWindowUpOrColumnRight {} => Self::FocusWindowUpOrColumnRight,
             swayward_ipc::Action::FocusWindowOrWorkspaceDown {} => Self::FocusWindowOrWorkspaceDown,
@@ -484,7 +492,9 @@ impl From<swayward_ipc::Action> for Action {
             swayward_ipc::Action::MoveWindowDownOrToWorkspaceDown {} => {
                 Self::MoveWindowDownOrToWorkspaceDown
             }
-            swayward_ipc::Action::MoveWindowUpOrToWorkspaceUp {} => Self::MoveWindowUpOrToWorkspaceUp,
+            swayward_ipc::Action::MoveWindowUpOrToWorkspaceUp {} => {
+                Self::MoveWindowUpOrToWorkspaceUp
+            }
             swayward_ipc::Action::ConsumeOrExpelWindowLeft { id: None } => {
                 Self::ConsumeOrExpelWindowLeft
             }
@@ -555,7 +565,9 @@ impl From<swayward_ipc::Action> for Action {
                 name,
                 reference: WorkspaceReference::from(reference),
             },
-            swayward_ipc::Action::UnsetWorkspaceName { reference: None } => Self::UnsetWorkspaceName,
+            swayward_ipc::Action::UnsetWorkspaceName { reference: None } => {
+                Self::UnsetWorkspaceName
+            }
             swayward_ipc::Action::UnsetWorkspaceName {
                 reference: Some(reference),
             } => Self::UnsetWorkSpaceNameByRef(WorkspaceReference::from(reference)),
@@ -570,7 +582,9 @@ impl From<swayward_ipc::Action> for Action {
             swayward_ipc::Action::MoveWindowToMonitorRight {} => Self::MoveWindowToMonitorRight,
             swayward_ipc::Action::MoveWindowToMonitorDown {} => Self::MoveWindowToMonitorDown,
             swayward_ipc::Action::MoveWindowToMonitorUp {} => Self::MoveWindowToMonitorUp,
-            swayward_ipc::Action::MoveWindowToMonitorPrevious {} => Self::MoveWindowToMonitorPrevious,
+            swayward_ipc::Action::MoveWindowToMonitorPrevious {} => {
+                Self::MoveWindowToMonitorPrevious
+            }
             swayward_ipc::Action::MoveWindowToMonitorNext {} => Self::MoveWindowToMonitorNext,
             swayward_ipc::Action::MoveWindowToMonitor { id: None, output } => {
                 Self::MoveWindowToMonitor(output)
@@ -583,24 +597,38 @@ impl From<swayward_ipc::Action> for Action {
             swayward_ipc::Action::MoveColumnToMonitorRight {} => Self::MoveColumnToMonitorRight,
             swayward_ipc::Action::MoveColumnToMonitorDown {} => Self::MoveColumnToMonitorDown,
             swayward_ipc::Action::MoveColumnToMonitorUp {} => Self::MoveColumnToMonitorUp,
-            swayward_ipc::Action::MoveColumnToMonitorPrevious {} => Self::MoveColumnToMonitorPrevious,
+            swayward_ipc::Action::MoveColumnToMonitorPrevious {} => {
+                Self::MoveColumnToMonitorPrevious
+            }
             swayward_ipc::Action::MoveColumnToMonitorNext {} => Self::MoveColumnToMonitorNext,
-            swayward_ipc::Action::MoveColumnToMonitor { output } => Self::MoveColumnToMonitor(output),
-            swayward_ipc::Action::SetWindowWidth { id: None, change } => Self::SetWindowWidth(change),
+            swayward_ipc::Action::MoveColumnToMonitor { output } => {
+                Self::MoveColumnToMonitor(output)
+            }
+            swayward_ipc::Action::SetWindowWidth { id: None, change } => {
+                Self::SetWindowWidth(change)
+            }
             swayward_ipc::Action::SetWindowWidth {
                 id: Some(id),
                 change,
             } => Self::SetWindowWidthById { id, change },
-            swayward_ipc::Action::SetWindowHeight { id: None, change } => Self::SetWindowHeight(change),
+            swayward_ipc::Action::SetWindowHeight { id: None, change } => {
+                Self::SetWindowHeight(change)
+            }
             swayward_ipc::Action::SetWindowHeight {
                 id: Some(id),
                 change,
             } => Self::SetWindowHeightById { id, change },
             swayward_ipc::Action::ResetWindowHeight { id: None } => Self::ResetWindowHeight,
-            swayward_ipc::Action::ResetWindowHeight { id: Some(id) } => Self::ResetWindowHeightById(id),
+            swayward_ipc::Action::ResetWindowHeight { id: Some(id) } => {
+                Self::ResetWindowHeightById(id)
+            }
             swayward_ipc::Action::SwitchPresetColumnWidth {} => Self::SwitchPresetColumnWidth,
-            swayward_ipc::Action::SwitchPresetColumnWidthBack {} => Self::SwitchPresetColumnWidthBack,
-            swayward_ipc::Action::SwitchPresetWindowWidth { id: None } => Self::SwitchPresetWindowWidth,
+            swayward_ipc::Action::SwitchPresetColumnWidthBack {} => {
+                Self::SwitchPresetColumnWidthBack
+            }
+            swayward_ipc::Action::SwitchPresetWindowWidth { id: None } => {
+                Self::SwitchPresetWindowWidth
+            }
             swayward_ipc::Action::SwitchPresetWindowWidthBack { id: None } => {
                 Self::SwitchPresetWindowWidthBack
             }
@@ -628,11 +656,15 @@ impl From<swayward_ipc::Action> for Action {
                 Self::MaximizeWindowToEdgesById(id)
             }
             swayward_ipc::Action::SetColumnWidth { change } => Self::SetColumnWidth(change),
-            swayward_ipc::Action::ExpandColumnToAvailableWidth {} => Self::ExpandColumnToAvailableWidth,
+            swayward_ipc::Action::ExpandColumnToAvailableWidth {} => {
+                Self::ExpandColumnToAvailableWidth
+            }
             swayward_ipc::Action::SwitchLayout { layout } => Self::SwitchLayout(layout),
             swayward_ipc::Action::ShowHotkeyOverlay {} => Self::ShowHotkeyOverlay,
             swayward_ipc::Action::MoveWorkspaceToMonitorLeft {} => Self::MoveWorkspaceToMonitorLeft,
-            swayward_ipc::Action::MoveWorkspaceToMonitorRight {} => Self::MoveWorkspaceToMonitorRight,
+            swayward_ipc::Action::MoveWorkspaceToMonitorRight {} => {
+                Self::MoveWorkspaceToMonitorRight
+            }
             swayward_ipc::Action::MoveWorkspaceToMonitorDown {} => Self::MoveWorkspaceToMonitorDown,
             swayward_ipc::Action::MoveWorkspaceToMonitorUp {} => Self::MoveWorkspaceToMonitorUp,
             swayward_ipc::Action::MoveWorkspaceToMonitorPrevious {} => {
@@ -684,7 +716,9 @@ impl From<swayward_ipc::Action> for Action {
             swayward_ipc::Action::MoveFloatingWindow { id, x, y } => {
                 Self::MoveFloatingWindowById { id, x, y }
             }
-            swayward_ipc::Action::ToggleWindowRuleOpacity { id: None } => Self::ToggleWindowRuleOpacity,
+            swayward_ipc::Action::ToggleWindowRuleOpacity { id: None } => {
+                Self::ToggleWindowRuleOpacity
+            }
             swayward_ipc::Action::ToggleWindowRuleOpacity { id: Some(id) } => {
                 Self::ToggleWindowRuleOpacityById(id)
             }

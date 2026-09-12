@@ -1,15 +1,15 @@
 use std::cell::{Cell, OnceCell, RefCell};
 
+use proptest::prelude::*;
+use proptest_derive::Arbitrary;
+use smithay::output::{Mode, PhysicalProperties, Subpixel};
+use smithay::utils::Rectangle;
 use swayward_config::utils::Flag;
 use swayward_config::workspace::WorkspaceName;
 use swayward_config::{
     CenterFocusedColumn, FloatOrInt, OutputName, Struts, TabIndicatorLength, TabIndicatorPosition,
     WorkspaceReference,
 };
-use proptest::prelude::*;
-use proptest_derive::Arbitrary;
-use smithay::output::{Mode, PhysicalProperties, Subpixel};
-use smithay::utils::Rectangle;
 
 use super::*;
 

@@ -17,9 +17,9 @@ use smithay::utils::{Physical, Point, Scale, Size};
 use zbus::object_server::SignalEmitter;
 
 use crate::dbus::mutter_screen_cast::{self, CursorMode, ScreenCastToNiri, StreamTargetId};
-use crate::swayward::{CastTarget, Swayward, OutputRenderElements, PointerRenderElements, State};
-use crate::swayward_render_elements;
 use crate::render_helpers::{RenderCtx, RenderTarget};
+use crate::swayward::{CastTarget, OutputRenderElements, PointerRenderElements, State, Swayward};
+use crate::swayward_render_elements;
 use crate::utils::{get_monotonic_time, CastSessionId, CastStreamId};
 use crate::window::mapped::{MappedId, WindowCastRenderElements};
 
@@ -212,8 +212,12 @@ impl State {
                         //   coordinates
                         // - bbox.loc moves us relative to the screencast buffer
                         let buf_pos = win_pos + bbox.loc.to_f64().to_logical(scale);
-                        let output_pos =
-                            self.swayward.global_space.output_geometry(output).unwrap().loc;
+                        let output_pos = self
+                            .swayward
+                            .global_space
+                            .output_geometry(output)
+                            .unwrap()
+                            .loc;
                         pointer_location = pointer_pos - output_pos.to_f64() - buf_pos;
 
                         let pos = buf_pos.to_physical_precise_round(scale).upscale(-1);
@@ -270,7 +274,9 @@ impl State {
             CastTarget::Window { id } => {
                 let mut windows = self.swayward.layout.windows();
                 if let Some((_, mapped)) = windows.find(|(_, mapped)| mapped.id().get() == *id) {
-                    if let Some(output) = self.swayward.casting.mapped_cast_output.get(&mapped.window) {
+                    if let Some(output) =
+                        self.swayward.casting.mapped_cast_output.get(&mapped.window)
+                    {
                         refresh = Some(output.current_mode().unwrap().refresh as u32);
                     }
                 }
@@ -412,12 +418,15 @@ impl State {
                         if id == self.swayward.casting.dynamic_cast_id_for_portal.get() =>
                     {
                         debug!("delaying dynamic cast until target is set");
-                        self.swayward.casting.pending_dynamic_casts.push(PendingCast {
-                            session_id,
-                            stream_id,
-                            cursor_mode,
-                            signal_ctx,
-                        });
+                        self.swayward
+                            .casting
+                            .pending_dynamic_casts
+                            .push(PendingCast {
+                                session_id,
+                                stream_id,
+                                cursor_mode,
+                                signal_ctx,
+                            });
                         return;
                     }
                     StreamTargetId::Window { id } => {

@@ -2,11 +2,11 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use swayward_config::{Config, ModKey};
 use smithay::backend::allocator::dmabuf::Dmabuf;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::output::Output;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+use swayward_config::{Config, ModKey};
 
 use crate::swayward::Swayward;
 use crate::utils::id::IdCounter;
@@ -177,7 +177,12 @@ impl Backend {
         }
     }
 
-    pub fn set_output_on_demand_vrr(&mut self, swayward: &mut Swayward, output: &Output, enable_vrr: bool) {
+    pub fn set_output_on_demand_vrr(
+        &mut self,
+        swayward: &mut Swayward,
+        output: &Output,
+        enable_vrr: bool,
+    ) {
         match self {
             Backend::Tty(tty) => tty.set_output_on_demand_vrr(swayward, output, enable_vrr),
             Backend::Winit(_) => (),

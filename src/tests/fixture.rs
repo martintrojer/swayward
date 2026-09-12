@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use calloop::generic::Generic;
 use calloop::{EventLoop, Interest, LoopHandle, Mode, PostAction};
-use swayward_config::Config;
 use smithay::output::Output;
+use swayward_config::Config;
 
 use super::client::{Client, ClientId};
 use super::server::Server;

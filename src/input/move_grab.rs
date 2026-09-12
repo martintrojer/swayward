@@ -221,7 +221,8 @@ impl MoveGrab {
         match self.gesture {
             GestureState::Recognizing => return true,
             GestureState::Move => {
-                let Some((output, pos_within_output)) = data.swayward.output_under(self.last_location)
+                let Some((output, pos_within_output)) =
+                    data.swayward.output_under(self.last_location)
                 else {
                     return true;
                 };
@@ -288,7 +289,9 @@ impl MoveGrab {
             }
         }
 
-        data.swayward.layout.toggle_window_floating(Some(&self.window));
+        data.swayward
+            .layout
+            .toggle_window_floating(Some(&self.window));
         data.swayward.queue_redraw_all();
 
         true

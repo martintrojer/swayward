@@ -1,12 +1,12 @@
 use core::f64;
 use std::rc::Rc;
 
-use swayward_config::utils::MergeWith as _;
-use swayward_config::{Color, CornerRadius, GradientInterpolation};
-use swayward_ipc::WindowLayout;
 use smithay::backend::renderer::element::{Element, Kind};
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::utils::{Logical, Point, Rectangle, Scale, Size};
+use swayward_config::utils::MergeWith as _;
+use swayward_config::{Color, CornerRadius, GradientInterpolation};
+use swayward_ipc::WindowLayout;
 
 use super::focus_ring::{FocusRing, FocusRingRenderElement};
 use super::opening_window::{OpenAnimation, OpeningWindowRenderElement};
@@ -17,7 +17,6 @@ use super::{
 };
 use crate::animation::{Animation, Clock};
 use crate::layout::SizingMode;
-use crate::swayward_render_elements;
 use crate::render_helpers::background_effect::BackgroundEffectElement;
 use crate::render_helpers::border::BorderRenderElement;
 use crate::render_helpers::clipped_surface::{ClippedSurfaceRenderElement, RoundedCornerDamage};
@@ -30,6 +29,7 @@ use crate::render_helpers::snapshot::RenderSnapshot;
 use crate::render_helpers::solid_color::{SolidColorBuffer, SolidColorRenderElement};
 use crate::render_helpers::xray::{Xray, XrayPos};
 use crate::render_helpers::{RenderCtx, RenderTarget};
+use crate::swayward_render_elements;
 use crate::utils::transaction::Transaction;
 use crate::utils::{
     baba_is_float_offset, round_logical_in_physical, round_logical_in_physical_max1,
@@ -603,7 +603,11 @@ impl<W: LayoutElement> Tile<W> {
         self.animate_move_x_from_with_config(from, self.options.animations.window_movement.0);
     }
 
-    pub fn animate_move_x_from_with_config(&mut self, from: f64, config: swayward_config::Animation) {
+    pub fn animate_move_x_from_with_config(
+        &mut self,
+        from: f64,
+        config: swayward_config::Animation,
+    ) {
         let current_offset = self.render_offset().x;
 
         // Preserve the previous config if ongoing.
@@ -627,7 +631,11 @@ impl<W: LayoutElement> Tile<W> {
         self.animate_move_y_from_with_config(from, self.options.animations.window_movement.0);
     }
 
-    pub fn animate_move_y_from_with_config(&mut self, from: f64, config: swayward_config::Animation) {
+    pub fn animate_move_y_from_with_config(
+        &mut self,
+        from: f64,
+        config: swayward_config::Animation,
+    ) {
         let current_offset = self.render_offset().y;
 
         // Preserve the previous config if ongoing.

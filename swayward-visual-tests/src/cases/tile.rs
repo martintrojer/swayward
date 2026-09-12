@@ -1,13 +1,13 @@
 use std::rc::Rc;
 use std::time::Duration;
 
+use smithay::backend::renderer::element::RenderElement;
+use smithay::backend::renderer::gles::GlesRenderer;
+use smithay::utils::{Physical, Point, Rectangle, Size};
 use swayward::layout::Options;
 use swayward::render_helpers::xray::XrayPos;
 use swayward::render_helpers::{RenderCtx, RenderTarget};
 use swayward_config::Color;
-use smithay::backend::renderer::element::RenderElement;
-use smithay::backend::renderer::gles::GlesRenderer;
-use smithay::utils::{Physical, Point, Rectangle, Size};
 
 use super::{Args, TestCase};
 use crate::test_window::TestWindow;

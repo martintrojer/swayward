@@ -1,8 +1,8 @@
 use client::ClientId;
 use insta::assert_snapshot;
+use smithay::utils::Point;
 use swayward_config::Config;
 use swayward_ipc::SizeChange;
-use smithay::utils::Point;
 use wayland_client::protocol::wl_surface::WlSurface;
 
 use super::*;
@@ -88,7 +88,9 @@ fn resize_to_different_size() {
     f.double_roundtrip(id);
 
     f.swayward().layout.toggle_window_floating(None);
-    f.swayward().layout.set_column_width(SizeChange::SetFixed(500));
+    f.swayward()
+        .layout
+        .set_column_width(SizeChange::SetFixed(500));
     f.double_roundtrip(id);
 
     // This should request the new size, 500 × 100.
@@ -155,7 +157,9 @@ fn set_window_width_uses_current_height() {
     f.roundtrip(id);
 
     // Request a width change.
-    f.swayward().layout.set_column_width(SizeChange::SetFixed(500));
+    f.swayward()
+        .layout
+        .set_column_width(SizeChange::SetFixed(500));
 
     f.double_roundtrip(id);
 
@@ -209,7 +213,9 @@ fn resize_to_same_size() {
     f.roundtrip(id);
 
     // Request a size change to the same size.
-    f.swayward().layout.set_column_width(SizeChange::SetFixed(200));
+    f.swayward()
+        .layout
+        .set_column_width(SizeChange::SetFixed(200));
 
     f.double_roundtrip(id);
 
@@ -239,7 +245,9 @@ fn resize_to_different_then_same() {
     f.roundtrip(id);
 
     // Request a size change to a different size.
-    f.swayward().layout.set_column_width(SizeChange::SetFixed(500));
+    f.swayward()
+        .layout
+        .set_column_width(SizeChange::SetFixed(500));
 
     f.double_roundtrip(id);
 
@@ -250,7 +258,9 @@ fn resize_to_different_then_same() {
     );
 
     // Before the window has a chance to respond, request a size change to the same, new size.
-    f.swayward().layout.set_column_width(SizeChange::SetFixed(500));
+    f.swayward()
+        .layout
+        .set_column_width(SizeChange::SetFixed(500));
 
     // And also drop the Activated state to have some pending change.
     f.niri_focus_output(2);
@@ -342,7 +352,9 @@ fn moving_across_workspaces_doesnt_cancel_resize() {
     let _ = f.client(id).window(&surface).recent_configures();
 
     // Request a size change to a different size.
-    f.swayward().layout.set_column_width(SizeChange::SetFixed(500));
+    f.swayward()
+        .layout
+        .set_column_width(SizeChange::SetFixed(500));
     f.double_roundtrip(id);
 
     // This should request the new size.
@@ -389,7 +401,9 @@ fn moving_to_floating_doesnt_cancel_resize() {
     let _ = f.client(id).window(&surface).recent_configures();
 
     // Request a size change to a different size.
-    f.swayward().layout.set_column_width(SizeChange::SetFixed(500));
+    f.swayward()
+        .layout
+        .set_column_width(SizeChange::SetFixed(500));
     f.double_roundtrip(id);
 
     // This should request the new size (500 ×).
@@ -441,7 +455,8 @@ fn interactive_move_unfullscreen_to_floating_restores_size() {
     let swayward = f.swayward();
     let mapped = swayward.layout.windows().next().unwrap().1;
     let window = mapped.window.clone();
-    swayward.layout
+    swayward
+        .layout
         .interactive_move_begin(window.clone(), &output, Point::default());
     swayward.layout.interactive_move_update(
         &window,
@@ -490,7 +505,8 @@ fn interactive_move_unmaximize_to_floating_restores_size() {
     let swayward = f.swayward();
     let mapped = swayward.layout.windows().next().unwrap().1;
     let window = mapped.window.clone();
-    swayward.layout
+    swayward
+        .layout
         .interactive_move_begin(window.clone(), &output, Point::default());
     swayward.layout.interactive_move_update(
         &window,
@@ -527,7 +543,8 @@ fn resize_during_interactive_move_propagates_to_floating() {
     let swayward = f.swayward();
     let mapped = swayward.layout.windows().next().unwrap().1;
     let window_id = mapped.window.clone();
-    swayward.layout
+    swayward
+        .layout
         .interactive_move_begin(window_id.clone(), &output, Point::default());
     swayward.layout.interactive_move_update(
         &window_id,
@@ -579,7 +596,9 @@ fn resize_in_steps() {
     f.double_roundtrip(id);
 
     // Request a size change to a different size in two steps.
-    f.swayward().layout.set_column_width(SizeChange::SetFixed(500));
+    f.swayward()
+        .layout
+        .set_column_width(SizeChange::SetFixed(500));
     f.swayward()
         .layout
         .set_window_height(None, SizeChange::SetFixed(500));
@@ -595,7 +614,9 @@ fn resize_in_steps() {
     let serial = window.configures_received.last().unwrap().0;
 
     // Request a size change now that the previous one is pending-but-not-acked.
-    f.swayward().layout.set_column_width(SizeChange::SetFixed(600));
+    f.swayward()
+        .layout
+        .set_column_width(SizeChange::SetFixed(600));
     // Drop Activated to work around resize throttling.
     f.niri_focus_output(2);
     f.double_roundtrip(id);
@@ -651,7 +672,9 @@ fn state_change_doesnt_break_use_window_size() {
     f.roundtrip(id);
 
     // Request a size change to a different size.
-    f.swayward().layout.set_column_width(SizeChange::SetFixed(500));
+    f.swayward()
+        .layout
+        .set_column_width(SizeChange::SetFixed(500));
     f.double_roundtrip(id);
 
     // This should request the new size (500 × 100).
@@ -743,7 +766,8 @@ fn interactive_move_restores_floating_size_when_set_to_floating() {
     let swayward = f.swayward();
     let mapped = swayward.layout.windows().next().unwrap().1;
     let window_id = mapped.window.clone();
-    swayward.layout
+    swayward
+        .layout
         .interactive_move_begin(window_id.clone(), &output, Point::default());
     swayward.layout.interactive_move_update(
         &window_id,
@@ -1321,7 +1345,9 @@ fn repeated_size_request() {
     );
 
     // Request a size change to the same size as we have just requested.
-    f.swayward().layout.set_column_width(SizeChange::SetFixed(200));
+    f.swayward()
+        .layout
+        .set_column_width(SizeChange::SetFixed(200));
     f.double_roundtrip(id);
 
     // Should request nothing as this is a repeated same-size request in floating and the surface
@@ -1337,7 +1363,9 @@ fn repeated_size_request() {
     f.double_roundtrip(id);
 
     // Request a size change to the same size as we have just requested.
-    f.swayward().layout.set_column_width(SizeChange::SetFixed(200));
+    f.swayward()
+        .layout
+        .set_column_width(SizeChange::SetFixed(200));
     f.double_roundtrip(id);
 
     // Should request nothing as this is a repeated same-size request in floating and the surface
@@ -1353,7 +1381,9 @@ fn repeated_size_request() {
     f.double_roundtrip(id);
 
     // Request the size change again.
-    f.swayward().layout.set_column_width(SizeChange::SetFixed(200));
+    f.swayward()
+        .layout
+        .set_column_width(SizeChange::SetFixed(200));
     f.double_roundtrip(id);
 
     // This should send a new configure since the window had committed.

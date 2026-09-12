@@ -1,15 +1,15 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use swayward::animation::Clock;
-use swayward::layout::{ActivateWindow, AddWindowTarget, LayoutElement as _, Options, SizingMode};
-use swayward::render_helpers::{RenderCtx, RenderTarget};
-use swayward_config::{Color, OutputName, PresetSize};
 use smithay::backend::renderer::element::RenderElement;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::desktop::layer_map_for_output;
 use smithay::output::{Mode, Output, PhysicalProperties, Subpixel};
 use smithay::utils::{Physical, Size};
+use swayward::animation::Clock;
+use swayward::layout::{ActivateWindow, AddWindowTarget, LayoutElement as _, Options, SizingMode};
+use swayward::render_helpers::{RenderCtx, RenderTarget};
+use swayward_config::{Color, OutputName, PresetSize};
 
 use super::{Args, TestCase};
 use crate::test_window::TestWindow;

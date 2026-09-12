@@ -12,8 +12,6 @@ mod imp {
 
     use anyhow::{ensure, Context};
     use gtk::gdk;
-    use swayward::animation::Clock;
-    use swayward::render_helpers::{resources, shaders};
     use smithay::backend::egl::ffi::egl;
     use smithay::backend::egl::EGLContext;
     use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture};
@@ -21,6 +19,8 @@ mod imp {
     use smithay::reexports::gbm::Format as Fourcc;
     use smithay::utils::user_data::UserDataMap;
     use smithay::utils::{Physical, Rectangle, Scale, Transform};
+    use swayward::animation::Clock;
+    use swayward::render_helpers::{resources, shaders};
 
     use super::*;
 

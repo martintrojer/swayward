@@ -14,6 +14,7 @@ src/ipc/client.rs — remove niri's client because swaymsg is swayward's support
 .github/workflows/ci.yml — retain only checks that protect supported swayward builds and stop publishing inherited niri documentation.
 .github/workflows/release.yml — remove niri's release process until swayward has release artifacts and a versioning policy.
 src/layout/mod.rs — export `tiling_tree` and apply cargo-fmt import reordering so the new i3 tree module is compiled and tested.
+(workspace-wide) — run `cargo fmt --all` after the rename changed identifier sort order; no behavioural change.
 
 ## Deliberate behavioural deviations from sway
 

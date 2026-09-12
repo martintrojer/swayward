@@ -53,7 +53,8 @@ impl DBusServers {
         if is_session_instance {
             let (to_niri, from_service_channel) = calloop::channel::channel();
             let service_channel = ServiceChannel::new(to_niri);
-            swayward.event_loop
+            swayward
+                .event_loop
                 .insert_source(from_service_channel, move |event, _, state| match event {
                     calloop::channel::Event::Msg(new_client) => {
                         state.swayward.insert_client(new_client);
@@ -67,7 +68,8 @@ impl DBusServers {
         if is_session_instance || config.debug.dbus_interfaces_in_non_session_instances {
             let (to_niri, from_display_config) = calloop::channel::channel();
             let display_config = DisplayConfig::new(to_niri, backend.ipc_outputs());
-            swayward.event_loop
+            swayward
+                .event_loop
                 .insert_source(from_display_config, move |event, _, state| match event {
                     calloop::channel::Event::Msg(new_conf) => {
                         for (name, conf) in new_conf {
@@ -91,7 +93,8 @@ impl DBusServers {
 
             let (to_niri, from_screenshot) = calloop::channel::channel();
             let (to_screenshot, from_niri) = async_channel::unbounded();
-            swayward.event_loop
+            swayward
+                .event_loop
                 .insert_source(from_screenshot, move |event, _, state| match event {
                     calloop::channel::Event::Msg(msg) => {
                         state.on_screen_shot_msg(&to_screenshot, msg)
@@ -104,7 +107,8 @@ impl DBusServers {
 
             let (to_niri, from_introspect) = calloop::channel::channel();
             let (to_introspect, from_niri) = async_channel::unbounded();
-            swayward.event_loop
+            swayward
+                .event_loop
                 .insert_source(from_introspect, move |event, _, state| match event {
                     calloop::channel::Event::Msg(msg) => {
                         state.on_introspect_msg(&to_introspect, msg)
@@ -118,7 +122,8 @@ impl DBusServers {
             #[cfg(feature = "xdp-gnome-screencast")]
             {
                 let (to_niri, from_screen_cast) = calloop::channel::channel();
-                swayward.event_loop
+                swayward
+                    .event_loop
                     .insert_source(from_screen_cast, {
                         move |event, _, state| match event {
                             calloop::channel::Event::Msg(msg) => state.on_screen_cast_msg(msg),
@@ -132,7 +137,8 @@ impl DBusServers {
 
             let (to_niri, from_a11y) = calloop::channel::channel();
             let (to_a11y, from_niri) = async_channel::unbounded();
-            swayward.event_loop
+            swayward
+                .event_loop
                 .insert_source(from_a11y, move |event, _, state| match event {
                     calloop::channel::Event::Msg(msg) => state.on_a11y_manager_msg(&to_a11y, msg),
                     calloop::channel::Event::Closed => (),
@@ -151,7 +157,8 @@ impl DBusServers {
         }
 
         let (to_niri, from_login1) = calloop::channel::channel();
-        swayward.event_loop
+        swayward
+            .event_loop
             .insert_source(from_login1, move |event, _, state| match event {
                 calloop::channel::Event::Msg(msg) => state.on_login1_msg(msg),
                 calloop::channel::Event::Closed => (),
@@ -167,7 +174,8 @@ impl DBusServers {
         }
 
         let (to_niri, from_locale1) = calloop::channel::channel();
-        swayward.event_loop
+        swayward
+            .event_loop
             .insert_source(from_locale1, move |event, _, state| match event {
                 calloop::channel::Event::Msg(msg) => state.on_locale1_msg(msg),
                 calloop::channel::Event::Closed => (),
