@@ -12,13 +12,13 @@ pub(crate) fn compute<W: LayoutElement>(
     gaps: f64,
 ) -> HashMap<NodeId, Rectangle<f64, Logical>> {
     let mut result = HashMap::new();
-    assign(
-        nodes,
-        root,
-        Rectangle::from_size(view_size),
-        gaps.max(0.),
-        &mut result,
-    );
+    let gaps = gaps.max(0.);
+    let mut area = Rectangle::from_size(view_size);
+    area.loc.x += gaps;
+    area.loc.y += gaps;
+    area.size.w = (area.size.w - gaps * 2.).max(0.);
+    area.size.h = (area.size.h - gaps * 2.).max(0.);
+    assign(nodes, root, area, gaps, &mut result);
     result
 }
 

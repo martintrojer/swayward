@@ -37,7 +37,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use monitor::{InsertHint, InsertPosition, InsertWorkspace, MonitorAddWindowTarget};
-use scrolling::{Column, ColumnWidth};
+use scrolling::ColumnWidth;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::utils::RescaleRenderElement;
 use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture};
@@ -924,11 +924,11 @@ impl<W: LayoutElement> Layout<W> {
         }
     }
 
-    pub fn add_column_by_idx(
+    pub fn add_tiling_tile_by_idx(
         &mut self,
         monitor_idx: usize,
         workspace_idx: usize,
-        column: Column<W>,
+        tile: Tile<W>,
         activate: bool,
     ) {
         let MonitorSet::Normal {
@@ -940,7 +940,7 @@ impl<W: LayoutElement> Layout<W> {
             panic!()
         };
 
-        monitors[monitor_idx].add_column(workspace_idx, column, activate, None);
+        monitors[monitor_idx].add_tiling_tile(workspace_idx, tile, activate);
 
         if activate {
             *active_monitor_idx = monitor_idx;
@@ -2585,7 +2585,7 @@ impl<W: LayoutElement> Layout<W> {
 
                 workspace.verify_invariants(move_win_id.as_ref());
 
-                let has_view_offset_gesture = workspace.scrolling().view_offset().is_gesture();
+                let has_view_offset_gesture = workspace.tiling().has_view_offset_gesture();
                 if self.dnd.is_some() || self.interactive_move.is_some() {
                     // We'd like to check that all workspaces have the gesture here, furthermore we
                     // want to check that they have the gesture only if the interactive move
@@ -3428,14 +3428,14 @@ impl<W: LayoutElement> Layout<W> {
                 return;
             }
 
-            let Some(column) = ws.remove_active_column() else {
+            let Some(tile) = ws.remove_active_tiling_tile() else {
                 return;
             };
 
             let workspace_idx = target_ws_idx
                 .unwrap_or(monitors[new_idx].active_workspace_idx)
                 .min(monitors[new_idx].workspaces.len() - 1);
-            self.add_column_by_idx(new_idx, workspace_idx, column, activate);
+            self.add_tiling_tile_by_idx(new_idx, workspace_idx, tile, activate);
         }
     }
 

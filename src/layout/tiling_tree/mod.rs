@@ -241,7 +241,11 @@ impl<W: LayoutElement> TilingTree<W> {
             }
             None => available,
         };
-        Size::from((resolve(width, bounds.w), resolve(height, bounds.h)))
+        // Tree leaves consume their complete allocated rectangle. The caller still passes niri's
+        // default column width, but applying that before insertion would make the first leaf only
+        // half-width and prevent the post-insert full-size configure from being sent until ack.
+        let _ = width;
+        Size::from((bounds.w, resolve(height, bounds.h)))
     }
 
     pub fn add_tile(&mut self, tile: Tile<W>, target: InsertTarget) -> NodeId {
@@ -732,6 +736,13 @@ impl<W: LayoutElement> TilingTree<W> {
         if let Some(leaf) = leaf {
             self.focus = Some(leaf);
         }
+    }
+
+    pub fn focus_window_in_column(&mut self, index: u8) {
+        let Some(subtree) = self.focus.and_then(|id| self.nodes.get(&id)?.parent) else {
+            return;
+        };
+        self.focus_window_in_subtree(subtree, usize::from(index));
     }
 
     pub fn focus_column(&mut self, index: usize) {
@@ -1393,7 +1404,17 @@ impl<W: LayoutElement> TilingTree<W> {
                     .as_ref()
                     .and_then(|(target, data)| (window.id() == target).then_some(*data)),
             );
-            window.set_bounds(self.parent_area.size.to_i32_floor());
+            let border = self
+                .options
+                .layout
+                .border
+                .merged_with(&window.rules().border);
+            let padding = self.gaps * 2. + if border.off { 0. } else { border.width * 2. };
+            let bounds = Size::from((
+                (self.parent_area.size.w - padding).max(1.),
+                (self.parent_area.size.h - padding).max(1.),
+            ));
+            window.set_bounds(bounds.to_i32_floor());
             let intent = if individual {
                 window.configure_intent()
             } else {
@@ -1431,6 +1452,21 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub fn dnd_scroll_gesture_end(&mut self) {}
+
+    pub fn has_view_offset_gesture(&self) -> bool {
+        false
+    }
+
+    pub fn view_pos(&self) -> f64 {
+        0.
+    }
+
+    pub fn active_column_idx(&self) -> usize {
+        self.focus
+            .and_then(|id| self.root_branch(id))
+            .and_then(|branch| self.root_children()?.iter().position(|id| *id == branch))
+            .unwrap_or(0)
+    }
 
     pub fn geometry(&self, id: NodeId) -> Option<Rectangle<f64, Logical>> {
         geometry::compute(&self.nodes, self.root, self.view_size, self.gaps).remove(&id)

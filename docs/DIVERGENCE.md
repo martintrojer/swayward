@@ -14,8 +14,10 @@ src/ipc/client.rs — remove niri's client because swaymsg is swayward's support
 .github/workflows/ci.yml — retain only checks that protect supported swayward builds and stop publishing inherited niri documentation.
 .github/workflows/release.yml — remove niri's release process until swayward has release artifacts and a versioning policy.
 src/layout/mod.rs — export `tiling_tree` and apply cargo-fmt import reordering so the new i3 tree module is compiled and tested.
+src/layout/workspace.rs — replace the scrolling tiling field and render element with TilingTree while preserving FloatingSpace.
+src/layout/monitor.rs, src/layout/mod.rs — transfer focused tree tiles rather than concrete scrolling columns between workspaces and outputs.
 (workspace-wide) — run `cargo fmt --all` after the rename changed identifier sort order; no behavioural change.
 
 ## Deliberate behavioural deviations from sway
 
-(none yet)
+src/layout/workspace.rs — retire niri's horizontal viewport offset and its gesture state; the i3 tree always occupies the workspace view.

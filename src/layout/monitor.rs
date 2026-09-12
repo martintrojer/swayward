@@ -11,7 +11,7 @@ use smithay::utils::{Logical, Point, Rectangle, Size};
 use swayward_config::{CornerRadius, LayoutPart};
 
 use super::insert_hint_element::{InsertHintElement, InsertHintRenderElement};
-use super::scrolling::{Column, ColumnWidth};
+use super::scrolling::ColumnWidth;
 use super::tile::Tile;
 use super::workspace::{
     compute_working_area, OutputId, Workspace, WorkspaceAddWindowTarget, WorkspaceId,
@@ -544,16 +544,10 @@ impl<W: LayoutElement> Monitor<W> {
         );
     }
 
-    pub fn add_column(
-        &mut self,
-        mut workspace_idx: usize,
-        column: Column<W>,
-        activate: bool,
-        anim: Option<swayward_config::Animation>,
-    ) {
+    pub fn add_tiling_tile(&mut self, mut workspace_idx: usize, tile: Tile<W>, activate: bool) {
         let workspace = &mut self.workspaces[workspace_idx];
 
-        workspace.add_column(column, activate, anim);
+        workspace.add_tiling_tile(tile, activate);
 
         // After adding a new window, workspace becomes this output's own.
         if workspace.name().is_none() {
@@ -936,22 +930,17 @@ impl<W: LayoutElement> Monitor<W> {
             return;
         }
 
-        let Some(id) = workspace.scrolling().active_column().map(Column::id) else {
+        let Some(window) = workspace.active_window().map(|window| window.id().clone()) else {
             return;
         };
         let mut old_render_pos = workspace
-            .scrolling()
-            .columns_with_render_positions()
-            .find_map(|(col, pos)| (col.id() == id).then_some(pos))
+            .tiles_with_render_positions()
+            .find_map(|(tile, pos, _)| (tile.window().id() == &window).then_some(pos))
             .unwrap();
+        let tile = workspace.remove_active_tiling_tile().unwrap();
 
-        let column = workspace.remove_active_column().unwrap();
-
-        // Animate vertical movement between workspaces.
         old_render_pos.y +=
             self.workspace_size_with_gap(1.).h * (source_workspace_idx as f64 - new_idx as f64);
-
-        // If the view is following the column, match the animation.
         let config = if activate {
             self.options.animations.workspace_switch.0
         } else {
@@ -959,16 +948,15 @@ impl<W: LayoutElement> Monitor<W> {
         };
 
         let new_id = self.workspaces[new_idx].id();
-        self.add_column(new_idx, column, activate, Some(config));
+        self.add_tiling_tile(new_idx, tile, activate);
 
         let new_idx = self.idx_of_ws(new_id).unwrap();
-        let (column, new_render_pos) = self.workspaces[new_idx]
-            .scrolling_mut()
-            .columns_with_render_positions_mut()
-            .find(|(col, _pos)| col.id() == id)
+        let (tile, new_render_pos) = self.workspaces[new_idx]
+            .tiles_with_render_positions_mut(false)
+            .find(|(tile, _)| tile.window().id() == &window)
             .unwrap();
-        column.animate_move_from_with_config(old_render_pos - new_render_pos, config);
-        column.set_anim_y_between_workspaces();
+        tile.animate_move_from_with_config(old_render_pos - new_render_pos, config);
+        tile.set_anim_y_between_workspaces();
     }
 
     pub fn switch_workspace_up(&mut self) {
