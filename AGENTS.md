@@ -14,6 +14,11 @@ distrobox enter swayward-dev -- bash -lc 'cd <repo> && cargo test --all'
 
 Setup and baseline numbers: [`docs/BUILDING.md`](docs/BUILDING.md).
 
+Format with **nightly**: `cargo +nightly fmt --all`. `rustfmt.toml` uses four
+nightly-only options, and the CI fmt job runs on nightly. Stable rustfmt reports
+clean while leaving nightly diffs in place — that trap has already cost one
+round-trip.
+
 ## History is rebase fuel
 
 We merge upstream niri releases forever (`git fetch upstream --tags && git merge
