@@ -436,14 +436,11 @@ post-map configures:
 
 #[test]
 fn target_size() {
-    if std::env::var_os("RUN_SLOW_TESTS").is_none() {
-        eprintln!("ignoring slow test");
-        return;
-    }
-
     store_and_increase_nofile_rlimit();
 
-    // Here we test a massive powerset of settings that can affect the window size:
+    // Exercise the inherited sizing-rule powerset against tree semantics. Niri's default,
+    // fixed, and proportional column widths, per-window heights, and within-column tab strip
+    // geometry do not constrain a sole i3 leaf: after mapping it fills the working area.
     //
     // * want fullscreen
     // * open-fullscreen
