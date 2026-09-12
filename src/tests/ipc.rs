@@ -190,6 +190,18 @@ fn assert_node_schema_appears_in_fixtures(actual: &Value, fixtures: &[Value], pa
     }
 }
 
+fn find_json_node<'a>(value: &'a Value, node_type: &str, focused: bool) -> Option<&'a Value> {
+    if value["type"] == node_type && (!focused || value["focused"] == true) {
+        return Some(value);
+    }
+    ["nodes", "floating_nodes"].into_iter().find_map(|key| {
+        value[key]
+            .as_array()?
+            .iter()
+            .find_map(|child| find_json_node(child, node_type, focused))
+    })
+}
+
 fn collect_fixture_nodes(value: &Value, nodes: &mut Vec<Value>) {
     nodes.push(value.clone());
     for key in ["nodes", "floating_nodes"] {
@@ -218,7 +230,12 @@ fn nested_live_tree() -> Value {
     f.swayward().layout.consume_or_expel_window_left(None);
     f.swayward().layout.move_down();
     let swayward = f.swayward();
-    serde_json::to_value(describe_tree(&swayward.layout, &swayward.global_space)).unwrap()
+    serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &Default::default(),
+    ))
+    .unwrap()
 }
 
 fn nested_fixture_tree() -> Value {
@@ -338,6 +355,121 @@ fn json_type(value: &Value) -> &'static str {
 }
 
 #[test]
+fn marks_round_trip_through_commands_get_marks_and_tree() {
+    let (mut fixture, socket) = ipc_fixture();
+    fixture.add_output(1, (1920, 1080));
+    let id = fixture.add_client();
+    let window = fixture.client(id).create_window();
+    window.xdg_toplevel.set_app_id("fixture-1".into());
+    window.set_title("fixture-1");
+    let surface = window.surface.clone();
+    window.commit();
+    fixture.roundtrip(id);
+    let window = fixture.client(id).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    fixture.double_roundtrip(id);
+
+    let mut stream = UnixStream::connect(&socket).unwrap();
+    stream
+        .write_all(&crate::ipc::wire::encode(
+            MessageType::RunCommand,
+            "mark testmark",
+        ))
+        .unwrap();
+    let (_, reply) = read_ipc_reply(&mut fixture, &mut stream);
+    assert_eq!(
+        serde_json::from_str::<Value>(&reply).unwrap(),
+        serde_json::json!([{"success": true}])
+    );
+
+    stream
+        .write_all(&crate::ipc::wire::encode(MessageType::GetMarks, ""))
+        .unwrap();
+    let (_, reply) = read_ipc_reply(&mut fixture, &mut stream);
+    assert_eq!(
+        serde_json::from_str::<Value>(&reply).unwrap(),
+        serde_json::json!(["testmark"])
+    );
+
+    let swayward = fixture.swayward();
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &swayward.marks_by_window,
+    ))
+    .unwrap();
+    let marked = find_json_node(&tree, "con", true).unwrap();
+    let oracle: Value =
+        serde_json::from_str(include_str!("../../tests/fixtures/sway/marked.tree.json")).unwrap();
+    let expected = find_json_node(&oracle, "con", true).unwrap();
+    assert_eq!(marked["marks"], expected["marks"]);
+
+    let mut stream = UnixStream::connect(&socket).unwrap();
+    stream
+        .write_all(&crate::ipc::wire::encode(
+            MessageType::RunCommand,
+            "mark --add second, mark --add --toggle testmark; [con_mark=second] unmark",
+        ))
+        .unwrap();
+    let (_, reply) = read_ipc_reply(&mut fixture, &mut stream);
+    assert!(serde_json::from_str::<Vec<Value>>(&reply)
+        .unwrap()
+        .iter()
+        .all(|outcome| outcome["success"] == true));
+    stream
+        .write_all(&crate::ipc::wire::encode(MessageType::GetMarks, ""))
+        .unwrap();
+    let (_, reply) = read_ipc_reply(&mut fixture, &mut stream);
+    assert_eq!(
+        serde_json::from_str::<Value>(&reply).unwrap(),
+        serde_json::json!([])
+    );
+}
+
+#[test]
+fn for_window_applies_matching_command_when_window_maps() {
+    let (mut fixture, socket) = ipc_fixture();
+    fixture.add_output(1, (1920, 1080));
+    let mut stream = UnixStream::connect(socket).unwrap();
+    stream
+        .write_all(&crate::ipc::wire::encode(
+            MessageType::RunCommand,
+            r#"for_window [app_id="^dialog$"] floating enable"#,
+        ))
+        .unwrap();
+    let (_, reply) = read_ipc_reply(&mut fixture, &mut stream);
+    assert_eq!(
+        serde_json::from_str::<Value>(&reply).unwrap(),
+        serde_json::json!([{"success": true}])
+    );
+
+    let id = fixture.add_client();
+    let window = fixture.client(id).create_window();
+    window.xdg_toplevel.set_app_id("dialog".into());
+    window.set_title("Dialog");
+    let surface = window.surface.clone();
+    window.commit();
+    fixture.roundtrip(id);
+    let window = fixture.client(id).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    fixture.double_roundtrip(id);
+
+    let swayward = fixture.swayward();
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &swayward.marks_by_window,
+    ))
+    .unwrap();
+    assert_eq!(
+        find_json_node(&tree, "floating_con", false).unwrap()["app_id"],
+        "dialog"
+    );
+}
+
+#[test]
 fn live_ipc_descriptions_match_sway_schema() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));
@@ -355,7 +487,12 @@ fn live_ipc_descriptions_match_sway_schema() {
 
     let swayward = f.swayward();
     let layout = &swayward.layout;
-    let ours = serde_json::to_value(describe_tree(layout, &swayward.global_space)).unwrap();
+    let ours = serde_json::to_value(describe_tree(
+        layout,
+        &swayward.global_space,
+        &Default::default(),
+    ))
+    .unwrap();
     let fixture: Value = serde_json::from_str(include_str!(
         "../../tests/fixtures/sway/one_window.tree.json"
     ))
@@ -422,7 +559,11 @@ fn ipc_output_rects_use_global_positions() {
     assert_eq!(rects[1].x, 1280);
     assert_eq!(rects[1].width, 1920);
 
-    let root = describe_tree(&swayward.layout, &swayward.global_space);
+    let root = describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &Default::default(),
+    );
     assert_eq!(root.rect.width, 3200);
     assert_eq!(root.rect.height, 1080);
 }
@@ -435,7 +576,13 @@ fn stale_tree_leaf_is_omitted_without_panicking() {
         percent: Some(1.),
         rect: Default::default(),
     };
-    assert!(crate::ipc::tree::describe_tiling(tree, &|_| None, Default::default()).is_none());
+    assert!(crate::ipc::tree::describe_tiling(
+        tree,
+        &|_| None,
+        Default::default(),
+        &Default::default()
+    )
+    .is_none());
 
     let tree = IpcNode::Split {
         id: NodeId(0),
@@ -449,7 +596,9 @@ fn stale_tree_leaf_is_omitted_without_panicking() {
             rect: Default::default(),
         }],
     };
-    let node = crate::ipc::tree::describe_tiling(tree, &|_| None, Default::default()).unwrap();
+    let node =
+        crate::ipc::tree::describe_tiling(tree, &|_| None, Default::default(), &Default::default())
+            .unwrap();
     assert!(node.nodes.is_empty());
 }
 

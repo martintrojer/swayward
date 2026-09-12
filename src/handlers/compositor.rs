@@ -198,6 +198,7 @@ impl CompositorHandler for State {
                         let config = self.swayward.config.borrow();
                         Mapped::new(window, rules, hook, &config)
                     };
+                    let mapped_id = mapped.id();
                     let window = mapped.window.clone();
 
                     let target = if let Some(p) = &parent {
@@ -248,6 +249,7 @@ impl CompositorHandler for State {
 
                         self.swayward.queue_redraw(&output);
                     }
+                    crate::command::run_for_window(self, mapped_id);
                     return;
                 }
 
@@ -297,6 +299,7 @@ impl CompositorHandler for State {
                         .stop_casts_for_target(CastTarget::Window { id: id.get() });
 
                     self.swayward.window_mru_ui.remove_window(id);
+                    self.swayward.unmark(Some(id), None);
                     self.swayward
                         .layout
                         .remove_window(&window, transaction.clone());

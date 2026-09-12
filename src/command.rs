@@ -81,6 +81,16 @@ pub enum Command {
     Reload,
     Nop,
     Exec(String),
+    Mark {
+        add: bool,
+        toggle: bool,
+        identifier: String,
+    },
+    Unmark(Option<String>),
+    ForWindow {
+        criteria: String,
+        command: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -104,7 +114,12 @@ pub fn parse(input: &str) -> Vec<Result<ParsedCommand, CommandOutcome>> {
         if criteria.is_none() && text.starts_with('[') {
             match criteria_end(text) {
                 Some(end) => {
-                    criteria = Some(text[..=end].to_owned());
+                    let raw = text[..=end].to_owned();
+                    if let Err(error) = crate::criteria::Criteria::parse(&raw, None) {
+                        results.push(Err(parse_error(error)));
+                        break;
+                    }
+                    criteria = Some(raw);
                     text = text[end + 1..].trim_start();
                 }
                 None => {
@@ -258,6 +273,11 @@ fn parse_one(input: &str) -> Result<Command, String> {
         "reload" => no_args(rest, "reload").map(|()| Command::Reload),
         "nop" => Ok(Command::Nop),
         "exec" | "exec_always" => parse_exec(input, name),
+        "mark" => parse_mark(rest),
+        "unmark" => Ok(Command::Unmark(
+            (!rest.is_empty()).then(|| join_words(rest)),
+        )),
+        "for_window" => parse_for_window(input, name),
         _ => Err(format!("Unknown/invalid command '{name}'")),
     }
 }
@@ -444,6 +464,46 @@ fn parse_exec(input: &str, name: &str) -> Result<Command, String> {
     }
 }
 
+fn parse_mark(args: &[&str]) -> Result<Command, String> {
+    let mut add = false;
+    let mut toggle = false;
+    let mut index = 0;
+    while let Some(option) = args.get(index).filter(|arg| arg.starts_with("--")) {
+        match *option {
+            "--add" => add = true,
+            "--replace" => add = false,
+            "--toggle" => toggle = true,
+            _ => return Err(format!("Unrecognized argument '{option}'")),
+        }
+        index += 1;
+    }
+    if index == args.len() {
+        return Err("Expected '[--add|--replace] [--toggle] <identifier>'".into());
+    }
+    Ok(Command::Mark {
+        add,
+        toggle,
+        identifier: join_words(&args[index..]),
+    })
+}
+
+fn parse_for_window(input: &str, name: &str) -> Result<Command, String> {
+    let rest = input[name.len()..].trim_start();
+    let Some(end) = criteria_end(rest) else {
+        return Err("Expected 'for_window [criteria] <command>'".into());
+    };
+    let criteria = rest[..=end].to_owned();
+    crate::criteria::Criteria::parse(&criteria, None)?;
+    let command = rest[end + 1..].trim_start();
+    if command.is_empty() {
+        return Err("Expected 'for_window [criteria] <command>'".into());
+    }
+    Ok(Command::ForWindow {
+        criteria,
+        command: command.to_owned(),
+    })
+}
+
 fn unquote(value: &str) -> &str {
     value
         .strip_prefix('"')
@@ -461,7 +521,20 @@ fn join_words(words: &[&str]) -> String {
 }
 
 pub fn execute(state: &mut State, input: &str) -> Vec<CommandOutcome> {
-    parse(input)
+    let mut parsed = parse(input);
+    for item in &mut parsed {
+        if let Ok(command) = item {
+            if let Some(raw) = &command.criteria {
+                if let Err(error) = crate::criteria::Criteria::parse(
+                    raw,
+                    focused_id(state).map(|id| crate::ipc::tree::window_id(id) as u64),
+                ) {
+                    *item = Err(parse_error(error));
+                }
+            }
+        }
+    }
+    parsed
         .into_iter()
         .map(|parsed| match parsed {
             Ok(parsed) => execute_one(state, parsed),
@@ -471,8 +544,44 @@ pub fn execute(state: &mut State, input: &str) -> Vec<CommandOutcome> {
 }
 
 fn execute_one(state: &mut State, parsed: ParsedCommand) -> CommandOutcome {
+    let targets = match parsed.criteria.as_deref() {
+        Some(raw) => match crate::criteria::Criteria::parse(
+            raw,
+            focused_id(state).map(|id| crate::ipc::tree::window_id(id) as u64),
+        ) {
+            Ok(criteria) => matching_ids(state, &criteria),
+            Err(error) => return failure(error),
+        },
+        None => Vec::new(),
+    };
     if parsed.criteria.is_some() {
-        return failure("criteria are not implemented yet");
+        if let Command::Unmark(identifier) = &parsed.command {
+            for target in targets {
+                state.swayward.unmark(Some(target), identifier.as_deref());
+            }
+            return success();
+        }
+        for target in targets {
+            let window = state
+                .swayward
+                .layout
+                .windows()
+                .find_map(|(_, mapped)| (mapped.id() == target).then(|| mapped.window.clone()));
+            if let Some(window) = window {
+                state.swayward.layout.activate_window(&window);
+                let outcome = execute_one(
+                    state,
+                    ParsedCommand {
+                        command: parsed.command.clone(),
+                        criteria: None,
+                    },
+                );
+                if !outcome.success {
+                    return outcome;
+                }
+            }
+        }
+        return success();
     }
 
     let action = match parsed.command {
@@ -630,12 +739,160 @@ fn execute_one(state: &mut State, parsed: ParsedCommand) -> CommandOutcome {
             spawn_sh(command, Some(token.clone()));
             None
         }
+        Command::Mark {
+            add,
+            toggle,
+            identifier,
+        } => {
+            let targets = if targets.is_empty() {
+                focused_id(state).into_iter().collect()
+            } else {
+                targets
+            };
+            for id in targets {
+                state.swayward.set_mark(id, &identifier, add, toggle);
+            }
+            None
+        }
+        Command::Unmark(identifier) => {
+            if parsed.criteria.is_some() {
+                for id in targets {
+                    state.swayward.unmark(Some(id), identifier.as_deref());
+                }
+            } else {
+                state.swayward.unmark(None, identifier.as_deref());
+            }
+            None
+        }
+        Command::ForWindow { criteria, command } => {
+            let parsed = match crate::criteria::Criteria::parse(
+                &criteria,
+                focused_id(state).map(|id| crate::ipc::tree::window_id(id) as u64),
+            ) {
+                Ok(criteria) => criteria,
+                Err(error) => return failure(error),
+            };
+            if !state
+                .swayward
+                .for_window
+                .iter()
+                .any(|(raw, existing, _)| raw == &criteria && existing == &command)
+            {
+                state.swayward.for_window.push((criteria, command, parsed));
+            }
+            None
+        }
     };
 
     if let Some(action) = action {
         state.do_action(action, false);
     }
     success()
+}
+
+fn focused_id(state: &State) -> Option<crate::window::mapped::MappedId> {
+    state.swayward.layout.focus().map(|mapped| mapped.id())
+}
+
+type WindowSnapshot = (
+    crate::window::mapped::MappedId,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    bool,
+    bool,
+    Option<i32>,
+);
+
+fn snapshot_info<'a>(
+    state: &'a State,
+    snapshot: &'a WindowSnapshot,
+) -> crate::criteria::WindowInfo<'a> {
+    crate::criteria::WindowInfo {
+        title: snapshot.1.as_deref(),
+        shell: Some("xdg_shell"),
+        app_id: snapshot.2.as_deref(),
+        marks: state
+            .swayward
+            .marks_by_window
+            .get(&snapshot.0)
+            .map(Vec::as_slice)
+            .unwrap_or(&[]),
+        con_id: crate::ipc::tree::window_id(snapshot.0) as u64,
+        floating: snapshot.4,
+        urgent: snapshot.5,
+        workspace: snapshot.3.as_deref(),
+        pid: snapshot.6.and_then(|pid| u32::try_from(pid).ok()),
+        ..Default::default()
+    }
+}
+
+fn matching_ids(
+    state: &State,
+    criteria: &crate::criteria::Criteria,
+) -> Vec<crate::window::mapped::MappedId> {
+    use crate::utils::with_toplevel_role;
+
+    let focused_id = focused_id(state);
+    let mut snapshots = Vec::new();
+    state
+        .swayward
+        .layout
+        .with_windows(|mapped, _, workspace_id, _| {
+            let (title, app_id) = with_toplevel_role(mapped.toplevel(), |role| {
+                (role.title.clone(), role.app_id.clone())
+            });
+            let workspace = workspace_id.and_then(|id| {
+                state
+                    .swayward
+                    .layout
+                    .workspaces()
+                    .find_map(|(_, index, ws)| {
+                        (ws.id() == id).then(|| {
+                            ws.name()
+                                .cloned()
+                                .unwrap_or_else(|| (index + 1).to_string())
+                        })
+                    })
+            });
+            snapshots.push((
+                mapped.id(),
+                title,
+                app_id,
+                workspace,
+                mapped.is_floating(),
+                mapped.is_urgent(),
+                mapped.credentials().map(|c| c.pid),
+            ));
+        });
+    let focused = snapshots
+        .iter()
+        .find(|snapshot| Some(snapshot.0) == focused_id);
+    let focused_info = focused
+        .map(|snapshot| snapshot_info(state, snapshot))
+        .unwrap_or_default();
+    snapshots
+        .iter()
+        .filter(|snapshot| criteria.matches(&snapshot_info(state, snapshot), &focused_info))
+        .map(|snapshot| snapshot.0)
+        .collect()
+}
+
+pub fn run_for_window(state: &mut State, id: crate::window::mapped::MappedId) {
+    let commands = state
+        .swayward
+        .for_window
+        .iter()
+        .filter_map(|(_, command, criteria)| {
+            matching_ids(state, criteria)
+                .contains(&id)
+                .then_some(command.clone())
+        })
+        .collect::<Vec<_>>();
+    for command in commands {
+        let targeted = format!("[con_id={}] {command}", crate::ipc::tree::window_id(id));
+        let _ = execute(state, &targeted);
+    }
 }
 
 fn success() -> CommandOutcome {
@@ -761,6 +1018,14 @@ mod tests {
             Some(r#"[app_id="foo,bar"]"#)
         );
         assert_eq!(parsed[2].as_ref().unwrap().criteria, None);
+    }
+
+    #[test]
+    fn rejects_invalid_criteria_before_executing_commands() {
+        for input in [r#"[bogus=\"x\"] nop"#, r#"[app_id=\"(\"] nop"#, "[] nop"] {
+            let error = parse(input).into_iter().next().unwrap().unwrap_err();
+            assert_eq!(error.parse_error, Some(true), "{input}");
+        }
     }
 
     #[test]

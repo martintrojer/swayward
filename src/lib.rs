@@ -7,6 +7,7 @@ pub mod animation;
 pub mod backend;
 pub mod cli;
 pub mod command;
+pub mod criteria;
 pub mod cursor;
 #[cfg(feature = "dbus")]
 pub mod dbus;

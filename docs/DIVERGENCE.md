@@ -21,6 +21,7 @@ src/layout/workspace.rs — replace the scrolling tiling field and render elemen
 src/layout/monitor.rs, src/layout/mod.rs — transfer focused tree tiles rather than concrete scrolling columns between workspaces and outputs.
 src/ipc/server.rs — serve sway GET_TREE, GET_WORKSPACES, and GET_OUTPUTS from live compositor state instead of niri IPC requests.
 src/layout/workspace.rs — expose a read-only TilingTree snapshot for sway GET_TREE serialization.
+src/handlers/compositor.rs, src/swayward.rs — apply for_window commands when a toplevel maps and remove its marks when it unmaps.
 (workspace-wide) — run `cargo fmt --all` after the rename changed identifier sort order; no behavioural change.
 
 ## Deliberate behavioural deviations from sway

@@ -4,6 +4,7 @@ use std::ffi::OsStr;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::{env, io, process};
 
 use anyhow::Context;
@@ -32,6 +33,7 @@ use crate::window::Mapped;
 #[allow(dead_code)]
 const EVENT_STREAM_BUFFER_SIZE: usize = 64;
 const MAX_PAYLOAD_SIZE: u32 = 16 * 1024 * 1024;
+static IPC_SOCKET_ID: AtomicU64 = AtomicU64::new(0);
 
 pub struct IpcServer {
     pub socket_path: Option<PathBuf>,
@@ -46,6 +48,7 @@ struct QueryState {
     tree: String,
     workspaces: String,
     outputs: String,
+    marks: String,
 }
 
 struct EventStreamClient {
@@ -92,7 +95,11 @@ impl IpcServer {
             .map_err(|error| anyhow::anyhow!(error.error))?;
 
         let socket_path = if wayland_socket_name.is_some() {
-            let socket_name = format!("swayward-ipc.{}.sock", process::id());
+            let socket_name = format!(
+                "swayward-ipc.{}.{}.sock",
+                process::id(),
+                IPC_SOCKET_ID.fetch_add(1, Ordering::Relaxed)
+            );
             let mut socket_path = socket_dir();
             socket_path.push(socket_name);
 
@@ -176,6 +183,7 @@ fn on_new_ipc_client(state: &mut State, stream: UnixStream) {
     refresh_query_state(
         &state.swayward.layout,
         &state.swayward.global_space,
+        &state.swayward.marks_by_window,
         &mut server.query_state.borrow_mut(),
     );
     let ctx = ClientCtx {
@@ -286,6 +294,7 @@ async fn dispatch(ctx: &ClientCtx, msg_type: MessageType, payload: &[u8]) -> Str
         MessageType::GetTree => ctx.query_state.borrow().tree.clone(),
         MessageType::GetWorkspaces => ctx.query_state.borrow().workspaces.clone(),
         MessageType::GetOutputs => ctx.query_state.borrow().outputs.clone(),
+        MessageType::GetMarks => ctx.query_state.borrow().marks.clone(),
         MessageType::RunCommand => {
             let input = match String::from_utf8(payload.to_vec()) {
                 Ok(input) => input,
@@ -346,13 +355,18 @@ fn find_node<'a>(
 fn refresh_query_state(
     layout: &crate::layout::Layout<Mapped>,
     global_space: &smithay::desktop::Space<smithay::desktop::Window>,
+    marks: &std::collections::HashMap<crate::window::mapped::MappedId, Vec<String>>,
     state: &mut QueryState,
 ) {
-    state.tree = serde_json::to_string(&describe_tree(layout, global_space))
+    state.tree = serde_json::to_string(&describe_tree(layout, global_space, marks))
         .unwrap_or_else(|_| r#"{"success":false,"error":"serialization failed"}"#.into());
     state.workspaces = serde_json::to_string(&describe_workspaces(layout, global_space))
         .unwrap_or_else(|_| r#"{"success":false,"error":"serialization failed"}"#.into());
     state.outputs = serde_json::to_string(&describe_outputs(layout, global_space))
+        .unwrap_or_else(|_| r#"{"success":false,"error":"serialization failed"}"#.into());
+    let mut all_marks = marks.values().flatten().collect::<Vec<_>>();
+    all_marks.sort();
+    state.marks = serde_json::to_string(&all_marks)
         .unwrap_or_else(|_| r#"{"success":false,"error":"serialization failed"}"#.into());
 }
 
@@ -537,6 +551,7 @@ impl State {
             refresh_query_state(
                 &self.swayward.layout,
                 &self.swayward.global_space,
+                &self.swayward.marks_by_window,
                 &mut server.query_state.borrow_mut(),
             );
         }

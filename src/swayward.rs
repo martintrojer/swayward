@@ -230,6 +230,10 @@ pub struct Swayward {
     // however it may have none (when there are no outputs connected) or multiple (when mirroring).
     pub layout: Layout<Mapped>,
 
+    pub marks: HashMap<String, MappedId>,
+    pub marks_by_window: HashMap<MappedId, Vec<String>>,
+    pub for_window: Vec<(String, String, crate::criteria::Criteria)>,
+
     // This space does not actually contain any windows, but all outputs are mapped into it
     // according to their global position.
     pub global_space: Space<Window>,
@@ -2564,6 +2568,9 @@ impl Swayward {
             clock: animation_clock,
 
             layout,
+            marks: HashMap::new(),
+            marks_by_window: HashMap::new(),
+            for_window: Vec::new(),
             global_space: Space::default(),
             sorted_outputs: Vec::default(),
             output_state: HashMap::new(),
@@ -2698,6 +2705,57 @@ impl Swayward {
         swayward.reset_pointer_inactivity_timer();
 
         swayward
+    }
+
+    pub fn set_mark(&mut self, window: MappedId, mark: &str, add: bool, toggle: bool) {
+        let had_mark = self.marks.get(mark) == Some(&window);
+        if !add {
+            if let Some(existing) = self.marks_by_window.remove(&window) {
+                for mark in existing {
+                    self.marks.remove(&mark);
+                }
+            }
+        }
+        if let Some(previous) = self.marks.remove(mark) {
+            if let Some(marks) = self.marks_by_window.get_mut(&previous) {
+                marks.retain(|existing| existing != mark);
+            }
+        }
+        if !toggle || !had_mark {
+            self.marks.insert(mark.to_owned(), window);
+            self.marks_by_window
+                .entry(window)
+                .or_default()
+                .push(mark.to_owned());
+        }
+    }
+
+    pub fn unmark(&mut self, window: Option<MappedId>, mark: Option<&str>) {
+        match (window, mark) {
+            (Some(window), Some(mark)) if self.marks.get(mark) == Some(&window) => {
+                self.marks.remove(mark);
+                if let Some(marks) = self.marks_by_window.get_mut(&window) {
+                    marks.retain(|existing| existing != mark);
+                }
+            }
+            (Some(window), None) => {
+                for mark in self.marks_by_window.remove(&window).unwrap_or_default() {
+                    self.marks.remove(&mark);
+                }
+            }
+            (None, Some(mark)) => {
+                if let Some(window) = self.marks.remove(mark) {
+                    if let Some(marks) = self.marks_by_window.get_mut(&window) {
+                        marks.retain(|existing| existing != mark);
+                    }
+                }
+            }
+            (None, None) => {
+                self.marks.clear();
+                self.marks_by_window.clear();
+            }
+            _ => {}
+        }
     }
 
     pub fn insert_client(&mut self, client: NewClient) {
