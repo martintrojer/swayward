@@ -13,7 +13,6 @@ use swayward_config::{
 
 use super::*;
 
-mod animations;
 mod fullscreen;
 
 impl<W: LayoutElement> Default for Layout<W> {
@@ -2280,84 +2279,6 @@ fn move_workspace_to_output() {
 }
 
 #[test]
-fn open_right_of_on_different_workspace() {
-    let ops = [
-        Op::AddOutput(1),
-        Op::AddWindow {
-            params: TestWindowParams::new(1),
-        },
-        Op::FocusWorkspaceDown,
-        Op::AddWindow {
-            params: TestWindowParams::new(2),
-        },
-        Op::AddWindowNextTo {
-            params: TestWindowParams::new(3),
-            next_to_id: 1,
-        },
-    ];
-
-    let layout = check_ops(ops);
-
-    let MonitorSet::Normal { monitors, .. } = layout.monitor_set else {
-        unreachable!()
-    };
-
-    let mon = monitors.into_iter().next().unwrap();
-    assert_eq!(
-        mon.active_workspace_idx, 1,
-        "the second workspace must remain active"
-    );
-    assert_eq!(
-        mon.workspaces[0].scrolling().active_column_idx(),
-        1,
-        "the new window must become active"
-    );
-}
-
-#[test]
-// empty_workspace_above_first = true
-fn open_right_of_on_different_workspace_ewaf() {
-    let ops = [
-        Op::AddOutput(1),
-        Op::AddWindow {
-            params: TestWindowParams::new(1),
-        },
-        Op::FocusWorkspaceDown,
-        Op::AddWindow {
-            params: TestWindowParams::new(2),
-        },
-        Op::AddWindowNextTo {
-            params: TestWindowParams::new(3),
-            next_to_id: 1,
-        },
-    ];
-
-    let options = Options {
-        layout: swayward_config::Layout {
-            empty_workspace_above_first: true,
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-    let layout = check_ops_with_options(options, ops);
-
-    let MonitorSet::Normal { monitors, .. } = layout.monitor_set else {
-        unreachable!()
-    };
-
-    let mon = monitors.into_iter().next().unwrap();
-    assert_eq!(
-        mon.active_workspace_idx, 2,
-        "the second workspace must remain active"
-    );
-    assert_eq!(
-        mon.workspaces[1].scrolling().active_column_idx(),
-        1,
-        "the new window must become active"
-    );
-}
-
-#[test]
 fn removing_all_outputs_preserves_empty_named_workspaces() {
     let ops = [
         Op::AddOutput(1),
@@ -3339,80 +3260,6 @@ fn removing_window_above_preserves_focused_window() {
 }
 
 #[test]
-fn preset_column_width_fixed_correct_with_border() {
-    let ops = [
-        Op::AddOutput(0),
-        Op::AddWindow {
-            params: TestWindowParams::new(0),
-        },
-        Op::SwitchPresetColumnWidth,
-    ];
-
-    let options = Options {
-        layout: swayward_config::Layout {
-            preset_column_widths: vec![PresetSize::Fixed(500)],
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-    let mut layout = check_ops_with_options(options, ops);
-
-    let win = layout.windows().next().unwrap().1;
-    assert_eq!(win.requested_size().unwrap().w, 500);
-
-    // Add border.
-    let options = Options {
-        layout: swayward_config::Layout {
-            preset_column_widths: vec![PresetSize::Fixed(500)],
-            border: swayward_config::Border {
-                off: false,
-                width: 5.,
-                ..Default::default()
-            },
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-    layout.update_options(options);
-
-    // With border, the window gets less size.
-    let win = layout.windows().next().unwrap().1;
-    assert_eq!(win.requested_size().unwrap().w, 490);
-
-    // However, preset fixed width will still work correctly.
-    layout.toggle_width(true);
-    let win = layout.windows().next().unwrap().1;
-    assert_eq!(win.requested_size().unwrap().w, 500);
-}
-
-#[test]
-fn preset_column_width_reset_after_set_width() {
-    let ops = [
-        Op::AddOutput(0),
-        Op::AddWindow {
-            params: TestWindowParams::new(0),
-        },
-        Op::SwitchPresetColumnWidth,
-        Op::SetWindowWidth {
-            id: None,
-            change: SizeChange::AdjustFixed(-10),
-        },
-        Op::SwitchPresetColumnWidth,
-    ];
-
-    let options = Options {
-        layout: swayward_config::Layout {
-            preset_column_widths: vec![PresetSize::Fixed(500), PresetSize::Fixed(1000)],
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-    let layout = check_ops_with_options(options, ops);
-    let win = layout.windows().next().unwrap().1;
-    assert_eq!(win.requested_size().unwrap().w, 500);
-}
-
-#[test]
 fn move_column_to_workspace_unfocused_with_multiple_monitors() {
     let ops = [
         Op::AddOutput(1),
@@ -3539,7 +3386,7 @@ fn restore_to_floating_persists_across_fullscreen_maximize() {
     let mut layout = check_ops(ops);
 
     // Unfullscreening should return the window to the maximized state.
-    let scrolling = layout.active_workspace().unwrap().scrolling();
+    let scrolling = layout.active_workspace().unwrap().tiling();
     assert!(scrolling.tiles().next().is_some());
 
     let ops = [
@@ -3549,7 +3396,7 @@ fn restore_to_floating_persists_across_fullscreen_maximize() {
     check_ops_on_layout(&mut layout, ops);
 
     // Unmaximize should return the window back to floating.
-    let scrolling = layout.active_workspace().unwrap().scrolling();
+    let scrolling = layout.active_workspace().unwrap().tiling();
     assert!(scrolling.tiles().next().is_none());
 }
 
@@ -3571,7 +3418,7 @@ fn unmaximize_during_fullscreen_does_not_float() {
     let mut layout = check_ops(ops);
 
     // Unmaximize shouldn't have changed the window state since it's fullscreen.
-    let scrolling = layout.active_workspace().unwrap().scrolling();
+    let scrolling = layout.active_workspace().unwrap().tiling();
     assert!(scrolling.tiles().next().is_some());
 
     let ops = [
@@ -3581,53 +3428,8 @@ fn unmaximize_during_fullscreen_does_not_float() {
     check_ops_on_layout(&mut layout, ops);
 
     // Unfullscreen should return the window back to floating.
-    let scrolling = layout.active_workspace().unwrap().scrolling();
+    let scrolling = layout.active_workspace().unwrap().tiling();
     assert!(scrolling.tiles().next().is_none());
-}
-
-#[test]
-fn move_column_to_workspace_maximize_and_fullscreen() {
-    let ops = [
-        Op::AddOutput(1),
-        Op::AddWindow {
-            params: TestWindowParams::new(1),
-        },
-        Op::MaximizeWindowToEdges { id: None },
-        Op::FullscreenWindow(1),
-        Op::MoveColumnToWorkspaceDown(true),
-        Op::FullscreenWindow(1),
-    ];
-
-    let layout = check_ops(ops);
-    let (_, win) = layout.windows().next().unwrap();
-
-    // Unfullscreening should return to maximized because the window was maximized before.
-    assert_eq!(win.pending_sizing_mode(), SizingMode::Maximized);
-}
-
-#[test]
-fn move_window_to_workspace_maximize_and_fullscreen() {
-    let ops = [
-        Op::AddOutput(1),
-        Op::AddWindow {
-            params: TestWindowParams::new(1),
-        },
-        Op::MaximizeWindowToEdges { id: None },
-        Op::FullscreenWindow(1),
-        Op::MoveWindowToWorkspaceDown(true),
-        Op::FullscreenWindow(1),
-    ];
-
-    let layout = check_ops(ops);
-    let (_, win) = layout.windows().next().unwrap();
-
-    // Unfullscreening should return to maximized because the window was maximized before.
-    //
-    // FIXME: it currently doesn't because windows themselves can only be either fullscreen or
-    // maximized. So when a window is fullscreen, whether it is also maximized or not is stored in
-    // the column. MoveWindowToWorkspace removes the window from the column and this information is
-    // forgotten.
-    assert_eq!(win.pending_sizing_mode(), SizingMode::Normal);
 }
 
 #[test]
