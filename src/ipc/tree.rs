@@ -80,6 +80,17 @@ pub fn describe_workspaces(
                 .map(|window| window_id(window.id()))
                 .into_iter()
                 .collect();
+            let tiling = describe_tiling(
+                workspace.ipc_tiling_tree(),
+                &|window| workspace.windows().find(|mapped| mapped.window == *window),
+                rect,
+            );
+            let (layout, orientation, representation) =
+                tiling.map_or((NodeLayout::SplitV, "vertical".into(), None), |node| {
+                    let representation = (!node.nodes.is_empty())
+                        .then(|| tree_representation(node.layout, &node.nodes));
+                    (node.layout, node.orientation, representation)
+                });
             Some(Workspace {
                 border: NodeBorder::None,
                 current_border_width: 0,
@@ -91,16 +102,16 @@ pub fn describe_workspaces(
                 fullscreen_mode: i32::from(workspace.is_active_pending_fullscreen()),
                 geometry: Rect::default(),
                 id: workspace_id(workspace.id().get()),
-                layout: NodeLayout::SplitH,
+                layout,
                 marks: vec![],
                 name,
                 nodes: vec![],
                 num: i32::try_from(index + 1).unwrap_or(-1),
-                orientation: "horizontal".into(),
+                orientation,
                 output: monitor.output_name().clone(),
                 percent: None,
                 rect,
-                representation: None,
+                representation,
                 scratchpad_state: None,
                 sticky: false,
                 node_type: NodeType::Workspace,
@@ -222,7 +233,7 @@ fn describe_output_node(
         .into_iter()
         .find(|output| output.name == *monitor.output_name())
         .unwrap();
-    common_node(
+    let mut node = common_node(
         output.id,
         NodeType::Output,
         NodeLayout::Output,
@@ -252,7 +263,9 @@ fn describe_output_node(
             serial: output.serial,
             transform: output.transform,
         }),
-    )
+    );
+    node.percent = Some(1.);
+    node
 }
 
 fn describe_workspace_node(
@@ -296,6 +309,7 @@ fn describe_workspace_node(
             )
         })
         .collect();
+    let representation = (!nodes.is_empty()).then(|| tree_representation(layout, &nodes));
     common_node(
         workspace_id(workspace.id().get()),
         NodeType::Workspace,
@@ -313,7 +327,7 @@ fn describe_workspace_node(
         NodeProperties::Workspace(swayward_ipc::WorkspaceProperties {
             num: i32::try_from(index + 1).unwrap_or(-1),
             output: output.into(),
-            representation: None,
+            representation,
         }),
     )
 }
@@ -506,6 +520,28 @@ fn common_node(
         window_rect: Rect::default(),
         properties,
     }
+}
+
+fn tree_representation(layout: NodeLayout, children: &[Node]) -> String {
+    let prefix = match layout {
+        NodeLayout::SplitH => 'V',
+        NodeLayout::SplitV => 'H',
+        NodeLayout::Tabbed => 'T',
+        NodeLayout::Stacked => 'S',
+        _ => 'D',
+    };
+    let children = children
+        .iter()
+        .map(|child| {
+            if child.nodes.is_empty() {
+                child.name.as_deref().unwrap_or("(null)").to_owned()
+            } else {
+                tree_representation(child.layout, &child.nodes)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!("{prefix}[{children}]")
 }
 
 fn scratch_output(rect: Rect) -> Node {

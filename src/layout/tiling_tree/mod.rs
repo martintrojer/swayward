@@ -1684,7 +1684,21 @@ impl<W: LayoutElement> TilingTree<W> {
             return true;
         }
 
-        self.remove_child(parent, id);
+        let combined_percent = if let Some(Node {
+            value: TreeNode::Split {
+                children, percents, ..
+            },
+            ..
+        }) = self.nodes.get_mut(&parent)
+        {
+            let removed = percents.remove(index);
+            children.remove(index);
+            let sibling_index = children.iter().position(|child| *child == sibling).unwrap();
+            percents[sibling_index] += removed;
+            percents[sibling_index]
+        } else {
+            return false;
+        };
         let wrapper = self.alloc(Node {
             parent: Some(parent),
             value: TreeNode::Split {
@@ -1698,12 +1712,15 @@ impl<W: LayoutElement> TilingTree<W> {
             },
         });
         if let Some(Node {
-            value: TreeNode::Split { children, .. },
+            value: TreeNode::Split {
+                children, percents, ..
+            },
             ..
         }) = self.nodes.get_mut(&parent)
         {
             if let Some(index) = children.iter().position(|child| *child == sibling) {
                 children[index] = wrapper;
+                percents[index] = combined_percent;
             }
         }
         self.nodes.get_mut(&sibling).unwrap().parent = Some(wrapper);

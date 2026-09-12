@@ -211,6 +211,7 @@ fn nested_live_tree() -> Value {
         f.double_roundtrip(id);
     }
     f.swayward().layout.consume_or_expel_window_left(None);
+    f.swayward().layout.move_down();
     let swayward = f.swayward();
     serde_json::to_value(describe_tree(&swayward.layout, &swayward.global_space)).unwrap()
 }
@@ -259,6 +260,11 @@ fn live_ipc_descriptions_match_sway_schema() {
     .unwrap();
     assert_same_shape(&fixture, &ours, "$tree");
     assert_fixture_string_values(&fixture, &ours, "$tree");
+    assert_eq!(
+        fixture["nodes"][1]["nodes"][0]["representation"],
+        ours["nodes"][1]["nodes"][0]["representation"],
+        "workspace representation at $tree.nodes[1].nodes[0]"
+    );
     let fixture_trees = [
         include_str!("../../tests/fixtures/sway/empty.tree.json"),
         include_str!("../../tests/fixtures/sway/empty_named.tree.json"),
@@ -354,6 +360,11 @@ fn live_ipc_focus_matches_sway_mru_arrays() {
 fn live_ipc_percent_matches_sway_parent_shares() {
     let expected = nested_fixture_tree();
     let actual = nested_live_tree();
+    assert_eq!(
+        expected["nodes"][1]["nodes"][0]["representation"],
+        actual["nodes"][1]["nodes"][0]["representation"],
+        "workspace representation at $tree.nodes[1].nodes[0]"
+    );
     assert_percent_value_matches_fixture(
         &expected["nodes"][1]["nodes"][0]["nodes"][1],
         &actual["nodes"][1]["nodes"][0]["nodes"][1],
