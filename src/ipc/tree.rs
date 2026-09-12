@@ -328,19 +328,27 @@ pub(crate) fn describe_tiling<'a, I>(
             id,
             layout,
             percent,
+            focus,
             children,
         } => {
-            let children: Vec<_> = children
+            let children = children
                 .into_iter()
-                .filter_map(|child| describe_tiling(child, find_window, workspace_rect))
-                .collect();
-            let focus = children
+                .filter_map(|child| {
+                    let id = match &child {
+                        IpcNode::Split { id, .. } | IpcNode::Leaf { id, .. } => *id,
+                    };
+                    describe_tiling(child, find_window, workspace_rect).map(|node| (id, node))
+                })
+                .collect::<Vec<_>>();
+            let focus = focus
                 .iter()
-                .filter(|child| child.focused)
-                .map(|child| child.id)
-                .chain(children.iter().map(|child| child.id))
-                .take(1)
+                .filter_map(|id| {
+                    children
+                        .iter()
+                        .find_map(|(child_id, node)| (child_id == id).then_some(node.id))
+                })
                 .collect();
+            let children = children.into_iter().map(|(_, node)| node).collect();
             let mut node = common_node(
                 container_id(id),
                 NodeType::Con,

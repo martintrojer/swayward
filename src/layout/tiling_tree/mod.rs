@@ -47,6 +47,7 @@ pub enum IpcNode<I> {
         id: NodeId,
         layout: Layout,
         percent: Option<f64>,
+        focus: Vec<NodeId>,
         children: Vec<IpcNode<I>>,
     },
     Leaf {
@@ -98,6 +99,7 @@ pub struct TilingTree<W: LayoutElement> {
     root: NodeId,
     next_id: u64,
     focus: Option<NodeId>,
+    focus_history: Vec<NodeId>,
     pending_splits: HashMap<NodeId, Layout>,
     pending_modes: HashMap<NodeId, PendingMode>,
     interactive_resize: Option<InteractiveResize<W::Id>>,
@@ -137,6 +139,7 @@ impl<W: LayoutElement> TilingTree<W> {
             root,
             next_id: 1,
             focus: None,
+            focus_history: Vec::new(),
             pending_splits: HashMap::new(),
             pending_modes: HashMap::new(),
             interactive_resize: None,
@@ -352,11 +355,11 @@ impl<W: LayoutElement> TilingTree<W> {
             });
             self.insert_child(parent, id, after);
         }
-        self.focus = if activate {
+        self.set_focus_id(if activate {
             Some(id)
         } else {
             previous_focus.or(Some(id))
-        };
+        });
         if !pending_mode.is_normal() {
             self.pending_modes.insert(
                 id,
@@ -380,6 +383,7 @@ impl<W: LayoutElement> TilingTree<W> {
         };
         self.pending_splits.remove(&id);
         self.pending_modes.remove(&id);
+        self.focus_history.retain(|candidate| *candidate != id);
         if self
             .interactive_resize
             .as_ref()
@@ -392,10 +396,18 @@ impl<W: LayoutElement> TilingTree<W> {
             self.collapse_from(parent);
         }
         if self.focus == Some(id) {
-            self.focus = self.first_leaf();
+            self.set_focus_id(self.first_leaf());
         }
         self.animate_geometry_changes(old_geometries, None);
         Some(*tile)
+    }
+
+    fn set_focus_id(&mut self, focus: Option<NodeId>) {
+        self.focus = focus;
+        if let Some(id) = focus {
+            self.focus_history.retain(|candidate| *candidate != id);
+            self.focus_history.insert(0, id);
+        }
     }
 
     pub fn focus(&self) -> Option<NodeId> {
@@ -407,7 +419,7 @@ impl<W: LayoutElement> TilingTree<W> {
             self.nodes.get(&id).map(|node| &node.value),
             Some(TreeNode::Leaf { .. })
         ) {
-            self.focus = Some(id);
+            self.set_focus_id(Some(id));
         }
     }
 
@@ -445,7 +457,7 @@ impl<W: LayoutElement> TilingTree<W> {
             .min_by(|a, b| a.1.total_cmp(&b.1))
             .map(|(id, _)| id);
         if let Some(next) = next {
-            self.focus = Some(next);
+            self.set_focus_id(Some(next));
             true
         } else {
             false
@@ -555,7 +567,7 @@ impl<W: LayoutElement> TilingTree<W> {
                         Direction::Right | Direction::Down => destination_index + 1,
                     };
                     self.insert_existing_child(destination_parent, id, insert_index, destination);
-                    self.focus = self.first_leaf_in(id).or(self.focus);
+                    self.set_focus_id(self.first_leaf_in(id).or(self.focus));
                     self.request_window_sizes();
                     return true;
                 }
@@ -578,7 +590,7 @@ impl<W: LayoutElement> TilingTree<W> {
                         }
                     };
                     self.insert_existing_child(self.root, id, insert_index, boundary);
-                    self.focus = self.first_leaf_in(id).or(self.focus);
+                    self.set_focus_id(self.first_leaf_in(id).or(self.focus));
                     self.request_window_sizes();
                     return true;
                 }
@@ -591,7 +603,7 @@ impl<W: LayoutElement> TilingTree<W> {
         }
         self.detach_subtree(id);
         self.wrap_root_for_direction(id, direction);
-        self.focus = self.first_leaf_in(id).or(self.focus);
+        self.set_focus_id(self.first_leaf_in(id).or(self.focus));
         self.request_window_sizes();
         true
     }
@@ -638,7 +650,7 @@ impl<W: LayoutElement> TilingTree<W> {
         let percent = percents.remove(old_index);
         children.insert(new_index, child);
         percents.insert(new_index, percent);
-        self.focus = self.first_leaf_in(id).or(self.focus);
+        self.set_focus_id(self.first_leaf_in(id).or(self.focus));
         self.request_window_sizes();
         true
     }
@@ -725,7 +737,7 @@ impl<W: LayoutElement> TilingTree<W> {
         let Some(id) = self.node_for_window(window) else {
             return false;
         };
-        self.focus = Some(id);
+        self.set_focus_id(Some(id));
         true
     }
 
@@ -746,20 +758,21 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub fn focus_first(&mut self) {
-        self.focus = self.first_leaf();
+        self.set_focus_id(self.first_leaf());
     }
 
     pub fn focus_last(&mut self) {
-        self.focus = self
+        let focus = self
             .iter_depth_first()
             .filter_map(|(id, node)| matches!(node, TreeNode::Leaf { .. }).then_some(id))
             .last();
+        self.set_focus_id(focus);
     }
 
     pub fn focus_window_in_subtree(&mut self, subtree: NodeId, index: usize) {
         let leaf = self.leaf_ids_in(subtree).get(index).copied();
         if let Some(leaf) = leaf {
-            self.focus = Some(leaf);
+            self.set_focus_id(Some(leaf));
         }
     }
 
@@ -776,7 +789,7 @@ impl<W: LayoutElement> TilingTree<W> {
             .and_then(|children| children.get(index))
             .copied();
         if let Some(branch) = branch {
-            self.focus = self.first_leaf_in(branch).or(self.focus);
+            self.set_focus_id(self.first_leaf_in(branch).or(self.focus));
         }
     }
 
@@ -880,7 +893,7 @@ impl<W: LayoutElement> TilingTree<W> {
             .and_then(|window| self.node_for_window(window))
             .or(self.focus);
         if let Some(id) = id {
-            self.focus = Some(id);
+            self.set_focus_id(Some(id));
             if !self.expel(id, false) {
                 self.consume(id, false);
             }
@@ -892,7 +905,7 @@ impl<W: LayoutElement> TilingTree<W> {
             .and_then(|window| self.node_for_window(window))
             .or(self.focus);
         if let Some(id) = id {
-            self.focus = Some(id);
+            self.set_focus_id(Some(id));
             if !self.expel(id, true) {
                 self.consume(id, true);
             }
@@ -1534,6 +1547,22 @@ impl<W: LayoutElement> TilingTree<W> {
                     id,
                     layout: *layout,
                     percent,
+                    focus: tree
+                        .focus_history
+                        .iter()
+                        .filter_map(|focused| {
+                            children
+                                .iter()
+                                .copied()
+                                .find(|child| tree.is_descendant(*focused, *child))
+                        })
+                        .chain(children.iter().copied())
+                        .fold(Vec::new(), |mut focus, child| {
+                            if !focus.contains(&child) {
+                                focus.push(child);
+                            }
+                            focus
+                        }),
                     children: children
                         .iter()
                         .zip(percents)
@@ -1551,6 +1580,18 @@ impl<W: LayoutElement> TilingTree<W> {
 
         let geometries = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
         snapshot(self, self.root, None, &geometries)
+    }
+
+    fn is_descendant(&self, mut id: NodeId, ancestor: NodeId) -> bool {
+        loop {
+            if id == ancestor {
+                return true;
+            }
+            let Some(parent) = self.nodes.get(&id).and_then(|node| node.parent) else {
+                return false;
+            };
+            id = parent;
+        }
     }
 
     pub fn iter_depth_first(&self) -> impl Iterator<Item = (NodeId, &TreeNode<W>)> {
@@ -2179,7 +2220,7 @@ impl<W: LayoutElement> TilingTree<W> {
 
     fn focus_extreme(&mut self, bottom: bool) {
         let geometries = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
-        self.focus = geometries
+        let focus = geometries
             .iter()
             .min_by(|(_, a), (_, b)| {
                 let a = a.loc.y + if bottom { a.size.h } else { 0. };
@@ -2192,6 +2233,7 @@ impl<W: LayoutElement> TilingTree<W> {
             })
             .map(|(id, _)| *id)
             .or(self.focus);
+        self.set_focus_id(focus);
     }
 
     fn tile(&self, id: NodeId) -> Option<&Tile<W>> {

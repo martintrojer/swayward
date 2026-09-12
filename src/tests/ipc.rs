@@ -333,6 +333,7 @@ fn stale_tree_leaf_is_omitted_without_panicking() {
         id: NodeId(0),
         layout: TreeLayout::SplitH,
         percent: None,
+        focus: vec![NodeId(1)],
         children: vec![IpcNode::Leaf {
             id: NodeId(1),
             window: (),
