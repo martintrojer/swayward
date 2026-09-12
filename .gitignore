@@ -2,3 +2,6 @@
 /result
 
 .idea
+# insta test artefacts (per-run, machine-local run_id)
+*.pending-snap
+*.snap.new
