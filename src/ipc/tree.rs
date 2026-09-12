@@ -373,7 +373,7 @@ fn describe_window(
     let properties = with_toplevel_role(mapped.toplevel(), |role| ViewProperties {
         allow_tearing: false,
         app_id: role.app_id.clone(),
-        foreign_toplevel_identifier: None,
+        foreign_toplevel_identifier: Some(mapped.id().to_protocol_identifier()),
         idle_inhibitors: IdleInhibitors {
             application: "none".into(),
             user: "none".into(),
