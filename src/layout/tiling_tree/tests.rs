@@ -148,6 +148,19 @@ fn two_windows_split_h_halve_the_view() {
 }
 
 #[test]
+fn inserting_a_sibling_subdivides_the_target_share() {
+    let mut t = TilingTree::new(Size::from((1200., 800.)), 0.);
+    let a = t.add_window(TestWindow::new(1), InsertTarget::Focused);
+    let b = t.add_window(TestWindow::new(2), InsertTarget::Focused);
+    let c = t.add_window(TestWindow::new(3), InsertTarget::Focused);
+
+    assert_eq!(t.geometry(a).unwrap().size.w, 600.);
+    assert_eq!(t.geometry(b).unwrap().size.w, 300.);
+    assert_eq!(t.geometry(c).unwrap().size.w, 300.);
+    t.check_invariants();
+}
+
+#[test]
 fn removing_a_sibling_collapses_the_implicit_container() {
     let mut t = TilingTree::new(Size::from((1920., 1080.)), 0.);
     let a = t.add_window(TestWindow::new(1), InsertTarget::Focused);
@@ -160,6 +173,78 @@ fn removing_a_sibling_collapses_the_implicit_container() {
     let _ = a;
 }
 
+#[test]
+fn directional_move_reorders_siblings_and_stops_at_tree_edge() {
+    let mut t = TilingTree::new(Size::from((1200., 800.)), 0.);
+    let a = t.add_window(TestWindow::new(1), InsertTarget::Focused);
+    let b = t.add_window(TestWindow::new(2), InsertTarget::Focused);
+
+    assert!(t.move_direction(b, Direction::Left));
+    assert_eq!(t.geometry(b).unwrap().loc.x, 0.);
+    assert_eq!(t.geometry(a).unwrap().loc.x, 600.);
+    assert!(!t.move_direction(b, Direction::Left));
+    t.check_invariants();
+}
+
+#[test]
+fn directional_move_crosses_and_collapses_containers() {
+    let mut t = TilingTree::new(Size::from((1200., 800.)), 0.);
+    let a = t.add_window(TestWindow::new(1), InsertTarget::Focused);
+    let b = t.add_window(TestWindow::new(2), InsertTarget::Focused);
+    t.split(b, Layout::SplitV);
+    let c = t.add_window(TestWindow::new(3), InsertTarget::Focused);
+
+    assert!(t.move_direction(c, Direction::Left));
+    assert_eq!(t.geometry(c).unwrap().loc.x, 0.);
+    assert!(t.geometry(a).unwrap().loc.x > 0.);
+    assert!(t.geometry(b).unwrap().loc.x > t.geometry(a).unwrap().loc.x);
+    t.check_invariants();
+}
+
+#[test]
+fn directional_move_creates_an_implicit_container() {
+    let mut t = TilingTree::new(Size::from((1200., 800.)), 0.);
+    let a = t.add_window(TestWindow::new(1), InsertTarget::Focused);
+    t.split(a, Layout::SplitV);
+    let b = t.add_window(TestWindow::new(2), InsertTarget::Focused);
+    let c = t.add_window(TestWindow::new(3), InsertTarget::Focused);
+
+    assert!(t.move_direction(c, Direction::Left));
+    assert_eq!(t.geometry(c).unwrap().loc.x, 0.);
+    assert!(t.geometry(a).unwrap().loc.x > 0.);
+    assert_eq!(t.geometry(a).unwrap().loc.x, t.geometry(b).unwrap().loc.x);
+    t.check_invariants();
+}
+
+#[test]
+fn reordering_a_subtree_preserves_its_share() {
+    let mut t = TilingTree::new(Size::from((1200., 800.)), 0.);
+    let a = t.add_window(TestWindow::new(1), InsertTarget::Focused);
+    let b = t.add_window(TestWindow::new(2), InsertTarget::Focused);
+    let c = t.add_window(TestWindow::new(3), InsertTarget::Focused);
+
+    assert!(t.move_subtree_to_first(c));
+    assert_eq!(t.geometry(c).unwrap().size.w, 300.);
+    assert_eq!(t.geometry(a).unwrap().loc.x, 300.);
+    assert_eq!(t.geometry(b).unwrap().loc.x, 900.);
+    t.check_invariants();
+}
+
+#[test]
+fn resizing_adjacent_siblings_changes_only_that_boundary() {
+    let mut t = TilingTree::new(Size::from((1000., 800.)), 0.);
+    let a = t.add_window(TestWindow::new(1), InsertTarget::Focused);
+    let b = t.add_window(TestWindow::new(2), InsertTarget::Focused);
+    let c = t.add_window(TestWindow::new(3), InsertTarget::Focused);
+
+    assert!(t.resize_adjacent(a, b, 0.1));
+    assert_eq!(t.geometry(a).unwrap().size.w, 600.);
+    assert_eq!(t.geometry(b).unwrap().size.w, 150.);
+    assert_eq!(t.geometry(c).unwrap().size.w, 250.);
+    assert!(!t.resize_adjacent(a, b, 0.6));
+    t.check_invariants();
+}
+
 #[derive(Debug, Clone)]
 enum Op {
     Add,
@@ -167,6 +252,11 @@ enum Op {
     Split(usize, Layout),
     SetLayout(usize, Layout),
     FocusDirection(Direction),
+    Move(usize, Direction),
+    ReorderFirst(usize),
+    ReorderIndex(usize, usize),
+    ReorderLast(usize),
+    Resize(usize, usize, f64),
 }
 
 fn layout_strategy() -> impl Strategy<Value = Layout> {
@@ -194,7 +284,17 @@ fn op_strategy() -> impl Strategy<Value = Op> {
         (0..32usize, layout_strategy()).prop_map(|(id, layout)| Op::Split(id, layout)),
         (0..32usize, layout_strategy()).prop_map(|(id, layout)| Op::SetLayout(id, layout)),
         direction_strategy().prop_map(Op::FocusDirection),
+        (0..32usize, direction_strategy()).prop_map(|(id, direction)| Op::Move(id, direction)),
+        (0..32usize).prop_map(Op::ReorderFirst),
+        (0..32usize, 0..32usize).prop_map(|(id, index)| Op::ReorderIndex(id, index)),
+        (0..32usize).prop_map(Op::ReorderLast),
+        (0..32usize, 0..32usize, -0.9f64..0.9)
+            .prop_map(|(first, second, delta)| Op::Resize(first, second, delta)),
     ]
+}
+
+fn sync_ids(tree: &TilingTree<TestWindow>, ids: &mut Vec<NodeId>) {
+    ids.retain(|id| tree.windows().any(|(candidate, _)| candidate == *id));
 }
 
 proptest! {
@@ -228,7 +328,25 @@ proptest! {
                     if !nodes.is_empty() { tree.set_layout(nodes[index % nodes.len()], layout); }
                 }
                 Op::FocusDirection(direction) => { tree.focus_direction(direction); }
+                Op::Move(index, direction) => {
+                    if !ids.is_empty() { tree.move_direction(ids[index % ids.len()], direction); }
+                }
+                Op::ReorderFirst(id) => {
+                    if !ids.is_empty() { tree.move_subtree_to_first(ids[id % ids.len()]); }
+                }
+                Op::ReorderIndex(id, index) => {
+                    if !ids.is_empty() { tree.move_subtree_to_index(ids[id % ids.len()], index); }
+                }
+                Op::ReorderLast(id) => {
+                    if !ids.is_empty() { tree.move_subtree_to_last(ids[id % ids.len()]); }
+                }
+                Op::Resize(first, second, delta) => {
+                    if !ids.is_empty() {
+                        tree.resize_adjacent(ids[first % ids.len()], ids[second % ids.len()], delta);
+                    }
+                }
             }
+            sync_ids(&tree, &mut ids);
             tree.check_invariants();
         }
     }

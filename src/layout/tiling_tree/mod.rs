@@ -235,6 +235,180 @@ impl<W: LayoutElement> TilingTree<W> {
         }
     }
 
+    pub fn move_direction(&mut self, id: NodeId, direction: Direction) -> bool {
+        if !self.nodes.contains_key(&id) || id == self.root || self.windows().nth(1).is_none() {
+            return false;
+        }
+        let mut branch = id;
+        let mut parent = self.nodes.get(&id).and_then(|node| node.parent);
+        let mut found_axis = false;
+        while let Some(parent_id) = parent {
+            let Some(Node {
+                parent: grandparent,
+                value: TreeNode::Split {
+                    layout, children, ..
+                },
+            }) = self.nodes.get(&parent_id)
+            else {
+                return false;
+            };
+            let matching_axis = matches!(
+                (layout, direction),
+                (Layout::SplitH, Direction::Left | Direction::Right)
+                    | (Layout::SplitV, Direction::Up | Direction::Down)
+            );
+            if matching_axis {
+                found_axis = true;
+                let index = children
+                    .iter()
+                    .position(|child| *child == branch)
+                    .unwrap_or(0);
+                let destination = match direction {
+                    Direction::Left | Direction::Up => {
+                        index.checked_sub(1).and_then(|index| children.get(index))
+                    }
+                    Direction::Right | Direction::Down => children.get(index + 1),
+                }
+                .copied();
+                if let Some(destination) = destination {
+                    if branch == id {
+                        let new_index = match direction {
+                            Direction::Left | Direction::Up => index - 1,
+                            Direction::Right | Direction::Down => index + 1,
+                        };
+                        return self.move_subtree_to_index(id, new_index);
+                    }
+                    self.detach_subtree(id);
+                    let Some(destination_parent) =
+                        self.nodes.get(&destination).and_then(|node| node.parent)
+                    else {
+                        return false;
+                    };
+                    let Some(destination_index) = self.child_index(destination_parent, destination)
+                    else {
+                        return false;
+                    };
+                    let insert_index = match direction {
+                        Direction::Left | Direction::Up => destination_index,
+                        Direction::Right | Direction::Down => destination_index + 1,
+                    };
+                    self.insert_existing_child(destination_parent, id, insert_index, destination);
+                    self.focus = self.first_leaf_in(id).or(self.focus);
+                    self.request_window_sizes();
+                    return true;
+                }
+                if parent_id == self.root && branch != id {
+                    self.detach_subtree(id);
+                    let Some(boundary) = (match &self.nodes.get(&self.root).unwrap().value {
+                        TreeNode::Split { children, .. } => match direction {
+                            Direction::Left | Direction::Up => children.first(),
+                            Direction::Right | Direction::Down => children.last(),
+                        },
+                        TreeNode::Leaf { .. } => None,
+                    })
+                    .copied() else {
+                        return false;
+                    };
+                    let insert_index = match direction {
+                        Direction::Left | Direction::Up => 0,
+                        Direction::Right | Direction::Down => {
+                            self.split_len(self.root).unwrap_or(0)
+                        }
+                    };
+                    self.insert_existing_child(self.root, id, insert_index, boundary);
+                    self.focus = self.first_leaf_in(id).or(self.focus);
+                    self.request_window_sizes();
+                    return true;
+                }
+            }
+            branch = parent_id;
+            parent = *grandparent;
+        }
+        if found_axis {
+            return false;
+        }
+        self.detach_subtree(id);
+        self.wrap_root_for_direction(id, direction);
+        self.focus = self.first_leaf_in(id).or(self.focus);
+        self.request_window_sizes();
+        true
+    }
+
+    pub fn move_subtree_to_first(&mut self, id: NodeId) -> bool {
+        self.move_subtree_to_index(id, 0)
+    }
+
+    pub fn move_subtree_to_last(&mut self, id: NodeId) -> bool {
+        self.move_subtree_to_index(id, usize::MAX)
+    }
+
+    pub fn move_subtree_to_index(&mut self, id: NodeId, index: usize) -> bool {
+        let Some(parent) = self.nodes.get(&id).and_then(|node| node.parent) else {
+            return false;
+        };
+        let Some(Node {
+            value: TreeNode::Split {
+                children, percents, ..
+            },
+            ..
+        }) = self.nodes.get_mut(&parent)
+        else {
+            return false;
+        };
+        let Some(old_index) = children.iter().position(|child| *child == id) else {
+            return false;
+        };
+        let new_index = index.min(children.len() - 1);
+        if old_index == new_index {
+            return false;
+        }
+        let child = children.remove(old_index);
+        let percent = percents.remove(old_index);
+        children.insert(new_index, child);
+        percents.insert(new_index, percent);
+        self.request_window_sizes();
+        true
+    }
+
+    pub fn resize_adjacent(&mut self, first: NodeId, second: NodeId, delta: f64) -> bool {
+        if !delta.is_finite() {
+            return false;
+        }
+        let Some(parent) = self.nodes.get(&first).and_then(|node| node.parent) else {
+            return false;
+        };
+        if self.nodes.get(&second).and_then(|node| node.parent) != Some(parent) {
+            return false;
+        }
+        let Some(Node {
+            value: TreeNode::Split {
+                children, percents, ..
+            },
+            ..
+        }) = self.nodes.get_mut(&parent)
+        else {
+            return false;
+        };
+        let Some(first_index) = children.iter().position(|child| *child == first) else {
+            return false;
+        };
+        let Some(second_index) = children.iter().position(|child| *child == second) else {
+            return false;
+        };
+        if first_index.abs_diff(second_index) != 1 {
+            return false;
+        }
+        let first_percent = percents[first_index] + delta;
+        let second_percent = percents[second_index] - delta;
+        if first_percent <= 0. || second_percent <= 0. {
+            return false;
+        }
+        percents[first_index] = first_percent;
+        percents[second_index] = second_percent;
+        self.request_window_sizes();
+        true
+    }
+
     pub fn geometry(&self, id: NodeId) -> Option<Rectangle<f64, Logical>> {
         geometry::compute(&self.nodes, self.root, self.view_size, self.gaps).remove(&id)
     }
@@ -292,18 +466,107 @@ impl<W: LayoutElement> TilingTree<W> {
         else {
             return;
         };
-        let index = after
-            .and_then(|id| {
-                children
-                    .iter()
-                    .position(|child| *child == id)
-                    .map(|i| i + 1)
-            })
-            .unwrap_or(children.len());
+        let after_index = after.and_then(|id| children.iter().position(|child| *child == id));
+        let index = after_index.map_or(children.len(), |index| index + 1);
+        let percent = if let Some(index) = after_index {
+            percents[index] /= 2.;
+            percents[index]
+        } else if children.is_empty() {
+            1.
+        } else {
+            let percent = percents.last().copied().unwrap_or(1.) / 2.;
+            *percents.last_mut().unwrap() -= percent;
+            percent
+        };
         children.insert(index, child);
-        percents.resize(children.len(), 1. / children.len() as f64);
-        percents.fill(1. / children.len() as f64);
+        percents.insert(index, percent);
         self.nodes.get_mut(&child).unwrap().parent = Some(parent);
+    }
+
+    fn child_index(&self, parent: NodeId, child: NodeId) -> Option<usize> {
+        match &self.nodes.get(&parent)?.value {
+            TreeNode::Split { children, .. } => children.iter().position(|id| *id == child),
+            TreeNode::Leaf { .. } => None,
+        }
+    }
+
+    fn insert_existing_child(
+        &mut self,
+        parent: NodeId,
+        child: NodeId,
+        index: usize,
+        split_share_of: NodeId,
+    ) {
+        let Some(Node {
+            value: TreeNode::Split {
+                children, percents, ..
+            },
+            ..
+        }) = self.nodes.get_mut(&parent)
+        else {
+            return;
+        };
+        let Some(target_index) = children.iter().position(|id| *id == split_share_of) else {
+            return;
+        };
+        percents[target_index] /= 2.;
+        let percent = percents[target_index];
+        let index = index.min(children.len());
+        children.insert(index, child);
+        percents.insert(index, percent);
+        self.nodes.get_mut(&child).unwrap().parent = Some(parent);
+    }
+
+    fn detach_subtree(&mut self, id: NodeId) {
+        let Some(parent) = self.nodes.get(&id).and_then(|node| node.parent) else {
+            return;
+        };
+        self.remove_child(parent, id);
+        self.nodes.get_mut(&id).unwrap().parent = None;
+        self.collapse_from(parent);
+    }
+
+    fn wrap_root_for_direction(&mut self, id: NodeId, direction: Direction) {
+        let layout = match direction {
+            Direction::Left | Direction::Right => Layout::SplitH,
+            Direction::Up | Direction::Down => Layout::SplitV,
+        };
+        let old_value = std::mem::replace(
+            &mut self.nodes.get_mut(&self.root).unwrap().value,
+            TreeNode::Split {
+                layout,
+                children: Vec::new(),
+                percents: Vec::new(),
+            },
+        );
+        let old = match old_value {
+            TreeNode::Split { children, .. } if children.len() == 1 => children[0],
+            old_value => {
+                let old = self.alloc(Node {
+                    parent: Some(self.root),
+                    value: old_value,
+                });
+                if let TreeNode::Split { children, .. } = &self.nodes.get(&old).unwrap().value {
+                    for child in children.clone() {
+                        self.nodes.get_mut(&child).unwrap().parent = Some(old);
+                    }
+                }
+                old
+            }
+        };
+        self.nodes.get_mut(&old).unwrap().parent = Some(self.root);
+        let moving_first = matches!(direction, Direction::Left | Direction::Up);
+        let (children, percents) = if moving_first {
+            (vec![id, old], vec![0.5, 0.5])
+        } else {
+            (vec![old, id], vec![0.5, 0.5])
+        };
+        self.nodes.get_mut(&id).unwrap().parent = Some(self.root);
+        self.nodes.get_mut(&self.root).unwrap().value = TreeNode::Split {
+            layout,
+            children,
+            percents,
+        };
     }
 
     fn remove_child(&mut self, parent: NodeId, child: NodeId) {
@@ -318,9 +581,12 @@ impl<W: LayoutElement> TilingTree<W> {
         };
         if let Some(index) = children.iter().position(|id| *id == child) {
             children.remove(index);
-            percents.remove(index);
-            if !children.is_empty() {
-                percents.fill(1. / children.len() as f64);
+            let removed = percents.remove(index);
+            let remaining = 1. - removed;
+            if remaining > 0. {
+                for percent in percents {
+                    *percent /= remaining;
+                }
             }
         }
     }
@@ -372,8 +638,16 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     fn first_leaf(&self) -> Option<NodeId> {
-        self.iter_depth_first()
-            .find_map(|(id, node)| matches!(node, TreeNode::Leaf { .. }).then_some(id))
+        self.first_leaf_in(self.root)
+    }
+
+    fn first_leaf_in(&self, id: NodeId) -> Option<NodeId> {
+        match &self.nodes.get(&id)?.value {
+            TreeNode::Leaf { .. } => Some(id),
+            TreeNode::Split { children, .. } => {
+                children.iter().find_map(|child| self.first_leaf_in(*child))
+            }
+        }
     }
 
     fn collect_depth_first(&self, id: NodeId, ids: &mut Vec<NodeId>) {
