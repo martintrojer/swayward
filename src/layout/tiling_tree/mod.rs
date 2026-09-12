@@ -3,13 +3,25 @@ mod node;
 
 use std::collections::{HashMap, HashSet};
 
-use smithay::utils::{Logical, Point, Rectangle, Serial, Size};
+use smithay::backend::renderer::gles::GlesRenderer;
+use smithay::utils::{Logical, Point, Rectangle, Scale, Serial, Size};
+use swayward_config::utils::MergeWith as _;
+use swayward_config::PresetSize;
+use swayward_ipc::{ColumnDisplay, SizeChange, WindowLayout};
 
-use super::tile::Tile;
-use super::{ConfigureIntent, InteractiveResizeData, LayoutElement, Options};
+use super::closing_window::{ClosingWindow, ClosingWindowRenderElement};
+use super::scrolling::ScrollDirection;
+use super::tab_indicator::{TabIndicator, TabIndicatorRenderElement, TabInfo};
+use super::tile::{Tile, TileRenderElement};
+use super::{ConfigureIntent, HitType, InteractiveResizeData, LayoutElement, Options, RenderLayer};
 use crate::animation::Clock;
-use crate::utils::transaction::Transaction;
+use crate::render_helpers::renderer::NiriRenderer;
+use crate::render_helpers::xray::XrayPos;
+use crate::render_helpers::RenderCtx;
+use crate::swayward_render_elements;
+use crate::utils::transaction::{Transaction, TransactionBlocker};
 use crate::utils::ResizeEdge;
+use crate::window::ResolvedWindowRules;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -57,6 +69,14 @@ struct InteractiveResize<I> {
     data: InteractiveResizeData,
 }
 
+swayward_render_elements! {
+    TilingTreeRenderElement<R> => {
+        Tile = TileRenderElement<R>,
+        ClosingWindow = ClosingWindowRenderElement,
+        TabIndicator = TabIndicatorRenderElement,
+    }
+}
+
 #[derive(Debug)]
 pub struct TilingTree<W: LayoutElement> {
     nodes: HashMap<NodeId, Node<W>>,
@@ -66,6 +86,9 @@ pub struct TilingTree<W: LayoutElement> {
     pending_splits: HashMap<NodeId, Layout>,
     pending_modes: HashMap<NodeId, PendingMode>,
     interactive_resize: Option<InteractiveResize<W::Id>>,
+    tab_indicators: HashMap<NodeId, TabIndicator>,
+    tab_active: HashMap<NodeId, NodeId>,
+    closing_windows: Vec<ClosingWindow>,
     view_size: Size<f64, Logical>,
     parent_area: Rectangle<f64, Logical>,
     scale: f64,
@@ -102,6 +125,9 @@ impl<W: LayoutElement> TilingTree<W> {
             pending_splits: HashMap::new(),
             pending_modes: HashMap::new(),
             interactive_resize: None,
+            tab_indicators: HashMap::new(),
+            tab_active: HashMap::new(),
+            closing_windows: Vec::new(),
             view_size,
             parent_area,
             scale,
@@ -125,12 +151,55 @@ impl<W: LayoutElement> TilingTree<W> {
         for tile in self.tiles_mut() {
             tile.update_config(view_size, scale, options.clone());
         }
+        for indicator in self.tab_indicators.values_mut() {
+            indicator.update_config(options.layout.tab_indicator);
+        }
         self.view_size = view_size;
         self.parent_area = parent_area;
         self.scale = scale;
         self.gaps = options.layout.gaps;
         self.options = options;
         self.request_window_sizes_with(None, false);
+    }
+
+    pub fn update_shaders(&mut self) {
+        for tile in self.tiles_mut() {
+            tile.update_shaders();
+        }
+        for indicator in self.tab_indicators.values_mut() {
+            indicator.update_shaders();
+        }
+    }
+
+    pub fn advance_animations(&mut self) {
+        for tile in self.tiles_mut() {
+            tile.advance_animations();
+        }
+        for indicator in self.tab_indicators.values_mut() {
+            indicator.advance_animations();
+        }
+        self.closing_windows.retain_mut(|closing| {
+            closing.advance_animations();
+            closing.are_animations_ongoing()
+        });
+    }
+
+    pub fn are_animations_ongoing(&self) -> bool {
+        self.tiles().any(Tile::are_animations_ongoing)
+            || self
+                .tab_indicators
+                .values()
+                .any(TabIndicator::are_animations_ongoing)
+            || !self.closing_windows.is_empty()
+    }
+
+    pub fn are_transitions_ongoing(&self) -> bool {
+        self.tiles().any(Tile::are_transitions_ongoing)
+            || self
+                .tab_indicators
+                .values()
+                .any(TabIndicator::are_animations_ongoing)
+            || !self.closing_windows.is_empty()
     }
 
     pub fn view_size(&self) -> Size<f64, Logical> {
@@ -149,21 +218,72 @@ impl<W: LayoutElement> TilingTree<W> {
         &self.options
     }
 
+    pub fn new_window_toplevel_bounds(&self, rules: &ResolvedWindowRules) -> Size<i32, Logical> {
+        let border = self.options.layout.border.merged_with(&rules.border);
+        let mut size = self.parent_area.size;
+        let padding = self.gaps * 2. + if border.off { 0. } else { border.width * 2. };
+        size.w = (size.w - padding).max(1.);
+        size.h = (size.h - padding).max(1.);
+        size.to_i32_floor()
+    }
+
+    pub fn new_window_size(
+        &self,
+        width: Option<PresetSize>,
+        height: Option<PresetSize>,
+        rules: &ResolvedWindowRules,
+    ) -> Size<i32, Logical> {
+        let bounds = self.new_window_toplevel_bounds(rules);
+        let resolve = |value: Option<PresetSize>, available: i32| match value {
+            Some(PresetSize::Fixed(value)) => value.max(1),
+            Some(PresetSize::Proportion(value)) => {
+                (f64::from(available) * value).floor().max(1.) as i32
+            }
+            None => available,
+        };
+        Size::from((resolve(width, bounds.w), resolve(height, bounds.h)))
+    }
+
     pub fn add_tile(&mut self, tile: Tile<W>, target: InsertTarget) -> NodeId {
         self.add_tile_with_activation(tile, target, true)
     }
 
+    pub fn add_tile_right_of(
+        &mut self,
+        right_of: &W::Id,
+        tile: Tile<W>,
+        activate: bool,
+    ) -> Option<NodeId> {
+        let target = self.node_for_window(right_of)?;
+        Some(self.add_tile_with_activation(tile, InsertTarget::Node(target), activate))
+    }
+
+    pub fn add_tile_to_subtree(
+        &mut self,
+        subtree: NodeId,
+        tile: Tile<W>,
+        activate: bool,
+    ) -> Option<NodeId> {
+        self.nodes
+            .contains_key(&subtree)
+            .then(|| self.add_tile_with_activation(tile, InsertTarget::Node(subtree), activate))
+    }
+
     pub fn add_tile_with_activation(
         &mut self,
-        tile: Tile<W>,
+        mut tile: Tile<W>,
         target: InsertTarget,
         activate: bool,
     ) -> NodeId {
         self.interactive_resize = None;
+        tile.update_config(self.view_size, self.scale, self.options.clone());
         let previous_focus = self.focus;
+        let old_geometries = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
         let id = self.alloc(Node {
             parent: None,
-            value: TreeNode::Leaf { tile },
+            value: TreeNode::Leaf {
+                tile: Box::new(tile),
+            },
         });
         let target = match target {
             InsertTarget::Focused => self.focus,
@@ -217,11 +337,13 @@ impl<W: LayoutElement> TilingTree<W> {
         } else {
             previous_focus.or(Some(id))
         };
+        self.animate_geometry_changes(old_geometries, Some(id));
         self.request_window_sizes();
         id
     }
 
     pub fn remove_tile_node(&mut self, id: NodeId) -> Option<Tile<W>> {
+        let old_geometries = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
         let node = self.nodes.remove(&id)?;
         let TreeNode::Leaf { tile } = node.value else {
             self.nodes.insert(id, node);
@@ -243,7 +365,8 @@ impl<W: LayoutElement> TilingTree<W> {
         if self.focus == Some(id) {
             self.focus = self.first_leaf();
         }
-        Some(tile)
+        self.animate_geometry_changes(old_geometries, None);
+        Some(*tile)
     }
 
     pub fn focus(&self) -> Option<NodeId> {
@@ -336,6 +459,15 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub fn move_direction(&mut self, id: NodeId, direction: Direction) -> bool {
+        let old = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
+        let changed = self.move_direction_inner(id, direction);
+        if changed {
+            self.animate_geometry_changes(old, None);
+        }
+        changed
+    }
+
+    fn move_direction_inner(&mut self, id: NodeId, direction: Direction) -> bool {
         if !self.nodes.contains_key(&id) || id == self.root || self.windows().nth(1).is_none() {
             return false;
         }
@@ -377,7 +509,7 @@ impl<W: LayoutElement> TilingTree<W> {
                             Direction::Left | Direction::Up => index - 1,
                             Direction::Right | Direction::Down => index + 1,
                         };
-                        return self.move_subtree_to_index(id, new_index);
+                        return self.move_subtree_to_index_inner(id, new_index);
                     }
                     self.detach_subtree(id);
                     let Some(destination_parent) =
@@ -444,6 +576,15 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub fn move_subtree_to_index(&mut self, id: NodeId, index: usize) -> bool {
+        let old = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
+        let changed = self.move_subtree_to_index_inner(id, index);
+        if changed {
+            self.animate_geometry_changes(old, None);
+        }
+        changed
+    }
+
+    fn move_subtree_to_index_inner(&mut self, id: NodeId, index: usize) -> bool {
         self.interactive_resize = None;
         let Some(parent) = self.nodes.get(&id).and_then(|node| node.parent) else {
             return false;
@@ -474,6 +615,15 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub fn resize_adjacent(&mut self, first: NodeId, second: NodeId, delta: f64) -> bool {
+        let old = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
+        let changed = self.resize_adjacent_inner(first, second, delta);
+        if changed {
+            self.animate_geometry_changes(old, None);
+        }
+        changed
+    }
+
+    fn resize_adjacent_inner(&mut self, first: NodeId, second: NodeId, delta: f64) -> bool {
         if !delta.is_finite() {
             return false;
         }
@@ -514,7 +664,7 @@ impl<W: LayoutElement> TilingTree<W> {
 
     pub fn tiles(&self) -> impl Iterator<Item = &Tile<W>> {
         self.iter_depth_first().filter_map(|(_, node)| match node {
-            TreeNode::Leaf { tile } => Some(tile),
+            TreeNode::Leaf { tile } => Some(tile.as_ref()),
             TreeNode::Split { .. } => None,
         })
     }
@@ -523,7 +673,7 @@ impl<W: LayoutElement> TilingTree<W> {
         self.nodes
             .values_mut()
             .filter_map(|node| match &mut node.value {
-                TreeNode::Leaf { tile } => Some(tile),
+                TreeNode::Leaf { tile } => Some(tile.as_mut()),
                 TreeNode::Split { .. } => None,
             })
     }
@@ -575,6 +725,13 @@ impl<W: LayoutElement> TilingTree<W> {
             .iter_depth_first()
             .filter_map(|(id, node)| matches!(node, TreeNode::Leaf { .. }).then_some(id))
             .last();
+    }
+
+    pub fn focus_window_in_subtree(&mut self, subtree: NodeId, index: usize) {
+        let leaf = self.leaf_ids_in(subtree).get(index).copied();
+        if let Some(leaf) = leaf {
+            self.focus = Some(leaf);
+        }
     }
 
     pub fn focus_column(&mut self, index: usize) {
@@ -670,6 +827,145 @@ impl<W: LayoutElement> TilingTree<W> {
             .is_some_and(|id| self.move_subtree_to_index(id, index))
     }
 
+    pub fn move_column_to_first(&mut self) {
+        self.move_focused_to_first();
+    }
+
+    pub fn move_column_to_last(&mut self) {
+        self.move_focused_to_last();
+    }
+
+    pub fn move_column_to_index(&mut self, index: usize) {
+        self.move_focused_to_index(index.saturating_sub(1));
+    }
+
+    pub fn consume_or_expel_window_left(&mut self, window: Option<&W::Id>) {
+        if let Some(window) = window {
+            self.activate_window(window);
+        }
+        self.move_left();
+    }
+
+    pub fn consume_or_expel_window_right(&mut self, window: Option<&W::Id>) {
+        if let Some(window) = window {
+            self.activate_window(window);
+        }
+        self.move_right();
+    }
+
+    pub fn consume_into_column(&mut self) {
+        self.move_left();
+    }
+
+    pub fn expel_from_column(&mut self) {
+        self.move_right();
+    }
+
+    pub fn swap_window_in_direction(&mut self, direction: ScrollDirection) {
+        match direction {
+            ScrollDirection::Left => {
+                self.move_left();
+            }
+            ScrollDirection::Right => {
+                self.move_right();
+            }
+        }
+    }
+
+    pub fn toggle_column_tabbed_display(&mut self) {
+        let Some(parent) = self.focus.and_then(|id| self.nodes.get(&id)?.parent) else {
+            return;
+        };
+        let layout = match &self.nodes.get(&parent).map(|node| &node.value) {
+            Some(TreeNode::Split {
+                layout: Layout::Tabbed,
+                ..
+            }) => Layout::SplitH,
+            _ => Layout::Tabbed,
+        };
+        self.set_layout(parent, layout);
+    }
+
+    pub fn set_column_display(&mut self, display: ColumnDisplay) {
+        let Some(parent) = self.focus.and_then(|id| self.nodes.get(&id)?.parent) else {
+            return;
+        };
+        self.set_layout(
+            parent,
+            if display == ColumnDisplay::Tabbed {
+                Layout::Tabbed
+            } else {
+                Layout::SplitV
+            },
+        );
+    }
+
+    pub fn center_column(&mut self) {}
+    pub fn center_window(&mut self, _window: Option<&W::Id>) {}
+    pub fn center_visible_columns(&mut self) {}
+
+    pub fn toggle_width(&mut self, forwards: bool) {
+        self.toggle_window_width(None, forwards);
+    }
+
+    pub fn toggle_full_width(&mut self) {
+        let Some(id) = self.focus else { return };
+        let Some(rect) = self.geometry(id) else {
+            return;
+        };
+        self.resize_node_dimension(
+            id,
+            true,
+            SizeChange::AdjustFixed((self.view_size.w - rect.size.w) as i32),
+        );
+    }
+
+    pub fn set_window_width(&mut self, window: Option<&W::Id>, change: SizeChange) {
+        if let Some(id) = self.resolve_node(window) {
+            self.resize_node_dimension(id, true, change);
+        }
+    }
+
+    pub fn set_window_height(&mut self, window: Option<&W::Id>, change: SizeChange) {
+        if let Some(id) = self.resolve_node(window) {
+            self.resize_node_dimension(id, false, change);
+        }
+    }
+
+    pub fn reset_window_height(&mut self, window: Option<&W::Id>) {
+        let Some(id) = self.resolve_node(window) else {
+            return;
+        };
+        let Some(parent) = self.nodes.get(&id).and_then(|node| node.parent) else {
+            return;
+        };
+        if let Some(Node {
+            value:
+                TreeNode::Split {
+                    layout: Layout::SplitV,
+                    children,
+                    percents,
+                },
+            ..
+        }) = self.nodes.get_mut(&parent)
+        {
+            percents.fill(1. / children.len() as f64);
+            self.request_window_sizes();
+        }
+    }
+
+    pub fn toggle_window_width(&mut self, window: Option<&W::Id>, forwards: bool) {
+        self.toggle_preset(window, true, forwards);
+    }
+
+    pub fn toggle_window_height(&mut self, window: Option<&W::Id>, forwards: bool) {
+        self.toggle_preset(window, false, forwards);
+    }
+
+    pub fn expand_column_to_available_width(&mut self) {
+        self.toggle_full_width();
+    }
+
     pub fn remove_tile(&mut self, window: &W::Id, transaction: Transaction) -> Option<Tile<W>> {
         let id = self.node_for_window(window)?;
         let tile = self.remove_tile_node(id)?;
@@ -755,6 +1051,207 @@ impl<W: LayoutElement> TilingTree<W> {
 
     pub fn render_above_top_layer(&self) -> bool {
         self.is_active_pending_fullscreen()
+    }
+
+    pub fn start_open_animation(&mut self, window: &W::Id) -> bool {
+        let Some(id) = self.node_for_window(window) else {
+            return false;
+        };
+        let Some(tile) = self.tile_mut(id) else {
+            return false;
+        };
+        tile.start_open_animation();
+        true
+    }
+
+    pub fn update_render_elements(&mut self, is_active: bool, layer: RenderLayer) {
+        let focus = self.focus;
+        let geometries = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
+        let visible = self.visible_leaves();
+        for (id, node) in &mut self.nodes {
+            let TreeNode::Leaf { tile } = &mut node.value else {
+                continue;
+            };
+            if layer.is_normal() == tile.is_moving_between_workspaces()
+                || (!visible.contains(id) && tile.alpha_animation.is_none())
+            {
+                continue;
+            }
+            let Some(rect) = geometries.get(id) else {
+                continue;
+            };
+            let mut view_rect = Rectangle::from_size(self.view_size);
+            view_rect.loc -= rect.loc + tile.render_offset();
+            tile.update_render_elements(is_active && Some(*id) == focus, view_rect);
+        }
+        self.update_tab_indicators(is_active, &geometries);
+    }
+
+    pub fn tiles_with_render_positions(
+        &self,
+    ) -> impl Iterator<Item = (&Tile<W>, Point<f64, Logical>, bool)> {
+        let geometries = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
+        let visible = self.visible_leaves();
+        let scale = self.scale;
+        self.iter_depth_first().filter_map(move |(id, node)| {
+            let TreeNode::Leaf { tile } = node else {
+                return None;
+            };
+            let rect = geometries.get(&id)?;
+            let pos = (rect.loc + tile.render_offset())
+                .to_physical_precise_round(scale)
+                .to_logical(scale);
+            Some((tile.as_ref(), pos, visible.contains(&id)))
+        })
+    }
+
+    pub fn tiles_with_render_positions_mut(
+        &mut self,
+        round: bool,
+    ) -> impl Iterator<Item = (&mut Tile<W>, Point<f64, Logical>)> {
+        let geometries = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
+        let scale = self.scale;
+        self.nodes.iter_mut().filter_map(move |(id, node)| {
+            let TreeNode::Leaf { tile } = &mut node.value else {
+                return None;
+            };
+            let mut pos = geometries.get(id)?.loc + tile.render_offset();
+            if round {
+                pos = pos.to_physical_precise_round(scale).to_logical(scale);
+            }
+            Some((tile.as_mut(), pos))
+        })
+    }
+
+    pub fn tiles_with_ipc_layouts(&self) -> impl Iterator<Item = (&Tile<W>, WindowLayout)> {
+        let geometries = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
+        self.iter_depth_first().filter_map(move |(id, node)| {
+            let TreeNode::Leaf { tile } = node else {
+                return None;
+            };
+            let mut layout = tile.ipc_layout_template();
+            layout.tile_pos_in_workspace_view = geometries.get(&id).map(|rect| rect.loc.into());
+            Some((tile.as_ref(), layout))
+        })
+    }
+
+    pub fn window_under(&self, pos: Point<f64, Logical>) -> Option<(&W, HitType)> {
+        let geometries = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
+        for (split, indicator) in &self.tab_indicators {
+            let Some((area, children)) = self.tab_area(*split, &geometries) else {
+                continue;
+            };
+            if let Some(index) = indicator.hit(area, children.len(), self.scale, pos) {
+                if let Some(tile) = children.get(index).and_then(|id| self.first_tile_in(*id)) {
+                    return Some((
+                        tile.window(),
+                        HitType::Activate {
+                            is_tab_indicator: true,
+                        },
+                    ));
+                }
+            }
+        }
+        self.tiles_with_render_positions()
+            .filter(|(_, _, visible)| *visible)
+            .find_map(|(tile, tile_pos, _)| HitType::hit_tile(tile, tile_pos, pos))
+    }
+
+    pub fn start_close_animation_for_window(
+        &mut self,
+        renderer: &mut GlesRenderer,
+        window: &W::Id,
+        blocker: TransactionBlocker,
+    ) {
+        let Some(id) = self.node_for_window(window) else {
+            return;
+        };
+        let Some(pos) = self
+            .geometry(id)
+            .and_then(|rect| self.tile(id).map(|tile| rect.loc + tile.render_offset()))
+        else {
+            return;
+        };
+        let Some(tile) = self.tile_mut(id) else {
+            return;
+        };
+        let Some(snapshot) = tile.take_unmap_snapshot() else {
+            return;
+        };
+        let size = tile.tile_size();
+        let anim = crate::animation::Animation::new(
+            self.clock.clone(),
+            0.,
+            1.,
+            0.,
+            self.options.animations.window_close.anim,
+        );
+        let blocker = if self.options.disable_transactions {
+            TransactionBlocker::completed()
+        } else {
+            blocker
+        };
+        match ClosingWindow::new(
+            renderer,
+            snapshot,
+            Scale::from(self.scale),
+            size,
+            pos,
+            blocker,
+            anim,
+        ) {
+            Ok(closing) => self.closing_windows.push(closing),
+            Err(err) => warn!("error creating a closing window animation: {err:?}"),
+        }
+    }
+
+    pub fn render<R: NiriRenderer>(
+        &self,
+        mut ctx: RenderCtx<R>,
+        xray_pos: XrayPos,
+        focus_ring: bool,
+        layer: RenderLayer,
+        push: &mut dyn FnMut(TilingTreeRenderElement<R>),
+    ) {
+        let scale = Scale::from(self.scale);
+        if layer.is_normal() {
+            let view = Rectangle::from_size(self.view_size);
+            for closing in self.closing_windows.iter().rev() {
+                push(closing.render(ctx.as_gles(), view, scale).into());
+            }
+        }
+        let focus = self.focus;
+        for indicator in self.tab_indicators.values() {
+            indicator.render(ctx.renderer, Point::default(), &mut |element| {
+                push(element.into())
+            });
+        }
+        let geometries = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
+        let visible = self.visible_leaves();
+        for (id, node) in self.iter_depth_first() {
+            let TreeNode::Leaf { tile } = node else {
+                continue;
+            };
+            if (!visible.contains(&id) && tile.alpha_animation.is_none())
+                || layer.is_normal() == tile.is_moving_between_workspaces()
+            {
+                continue;
+            }
+            let Some(rect) = geometries.get(&id) else {
+                continue;
+            };
+            let tile_pos = (rect.loc + tile.render_offset())
+                .to_physical_precise_round(self.scale)
+                .to_logical(self.scale);
+            let xray = xray_pos.offset(tile_pos);
+            tile.render(
+                ctx.r(),
+                tile_pos,
+                xray,
+                focus_ring && Some(id) == focus,
+                &mut |element| push(element.into()),
+            );
+        }
     }
 
     pub fn interactive_resize_begin(&mut self, window: W::Id, edges: ResizeEdge) -> bool {
@@ -951,6 +1448,10 @@ impl<W: LayoutElement> TilingTree<W> {
         self.collect_depth_first(self.root, &mut ids);
         ids.into_iter()
             .filter_map(|id| self.nodes.get(&id).map(|node| (id, &node.value)))
+    }
+
+    pub fn verify_invariants(&self) {
+        self.check_invariants();
     }
 
     pub fn check_invariants(&self) {
@@ -1171,6 +1672,298 @@ impl<W: LayoutElement> TilingTree<W> {
         }
     }
 
+    fn animate_geometry_changes(
+        &mut self,
+        old: HashMap<NodeId, Rectangle<f64, Logical>>,
+        skip: Option<NodeId>,
+    ) {
+        let new = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
+        for (id, old_rect) in old {
+            if skip == Some(id) {
+                continue;
+            }
+            let Some(new_rect) = new.get(&id) else {
+                continue;
+            };
+            let offset = old_rect.loc - new_rect.loc;
+            if offset != Point::default() {
+                if let Some(tile) = self.tile_mut(id) {
+                    tile.animate_move_from(offset);
+                }
+            }
+        }
+    }
+
+    fn visible_leaves(&self) -> HashSet<NodeId> {
+        if let Some(focus) = self.focus {
+            if self
+                .pending_modes
+                .get(&focus)
+                .is_some_and(|mode| mode.fullscreen)
+            {
+                return HashSet::from([focus]);
+            }
+        }
+        let mut visible = HashSet::new();
+        self.collect_visible(self.root, &mut visible);
+        visible
+    }
+
+    fn collect_visible(&self, id: NodeId, visible: &mut HashSet<NodeId>) {
+        let Some(node) = self.nodes.get(&id) else {
+            return;
+        };
+        match &node.value {
+            TreeNode::Leaf { .. } => {
+                visible.insert(id);
+            }
+            TreeNode::Split {
+                layout, children, ..
+            } => {
+                if matches!(layout, Layout::Tabbed | Layout::Stacked) {
+                    let focused_branch = self.focus.and_then(|focus| {
+                        children
+                            .iter()
+                            .find(|child| self.contains_node(**child, focus))
+                    });
+                    if let Some(child) = focused_branch.or_else(|| children.first()) {
+                        self.collect_visible(*child, visible);
+                    }
+                } else {
+                    for child in children {
+                        self.collect_visible(*child, visible);
+                    }
+                }
+            }
+        }
+    }
+
+    fn contains_node(&self, ancestor: NodeId, mut id: NodeId) -> bool {
+        loop {
+            if id == ancestor {
+                return true;
+            }
+            let Some(parent) = self.nodes.get(&id).and_then(|node| node.parent) else {
+                return false;
+            };
+            id = parent;
+        }
+    }
+
+    fn first_tile_in(&self, id: NodeId) -> Option<&Tile<W>> {
+        self.first_leaf_in(id).and_then(|id| self.tile(id))
+    }
+
+    fn tab_area(
+        &self,
+        id: NodeId,
+        geometries: &HashMap<NodeId, Rectangle<f64, Logical>>,
+    ) -> Option<(Rectangle<f64, Logical>, Vec<NodeId>)> {
+        let TreeNode::Split {
+            layout, children, ..
+        } = &self.nodes.get(&id)?.value
+        else {
+            return None;
+        };
+        if *layout != Layout::Tabbed || children.is_empty() {
+            return None;
+        }
+        let mut area = None;
+        for child in children {
+            let leaf = self.first_leaf_in(*child)?;
+            let rect = *geometries.get(&leaf)?;
+            area = Some(area.map_or(rect, |mut area: Rectangle<f64, Logical>| {
+                let right = (area.loc.x + area.size.w).max(rect.loc.x + rect.size.w);
+                let bottom = (area.loc.y + area.size.h).max(rect.loc.y + rect.size.h);
+                area.loc.x = area.loc.x.min(rect.loc.x);
+                area.loc.y = area.loc.y.min(rect.loc.y);
+                area.size.w = right - area.loc.x;
+                area.size.h = bottom - area.loc.y;
+                area
+            }));
+        }
+        Some((area?, children.clone()))
+    }
+
+    fn update_tab_indicators(
+        &mut self,
+        is_active: bool,
+        geometries: &HashMap<NodeId, Rectangle<f64, Logical>>,
+    ) {
+        let tabbed: Vec<_> = self
+            .nodes
+            .iter()
+            .filter_map(|(id, node)| match &node.value {
+                TreeNode::Split {
+                    layout: Layout::Tabbed,
+                    children,
+                    ..
+                } => Some((*id, children.clone())),
+                _ => None,
+            })
+            .collect();
+        self.tab_indicators
+            .retain(|id, _| tabbed.iter().any(|(tabbed, _)| tabbed == id));
+        self.tab_active
+            .retain(|id, _| tabbed.iter().any(|(tabbed, _)| tabbed == id));
+        for (id, children) in tabbed {
+            let Some((area, _)) = self.tab_area(id, geometries) else {
+                continue;
+            };
+            let active = self
+                .focus
+                .and_then(|focus| {
+                    children
+                        .iter()
+                        .find(|child| self.contains_node(**child, focus))
+                })
+                .copied()
+                .or_else(|| children.first().copied());
+            if self.tab_active.get(&id).copied() != active {
+                let movement = self.options.animations.window_movement.0;
+                let previous = self.tab_active.insert(id, active.unwrap_or(id));
+                for child in &children {
+                    let Some(leaf) = self.first_leaf_in(*child) else {
+                        continue;
+                    };
+                    if let Some(tile) = self.tile_mut(leaf) {
+                        if Some(*child) == active {
+                            tile.ensure_alpha_animates_to_1();
+                        } else if previous.is_none() || previous == Some(*child) {
+                            tile.animate_alpha(1., 0., movement);
+                        }
+                    }
+                }
+            }
+            let config = self.options.layout.tab_indicator;
+            let tabs: Vec<_> = children
+                .iter()
+                .filter_map(|child| {
+                    let leaf = self.first_leaf_in(*child)?;
+                    let tile = self.tile(leaf)?;
+                    let rect = geometries.get(&leaf)?;
+                    Some(TabInfo::from_tile(
+                        tile,
+                        rect.loc,
+                        self.focus
+                            .is_some_and(|focus| self.contains_node(*child, focus)),
+                        tile.window().is_urgent(),
+                        &config,
+                    ))
+                })
+                .collect();
+            let is_new = !self.tab_indicators.contains_key(&id);
+            let indicator = self
+                .tab_indicators
+                .entry(id)
+                .or_insert_with(|| TabIndicator::new(config));
+            if is_new {
+                indicator.start_open_animation(
+                    self.clock.clone(),
+                    self.options.animations.window_open.anim,
+                );
+            }
+            indicator.update_render_elements(
+                true,
+                area,
+                Rectangle::from_size(self.view_size),
+                tabs.len(),
+                tabs.into_iter(),
+                is_active,
+                self.scale,
+            );
+        }
+    }
+
+    fn resolve_node(&self, window: Option<&W::Id>) -> Option<NodeId> {
+        window
+            .and_then(|window| self.node_for_window(window))
+            .or(self.focus)
+    }
+
+    fn toggle_preset(&mut self, window: Option<&W::Id>, width: bool, forwards: bool) {
+        let presets = if width {
+            &self.options.layout.preset_column_widths
+        } else {
+            &self.options.layout.preset_window_heights
+        };
+        if presets.is_empty() {
+            return;
+        }
+        let index = if forwards { 0 } else { presets.len() - 1 };
+        let change = match presets[index] {
+            PresetSize::Fixed(value) => SizeChange::SetFixed(value),
+            PresetSize::Proportion(value) => SizeChange::SetProportion(value * 100.),
+        };
+        if width {
+            self.set_window_width(window, change);
+        } else {
+            self.set_window_height(window, change);
+        }
+    }
+
+    fn resize_node_dimension(&mut self, id: NodeId, width: bool, change: SizeChange) {
+        let wanted = if width {
+            Layout::SplitH
+        } else {
+            Layout::SplitV
+        };
+        let Some(rect) = self.geometry(id) else {
+            return;
+        };
+        let current = if width { rect.size.w } else { rect.size.h };
+        let total = if width {
+            self.view_size.w
+        } else {
+            self.view_size.h
+        };
+        let target = match change {
+            SizeChange::SetFixed(value) => f64::from(value),
+            SizeChange::SetProportion(value) => total * value / 100.,
+            SizeChange::AdjustFixed(value) => current + f64::from(value),
+            SizeChange::AdjustProportion(value) => current + total * value / 100.,
+        };
+        let mut branch = id;
+        let mut parent = self.nodes.get(&id).and_then(|node| node.parent);
+        while let Some(parent_id) = parent {
+            let Some(Node {
+                parent: grandparent,
+                value: TreeNode::Split {
+                    layout, children, ..
+                },
+            }) = self.nodes.get(&parent_id)
+            else {
+                return;
+            };
+            if *layout == wanted {
+                let Some(index) = children.iter().position(|child| *child == branch) else {
+                    return;
+                };
+                let neighbor = children.get(index + 1).copied().or_else(|| {
+                    index
+                        .checked_sub(1)
+                        .and_then(|index| children.get(index).copied())
+                });
+                let Some(neighbor) = neighbor else { return };
+                let extent = self
+                    .node_geometry(parent_id)
+                    .map(|rect| if width { rect.size.w } else { rect.size.h })
+                    .unwrap_or(total)
+                    .max(1.);
+                let delta = (target - current) / extent;
+                let delta = if index + 1 < children.len() {
+                    delta
+                } else {
+                    -delta
+                };
+                self.resize_adjacent(branch, neighbor, delta);
+                return;
+            }
+            branch = parent_id;
+            parent = *grandparent;
+        }
+    }
+
     fn root_children(&self) -> Option<&[NodeId]> {
         match &self.nodes.get(&self.root)?.value {
             TreeNode::Split { children, .. } => Some(children),
@@ -1314,6 +2107,12 @@ impl<W: LayoutElement> TilingTree<W> {
             rect.size.h = bottom - rect.loc.y;
         }
         Some(rect)
+    }
+
+    fn leaf_ids_in(&self, id: NodeId) -> Vec<NodeId> {
+        let mut ids = Vec::new();
+        self.collect_leaf_ids(id, &mut ids);
+        ids
     }
 
     fn collect_leaf_ids(&self, id: NodeId, ids: &mut Vec<NodeId>) {

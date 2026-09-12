@@ -394,6 +394,136 @@ fn refresh_dispatches_pending_configures() {
 }
 
 #[test]
+fn tabbed_split_only_exposes_the_focused_branch() {
+    let mut t = tree((1000., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    t.set_focus(first);
+    t.split(first, Layout::Tabbed);
+    let second = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+
+    let visible: Vec<_> = t
+        .tiles_with_render_positions()
+        .map(|(tile, _, visible)| (*tile.window().id(), visible))
+        .collect();
+    assert_eq!(visible, vec![(1, false), (2, true)]);
+    t.set_focus(first);
+    let visible: Vec<_> = t
+        .tiles_with_render_positions()
+        .map(|(tile, _, visible)| (*tile.window().id(), visible))
+        .collect();
+    assert_eq!(visible, vec![(1, true), (2, false)]);
+    assert_eq!(t.geometry(first), t.geometry(second));
+}
+
+#[test]
+fn open_animation_lifecycle_is_owned_by_the_tile() {
+    let mut t = tree((1000., 800.), 0.);
+    t.add_tile(
+        Tile::new(
+            TestWindow::new(1),
+            t.view_size(),
+            1.,
+            t.clock().clone(),
+            Rc::new(Options::default()),
+        ),
+        InsertTarget::Focused,
+    );
+
+    assert!(!t.are_transitions_ongoing());
+    assert!(t.start_open_animation(&1));
+    assert!(t.are_transitions_ongoing());
+    let mut clock = t.clock().clone();
+    clock.set_complete_instantly(true);
+    t.advance_animations();
+    assert!(!t.are_transitions_ongoing());
+}
+
+#[test]
+fn tab_indicator_animation_follows_tabbed_container_lifecycle() {
+    let mut t = tree((1000., 800.), 0.);
+    let first = t.add_tile(
+        Tile::new(
+            TestWindow::new(1),
+            t.view_size(),
+            1.,
+            t.clock().clone(),
+            Rc::new(Options::default()),
+        ),
+        InsertTarget::Focused,
+    );
+    t.split(first, Layout::Tabbed);
+    t.add_tile(
+        Tile::new(
+            TestWindow::new(2),
+            t.view_size(),
+            1.,
+            t.clock().clone(),
+            Rc::new(Options::default()),
+        ),
+        InsertTarget::Focused,
+    );
+
+    t.update_render_elements(true, crate::layout::RenderLayer::Normal);
+    assert!(t.are_transitions_ongoing());
+    let mut clock = t.clock().clone();
+    clock.set_complete_instantly(true);
+    t.advance_animations();
+    assert!(!t.are_transitions_ongoing());
+}
+
+#[test]
+fn moving_a_window_starts_and_finishes_tile_movement() {
+    let mut t = tree((1000., 800.), 0.);
+    for id in 1..=2 {
+        t.add_tile(
+            Tile::new(
+                TestWindow::new(id),
+                t.view_size(),
+                1.,
+                t.clock().clone(),
+                Rc::new(Options::default()),
+            ),
+            InsertTarget::Focused,
+        );
+    }
+
+    assert!(!t.are_transitions_ongoing());
+    assert!(t.move_left());
+    assert!(t.are_transitions_ongoing());
+    let mut clock = t.clock().clone();
+    clock.set_complete_instantly(true);
+    t.advance_animations();
+    assert!(!t.are_transitions_ongoing());
+}
+
+#[test]
+fn hit_testing_uses_visible_tile_positions() {
+    let mut t = tree((1000., 800.), 0.);
+    t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+
+    assert_eq!(
+        t.window_under(Point::from((550., 100.)))
+            .map(|(window, _)| *window.id()),
+        Some(2)
+    );
+}
+
+#[test]
+fn ipc_layout_contains_the_tree_position() {
+    let mut t = tree((1000., 800.), 0.);
+    t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+
+    let positions: Vec<_> = t
+        .tiles_with_ipc_layouts()
+        .map(|(tile, layout)| (*tile.window().id(), layout.tile_pos_in_workspace_view))
+        .collect();
+    assert_eq!(positions[0].1, Some((0., 0.)));
+    assert_eq!(positions[1].1, Some((500., 0.)));
+}
+
+#[test]
 fn removing_a_tile_resizes_survivors_in_one_transaction() {
     let mut t = tree((1000., 800.), 0.);
     let first = TestWindow::new(1);

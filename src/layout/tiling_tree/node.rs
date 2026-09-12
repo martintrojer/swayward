@@ -12,7 +12,7 @@ pub enum TreeNode<W: LayoutElement> {
         percents: Vec<f64>,
     },
     Leaf {
-        tile: Tile<W>,
+        tile: Box<Tile<W>>,
     },
 }
 
