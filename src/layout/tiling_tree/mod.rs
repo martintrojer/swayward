@@ -2101,11 +2101,6 @@ impl<W: LayoutElement> TilingTree<W> {
                     .unwrap_or(total)
                     .max(1.);
                 let delta = (target - current) / extent;
-                let delta = if index + 1 < children.len() {
-                    delta
-                } else {
-                    -delta
-                };
                 self.resize_adjacent(branch, neighbor, delta);
                 return;
             }
