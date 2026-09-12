@@ -151,8 +151,15 @@ inherited from niri on day one:
   tokens, recurring breakage with apps that expect a complete portal. niri
   implements the mutter/GNOME D-Bus APIs and rides `xdg-desktop-portal-gnome`.
   We keep `wlr-screencopy` too, so `grim`, `wl-screenrec` and OBS still work.
-- **Rounded corners, blur, shadows, dimming.** Exiled to a fork in sway's world.
-  Already in niri's render pipeline.
+- **Rounded corners, blur, shadows, dimming — and far past that.** Exiled to a
+  fork in sway's world; already in niri's render pipeline. swayward takes the
+  whole inheritance rather than a SwayFX-sized subset: 13 independently
+  configurable animations with easing *or* spring physics, user-programmable
+  open/close/resize shader hooks, colour-space-aware gradients (Oklab/Oklch),
+  focus rings, workspace shadows, tab indicators, and `ext-background-effect` so
+  layer-shell clients like waybar get blur too. None of it is work we have to
+  do — it lives in `render_helpers/` and `Tile`, which the design leaves
+  untouched.
 
 ### The honest cost
 

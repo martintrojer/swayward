@@ -83,6 +83,59 @@ us, both of which swayward inherits from niri on day one:
 2. **Visual features.** Rounded corners, blur, shadows, dimming — exiled to a
    fork in sway's world, already implemented in niri's render pipeline.
 
+### Q5 in detail: everything niri has, not a SwayFX subset
+
+An earlier draft scoped the visual feature set to "SwayFX parity". That was
+wrong in both directions: it understates what we inherit, and it implies work we
+do not have to do.
+
+What is already present and working in the forked tree:
+
+- **13 independently configurable animations**, each accepting easing *or*
+  spring physics (`Kind::{Easing,Spring}`, `Curve`, `SpringParams`):
+  workspace-switch, window-open, window-close, window-movement, window-resize,
+  horizontal-view-movement, overview-open-close, screenshot-ui-open,
+  config-notification, exit-confirmation, recent-windows-close.
+- **Effects past SwayFX's set**: gradients with real colour-space interpolation
+  (sRGB, linear, Oklab, Oklch, with shorter/longer hue paths), `FocusRing`
+  distinct from `Border`, `WorkspaceShadow`, `TabIndicator` with configurable
+  position and length, `InsertHint`, `BlockOutFrom` for screencast privacy,
+  `xray`, and `BackgroundEffect` via `ext-background-effect` so layer-shell
+  clients such as waybar get blur.
+- **18 shaders**, including user-programmable open/close/resize hooks
+  (`open_prelude`/`open_epilogue`, `close_*`, `resize_*`). SwayFX has no
+  equivalent.
+
+The decisive point is cost: all of this lives in `render_helpers/` and `Tile`,
+both of which are zero-diff under Q7. We do not implement these features; we
+decline to break them. So the only way "SwayFX parity" could be the target is by
+deliberately removing things, which would be work in service of a smaller
+product.
+
+It also mis-sells the project. The honest pitch is **everything niri has, on the
+i3 tree** — strictly more than either parent offers.
+
+**Scroll-specific eye candy is out.** `HorizontalViewMovementAnim` and
+`OverviewOpenCloseAnim` exist to animate niri's infinite row and its overview.
+Neither concept survives in swayward, so neither animation does: they are
+*retired*, not ported to some strained i3 equivalent. Retirement means the
+config key is removed, the animation code path goes with the scrolling engine,
+and `docs/DIVERGENCE.md` records it.
+
+The distinction that matters: "everything niri has" means every effect that
+describes a *window or a workspace*, which is all of them bar these two. It does
+not mean preserving animations whose subject no longer exists. An animation for
+scrolling a viewport that cannot scroll is not a feature, and faking one would
+be worse than not having it.
+
+What is NOT retired, despite sounding scroll-adjacent: `WindowMovementAnim` and
+`WindowResizeAnim` animate windows moving and resizing, which the i3 tree does
+constantly — they matter *more* here than in niri. `TabIndicator` likewise: niri
+uses it for column tabs, swayward uses it for i3 tabbed containers.
+
+Silently broken animations remain unacceptable under I6. Retired is fine;
+broken is not.
+
 swayward closes the gap: **the i3/sway experience, uncapped, on a modern engine.**
 
 ### Who it is not for
@@ -229,7 +282,9 @@ open for reconsideration at the first request:
   Breaking changes need a migration path and a real reason.
 - **Not mandatory-anything.** Every visual effect, animation and behavioural
   flourish can be turned off. Someone should be able to configure swayward into
-  something indistinguishable from sway.
+  something indistinguishable from sway. Equally, nothing niri offers gets
+  *removed* to hit some smaller compositor's feature set — the defaults are a
+  question, the capability is not.
 - **Not a scrollable-tiling compositor.** niri already exists and is better at
   it. No runtime layout-mode switching, no "niri mode".
 - **Not bug-compatible with sway.** Matching sway's quirks is a bug-report
@@ -285,7 +340,7 @@ plumbing; replace only the payload types.
 | Q2 | GPL-3.0-or-later | makes niri's protocol and D-Bus code liftable |
 | Q3 | fork niri | niri's internals are not published as libraries |
 | Q4 | mutter/GNOME D-Bus **and** wlr-screencopy | portal-gnome for the real experience; screencopy for grim/OBS |
-| Q5 | full SwayFX-parity effects | already implemented in niri; costs nothing |
+| Q5 | **everything niri has**, not a SwayFX-parity subset | already implemented in niri; costs nothing to keep, and SwayFX parity is a floor we are already above |
 | Q6 | git remote + periodic merge, upstream generic fixes | keeps the fork viable long-term |
 | Q7 | `TilingTree` replaces `ScrollingSpace` inside `Workspace` | smallest diff; preserves `Tile` and all effects |
 | Q8 | one socket, sway protocol, `swayward-ipc` published | one source of truth for window state |
@@ -365,8 +420,10 @@ changes. These are manual for now; automate what can be automated.
 - sway IPC: 13 message types, `get_tree` schema, event subscriptions, `SWAYSOCK`
 - Runtime command subset per Q11, with well-formed errors for the remainder
 - KDL config; sway→KDL translator script
-- Inherited: all effects, all protocols, all D-Bus/portal support, XWayland via
-  satellite
+- Inherited in full, not as a subset: every niri visual effect AND all 13
+  configurable animations (easing or spring), the shader-hook animation system,
+  colour-space gradients, all protocols, all D-Bus/portal support, XWayland via
+  satellite.
 
 ### Explicitly out of scope
 
@@ -374,6 +431,8 @@ changes. These are manual for now; automate what can be automated.
 - `bar {}` config block, `get_bar_config`, `barconfig_update`, launching swaybar
   — **noted as future work**
 - niri's scrollable-tiling layout, and any runtime layout-mode switching
+- Scroll-specific eye candy: `HorizontalViewMovementAnim` and
+  `OverviewOpenCloseAnim` are retired with their subject, not ported
 - niri's own IPC protocol and `niri-ipc` compatibility
 - In-process XWayland/xwm
 - Behaviour-bug-compatibility with sway (a bug-report standard, not a goal)
