@@ -3,8 +3,9 @@ use std::collections::HashMap;
 use smithay::utils::{Logical, Point, Rectangle, Size};
 
 use super::{Layout, Node, NodeId, TreeNode};
+use crate::layout::LayoutElement;
 
-pub(crate) fn compute<W>(
+pub(crate) fn compute<W: LayoutElement>(
     nodes: &HashMap<NodeId, Node<W>>,
     root: NodeId,
     view_size: Size<f64, Logical>,
@@ -21,7 +22,7 @@ pub(crate) fn compute<W>(
     result
 }
 
-fn assign<W>(
+fn assign<W: LayoutElement>(
     nodes: &HashMap<NodeId, Node<W>>,
     id: NodeId,
     rect: Rectangle<f64, Logical>,

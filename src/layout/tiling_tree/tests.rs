@@ -1,11 +1,14 @@
 use std::cell::Cell;
 use std::rc::Rc;
+use std::time::Duration;
 
 use proptest::prelude::*;
 
 use super::*;
+use crate::animation::Clock;
 use crate::layout::{
-    ConfigureIntent, InteractiveResizeData, LayoutElementRenderSnapshot, SizingMode,
+    tile::Tile, ConfigureIntent, InteractiveResizeData, LayoutElementRenderSnapshot, Options,
+    SizingMode,
 };
 use crate::render_helpers::offscreen::OffscreenData;
 use crate::utils::transaction::Transaction;
@@ -19,6 +22,10 @@ struct TestWindowInner {
     id: usize,
     size: Cell<Size<i32, Logical>>,
     requested_size: Cell<Option<Size<i32, Logical>>>,
+    requested_mode: Cell<SizingMode>,
+    configure_count: Cell<usize>,
+    received_transaction: Cell<bool>,
+    interactive_resize: Cell<Option<InteractiveResizeData>>,
     rules: ResolvedWindowRules,
 }
 
@@ -31,9 +38,36 @@ impl TestWindow {
             id,
             size: Cell::new(Size::from((100, 200))),
             requested_size: Cell::new(None),
+            requested_mode: Cell::new(SizingMode::Normal),
+            configure_count: Cell::new(0),
+            received_transaction: Cell::new(false),
+            interactive_resize: Cell::new(None),
             rules: ResolvedWindowRules::default(),
         }))
     }
+}
+
+fn tree(size: (f64, f64), gaps: f64) -> TilingTree<TestWindow> {
+    let mut options = Options::default();
+    options.layout.gaps = gaps;
+    let size = Size::from(size);
+    TilingTree::new(
+        size,
+        Rectangle::from_size(size),
+        1.,
+        Clock::with_time(Duration::ZERO),
+        Rc::new(options),
+    )
+}
+
+fn tile(id: usize, size: Size<f64, Logical>) -> Tile<TestWindow> {
+    Tile::new(
+        TestWindow::new(id),
+        size,
+        1.,
+        Clock::with_time(Duration::ZERO),
+        Rc::new(Options::default()),
+    )
 }
 
 impl LayoutElement for TestWindow {
@@ -54,11 +88,13 @@ impl LayoutElement for TestWindow {
     fn request_size(
         &mut self,
         size: Size<i32, Logical>,
-        _: SizingMode,
+        mode: SizingMode,
         _: bool,
-        _: Option<Transaction>,
+        transaction: Option<Transaction>,
     ) {
         self.0.requested_size.set(Some(size));
+        self.0.received_transaction.set(transaction.is_some());
+        self.0.requested_mode.set(mode);
     }
     fn min_size(&self) -> Size<i32, Logical> {
         Size::from((0, 0))
@@ -84,14 +120,16 @@ impl LayoutElement for TestWindow {
     fn configure_intent(&self) -> ConfigureIntent {
         ConfigureIntent::CanSend
     }
-    fn send_pending_configure(&mut self) {}
+    fn send_pending_configure(&mut self) {
+        self.0.configure_count.set(self.0.configure_count.get() + 1);
+    }
     fn set_active_in_column(&mut self, _: bool) {}
     fn set_floating(&mut self, _: bool) {}
     fn sizing_mode(&self) -> SizingMode {
         SizingMode::Normal
     }
     fn pending_sizing_mode(&self) -> SizingMode {
-        SizingMode::Normal
+        self.0.requested_mode.get()
     }
     fn requested_size(&self) -> Option<Size<i32, Logical>> {
         self.0.requested_size.get()
@@ -106,7 +144,9 @@ impl LayoutElement for TestWindow {
     fn take_animation_snapshot(&mut self) -> Option<LayoutElementRenderSnapshot> {
         None
     }
-    fn set_interactive_resize(&mut self, _: Option<InteractiveResizeData>) {}
+    fn set_interactive_resize(&mut self, data: Option<InteractiveResizeData>) {
+        self.0.interactive_resize.set(data);
+    }
     fn cancel_interactive_resize(&mut self) {}
     fn on_commit(&mut self, _: Serial) {}
     fn interactive_resize_data(&self) -> Option<InteractiveResizeData> {
@@ -119,7 +159,7 @@ impl LayoutElement for TestWindow {
 
 #[test]
 fn empty_tree_has_no_focus() {
-    let t: TilingTree<TestWindow> = TilingTree::new(Size::from((1920., 1080.)), 0.);
+    let t = tree((1920., 1080.), 0.);
     assert!(t.is_empty());
     assert_eq!(t.focus(), None);
     t.check_invariants();
@@ -127,8 +167,8 @@ fn empty_tree_has_no_focus() {
 
 #[test]
 fn one_window_fills_the_view() {
-    let mut t = TilingTree::new(Size::from((1920., 1080.)), 0.);
-    let id = t.add_window(TestWindow::new(1), InsertTarget::Focused);
+    let mut t = tree((1920., 1080.), 0.);
+    let id = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
     assert_eq!(
         t.geometry(id).unwrap(),
         Rectangle::from_size(Size::from((1920., 1080.)))
@@ -139,9 +179,9 @@ fn one_window_fills_the_view() {
 
 #[test]
 fn two_windows_split_h_halve_the_view() {
-    let mut t = TilingTree::new(Size::from((1920., 1080.)), 0.);
-    let a = t.add_window(TestWindow::new(1), InsertTarget::Focused);
-    let b = t.add_window(TestWindow::new(2), InsertTarget::Focused);
+    let mut t = tree((1920., 1080.), 0.);
+    let a = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let b = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
     assert_eq!(t.geometry(a).unwrap().size.w, 960.);
     assert_eq!(t.geometry(b).unwrap().size.w, 960.);
     t.check_invariants();
@@ -149,10 +189,10 @@ fn two_windows_split_h_halve_the_view() {
 
 #[test]
 fn inserting_a_sibling_subdivides_the_target_share() {
-    let mut t = TilingTree::new(Size::from((1200., 800.)), 0.);
-    let a = t.add_window(TestWindow::new(1), InsertTarget::Focused);
-    let b = t.add_window(TestWindow::new(2), InsertTarget::Focused);
-    let c = t.add_window(TestWindow::new(3), InsertTarget::Focused);
+    let mut t = tree((1200., 800.), 0.);
+    let a = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let b = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    let c = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
 
     assert_eq!(t.geometry(a).unwrap().size.w, 600.);
     assert_eq!(t.geometry(b).unwrap().size.w, 300.);
@@ -162,12 +202,12 @@ fn inserting_a_sibling_subdivides_the_target_share() {
 
 #[test]
 fn removing_a_sibling_collapses_the_implicit_container() {
-    let mut t = TilingTree::new(Size::from((1920., 1080.)), 0.);
-    let a = t.add_window(TestWindow::new(1), InsertTarget::Focused);
-    let b = t.add_window(TestWindow::new(2), InsertTarget::Focused);
+    let mut t = tree((1920., 1080.), 0.);
+    let a = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let b = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
     t.split(b, Layout::SplitV);
-    let c = t.add_window(TestWindow::new(3), InsertTarget::Focused);
-    t.remove_window(c);
+    let c = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+    t.remove_tile_node(c);
     t.check_invariants();
     assert_eq!(t.geometry(b).unwrap().size.w, 960.);
     let _ = a;
@@ -175,9 +215,9 @@ fn removing_a_sibling_collapses_the_implicit_container() {
 
 #[test]
 fn directional_move_reorders_siblings_and_stops_at_tree_edge() {
-    let mut t = TilingTree::new(Size::from((1200., 800.)), 0.);
-    let a = t.add_window(TestWindow::new(1), InsertTarget::Focused);
-    let b = t.add_window(TestWindow::new(2), InsertTarget::Focused);
+    let mut t = tree((1200., 800.), 0.);
+    let a = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let b = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
 
     assert!(t.move_direction(b, Direction::Left));
     assert_eq!(t.geometry(b).unwrap().loc.x, 0.);
@@ -188,11 +228,11 @@ fn directional_move_reorders_siblings_and_stops_at_tree_edge() {
 
 #[test]
 fn directional_move_crosses_and_collapses_containers() {
-    let mut t = TilingTree::new(Size::from((1200., 800.)), 0.);
-    let a = t.add_window(TestWindow::new(1), InsertTarget::Focused);
-    let b = t.add_window(TestWindow::new(2), InsertTarget::Focused);
+    let mut t = tree((1200., 800.), 0.);
+    let a = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let b = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
     t.split(b, Layout::SplitV);
-    let c = t.add_window(TestWindow::new(3), InsertTarget::Focused);
+    let c = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
 
     assert!(t.move_direction(c, Direction::Left));
     assert_eq!(t.geometry(c).unwrap().loc.x, 0.);
@@ -203,11 +243,11 @@ fn directional_move_crosses_and_collapses_containers() {
 
 #[test]
 fn directional_move_creates_an_implicit_container() {
-    let mut t = TilingTree::new(Size::from((1200., 800.)), 0.);
-    let a = t.add_window(TestWindow::new(1), InsertTarget::Focused);
+    let mut t = tree((1200., 800.), 0.);
+    let a = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
     t.split(a, Layout::SplitV);
-    let b = t.add_window(TestWindow::new(2), InsertTarget::Focused);
-    let c = t.add_window(TestWindow::new(3), InsertTarget::Focused);
+    let b = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    let c = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
 
     assert!(t.move_direction(c, Direction::Left));
     assert_eq!(t.geometry(c).unwrap().loc.x, 0.);
@@ -218,10 +258,10 @@ fn directional_move_creates_an_implicit_container() {
 
 #[test]
 fn reordering_a_subtree_preserves_its_share() {
-    let mut t = TilingTree::new(Size::from((1200., 800.)), 0.);
-    let a = t.add_window(TestWindow::new(1), InsertTarget::Focused);
-    let b = t.add_window(TestWindow::new(2), InsertTarget::Focused);
-    let c = t.add_window(TestWindow::new(3), InsertTarget::Focused);
+    let mut t = tree((1200., 800.), 0.);
+    let a = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let b = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    let c = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
 
     assert!(t.move_subtree_to_first(c));
     assert_eq!(t.geometry(c).unwrap().size.w, 300.);
@@ -232,16 +272,151 @@ fn reordering_a_subtree_preserves_its_share() {
 
 #[test]
 fn resizing_adjacent_siblings_changes_only_that_boundary() {
-    let mut t = TilingTree::new(Size::from((1000., 800.)), 0.);
-    let a = t.add_window(TestWindow::new(1), InsertTarget::Focused);
-    let b = t.add_window(TestWindow::new(2), InsertTarget::Focused);
-    let c = t.add_window(TestWindow::new(3), InsertTarget::Focused);
+    let mut t = tree((1000., 800.), 0.);
+    let a = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let b = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    let c = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
 
     assert!(t.resize_adjacent(a, b, 0.1));
     assert_eq!(t.geometry(a).unwrap().size.w, 600.);
     assert_eq!(t.geometry(b).unwrap().size.w, 150.);
     assert_eq!(t.geometry(c).unwrap().size.w, 250.);
     assert!(!t.resize_adjacent(a, b, 0.6));
+    t.check_invariants();
+}
+
+#[test]
+fn fullscreen_and_maximize_survive_tree_mutations() {
+    let mut t = tree((1920., 1080.), 0.);
+    let first_window = TestWindow::new(1);
+    let first_state = first_window.clone();
+    let first = t.add_tile(
+        Tile::new(
+            first_window,
+            t.view_size(),
+            1.,
+            Clock::with_time(Duration::ZERO),
+            Rc::new(Options::default()),
+        ),
+        InsertTarget::Focused,
+    );
+    let second = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+
+    assert!(t.set_fullscreen(&1, true));
+    assert_eq!(first_state.0.requested_mode.get(), SizingMode::Fullscreen);
+    assert!(first_state.0.received_transaction.get());
+    assert!(t.move_direction(first, Direction::Right));
+    assert!(t.is_active_pending_fullscreen());
+    assert_eq!(first_state.0.requested_mode.get(), SizingMode::Fullscreen);
+
+    assert!(t.set_fullscreen(&1, false));
+    assert!(t.set_maximized(&1, true));
+    assert_eq!(first_state.0.requested_mode.get(), SizingMode::Maximized);
+    assert!(t.move_subtree_to_first(first));
+    assert_eq!(first_state.0.requested_mode.get(), SizingMode::Maximized);
+    assert!(t.geometry(second).is_some());
+    t.check_invariants();
+}
+
+#[test]
+fn interactive_resize_uses_the_adjacent_sibling_boundary() {
+    let mut t = tree((1000., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let second = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+
+    assert!(t.interactive_resize_begin(1, crate::utils::ResizeEdge::RIGHT));
+    assert!(t.interactive_resize_update(&1, Point::from((100., 0.))));
+    assert_eq!(t.geometry(first).unwrap().size.w, 600.);
+    assert_eq!(t.geometry(second).unwrap().size.w, 400.);
+    t.refresh(true, true);
+    assert_eq!(
+        t.windows()
+            .find(|(_, window)| window.id() == &1)
+            .unwrap()
+            .1
+             .0
+            .interactive_resize
+            .get()
+            .unwrap()
+            .edges,
+        crate::utils::ResizeEdge::RIGHT
+    );
+    t.interactive_resize_end(Some(&1));
+    t.refresh(true, true);
+    assert!(t
+        .windows()
+        .find(|(_, window)| window.id() == &1)
+        .unwrap()
+        .1
+         .0
+        .interactive_resize
+        .get()
+        .is_none());
+    t.check_invariants();
+}
+
+#[test]
+fn interactive_resize_finds_an_adjacent_ancestor_sibling() {
+    let mut t = tree((1000., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let second = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.set_focus(first);
+    t.split(first, Layout::SplitV);
+    let third = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+
+    assert!(t.interactive_resize_begin(3, crate::utils::ResizeEdge::RIGHT));
+    assert!(t.interactive_resize_update(&3, Point::from((100., 0.))));
+    assert_eq!(t.geometry(first).unwrap().size.w, 600.);
+    assert_eq!(t.geometry(third).unwrap().size.w, 600.);
+    assert_eq!(t.geometry(second).unwrap().size.w, 400.);
+    t.interactive_resize_end(None);
+    t.check_invariants();
+}
+
+#[test]
+fn refresh_dispatches_pending_configures() {
+    let mut t = tree((800., 600.), 0.);
+    let window = TestWindow::new(1);
+    let state = window.clone();
+    t.add_tile(
+        Tile::new(
+            window,
+            t.view_size(),
+            1.,
+            Clock::with_time(Duration::ZERO),
+            Rc::new(Options::default()),
+        ),
+        InsertTarget::Focused,
+    );
+
+    t.refresh(true, true);
+    assert_eq!(state.0.configure_count.get(), 1);
+}
+
+#[test]
+fn removing_a_tile_resizes_survivors_in_one_transaction() {
+    let mut t = tree((1000., 800.), 0.);
+    let first = TestWindow::new(1);
+    let first_state = first.clone();
+    t.add_tile(
+        Tile::new(
+            first,
+            t.view_size(),
+            1.,
+            Clock::with_time(Duration::ZERO),
+            Rc::new(Options::default()),
+        ),
+        InsertTarget::Focused,
+    );
+    t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    first_state.0.received_transaction.set(false);
+
+    assert!(t.remove_tile(&2, Transaction::new()).is_some());
+    assert_eq!(
+        first_state.0.requested_size.get(),
+        Some(Size::from((1000, 800)))
+    );
+    assert!(first_state.0.received_transaction.get());
     t.check_invariants();
 }
 
@@ -257,6 +432,9 @@ enum Op {
     ReorderIndex(usize, usize),
     ReorderLast(usize),
     Resize(usize, usize, f64),
+    Fullscreen(usize, bool),
+    Maximize(usize, bool),
+    ResizeSession(usize, Direction, f64),
 }
 
 fn layout_strategy() -> impl Strategy<Value = Layout> {
@@ -290,6 +468,10 @@ fn op_strategy() -> impl Strategy<Value = Op> {
         (0..32usize).prop_map(Op::ReorderLast),
         (0..32usize, 0..32usize, -0.9f64..0.9)
             .prop_map(|(first, second, delta)| Op::Resize(first, second, delta)),
+        (0..32usize, any::<bool>()).prop_map(|(id, value)| Op::Fullscreen(id, value)),
+        (0..32usize, any::<bool>()).prop_map(|(id, value)| Op::Maximize(id, value)),
+        (0..32usize, direction_strategy(), -1000f64..1000.)
+            .prop_map(|(id, direction, delta)| Op::ResizeSession(id, direction, delta)),
     ]
 }
 
@@ -305,19 +487,19 @@ proptest! {
 
     #[test]
     fn random_operations_preserve_invariants(ops in prop::collection::vec(op_strategy(), 0..100)) {
-        let mut tree = TilingTree::new(Size::from((1920., 1080.)), 8.);
+        let mut tree = tree((1920., 1080.), 8.);
         let mut ids = Vec::new();
         let mut next_window = 0;
         for op in ops {
             match op {
                 Op::Add => {
-                    ids.push(tree.add_window(TestWindow::new(next_window), InsertTarget::Focused));
+                    ids.push(tree.add_tile(tile(next_window, tree.view_size()), InsertTarget::Focused));
                     next_window += 1;
                 }
                 Op::Remove(index) => {
                     if !ids.is_empty() {
                         let id = ids.remove(index % ids.len());
-                        tree.remove_window(id);
+                        tree.remove_tile_node(id);
                     }
                 }
                 Op::Split(index, layout) => {
@@ -343,6 +525,35 @@ proptest! {
                 Op::Resize(first, second, delta) => {
                     if !ids.is_empty() {
                         tree.resize_adjacent(ids[first % ids.len()], ids[second % ids.len()], delta);
+                    }
+                }
+                Op::Fullscreen(index, value) => {
+                    if !ids.is_empty() {
+                        let window = tree.windows().find(|(id, _)| *id == ids[index % ids.len()]).map(|(_, window)| *window.id());
+                        if let Some(window) = window { tree.set_fullscreen(&window, value); }
+                    }
+                }
+                Op::Maximize(index, value) => {
+                    if !ids.is_empty() {
+                        let window = tree.windows().find(|(id, _)| *id == ids[index % ids.len()]).map(|(_, window)| *window.id());
+                        if let Some(window) = window { tree.set_maximized(&window, value); }
+                    }
+                }
+                Op::ResizeSession(index, direction, delta) => {
+                    if !ids.is_empty() {
+                        let window = tree.windows().find(|(id, _)| *id == ids[index % ids.len()]).map(|(_, window)| *window.id());
+                        if let Some(window) = window {
+                            let edge = match direction {
+                                Direction::Left => crate::utils::ResizeEdge::LEFT,
+                                Direction::Right => crate::utils::ResizeEdge::RIGHT,
+                                Direction::Up => crate::utils::ResizeEdge::TOP,
+                                Direction::Down => crate::utils::ResizeEdge::BOTTOM,
+                            };
+                            if tree.interactive_resize_begin(window, edge) {
+                                tree.interactive_resize_update(&window, Point::from((delta, delta)));
+                                tree.interactive_resize_end(Some(&window));
+                            }
+                        }
                     }
                 }
             }
