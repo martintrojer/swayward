@@ -43,6 +43,11 @@ impl Winit {
     ) -> Result<Self, winit::Error> {
         let _span = tracy_client::span!("Winit::new");
 
+        // Mesa's Wayland EGL swap waits for a host frame callback. That wait blocks the
+        // compositor event loop, which is also responsible for dispatching the callback.
+        // Disable swap throttling for the nested backend to avoid this self-deadlock.
+        std::env::set_var("vblank_mode", "0");
+
         let builder = WindowAttributes::default()
             .with_surface_size(LogicalSize::new(1280.0, 800.0))
             // .with_resizable(false)

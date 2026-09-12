@@ -1,6 +1,11 @@
 use std::collections::BTreeSet;
+use std::ffi::OsStr;
+use std::io::{Read as _, Write as _};
+use std::os::unix::net::UnixStream;
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
+use swayward_ipc::MessageType;
 
 use super::*;
 use crate::ipc::tree::{describe_outputs, describe_tree, describe_workspaces};
@@ -221,6 +226,67 @@ fn nested_fixture_tree() -> Value {
         "../../tests/fixtures/sway/nested_h_in_v.tree.json"
     ))
     .unwrap()
+}
+
+fn read_ipc_reply(fixture: &mut Fixture, stream: &mut UnixStream) -> (u32, String) {
+    stream.set_nonblocking(true).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(1);
+    let mut response = Vec::new();
+    loop {
+        fixture.dispatch();
+        let mut buf = [0; 4096];
+        match stream.read(&mut buf) {
+            Ok(0) => panic!("IPC connection closed before a reply"),
+            Ok(len) => response.extend_from_slice(&buf[..len]),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
+            Err(error) => panic!("error reading IPC reply: {error}"),
+        }
+        if response.len() >= crate::ipc::wire::HEADER_SIZE {
+            let payload_len = u32::from_ne_bytes(response[6..10].try_into().unwrap()) as usize;
+            if response.len() >= crate::ipc::wire::HEADER_SIZE + payload_len {
+                let msg_type = u32::from_ne_bytes(response[10..14].try_into().unwrap());
+                let payload = String::from_utf8(
+                    response[crate::ipc::wire::HEADER_SIZE..][..payload_len].to_vec(),
+                )
+                .unwrap();
+                return (msg_type, payload);
+            }
+        }
+        assert!(Instant::now() < deadline, "timed out waiting for IPC reply");
+    }
+}
+
+#[test]
+fn event_subscription_does_not_block_a_concurrent_query() {
+    let mut fixture = Fixture::new();
+    let handle = fixture.swayward().event_loop.clone();
+    let ipc_server =
+        crate::ipc::server::IpcServer::start(&handle, Some(OsStr::new("test"))).unwrap();
+    let socket = ipc_server.socket_path.clone().unwrap();
+    fixture.swayward().ipc_server = Some(ipc_server);
+    fixture.niri_state().ipc_keyboard_layouts_changed();
+    let mut subscriber = UnixStream::connect(&socket).unwrap();
+    let mut query = UnixStream::connect(&socket).unwrap();
+    subscriber
+        .write_all(&crate::ipc::wire::encode(
+            MessageType::Subscribe,
+            r#"["workspace"]"#,
+        ))
+        .unwrap();
+    query
+        .write_all(&crate::ipc::wire::encode(MessageType::GetVersion, ""))
+        .unwrap();
+
+    let (msg_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
+    assert_eq!(msg_type, MessageType::Subscribe as u32);
+    assert_eq!(payload, r#"{"success": true}"#);
+
+    let (msg_type, payload) = read_ipc_reply(&mut fixture, &mut query);
+    assert_eq!(msg_type, MessageType::GetVersion as u32);
+    assert_eq!(
+        serde_json::from_str::<Value>(&payload).unwrap()["variant"],
+        "swayward"
+    );
 }
 
 fn json_type(value: &Value) -> &'static str {
