@@ -851,25 +851,39 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub fn consume_or_expel_window_left(&mut self, window: Option<&W::Id>) {
-        if let Some(window) = window {
-            self.activate_window(window);
+        let id = window
+            .and_then(|window| self.node_for_window(window))
+            .or(self.focus);
+        if let Some(id) = id {
+            self.focus = Some(id);
+            if !self.expel(id, false) {
+                self.consume(id, false);
+            }
         }
-        self.move_left();
     }
 
     pub fn consume_or_expel_window_right(&mut self, window: Option<&W::Id>) {
-        if let Some(window) = window {
-            self.activate_window(window);
+        let id = window
+            .and_then(|window| self.node_for_window(window))
+            .or(self.focus);
+        if let Some(id) = id {
+            self.focus = Some(id);
+            if !self.expel(id, true) {
+                self.consume(id, true);
+            }
         }
-        self.move_right();
     }
 
     pub fn consume_into_column(&mut self) {
-        self.move_left();
+        if let Some(id) = self.focus {
+            self.consume(id, true);
+        }
     }
 
     pub fn expel_from_column(&mut self) {
-        self.move_right();
+        if let Some(id) = self.focus {
+            self.expel(id, true);
+        }
     }
 
     pub fn swap_window_in_direction(&mut self, direction: ScrollDirection) {
@@ -1525,6 +1539,97 @@ impl<W: LayoutElement> TilingTree<W> {
         self.next_id += 1;
         self.nodes.insert(id, node);
         id
+    }
+
+    fn consume(&mut self, id: NodeId, right: bool) -> bool {
+        let Some(parent) = self.nodes.get(&id).and_then(|node| node.parent) else {
+            return false;
+        };
+        let Some(index) = self.child_index(parent, id) else {
+            return false;
+        };
+        let sibling_index = if right {
+            index + 1
+        } else {
+            let Some(index) = index.checked_sub(1) else {
+                return false;
+            };
+            index
+        };
+        let Some(sibling) = (match &self.nodes.get(&parent).map(|node| &node.value) {
+            Some(TreeNode::Split { children, .. }) => children.get(sibling_index),
+            _ => None,
+        })
+        .copied() else {
+            return false;
+        };
+
+        let old = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
+        if self.split_len(parent) == Some(2) {
+            let TreeNode::Split {
+                layout, children, ..
+            } = &mut self.nodes.get_mut(&parent).unwrap().value
+            else {
+                return false;
+            };
+            *layout = Layout::SplitV;
+            *children = if right {
+                vec![sibling, id]
+            } else {
+                vec![id, sibling]
+            };
+            self.animate_geometry_changes(old, None);
+            self.request_window_sizes();
+            return true;
+        }
+
+        self.remove_child(parent, id);
+        let wrapper = self.alloc(Node {
+            parent: Some(parent),
+            value: TreeNode::Split {
+                layout: Layout::SplitV,
+                children: if right {
+                    vec![sibling, id]
+                } else {
+                    vec![id, sibling]
+                },
+                percents: vec![0.5, 0.5],
+            },
+        });
+        if let Some(Node {
+            value: TreeNode::Split { children, .. },
+            ..
+        }) = self.nodes.get_mut(&parent)
+        {
+            if let Some(index) = children.iter().position(|child| *child == sibling) {
+                children[index] = wrapper;
+            }
+        }
+        self.nodes.get_mut(&sibling).unwrap().parent = Some(wrapper);
+        self.nodes.get_mut(&id).unwrap().parent = Some(wrapper);
+        self.animate_geometry_changes(old, None);
+        self.request_window_sizes();
+        true
+    }
+
+    fn expel(&mut self, id: NodeId, after: bool) -> bool {
+        let Some(parent) = self.nodes.get(&id).and_then(|node| node.parent) else {
+            return false;
+        };
+        let Some(grandparent) = self.nodes.get(&parent).and_then(|node| node.parent) else {
+            return false;
+        };
+        let old = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
+        let Some(parent_index) = self.child_index(grandparent, parent) else {
+            return false;
+        };
+        self.remove_child(parent, id);
+        let index = parent_index + usize::from(after);
+        self.insert_existing_child(grandparent, id, index, parent);
+        self.collapse_from(parent);
+        self.animate_geometry_changes(old, None);
+        self.request_window_sizes();
+        true
     }
 
     fn insert_child(&mut self, parent: NodeId, child: NodeId, after: Option<NodeId>) {

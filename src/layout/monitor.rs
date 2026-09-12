@@ -130,6 +130,7 @@ pub struct WorkspaceSwitchGesture {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum InsertPosition {
     NewColumn(usize),
+    #[allow(dead_code)]
     InColumn(usize, usize),
     Floating,
 }

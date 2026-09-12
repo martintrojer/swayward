@@ -81,6 +81,7 @@ pub mod focus_ring;
 pub mod insert_hint_element;
 pub mod monitor;
 pub mod opening_window;
+#[allow(dead_code)]
 pub mod scrolling;
 pub mod shadow;
 pub mod tab_indicator;

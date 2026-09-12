@@ -86,6 +86,13 @@ impl Layout {
         }
     }
 
+    pub fn tiling_tree(args: Args) -> Self {
+        let mut rv = Self::new(args);
+        rv.add_window(TestWindow::freeform(0), None);
+        rv.add_window(TestWindow::freeform(1), None);
+        rv
+    }
+
     pub fn open_in_between(args: Args) -> Self {
         let mut rv = Self::new(args);
 

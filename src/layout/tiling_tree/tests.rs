@@ -257,6 +257,30 @@ fn directional_move_creates_an_implicit_container() {
 }
 
 #[test]
+fn consume_wraps_siblings_and_expel_lifts_the_window() {
+    let mut t = tree((1200., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let second = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    let third = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+
+    assert!(t.consume(second, true));
+    let parent = t.nodes.get(&second).unwrap().parent.unwrap();
+    assert_eq!(t.nodes.get(&third).unwrap().parent, Some(parent));
+    assert_ne!(parent, t.root);
+    assert_eq!(
+        t.geometry(second).unwrap().loc.x,
+        t.geometry(third).unwrap().loc.x
+    );
+    assert!(t.geometry(second).unwrap().loc.y > t.geometry(third).unwrap().loc.y);
+
+    assert!(t.expel(second, true));
+    assert_eq!(t.nodes.get(&second).unwrap().parent, Some(t.root));
+    assert!(t.geometry(second).unwrap().loc.x > t.geometry(third).unwrap().loc.x);
+    assert!(t.geometry(first).is_some());
+    t.check_invariants();
+}
+
+#[test]
 fn reordering_a_subtree_preserves_its_share() {
     let mut t = tree((1200., 800.), 0.);
     let a = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
@@ -565,6 +589,8 @@ enum Op {
     Fullscreen(usize, bool),
     Maximize(usize, bool),
     ResizeSession(usize, Direction, f64),
+    Consume(usize, bool),
+    Expel(usize, bool),
 }
 
 fn layout_strategy() -> impl Strategy<Value = Layout> {
@@ -602,6 +628,8 @@ fn op_strategy() -> impl Strategy<Value = Op> {
         (0..32usize, any::<bool>()).prop_map(|(id, value)| Op::Maximize(id, value)),
         (0..32usize, direction_strategy(), -1000f64..1000.)
             .prop_map(|(id, direction, delta)| Op::ResizeSession(id, direction, delta)),
+        (0..32usize, any::<bool>()).prop_map(|(id, right)| Op::Consume(id, right)),
+        (0..32usize, any::<bool>()).prop_map(|(id, right)| Op::Expel(id, right)),
     ]
 }
 
@@ -685,6 +713,12 @@ proptest! {
                             }
                         }
                     }
+                }
+                Op::Consume(index, right) => {
+                    if !ids.is_empty() { tree.consume(ids[index % ids.len()], right); }
+                }
+                Op::Expel(index, right) => {
+                    if !ids.is_empty() { tree.expel(ids[index % ids.len()], right); }
                 }
             }
             sync_ids(&tree, &mut ids);
