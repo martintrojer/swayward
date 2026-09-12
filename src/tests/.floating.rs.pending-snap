@@ -1,0 +1,86 @@
+{"run_id":"1789226041-785299989","line":845,"new":{"module_name":"swayward__tests__floating","snapshot_name":"floating_doesnt_store_fullscreen_size-2","metadata":{"source":"src/tests/floating.rs","assertion_line":845,"expression":"f.client(id).window(&surface).format_recent_configures()"},"snapshot":"size: 1888 × 1048, bounds: 1888 × 1048, states: [Activated]"},"old":{"module_name":"swayward__tests__floating","metadata":{},"snapshot":"size: 1920 × 1048, bounds: 1888 × 1048, states: [Activated]"}}
+{"run_id":"1789226041-785299989","line":410,"new":{"module_name":"swayward__tests__floating","snapshot_name":"moving_to_floating_doesnt_cancel_resize","metadata":{"source":"src/tests/floating.rs","assertion_line":410,"expression":"f.client(id).window(&surface).format_recent_configures()"},"snapshot":""},"old":{"module_name":"swayward__tests__floating","metadata":{},"snapshot":"size: 500 × 1048, bounds: 1888 × 1048, states: [Activated]"}}
+{"run_id":"1789226041-785299989","line":905,"new":{"module_name":"swayward__tests__floating","snapshot_name":"floating_doesnt_store_maximized_size-2","metadata":{"source":"src/tests/floating.rs","assertion_line":905,"expression":"f.client(id).window(&surface).format_recent_configures()"},"snapshot":"size: 1888 × 1048, bounds: 1888 × 1048, states: [Activated]"},"old":{"module_name":"swayward__tests__floating","metadata":{},"snapshot":"size: 1920 × 1048, bounds: 1888 × 1048, states: [Activated]"}}
+{"run_id":"1789226041-785299989","line":316,"new":{"module_name":"swayward__tests__floating","snapshot_name":"restore_floating_size","metadata":{"source":"src/tests/floating.rs","assertion_line":316,"expression":"f.client(id).window(&surface).format_recent_configures()"},"snapshot":"size: 1888 × 1048, bounds: 1888 × 1048, states: [Activated]"},"old":{"module_name":"swayward__tests__floating","metadata":{},"snapshot":"size: 200 × 1048, bounds: 1888 × 1048, states: [Activated]"}}
+{"run_id":"1789226041-785299989","line":1327,"new":{"module_name":"swayward__tests__floating","snapshot_name":"repeated_size_request","metadata":{"source":"src/tests/floating.rs","assertion_line":1327,"expression":"f.client(id).window(&surface).format_recent_configures()"},"snapshot":"size: 1888 × 1048, bounds: 1920 × 1080, states: [Activated]"},"old":{"module_name":"swayward__tests__floating","metadata":{},"snapshot":"size: 936 × 1048, bounds: 1920 × 1080, states: [Activated]"}}
+{"run_id":"1789226041-785299989","line":752,"new":{"module_name":"swayward__tests__floating","snapshot_name":"interactive_move_restores_floating_size_when_set_to_floating","metadata":{"source":"src/tests/floating.rs","assertion_line":752,"expression":"f.client(id).window(&surface).format_recent_configures()"},"snapshot":"size: 1888 × 1048, bounds: 1888 × 1048, states: [Activated]"},"old":{"module_name":"swayward__tests__floating","metadata":{},"snapshot":"size: 200 × 1048, bounds: 1888 × 1048, states: [Activated]"}}
+{"run_id":"1789226041-785299989","line":57,"new":null,"old":null}
+{"run_id":"1789226041-785299989","line":167,"new":null,"old":null}
+{"run_id":"1789226041-785299989","line":681,"new":null,"old":null}
+{"run_id":"1789226041-785299989","line":1073,"new":null,"old":null}
+{"run_id":"1789226041-785299989","line":75,"new":null,"old":null}
+{"run_id":"1789226041-785299989","line":694,"new":null,"old":null}
+{"run_id":"1789226041-785299989","line":1083,"new":null,"old":null}
+{"run_id":"1789226041-785299989","line":708,"new":null,"old":null}
+{"run_id":"1789226041-785299989","line":726,"new":null,"old":null}
+{"run_id":"1789226041-785299989","line":1257,"new":null,"old":null}
+{"run_id":"1789226041-785299989","line":1267,"new":null,"old":null}
+{"run_id":"1789226041-785299989","line":1111,"new":null,"old":null}
+{"run_id":"1789226041-785299989","line":1121,"new":null,"old":null}
+{"run_id":"1789226041-785299989","line":1152,"new":null,"old":null}
+{"run_id":"1789226041-785299989","line":1162,"new":null,"old":null}
+{"run_id":"1789226041-785299989","line":1018,"new":{"module_name":"swayward__tests__floating","snapshot_name":"unfullscreen_to_floating_doesnt_send_extra_configure","metadata":{"source":"src/tests/floating.rs","assertion_line":1018,"expression":"f.client(id).window(&surface).format_recent_configures()"},"snapshot":"size: 1888 × 1048, bounds: 1920 × 1080, states: [Activated]"},"old":{"module_name":"swayward__tests__floating","metadata":{},"snapshot":"size: 936 × 1048, bounds: 1920 × 1080, states: [Activated]"}}
+{"run_id":"1789226041-785299989","line":1193,"new":null,"old":null}
+{"run_id":"1789226041-785299989","line":1045,"new":{"module_name":"swayward__tests__floating","snapshot_name":"unmaximize_to_floating_doesnt_send_extra_configure","metadata":{"source":"src/tests/floating.rs","assertion_line":1045,"expression":"f.client(id).window(&surface).format_recent_configures()"},"snapshot":"size: 1888 × 1048, bounds: 1920 × 1080, states: [Activated]"},"old":{"module_name":"swayward__tests__floating","metadata":{},"snapshot":"size: 936 × 1048, bounds: 1920 × 1080, states: [Activated]"}}
+{"run_id":"1789226041-785299989","line":1301,"new":null,"old":null}
+{"run_id":"1789226041-785299989","line":1203,"new":null,"old":null}
+{"run_id":"1789226041-785299989","line":1311,"new":null,"old":null}
+{"run_id":"1789226041-785299989","line":1213,"new":null,"old":null}
+{"run_id":"1789226041-785299989","line":1223,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":894,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":834,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":97,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":949,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":228,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":195,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":255,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":361,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":448,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":558,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":608,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":106,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":498,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":272,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":570,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":374,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":625,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":470,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":520,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":119,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":580,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":639,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":974,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":290,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":130,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":392,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":656,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":139,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":410,"new":{"module_name":"swayward__tests__floating","snapshot_name":"moving_to_floating_doesnt_cancel_resize","metadata":{"source":"src/tests/floating.rs","assertion_line":410,"expression":"f.client(id).window(&surface).format_recent_configures()"},"snapshot":""},"old":{"module_name":"swayward__tests__floating","metadata":{},"snapshot":"size: 500 × 1048, bounds: 1888 × 1048, states: [Activated]"}}
+{"run_id":"1789226216-987036805","line":1327,"new":{"module_name":"swayward__tests__floating","snapshot_name":"repeated_size_request","metadata":{"source":"src/tests/floating.rs","assertion_line":1327,"expression":"f.client(id).window(&surface).format_recent_configures()"},"snapshot":"size: 1888 × 1048, bounds: 1920 × 1080, states: [Activated]"},"old":{"module_name":"swayward__tests__floating","metadata":{},"snapshot":"size: 936 × 1048, bounds: 1920 × 1080, states: [Activated]"}}
+{"run_id":"1789226216-987036805","line":316,"new":{"module_name":"swayward__tests__floating","snapshot_name":"restore_floating_size","metadata":{"source":"src/tests/floating.rs","assertion_line":316,"expression":"f.client(id).window(&surface).format_recent_configures()"},"snapshot":"size: 1888 × 1048, bounds: 1888 × 1048, states: [Activated]"},"old":{"module_name":"swayward__tests__floating","metadata":{},"snapshot":"size: 200 × 1048, bounds: 1888 × 1048, states: [Activated]"}}
+{"run_id":"1789226216-987036805","line":905,"new":{"module_name":"swayward__tests__floating","snapshot_name":"floating_doesnt_store_maximized_size-2","metadata":{"source":"src/tests/floating.rs","assertion_line":905,"expression":"f.client(id).window(&surface).format_recent_configures()"},"snapshot":"size: 1888 × 1048, bounds: 1888 × 1048, states: [Activated]"},"old":{"module_name":"swayward__tests__floating","metadata":{},"snapshot":"size: 1920 × 1048, bounds: 1888 × 1048, states: [Activated]"}}
+{"run_id":"1789226216-987036805","line":845,"new":{"module_name":"swayward__tests__floating","snapshot_name":"floating_doesnt_store_fullscreen_size-2","metadata":{"source":"src/tests/floating.rs","assertion_line":845,"expression":"f.client(id).window(&surface).format_recent_configures()"},"snapshot":"size: 1888 × 1048, bounds: 1888 × 1048, states: [Activated]"},"old":{"module_name":"swayward__tests__floating","metadata":{},"snapshot":"size: 1920 × 1048, bounds: 1888 × 1048, states: [Activated]"}}
+{"run_id":"1789226216-987036805","line":752,"new":{"module_name":"swayward__tests__floating","snapshot_name":"interactive_move_restores_floating_size_when_set_to_floating","metadata":{"source":"src/tests/floating.rs","assertion_line":752,"expression":"f.client(id).window(&surface).format_recent_configures()"},"snapshot":"size: 1888 × 1048, bounds: 1888 × 1048, states: [Activated]"},"old":{"module_name":"swayward__tests__floating","metadata":{},"snapshot":"size: 200 × 1048, bounds: 1888 × 1048, states: [Activated]"}}
+{"run_id":"1789226216-987036805","line":57,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":167,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":75,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":1257,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":1073,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":1267,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":1083,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":681,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":694,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":1152,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":708,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":1162,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":726,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":1111,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":1121,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":1018,"new":{"module_name":"swayward__tests__floating","snapshot_name":"unfullscreen_to_floating_doesnt_send_extra_configure","metadata":{"source":"src/tests/floating.rs","assertion_line":1018,"expression":"f.client(id).window(&surface).format_recent_configures()"},"snapshot":"size: 1888 × 1048, bounds: 1920 × 1080, states: [Activated]"},"old":{"module_name":"swayward__tests__floating","metadata":{},"snapshot":"size: 936 × 1048, bounds: 1920 × 1080, states: [Activated]"}}
+{"run_id":"1789226216-987036805","line":1301,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":1045,"new":{"module_name":"swayward__tests__floating","snapshot_name":"unmaximize_to_floating_doesnt_send_extra_configure","metadata":{"source":"src/tests/floating.rs","assertion_line":1045,"expression":"f.client(id).window(&surface).format_recent_configures()"},"snapshot":"size: 1888 × 1048, bounds: 1920 × 1080, states: [Activated]"},"old":{"module_name":"swayward__tests__floating","metadata":{},"snapshot":"size: 936 × 1048, bounds: 1920 × 1080, states: [Activated]"}}
+{"run_id":"1789226216-987036805","line":1311,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":1193,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":1203,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":1213,"new":null,"old":null}
+{"run_id":"1789226216-987036805","line":1223,"new":null,"old":null}

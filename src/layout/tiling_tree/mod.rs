@@ -2,7 +2,11 @@ mod geometry;
 mod node;
 
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
+use std::time::Duration;
 
+use node::Node;
+pub use node::{NodeId, TreeNode};
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::utils::{Logical, Point, Rectangle, Scale, Serial, Size};
 use swayward_config::utils::MergeWith as _;
@@ -22,11 +26,6 @@ use crate::swayward_render_elements;
 use crate::utils::transaction::{Transaction, TransactionBlocker};
 use crate::utils::ResizeEdge;
 use crate::window::ResolvedWindowRules;
-use std::rc::Rc;
-use std::time::Duration;
-
-use node::Node;
-pub use node::{NodeId, TreeNode};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Layout {
