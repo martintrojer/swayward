@@ -949,6 +949,39 @@ impl<W: LayoutElement> TilingTree<W> {
         self.set_layout(parent, layout);
     }
 
+    pub fn set_focused_layout(&mut self, layout: Layout) {
+        let Some(focus) = self.focus else { return };
+        let target = self
+            .nodes
+            .get(&focus)
+            .and_then(|node| node.parent)
+            .unwrap_or(focus);
+        self.set_layout(target, layout);
+    }
+
+    pub fn split_focused(&mut self, layout: Layout) {
+        if let Some(focus) = self.focus {
+            self.split(focus, layout);
+        }
+    }
+
+    pub fn toggle_focused_split(&mut self) {
+        let Some(focus) = self.focus else { return };
+        let target = self
+            .nodes
+            .get(&focus)
+            .and_then(|node| node.parent)
+            .unwrap_or(focus);
+        let layout = match self.nodes.get(&target).map(|node| &node.value) {
+            Some(TreeNode::Split {
+                layout: Layout::SplitH,
+                ..
+            }) => Layout::SplitV,
+            _ => Layout::SplitH,
+        };
+        self.set_layout(target, layout);
+    }
+
     pub fn set_column_display(&mut self, display: ColumnDisplay) {
         let Some(parent) = self.focus.and_then(|id| self.nodes.get(&id)?.parent) else {
             return;

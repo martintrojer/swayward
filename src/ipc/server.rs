@@ -12,12 +12,15 @@ use calloop::io::Async;
 use directories::BaseDirs;
 use futures_util::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use futures_util::{select_biased, AsyncWrite, FutureExt as _};
+use smithay::reexports::calloop::channel::{self, Event as ChannelEvent};
 use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::{Interest, LoopHandle, Mode, PostAction};
 use smithay::reexports::rustix::fs::unlink;
 use swayward_ipc::legacy::{Event, Workspace};
 use swayward_ipc::state::{EventStreamState, EventStreamStatePart as _};
-use swayward_ipc::{KeyboardLayouts, MessageType, Timestamp, Version, WindowLayout};
+use swayward_ipc::{
+    CommandOutcome, KeyboardLayouts, MessageType, Timestamp, Version, WindowLayout,
+};
 
 use crate::ipc::tree::{describe_outputs, describe_tree, describe_workspaces};
 use crate::ipc::wire::{decode_header, encode, CLOSE_SENTINEL, HEADER_SIZE};
@@ -35,6 +38,7 @@ pub struct IpcServer {
     event_streams: Rc<RefCell<Vec<EventStreamSender>>>,
     event_stream_state: Rc<RefCell<EventStreamState>>,
     query_state: Rc<RefCell<QueryState>>,
+    commands: channel::Sender<CommandRequest>,
 }
 
 #[derive(Default)]
@@ -57,11 +61,17 @@ struct EventStreamClient {
 struct ClientCtx {
     query_state: Rc<RefCell<QueryState>>,
     event_streams: Rc<RefCell<Vec<EventStreamSender>>>,
+    commands: channel::Sender<CommandRequest>,
 }
 
 struct EventStreamSender {
     events: Sender<Event>,
     disconnect: Sender<()>,
+}
+
+struct CommandRequest {
+    input: String,
+    reply: Sender<Vec<CommandOutcome>>,
 }
 
 impl IpcServer {
@@ -70,6 +80,16 @@ impl IpcServer {
         wayland_socket_name: Option<&OsStr>,
     ) -> anyhow::Result<Self> {
         let _span = tracy_client::span!("Ipc::start");
+
+        let (commands, command_rx) = channel::channel::<CommandRequest>();
+        event_loop
+            .insert_source(command_rx, |event, _, state| {
+                if let ChannelEvent::Msg(request) = event {
+                    let outcome = crate::command::execute(state, &request.input);
+                    let _ = request.reply.send_blocking(outcome);
+                }
+            })
+            .map_err(|error| anyhow::anyhow!(error.error))?;
 
         let socket_path = if wayland_socket_name.is_some() {
             let socket_name = format!("swayward-ipc.{}.sock", process::id());
@@ -101,6 +121,7 @@ impl IpcServer {
             event_streams: Rc::new(RefCell::new(Vec::new())),
             event_stream_state: Rc::new(RefCell::new(EventStreamState::default())),
             query_state: Rc::new(RefCell::new(QueryState::default())),
+            commands,
         })
     }
 
@@ -160,6 +181,7 @@ fn on_new_ipc_client(state: &mut State, stream: UnixStream) {
     let ctx = ClientCtx {
         query_state: server.query_state.clone(),
         event_streams: server.event_streams.clone(),
+        commands: server.commands.clone(),
     };
     let future = async move {
         if let Err(err) = handle_client(ctx, stream).await {
@@ -242,7 +264,7 @@ async fn handle_client(ctx: ClientCtx, stream: Async<'static, UnixStream>) -> an
             .await;
         }
 
-        let reply = dispatch(&ctx, msg_type);
+        let reply = dispatch(&ctx, msg_type, &payload).await;
         write
             .write_all(&encode(msg_type, &reply))
             .await
@@ -250,7 +272,7 @@ async fn handle_client(ctx: ClientCtx, stream: Async<'static, UnixStream>) -> an
     }
 }
 
-fn dispatch(ctx: &ClientCtx, msg_type: MessageType) -> String {
+async fn dispatch(ctx: &ClientCtx, msg_type: MessageType, payload: &[u8]) -> String {
     match msg_type {
         MessageType::GetVersion => serde_json::to_string(&Version {
             human_readable: version(),
@@ -265,11 +287,41 @@ fn dispatch(ctx: &ClientCtx, msg_type: MessageType) -> String {
         MessageType::GetWorkspaces => ctx.query_state.borrow().workspaces.clone(),
         MessageType::GetOutputs => ctx.query_state.borrow().outputs.clone(),
         MessageType::RunCommand => {
-            r#"[{"success":false,"error":"command not implemented"}]"#.into()
+            let input = match String::from_utf8(payload.to_vec()) {
+                Ok(input) => input,
+                Err(_) => {
+                    return serialize_outcomes(&[CommandOutcome {
+                        success: false,
+                        error: Some("command is not valid UTF-8".into()),
+                        parse_error: Some(true),
+                    }]);
+                }
+            };
+            let (reply, receiver) = async_channel::bounded(1);
+            if ctx.commands.send(CommandRequest { input, reply }).is_err() {
+                return serialize_outcomes(&[CommandOutcome {
+                    success: false,
+                    error: Some("command dispatcher is unavailable".into()),
+                    parse_error: None,
+                }]);
+            }
+            match receiver.recv().await {
+                Ok(outcomes) => serialize_outcomes(&outcomes),
+                Err(_) => serialize_outcomes(&[CommandOutcome {
+                    success: false,
+                    error: Some("command dispatcher stopped without replying".into()),
+                    parse_error: None,
+                }]),
+            }
         }
         MessageType::GetBarConfig => "[]".into(),
         _ => r#"{"success":false,"error":"not implemented"}"#.into(),
     }
+}
+
+fn serialize_outcomes(outcomes: &[CommandOutcome]) -> String {
+    serde_json::to_string(outcomes)
+        .unwrap_or_else(|_| r#"[{"success":false,"error":"serialization failed"}]"#.into())
 }
 
 fn find_node<'a>(

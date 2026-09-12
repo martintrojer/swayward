@@ -2263,6 +2263,24 @@ impl<W: LayoutElement> Layout<W> {
         workspace.toggle_column_tabbed_display();
     }
 
+    pub fn set_focused_layout(&mut self, layout: tiling_tree::Layout) {
+        if let Some(workspace) = self.active_workspace_mut() {
+            workspace.set_focused_layout(layout);
+        }
+    }
+
+    pub fn split_focused(&mut self, layout: tiling_tree::Layout) {
+        if let Some(workspace) = self.active_workspace_mut() {
+            workspace.split_focused(layout);
+        }
+    }
+
+    pub fn toggle_focused_split(&mut self) {
+        if let Some(workspace) = self.active_workspace_mut() {
+            workspace.toggle_focused_split();
+        }
+    }
+
     pub fn set_column_display(&mut self, display: ColumnDisplay) {
         let Some(workspace) = self.active_workspace_mut() else {
             return;

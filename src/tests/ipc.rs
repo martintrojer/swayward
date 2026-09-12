@@ -256,8 +256,7 @@ fn read_ipc_reply(fixture: &mut Fixture, stream: &mut UnixStream) -> (u32, Strin
     }
 }
 
-#[test]
-fn event_subscription_does_not_block_a_concurrent_query() {
+fn ipc_fixture() -> (Fixture, std::path::PathBuf) {
     let mut fixture = Fixture::new();
     let handle = fixture.swayward().event_loop.clone();
     let ipc_server =
@@ -265,6 +264,12 @@ fn event_subscription_does_not_block_a_concurrent_query() {
     let socket = ipc_server.socket_path.clone().unwrap();
     fixture.swayward().ipc_server = Some(ipc_server);
     fixture.niri_state().ipc_keyboard_layouts_changed();
+    (fixture, socket)
+}
+
+#[test]
+fn event_subscription_does_not_block_a_concurrent_query() {
+    let (mut fixture, socket) = ipc_fixture();
     let mut subscriber = UnixStream::connect(&socket).unwrap();
     let mut query = UnixStream::connect(&socket).unwrap();
     subscriber
@@ -286,6 +291,37 @@ fn event_subscription_does_not_block_a_concurrent_query() {
     assert_eq!(
         serde_json::from_str::<Value>(&payload).unwrap()["variant"],
         "swayward"
+    );
+}
+
+#[test]
+fn run_command_returns_one_outcome_per_command_and_keeps_connection_alive() {
+    let (mut fixture, socket) = ipc_fixture();
+    let mut stream = UnixStream::connect(socket).unwrap();
+    stream
+        .write_all(&crate::ipc::wire::encode(
+            MessageType::RunCommand,
+            "focus left; frobnicate",
+        ))
+        .unwrap();
+
+    let (msg_type, payload) = read_ipc_reply(&mut fixture, &mut stream);
+    assert_eq!(msg_type, MessageType::RunCommand as u32);
+    assert_eq!(
+        serde_json::from_str::<Value>(&payload).unwrap(),
+        serde_json::json!([
+            {"success": true},
+            {"success": false, "error": "Unknown/invalid command 'frobnicate'", "parse_error": true}
+        ])
+    );
+
+    stream
+        .write_all(&crate::ipc::wire::encode(MessageType::RunCommand, "nop"))
+        .unwrap();
+    let (_, payload) = read_ipc_reply(&mut fixture, &mut stream);
+    assert_eq!(
+        serde_json::from_str::<Value>(&payload).unwrap(),
+        serde_json::json!([{"success": true}])
     );
 }
 

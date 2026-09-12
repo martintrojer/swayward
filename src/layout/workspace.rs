@@ -1149,6 +1149,24 @@ impl<W: LayoutElement> Workspace<W> {
         self.tiling.toggle_column_tabbed_display();
     }
 
+    pub fn set_focused_layout(&mut self, layout: crate::layout::tiling_tree::Layout) {
+        if !self.floating_is_active.get() {
+            self.tiling.set_focused_layout(layout);
+        }
+    }
+
+    pub fn split_focused(&mut self, layout: crate::layout::tiling_tree::Layout) {
+        if !self.floating_is_active.get() {
+            self.tiling.split_focused(layout);
+        }
+    }
+
+    pub fn toggle_focused_split(&mut self) {
+        if !self.floating_is_active.get() {
+            self.tiling.toggle_focused_split();
+        }
+    }
+
     pub fn set_column_display(&mut self, display: ColumnDisplay) {
         if self.floating_is_active.get() {
             return;

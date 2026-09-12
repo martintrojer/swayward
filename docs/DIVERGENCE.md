@@ -10,6 +10,8 @@ src/ipc/client.rs, src/ipc/server.rs — import colliding inherited IPC types fr
 src/ipc/server.rs, src/ipc/wire.rs — replace niri's line-delimited request dispatch with tested sway binary framing and honest unsupported-message replies.
 src/ipc/client.rs — remove niri's client because swaymsg is swayward's supported IPC client.
 src/backend/winit.rs — disable Mesa swap throttling in nested sessions because a blocking EGL swap deadlocks the compositor event loop and IPC.
+src/layout/mod.rs, src/layout/workspace.rs — expose focused-tree layout mutation for sway runtime commands.
+swayward-ipc/src/message.rs — omit absent optional command-result fields to match sway's RUN_COMMAND reply schema.
 .github/FUNDING.yml — remove inherited niri sponsorship attribution because swayward is not soliciting sponsorship.
 .github/ISSUE_TEMPLATE/bug_report.md, .github/ISSUE_TEMPLATE/config.yml — point issue reporting and support at swayward rather than niri.
 .github/workflows/ci.yml — retain only checks that protect supported swayward builds and stop publishing inherited niri documentation.

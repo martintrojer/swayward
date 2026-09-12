@@ -15,7 +15,9 @@ pub struct Version {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CommandOutcome {
     pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub parse_error: Option<bool>,
 }
 
