@@ -14,10 +14,11 @@ use crate::window::Mapped;
 const ROOT_ID: i64 = 1;
 const SCRATCH_OUTPUT_ID: i64 = i32::MAX as i64;
 const SCRATCH_WORKSPACE_ID: i64 = SCRATCH_OUTPUT_ID - 1;
-const OUTPUT_ID_BASE: i64 = 1 << 40;
-const WORKSPACE_ID_BASE: i64 = 2 << 40;
-const CONTAINER_ID_BASE: i64 = 3 << 40;
-const WINDOW_ID_BASE: i64 = 4 << 40;
+const ID_NAMESPACE_SIZE: i64 = 100_000_000;
+const OUTPUT_ID_BASE: i64 = ID_NAMESPACE_SIZE;
+const WORKSPACE_ID_BASE: i64 = 2 * ID_NAMESPACE_SIZE;
+const CONTAINER_ID_BASE: i64 = 3 * ID_NAMESPACE_SIZE;
+const WINDOW_ID_BASE: i64 = 4 * ID_NAMESPACE_SIZE;
 
 pub fn describe_tree(layout: &Layout<Mapped>) -> Node {
     let outputs: Vec<_> = layout.monitors().collect();
@@ -514,18 +515,18 @@ fn output_id(name: &str) -> i64 {
     OUTPUT_ID_BASE + stable_hash(name)
 }
 fn workspace_id(id: u64) -> i64 {
-    WORKSPACE_ID_BASE + i64::try_from(id).unwrap_or(i64::MAX - WORKSPACE_ID_BASE)
+    WORKSPACE_ID_BASE + i64::try_from(id % ID_NAMESPACE_SIZE as u64).unwrap_or_default()
 }
 fn container_id(id: NodeId) -> i64 {
-    CONTAINER_ID_BASE + i64::try_from(id.0).unwrap_or(i64::MAX - CONTAINER_ID_BASE)
+    CONTAINER_ID_BASE + i64::try_from(id.0 % ID_NAMESPACE_SIZE as u64).unwrap_or_default()
 }
 fn window_id(id: MappedId) -> i64 {
-    WINDOW_ID_BASE + i64::try_from(id.get()).unwrap_or(i64::MAX - WINDOW_ID_BASE)
+    WINDOW_ID_BASE + i64::try_from(id.get() % ID_NAMESPACE_SIZE as u64).unwrap_or_default()
 }
 fn stable_hash(value: &str) -> i64 {
     value.bytes().fold(0i64, |hash, byte| {
         hash.wrapping_mul(31).wrapping_add(i64::from(byte))
-    }) & ((1 << 40) - 1)
+    }) % ID_NAMESPACE_SIZE
 }
 fn rect_from(x: f64, y: f64, width: f64, height: f64) -> Rect {
     Rect {

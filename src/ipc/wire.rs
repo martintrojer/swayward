@@ -5,6 +5,7 @@ use swayward_ipc::MessageType;
 
 pub const MAGIC: &[u8; 6] = b"i3-ipc";
 pub const HEADER_SIZE: usize = 14;
+pub const CLOSE_SENTINEL: &[u8; HEADER_SIZE] = b"close-sway-ipc";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WireError {
@@ -24,10 +25,14 @@ impl fmt::Display for WireError {
 impl Error for WireError {}
 
 pub fn encode(msg_type: MessageType, payload: &str) -> Vec<u8> {
+    encode_raw(msg_type as u32, payload)
+}
+
+pub fn encode_raw(msg_type: u32, payload: &str) -> Vec<u8> {
     let mut buf = Vec::with_capacity(HEADER_SIZE + payload.len());
     buf.extend_from_slice(MAGIC);
     buf.extend_from_slice(&(payload.len() as u32).to_ne_bytes());
-    buf.extend_from_slice(&(msg_type as u32).to_ne_bytes());
+    buf.extend_from_slice(&msg_type.to_ne_bytes());
     buf.extend_from_slice(payload.as_bytes());
     buf
 }
@@ -68,6 +73,22 @@ mod tests {
         let (ty, len) = decode_header(&hdr).unwrap();
         assert_eq!(ty, MessageType::RunCommand);
         assert_eq!(len as usize, payload.len());
+    }
+
+    #[test]
+    fn event_header_sets_high_bit_and_keeps_byte_length() {
+        let payload = r#"{"change":"reload"}"#;
+        let buf = encode_raw(1 << 31, payload);
+        assert_eq!(&buf[..6], MAGIC);
+        assert_eq!(&buf[6..10], &(payload.len() as u32).to_ne_bytes());
+        assert_eq!(&buf[10..14], &(1u32 << 31).to_ne_bytes());
+    }
+
+    #[test]
+    fn waybar_close_sentinel_is_not_an_ipc_header() {
+        assert_eq!(CLOSE_SENTINEL, b"close-sway-ipc");
+        assert_eq!(CLOSE_SENTINEL.len(), HEADER_SIZE);
+        assert_eq!(decode_header(CLOSE_SENTINEL), Err(WireError::BadMagic));
     }
 
     #[test]

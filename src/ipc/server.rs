@@ -10,7 +10,7 @@ use anyhow::Context;
 use async_channel::{Receiver, Sender, TrySendError};
 use calloop::io::Async;
 use directories::BaseDirs;
-use futures_util::io::{AsyncReadExt, AsyncWriteExt};
+use futures_util::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use futures_util::{select_biased, AsyncWrite, FutureExt as _};
 use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::{Interest, LoopHandle, Mode, PostAction};
@@ -20,7 +20,7 @@ use swayward_ipc::state::{EventStreamState, EventStreamStatePart as _};
 use swayward_ipc::{KeyboardLayouts, MessageType, Timestamp, Version, WindowLayout};
 
 use crate::ipc::tree::{describe_outputs, describe_tree, describe_workspaces};
-use crate::ipc::wire::{decode_header, encode, HEADER_SIZE};
+use crate::ipc::wire::{decode_header, encode, CLOSE_SENTINEL, HEADER_SIZE};
 use crate::layout::workspace::WorkspaceId;
 use crate::swayward::State;
 use crate::utils::{version, with_toplevel_role};
@@ -44,16 +44,19 @@ struct QueryState {
     outputs: String,
 }
 
-#[allow(dead_code)]
 struct EventStreamClient {
     events: Receiver<Event>,
     disconnect: Receiver<()>,
+    read: Box<dyn AsyncRead + Unpin>,
     write: Box<dyn AsyncWrite + Unpin>,
+    subscriptions: HashSet<String>,
+    query_state: Rc<RefCell<QueryState>>,
 }
 
 #[derive(Clone)]
 struct ClientCtx {
     query_state: Rc<RefCell<QueryState>>,
+    event_streams: Rc<RefCell<Vec<EventStreamSender>>>,
 }
 
 struct EventStreamSender {
@@ -152,6 +155,7 @@ fn on_new_ipc_client(state: &mut State, stream: UnixStream) {
     refresh_query_state(&state.swayward.layout, &mut server.query_state.borrow_mut());
     let ctx = ClientCtx {
         query_state: server.query_state.clone(),
+        event_streams: server.event_streams.clone(),
     };
     let future = async move {
         if let Err(err) = handle_client(ctx, stream).await {
@@ -163,30 +167,79 @@ fn on_new_ipc_client(state: &mut State, stream: UnixStream) {
     }
 }
 
-async fn handle_client(
-    ctx: ClientCtx,
-    mut stream: Async<'static, UnixStream>,
-) -> anyhow::Result<()> {
+async fn handle_client(ctx: ClientCtx, stream: Async<'static, UnixStream>) -> anyhow::Result<()> {
+    let (mut read, mut write) = stream.split();
     loop {
         let mut header = [0; HEADER_SIZE];
-        match stream.read_exact(&mut header).await {
+        match read.read_exact(&mut header).await {
             Ok(_) => (),
             Err(err) if err.kind() == io::ErrorKind::UnexpectedEof => return Ok(()),
             Err(err) => return Err(err).context("error reading IPC header"),
         }
 
-        let (msg_type, payload_len) = decode_header(&header)?;
+        if &header == CLOSE_SENTINEL {
+            return Ok(());
+        }
+        let (msg_type, payload_len) = decode_header(&header).inspect_err(|_| {
+            warn!(
+                bytes = %header.iter().map(|byte| format!("{byte:02x}")).collect::<Vec<_>>().join(" "),
+                ascii = %String::from_utf8_lossy(&header),
+                "invalid IPC header"
+            );
+        })?;
+        debug!(?msg_type, payload_len, "received IPC request");
         if payload_len > MAX_PAYLOAD_SIZE {
             anyhow::bail!("IPC payload exceeds {MAX_PAYLOAD_SIZE} bytes");
         }
         let mut payload = vec![0; payload_len as usize];
-        stream
-            .read_exact(&mut payload)
+        read.read_exact(&mut payload)
             .await
             .context("error reading IPC payload")?;
 
+        if msg_type == MessageType::Subscribe {
+            let subscriptions: Vec<String> = match serde_json::from_slice(&payload) {
+                Ok(subscriptions) => subscriptions,
+                Err(_) => {
+                    write
+                        .write_all(&encode(msg_type, r#"{"success": false}"#))
+                        .await
+                        .context("error writing IPC reply")?;
+                    continue;
+                }
+            };
+            if !subscriptions
+                .iter()
+                .all(|event| matches!(event.as_str(), "workspace" | "mode" | "window"))
+            {
+                write
+                    .write_all(&encode(msg_type, r#"{"success": false}"#))
+                    .await
+                    .context("error writing IPC reply")?;
+                continue;
+            }
+            write
+                .write_all(&encode(msg_type, r#"{"success": true}"#))
+                .await
+                .context("error writing IPC reply")?;
+            let (events_tx, events_rx) = async_channel::bounded(EVENT_STREAM_BUFFER_SIZE);
+            let (disconnect_tx, disconnect_rx) = async_channel::bounded(1);
+            ctx.event_streams.borrow_mut().push(EventStreamSender {
+                events: events_tx,
+                disconnect: disconnect_tx,
+            });
+            return handle_event_stream_client(EventStreamClient {
+                events: events_rx,
+                disconnect: disconnect_rx,
+                read: Box::new(read),
+                write: Box::new(write),
+                subscriptions: subscriptions.into_iter().collect(),
+                query_state: ctx.query_state.clone(),
+            })
+            .await;
+        }
+
         let reply = dispatch(&ctx, msg_type);
-        stream
+        write
             .write_all(&encode(msg_type, &reply))
             .await
             .context("error writing IPC reply")?;
@@ -215,6 +268,25 @@ fn dispatch(ctx: &ClientCtx, msg_type: MessageType) -> String {
     }
 }
 
+fn find_node<'a>(
+    value: &'a serde_json::Value,
+    node_type: &str,
+    focused: bool,
+) -> Option<&'a serde_json::Value> {
+    if value.get("type").and_then(serde_json::Value::as_str) == Some(node_type)
+        && (!focused || value.get("focused").and_then(serde_json::Value::as_bool) == Some(true))
+    {
+        return Some(value);
+    }
+    ["nodes", "floating_nodes"].into_iter().find_map(|key| {
+        value
+            .get(key)?
+            .as_array()?
+            .iter()
+            .find_map(|child| find_node(child, node_type, focused))
+    })
+}
+
 fn refresh_query_state(layout: &crate::layout::Layout<Mapped>, state: &mut QueryState) {
     state.tree = serde_json::to_string(&describe_tree(layout))
         .unwrap_or_else(|_| r#"{"success":false,"error":"serialization failed"}"#.into());
@@ -224,32 +296,112 @@ fn refresh_query_state(layout: &crate::layout::Layout<Mapped>, state: &mut Query
         .unwrap_or_else(|_| r#"{"success":false,"error":"serialization failed"}"#.into());
 }
 
-#[allow(dead_code)]
 async fn handle_event_stream_client(client: EventStreamClient) -> anyhow::Result<()> {
     let EventStreamClient {
         events,
         disconnect,
+        mut read,
         mut write,
+        mut subscriptions,
+        query_state,
     } = client;
 
-    while let Ok(event) = events.recv().await {
-        let mut buf = serde_json::to_vec(&event).context("error formatting event")?;
-        buf.push(b'\n');
+    enum StreamInput {
+        Header([u8; HEADER_SIZE]),
+        Event(Event),
+    }
 
-        let res = select_biased! {
+    loop {
+        let mut header = [0; HEADER_SIZE];
+        let input = select_biased! {
             _ = disconnect.recv().fuse() => return Ok(()),
-            res = write.write_all(&buf).fuse() => res,
+            result = read.read_exact(&mut header).fuse() => match result {
+                Ok(_) if &header == CLOSE_SENTINEL => return Ok(()),
+                Ok(_) => StreamInput::Header(header),
+                Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => return Ok(()),
+                Err(error) => return Err(error).context("error reading IPC event stream"),
+            },
+            result = events.recv().fuse() => match result {
+                Ok(event) => StreamInput::Event(event),
+                Err(_) => return Ok(()),
+            },
         };
+        let event = match input {
+            StreamInput::Header(header) => {
+                let (msg_type, payload_len) = decode_header(&header)?;
+                if msg_type != MessageType::Subscribe || payload_len > MAX_PAYLOAD_SIZE {
+                    anyhow::bail!("unexpected request on IPC event stream");
+                }
+                let mut payload = vec![0; payload_len as usize];
+                read.read_exact(&mut payload)
+                    .await
+                    .context("error reading IPC subscription payload")?;
+                let requested: Vec<String> = serde_json::from_slice(&payload)
+                    .context("error parsing IPC subscription payload")?;
+                if !requested
+                    .iter()
+                    .all(|event| matches!(event.as_str(), "workspace" | "mode" | "window"))
+                {
+                    write
+                        .write_all(&encode(msg_type, r#"{"success": false}"#))
+                        .await
+                        .context("error writing IPC reply")?;
+                    continue;
+                }
+                subscriptions.extend(requested);
+                write
+                    .write_all(&encode(msg_type, r#"{"success": true}"#))
+                    .await
+                    .context("error writing IPC reply")?;
+                continue;
+            }
+            StreamInput::Event(event) => event,
+        };
+        let (msg_type, payload) = match event {
+            Event::WorkspacesChanged { .. }
+            | Event::WorkspaceActivated { .. }
+            | Event::WorkspaceActiveWindowChanged { .. }
+            | Event::WorkspaceUrgencyChanged { .. }
+                if subscriptions.contains("workspace") =>
+            {
+                let current = serde_json::from_str::<serde_json::Value>(&query_state.borrow().tree)
+                    .ok()
+                    .and_then(|tree| find_node(&tree, "workspace", true).cloned());
+                (
+                    1 << 31,
+                    serde_json::json!({"change":"reload","old":null,"current":current}),
+                )
+            }
+            Event::WindowsChanged { .. }
+            | Event::WindowOpenedOrChanged { .. }
+            | Event::WindowClosed { .. }
+            | Event::WindowFocusTimestampChanged { .. }
+            | Event::WindowUrgencyChanged { .. }
+            | Event::WindowLayoutsChanged { .. }
+            | Event::WindowFocusChanged { .. }
+                if subscriptions.contains("window") =>
+            {
+                let container =
+                    serde_json::from_str::<serde_json::Value>(&query_state.borrow().tree)
+                        .ok()
+                        .and_then(|tree| find_node(&tree, "con", true).cloned());
+                (
+                    (1 << 31) | 3,
+                    serde_json::json!({"change":"focus","container":container}),
+                )
+            }
+            _ => continue,
+        };
+        let payload = serde_json::to_string(&payload).context("error formatting event")?;
+        let buf = crate::ipc::wire::encode_raw(msg_type, &payload);
 
-        match res {
+        match write.write_all(&buf).await {
             Ok(()) => (),
             // Normal client disconnection.
             Err(err) if err.kind() == io::ErrorKind::BrokenPipe => return Ok(()),
             res @ Err(_) => res.context("error writing event")?,
         }
     }
-
-    Ok(())
 }
 
 fn make_ipc_window(
