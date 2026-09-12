@@ -16,6 +16,8 @@ src/ipc/client.rs — remove niri's client because swaymsg is swayward's support
 src/layout/mod.rs — export `tiling_tree` and apply cargo-fmt import reordering so the new i3 tree module is compiled and tested.
 src/layout/workspace.rs — replace the scrolling tiling field and render element with TilingTree while preserving FloatingSpace.
 src/layout/monitor.rs, src/layout/mod.rs — transfer focused tree tiles rather than concrete scrolling columns between workspaces and outputs.
+src/ipc/server.rs — serve sway GET_TREE, GET_WORKSPACES, and GET_OUTPUTS from live compositor state instead of niri IPC requests.
+src/layout/workspace.rs — expose a read-only TilingTree snapshot for sway GET_TREE serialization.
 (workspace-wide) — run `cargo fmt --all` after the rename changed identifier sort order; no behavioural change.
 
 ## Deliberate behavioural deviations from sway

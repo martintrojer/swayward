@@ -19,6 +19,7 @@ use swayward_ipc::legacy::{Event, Workspace};
 use swayward_ipc::state::{EventStreamState, EventStreamStatePart as _};
 use swayward_ipc::{KeyboardLayouts, MessageType, Timestamp, Version, WindowLayout};
 
+use crate::ipc::tree::{describe_outputs, describe_tree, describe_workspaces};
 use crate::ipc::wire::{decode_header, encode, HEADER_SIZE};
 use crate::layout::workspace::WorkspaceId;
 use crate::swayward::State;
@@ -33,6 +34,14 @@ pub struct IpcServer {
     pub socket_path: Option<PathBuf>,
     event_streams: Rc<RefCell<Vec<EventStreamSender>>>,
     event_stream_state: Rc<RefCell<EventStreamState>>,
+    query_state: Rc<RefCell<QueryState>>,
+}
+
+#[derive(Default)]
+struct QueryState {
+    tree: String,
+    workspaces: String,
+    outputs: String,
 }
 
 #[allow(dead_code)]
@@ -40,6 +49,11 @@ struct EventStreamClient {
     events: Receiver<Event>,
     disconnect: Receiver<()>,
     write: Box<dyn AsyncWrite + Unpin>,
+}
+
+#[derive(Clone)]
+struct ClientCtx {
+    query_state: Rc<RefCell<QueryState>>,
 }
 
 struct EventStreamSender {
@@ -83,6 +97,7 @@ impl IpcServer {
             socket_path,
             event_streams: Rc::new(RefCell::new(Vec::new())),
             event_stream_state: Rc::new(RefCell::new(EventStreamState::default())),
+            query_state: Rc::new(RefCell::new(QueryState::default())),
         })
     }
 
@@ -131,8 +146,15 @@ fn on_new_ipc_client(state: &mut State, stream: UnixStream) {
         }
     };
 
+    let Some(server) = &state.swayward.ipc_server else {
+        return;
+    };
+    refresh_query_state(&state.swayward.layout, &mut server.query_state.borrow_mut());
+    let ctx = ClientCtx {
+        query_state: server.query_state.clone(),
+    };
     let future = async move {
-        if let Err(err) = handle_client(stream).await {
+        if let Err(err) = handle_client(ctx, stream).await {
             warn!("error handling IPC client: {err:?}");
         }
     };
@@ -141,7 +163,10 @@ fn on_new_ipc_client(state: &mut State, stream: UnixStream) {
     }
 }
 
-async fn handle_client(mut stream: Async<'static, UnixStream>) -> anyhow::Result<()> {
+async fn handle_client(
+    ctx: ClientCtx,
+    mut stream: Async<'static, UnixStream>,
+) -> anyhow::Result<()> {
     loop {
         let mut header = [0; HEADER_SIZE];
         match stream.read_exact(&mut header).await {
@@ -160,7 +185,7 @@ async fn handle_client(mut stream: Async<'static, UnixStream>) -> anyhow::Result
             .await
             .context("error reading IPC payload")?;
 
-        let reply = dispatch(msg_type);
+        let reply = dispatch(&ctx, msg_type);
         stream
             .write_all(&encode(msg_type, &reply))
             .await
@@ -168,7 +193,7 @@ async fn handle_client(mut stream: Async<'static, UnixStream>) -> anyhow::Result
     }
 }
 
-fn dispatch(msg_type: MessageType) -> String {
+fn dispatch(ctx: &ClientCtx, msg_type: MessageType) -> String {
     match msg_type {
         MessageType::GetVersion => serde_json::to_string(&Version {
             human_readable: version(),
@@ -179,7 +204,9 @@ fn dispatch(msg_type: MessageType) -> String {
             loaded_config_file_name: String::new(),
         })
         .unwrap_or_else(|_| r#"{"success":false,"error":"serialization failed"}"#.into()),
-        MessageType::GetTree => tree_payload(),
+        MessageType::GetTree => ctx.query_state.borrow().tree.clone(),
+        MessageType::GetWorkspaces => ctx.query_state.borrow().workspaces.clone(),
+        MessageType::GetOutputs => ctx.query_state.borrow().outputs.clone(),
         MessageType::RunCommand => {
             r#"[{"success":false,"error":"command not implemented"}]"#.into()
         }
@@ -188,8 +215,13 @@ fn dispatch(msg_type: MessageType) -> String {
     }
 }
 
-pub(crate) fn tree_payload() -> String {
-    include_str!("../../tests/fixtures/sway/empty.tree.json").into()
+fn refresh_query_state(layout: &crate::layout::Layout<Mapped>, state: &mut QueryState) {
+    state.tree = serde_json::to_string(&describe_tree(layout))
+        .unwrap_or_else(|_| r#"{"success":false,"error":"serialization failed"}"#.into());
+    state.workspaces = serde_json::to_string(&describe_workspaces(layout))
+        .unwrap_or_else(|_| r#"{"success":false,"error":"serialization failed"}"#.into());
+    state.outputs = serde_json::to_string(&describe_outputs(layout))
+        .unwrap_or_else(|_| r#"{"success":false,"error":"serialization failed"}"#.into());
 }
 
 #[allow(dead_code)]
@@ -289,6 +321,9 @@ impl State {
     }
 
     pub fn ipc_refresh_layout(&mut self) {
+        if let Some(server) = &self.swayward.ipc_server {
+            refresh_query_state(&self.swayward.layout, &mut server.query_state.borrow_mut());
+        }
         self.ipc_refresh_workspaces();
         self.ipc_refresh_windows();
         self.ipc_refresh_overview();

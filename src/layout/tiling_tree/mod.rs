@@ -41,6 +41,20 @@ pub enum InsertTarget {
     Node(NodeId),
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum IpcNode<I> {
+    Split {
+        id: NodeId,
+        layout: Layout,
+        children: Vec<IpcNode<I>>,
+    },
+    Leaf {
+        id: NodeId,
+        window: I,
+        rect: Rectangle<f64, Logical>,
+    },
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Direction {
     Left,
@@ -1500,6 +1514,35 @@ impl<W: LayoutElement> TilingTree<W> {
             TreeNode::Leaf { tile } => Some((id, tile.window())),
             TreeNode::Split { .. } => None,
         })
+    }
+
+    pub fn ipc_tree(&self) -> IpcNode<W::Id> {
+        fn snapshot<W: LayoutElement>(
+            tree: &TilingTree<W>,
+            id: NodeId,
+            geometries: &HashMap<NodeId, Rectangle<f64, Logical>>,
+        ) -> IpcNode<W::Id> {
+            match &tree.nodes[&id].value {
+                TreeNode::Split {
+                    layout, children, ..
+                } => IpcNode::Split {
+                    id,
+                    layout: *layout,
+                    children: children
+                        .iter()
+                        .map(|child| snapshot(tree, *child, geometries))
+                        .collect(),
+                },
+                TreeNode::Leaf { tile } => IpcNode::Leaf {
+                    id,
+                    window: tile.window().id().clone(),
+                    rect: geometries[&id],
+                },
+            }
+        }
+
+        let geometries = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
+        snapshot(self, self.root, &geometries)
     }
 
     pub fn iter_depth_first(&self) -> impl Iterator<Item = (NodeId, &TreeNode<W>)> {

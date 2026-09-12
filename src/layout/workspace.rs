@@ -1597,6 +1597,10 @@ impl<W: LayoutElement> Workspace<W> {
         floating.chain(scrolling)
     }
 
+    pub fn ipc_tiling_tree(&self) -> super::tiling_tree::IpcNode<W::Id> {
+        self.tiling.ipc_tree()
+    }
+
     pub fn tiles_with_ipc_layouts(&self) -> impl Iterator<Item = (&Tile<W>, WindowLayout)> {
         let scrolling = self.tiling.tiles_with_ipc_layouts();
         let floating = self.floating.tiles_with_ipc_layouts();
