@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use std::iter::zip;
 use std::mem;
 
-use niri_config::{FloatOrInt, OutputName, Vrr};
-use niri_ipc::Transform;
+use swayward_config::{FloatOrInt, OutputName, Vrr};
+use swayward_ipc::Transform;
 use smithay::reexports::wayland_protocols_wlr::output_management::v1::server::{
     zwlr_output_configuration_head_v1, zwlr_output_configuration_v1, zwlr_output_head_v1,
     zwlr_output_manager_v1, zwlr_output_mode_v1,
@@ -22,7 +22,7 @@ use zwlr_output_manager_v1::ZwlrOutputManagerV1;
 use zwlr_output_mode_v1::ZwlrOutputModeV1;
 
 use crate::backend::OutputId;
-use crate::niri::State;
+use crate::swayward::State;
 use crate::protocols::EmptyData;
 use crate::utils::ipc_transform_to_smithay;
 
@@ -39,8 +39,8 @@ pub struct OutputManagementManagerState {
     display: DisplayHandle,
     serial: u32,
     clients: HashMap<ClientId, ClientData>,
-    current_state: HashMap<OutputId, niri_ipc::Output>,
-    current_config: niri_config::Outputs,
+    current_state: HashMap<OutputId, swayward_ipc::Output>,
+    current_config: swayward_config::Outputs,
 }
 
 pub struct OutputManagementManagerGlobalData {
@@ -49,7 +49,7 @@ pub struct OutputManagementManagerGlobalData {
 
 pub trait OutputManagementHandler {
     fn output_management_state(&mut self) -> &mut OutputManagementManagerState;
-    fn apply_output_config(&mut self, config: niri_config::Outputs);
+    fn apply_output_config(&mut self, config: swayward_config::Outputs);
 }
 
 struct OutputConfigurationData {
@@ -58,7 +58,7 @@ struct OutputConfigurationData {
 
 #[derive(Debug)]
 enum OutputConfigurationState {
-    Ongoing(HashMap<OutputId, niri_config::Output>),
+    Ongoing(HashMap<OutputId, swayward_config::Output>),
     Finished,
 }
 
@@ -89,11 +89,11 @@ impl OutputManagementManagerState {
         }
     }
 
-    pub fn on_config_changed(&mut self, new_config: niri_config::Outputs) {
+    pub fn on_config_changed(&mut self, new_config: swayward_config::Outputs) {
         self.current_config = new_config;
     }
 
-    pub fn notify_changes(&mut self, new_state: HashMap<OutputId, niri_ipc::Output>) {
+    pub fn notify_changes(&mut self, new_state: HashMap<OutputId, swayward_ipc::Output>) {
         let mut changed = false; /* most likely to end up true */
         for (output, conf) in new_state.iter() {
             if let Some(old) = self.current_state.get(output) {
@@ -423,7 +423,7 @@ where
                             .current_config
                             .find(&name)
                             .cloned()
-                            .unwrap_or_else(|| niri_config::Output {
+                            .unwrap_or_else(|| swayward_config::Output {
                                 name: name.format_make_model_serial_or_connector(),
                                 ..Default::default()
                             });
@@ -473,7 +473,7 @@ where
                             .current_config
                             .find(&name)
                             .cloned()
-                            .unwrap_or_else(|| niri_config::Output {
+                            .unwrap_or_else(|| swayward_config::Output {
                                 name: name.format_make_model_serial_or_connector(),
                                 ..Default::default()
                             });
@@ -628,9 +628,9 @@ where
                     return;
                 };
 
-                new_config.mode = Some(niri_config::output::Mode {
+                new_config.mode = Some(swayward_config::output::Mode {
                     custom: false,
-                    mode: niri_ipc::ConfiguredMode {
+                    mode: swayward_ipc::ConfiguredMode {
                         width: mode.width,
                         height: mode.height,
                         refresh: Some(mode.refresh_rate as f64 / 1000.),
@@ -657,9 +657,9 @@ where
                     return;
                 }
 
-                new_config.mode = Some(niri_config::output::Mode {
+                new_config.mode = Some(swayward_config::output::Mode {
                     custom: true,
-                    mode: niri_ipc::ConfiguredMode {
+                    mode: swayward_ipc::ConfiguredMode {
                         width,
                         height,
                         refresh: Some(refresh as f64 / 1000.),
@@ -668,7 +668,7 @@ where
                 new_config.modeline = None;
             }
             zwlr_output_configuration_head_v1::Request::SetPosition { x, y } => {
-                new_config.position = Some(niri_config::Position { x, y });
+                new_config.position = Some(swayward_config::Position { x, y });
             }
             zwlr_output_configuration_head_v1::Request::SetTransform { transform } => {
                 let transform = match transform {
@@ -780,7 +780,7 @@ fn notify_removed_head(clients: &mut HashMap<ClientId, ClientData>, head: &Outpu
 fn notify_new_head(
     state: &mut OutputManagementManagerState,
     output: &OutputId,
-    conf: &niri_ipc::Output,
+    conf: &swayward_ipc::Output,
 ) {
     let display = &state.display;
     let clients = &mut state.clients;
@@ -796,7 +796,7 @@ fn send_new_head<D>(
     client: &Client,
     client_data: &mut ClientData,
     output: OutputId,
-    conf: &niri_ipc::Output,
+    conf: &swayward_ipc::Output,
 ) where
     D: Dispatch<ZwlrOutputModeV1, EmptyData>,
     D: Dispatch<ZwlrOutputHeadV1, OutputId>,

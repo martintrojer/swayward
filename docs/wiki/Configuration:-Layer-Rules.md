@@ -73,7 +73,7 @@ layer-rule {
 }
 ```
 
-You can find the namespaces of all open layer-shell surfaces by running `niri msg layers`.
+You can find the namespaces of all open layer-shell surfaces by running `swayward msg layers`.
 
 #### `at-startup`
 

@@ -23,7 +23,7 @@ If you have a problem with a specific app, please verify that it is running on W
 
 You can also check what process the window PID belongs to:
 
-$ readlink /proc/$(niri msg --json pick-window | jq .pid)/exe
+$ readlink /proc/$(swayward msg --json pick-window | jq .pid)/exe
 
 If this points to xwayland-satellite, then it's an X11 window.
 

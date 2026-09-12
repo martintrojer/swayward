@@ -4,7 +4,7 @@ Invariant I5: prefer new modules; when an inherited file must be edited, add a l
 
 ## Edits to inherited files
 
-(none yet)
+(workspace-wide) — mechanical niri→swayward rename, with no behavioural change. See the rename commit.
 
 ## Deliberate behavioural deviations from sway
 

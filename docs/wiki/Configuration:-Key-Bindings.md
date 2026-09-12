@@ -171,8 +171,8 @@ binds {
 
 ### Actions
 
-Every action that you can bind is also available for programmatic invocation via `niri msg action`.
-Run `niri msg action` to get a full list of actions along with their short descriptions.
+Every action that you can bind is also available for programmatic invocation via `swayward msg action`.
+Run `swayward msg action` to get a full list of actions along with their short descriptions.
 
 Here are a few actions that benefit from more explanation.
 

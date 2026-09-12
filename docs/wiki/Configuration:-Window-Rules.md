@@ -193,7 +193,7 @@ window-rule {
 }
 ```
 
-You can find the title and the app ID of a window by running `niri msg pick-window` and clicking on the window in question.
+You can find the title and the app ID of a window by running `swayward msg pick-window` and clicking on the window in question.
 
 > [!TIP]
 > Another way to find the window title and app ID is to configure the `wlr/taskbar` module in [Waybar](https://github.com/Alexays/Waybar) to include them in the tooltip:

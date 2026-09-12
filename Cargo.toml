@@ -1,17 +1,17 @@
 [workspace]
 members = [
-    "niri-config",
-    "niri-ipc",
-    "niri-visual-tests",
+    "swayward-config",
+    "swayward-ipc",
+    "swayward-visual-tests",
 ]
 
 [workspace.package]
 version = "26.4.0"
-description = "A scrollable-tiling Wayland compositor"
+description = "An i3-compatible Wayland compositor based on niri"
 authors = ["Ivan Molodetskikh <yalterz@gmail.com>"]
 license = "GPL-3.0-or-later"
 edition = "2021"
-repository = "https://github.com/niri-wm/niri"
+repository = "https://github.com/martintrojer/swayward"
 rust-version = "1.87"
 
 [workspace.dependencies]
@@ -38,7 +38,7 @@ rev = "0ff00983b6007257a7a161a4fe8b14a778e2ac8f"
 # path = "../smithay/smithay-drm-extras"
 
 [package]
-name = "niri"
+name = "swayward"
 version.workspace = true
 description.workspace = true
 authors.workspace = true
@@ -48,7 +48,7 @@ repository.workspace = true
 rust-version.workspace = true
 
 readme = "README.md"
-keywords = ["wayland", "compositor", "tiling", "smithay", "wm"]
+keywords = ["wayland", "compositor", "tiling"]
 
 [dependencies]
 accesskit = { version = "0.25", optional = true }
@@ -75,8 +75,8 @@ keyframe = { version = "1.1.1", default-features = false }
 libc = "0.2.189"
 libdisplay-info = "0.3.0"
 log = { version = "0.4", features = ["max_level_trace", "release_max_level_debug"] }
-niri-config = { version = "26.4.0", path = "niri-config" }
-niri-ipc = { version = "26.4.0", path = "niri-ipc", features = ["clap"] }
+swayward-config = { version = "26.4.0", path = "swayward-config" }
+swayward-ipc = { version = "26.4.0", path = "swayward-ipc", features = ["clap"] }
 ordered-float = "5"
 pango = { version = "0.21.5", features = ["v1_44"] }
 pangocairo = "0.21.5"
@@ -154,7 +154,7 @@ debug = "line-tables-only"
 overflow-checks = true
 lto = "thin"
 
-[profile.release.package.niri-config]
+[profile.release.package.swayward-config]
 # knuffel with chomsky generates a metric ton of debuginfo.
 debug = false
 
@@ -165,12 +165,12 @@ similar.opt-level = 3
 [package.metadata.generate-rpm]
 version = "26.04"
 assets = [
-    { source = "target/release/niri", dest = "/usr/bin/", mode = "755" },
-    { source = "resources/niri-session", dest = "/usr/bin/", mode = "755" },
-    { source = "resources/niri.desktop", dest = "/usr/share/wayland-sessions/", mode = "644" },
-    { source = "resources/niri-portals.conf", dest = "/usr/share/xdg-desktop-portal/", mode = "644" },
-    { source = "resources/niri.service", dest = "/usr/lib/systemd/user/", mode = "644" },
-    { source = "resources/niri-shutdown.target", dest = "/usr/lib/systemd/user/", mode = "644" },
+    { source = "target/release/swayward", dest = "/usr/bin/", mode = "755" },
+    { source = "resources/swayward-session", dest = "/usr/bin/", mode = "755" },
+    { source = "resources/swayward.desktop", dest = "/usr/share/wayland-sessions/", mode = "644" },
+    { source = "resources/swayward-portals.conf", dest = "/usr/share/xdg-desktop-portal/", mode = "644" },
+    { source = "resources/swayward.service", dest = "/usr/lib/systemd/user/", mode = "644" },
+    { source = "resources/swayward-shutdown.target", dest = "/usr/lib/systemd/user/", mode = "644" },
 ]
 [package.metadata.generate-rpm.requires]
 alacritty = "*"
@@ -179,10 +179,10 @@ fuzzel = "*"
 [package.metadata.deb]
 depends = "alacritty, fuzzel"
 assets = [
-    ["target/release/niri", "usr/bin/", "755"],
-    ["resources/niri-session", "usr/bin/", "755"],
-    ["resources/niri.desktop", "/usr/share/wayland-sessions/", "644"],
-    ["resources/niri-portals.conf", "/usr/share/xdg-desktop-portal/", "644"],
-    ["resources/niri.service", "/usr/lib/systemd/user/", "644"],
-    ["resources/niri-shutdown.target", "/usr/lib/systemd/user/", "644"],
+    ["target/release/swayward", "usr/bin/", "755"],
+    ["resources/swayward-session", "usr/bin/", "755"],
+    ["resources/swayward.desktop", "/usr/share/wayland-sessions/", "644"],
+    ["resources/swayward-portals.conf", "/usr/share/xdg-desktop-portal/", "644"],
+    ["resources/swayward.service", "/usr/lib/systemd/user/", "644"],
+    ["resources/swayward-shutdown.target", "/usr/lib/systemd/user/", "644"],
 ]

@@ -1,4 +1,4 @@
-When starting niri from a display manager like GDM, or otherwise through the `niri-session` binary, it runs as a systemd service.
+When starting niri from a display manager like GDM, or otherwise through the `swayward-session` binary, it runs as a systemd service.
 This provides the necessary systemd integration to run programs like `mako` and services like `xdg-desktop-portal` bound to the graphical session.
 
 Here's an example on how you might set up [`mako`](https://github.com/emersion/mako), [`waybar`](https://github.com/Alexays/Waybar), [`swaybg`](https://github.com/swaywm/swaybg) and [`swayidle`](https://github.com/swaywm/swayidle) to run as systemd services with niri.
@@ -8,11 +8,11 @@ Unlike [`spawn-at-startup`](./Configuration:-Miscellaneous.md#spawn-at-startup),
 2. `mako` and `waybar` provide systemd units out of the box, so you can simply add them to the niri session:
 
     ```
-    systemctl --user add-wants niri.service mako.service
-    systemctl --user add-wants niri.service waybar.service
+    systemctl --user add-wants swayward.service mako.service
+    systemctl --user add-wants swayward.service waybar.service
     ```
 
-    This will create links in `~/.config/systemd/user/niri.service.wants/`, a special systemd folder for services that need to start together with `niri.service`.
+    This will create links in `~/.config/systemd/user/swayward.service.wants/`, a special systemd folder for services that need to start together with `swayward.service`.
 
 3. `swaybg` does not provide a systemd unit, since you need to pass the background image as a command-line argument.
     So we will make our own.
@@ -37,7 +37,7 @@ Unlike [`spawn-at-startup`](./Configuration:-Miscellaneous.md#spawn-at-startup),
     Now, add it to the niri session:
 
     ```
-    systemctl --user add-wants niri.service swaybg.service
+    systemctl --user add-wants swayward.service swaybg.service
     ```
 
 4. `swayidle` similarly does not provide a service, so we will also make our own.
@@ -57,14 +57,14 @@ Unlike [`spawn-at-startup`](./Configuration:-Miscellaneous.md#spawn-at-startup),
     Then, run `systemctl --user daemon-reload` and add it to the niri session:
 
     ```
-    systemctl --user add-wants niri.service swayidle.service
+    systemctl --user add-wants swayward.service swayidle.service
     ```
 
 That's it!
 Now these three utilities will be started together with the niri session and stopped when it exits.
 You can also restart them with a command like `systemctl --user restart waybar.service`, for example after editing their config files.
 
-To remove a service from niri startup, remove its symbolic link from `~/.config/systemd/user/niri.service.wants/`.
+To remove a service from niri startup, remove its symbolic link from `~/.config/systemd/user/swayward.service.wants/`.
 Then, run `systemctl --user daemon-reload`.
 
 ### Running Programs Across Logout

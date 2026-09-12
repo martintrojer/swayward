@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Duration;
 
-use niri_config::Config;
+use swayward_config::Config;
 use ordered_float::NotNan;
 use pangocairo::cairo::{self, ImageSurface};
 use pangocairo::pango::FontDescription;
@@ -249,9 +249,9 @@ fn render(
 
 pub fn error_text(markup: bool) -> String {
     let command = if markup {
-        "<span face='monospace' bgcolor='#000000'>niri validate</span>"
+        "<span face='monospace' bgcolor='#000000'>swayward validate</span>"
     } else {
-        "niri validate"
+        "swayward validate"
     };
 
     format!("Failed to parse the config file. Please run {command} to see the errors.")

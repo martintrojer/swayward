@@ -44,7 +44,7 @@ output "Some Company CoolMonitor 1234" {
 ```
 
 Outputs are matched by connector name (i.e. `eDP-1`, `HDMI-A-1`), or by monitor manufacturer, model, and serial, separated by a single space each.
-You can find all of these by running `niri msg outputs`.
+You can find all of these by running `swayward msg outputs`.
 
 Usually, the built-in monitor in laptops will be called `eDP-1`.
 
@@ -73,8 +73,8 @@ If the refresh rate is omitted, niri will pick the highest refresh rate for the 
 
 If the mode is omitted altogether or doesn't work, niri will try to pick one automatically.
 
-Run `niri msg outputs` while inside a niri instance to list all outputs and their modes.
-The refresh rate that you set here must match *exactly*, down to the three decimal digits, to what you see in `niri msg outputs`.
+Run `swayward msg outputs` while inside a niri instance to list all outputs and their modes.
+The refresh rate that you set here must match *exactly*, down to the three decimal digits, to what you see in `swayward msg outputs`.
 
 ```kdl
 // Set a high refresh rate for this monitor.
@@ -200,7 +200,7 @@ The following algorithm is used for positioning outputs.
 
 This flag enables variable refresh rate (VRR, also known as adaptive sync, FreeSync, or G-Sync), if the output supports it.
 
-You can check whether an output supports VRR in `niri msg outputs`.
+You can check whether an output supports VRR in `swayward msg outputs`.
 
 > [!NOTE]
 > Some drivers have various issues with VRR.

@@ -6,8 +6,8 @@ The simple versions are single-color and suitable for smaller sizes.
 
 |        | full-sized                     | icon                           |
 |--------|:------------------------------:|:------------------------------:|
-| normal | ![](./logo/niri-logo.svg)      | ![](./logo/niri-icon.svg)      |
-| simple | ![](./logo/niri-logo-smol.svg) | ![](./logo/niri-icon-smol.svg) |
+| normal | ![](./logo/swayward-logo.svg)      | ![](./logo/swayward-icon.svg)      |
+| simple | ![](./logo/swayward-logo-smol.svg) | ![](./logo/swayward-icon-smol.svg) |
 
 The logo is intentionally recolorable.
 In fact, there's [a webpage](https://nirilogo.raurutuchr.ink) that lets you quickly adjust the color and download an SVG.

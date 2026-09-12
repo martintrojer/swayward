@@ -5,12 +5,12 @@ use std::time::Duration;
 
 use calloop::generic::Generic;
 use calloop::{EventLoop, Interest, LoopHandle, Mode, PostAction};
-use niri_config::Config;
+use swayward_config::Config;
 use smithay::output::Output;
 
 use super::client::{Client, ClientId};
 use super::server::Server;
-use crate::niri::{NewClient, Niri};
+use crate::swayward::{NewClient, Swayward};
 
 pub struct Fixture {
     pub event_loop: EventLoop<'static, State>,
@@ -60,44 +60,44 @@ impl Fixture {
             .unwrap();
     }
 
-    pub fn niri_state(&mut self) -> &mut crate::niri::State {
+    pub fn niri_state(&mut self) -> &mut crate::swayward::State {
         &mut self.state.server.state
     }
 
-    pub fn niri(&mut self) -> &mut Niri {
-        &mut self.niri_state().niri
+    pub fn swayward(&mut self) -> &mut Swayward {
+        &mut self.niri_state().swayward
     }
 
     pub fn niri_output(&self, n: u8) -> Output {
-        let niri = &self.state.server.state.niri;
+        let swayward = &self.state.server.state.swayward;
         let idx = usize::from(n - 1);
-        let output = niri.global_space.outputs().nth(idx).unwrap();
+        let output = swayward.global_space.outputs().nth(idx).unwrap();
         output.clone()
     }
 
     pub fn niri_focus_output(&mut self, n: u8) {
-        let niri = &mut self.state.server.state.niri;
+        let swayward = &mut self.state.server.state.swayward;
         let idx = usize::from(n - 1);
-        let output = niri.global_space.outputs().nth(idx).unwrap();
-        niri.layout.focus_output(output);
+        let output = swayward.global_space.outputs().nth(idx).unwrap();
+        swayward.layout.focus_output(output);
     }
 
     pub fn niri_complete_animations(&mut self) {
-        let niri = self.niri();
-        niri.clock.set_complete_instantly(true);
-        niri.advance_animations();
-        niri.clock.set_complete_instantly(false);
+        let swayward = self.swayward();
+        swayward.clock.set_complete_instantly(true);
+        swayward.advance_animations();
+        swayward.clock.set_complete_instantly(false);
     }
 
     pub fn add_output(&mut self, n: u8, size: (u16, u16)) {
         let state = self.niri_state();
-        let niri = &mut state.niri;
-        state.backend.headless().add_output(niri, n, size);
+        let swayward = &mut state.swayward;
+        state.backend.headless().add_output(swayward, n, size);
     }
 
     pub fn add_client(&mut self) -> ClientId {
         let (sock1, sock2) = UnixStream::pair().unwrap();
-        self.niri().insert_client(NewClient {
+        self.swayward().insert_client(NewClient {
             client: sock1,
             restricted: false,
             credentials_unknown: false,

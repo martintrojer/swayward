@@ -25,7 +25,7 @@ mod platform {
     use std::io;
 
     // FIXME: implement for FreeBSD. But probably, that should be done in calloop::signals.
-    pub fn listen(_handle: &calloop::LoopHandle<crate::niri::State>) {}
+    pub fn listen(_handle: &calloop::LoopHandle<crate::swayward::State>) {}
 
     // These two actually build as-is on FreeBSD, but without our own signal handling in listen(),
     // they do more harm than good (they block termination signals without actually installing a
@@ -42,7 +42,7 @@ mod platform {
 mod platform {
     use std::{io, mem};
 
-    pub fn listen(handle: &calloop::LoopHandle<crate::niri::State>) {
+    pub fn listen(handle: &calloop::LoopHandle<crate::swayward::State>) {
         use calloop::signals::{Signal, Signals};
 
         handle
@@ -50,7 +50,7 @@ mod platform {
                 Signals::new(&[Signal::SIGINT, Signal::SIGTERM, Signal::SIGHUP]).unwrap(),
                 |event, _, state| {
                     info!("quitting due to receiving signal {:?}", event.signal());
-                    state.niri.stop_signal.stop();
+                    state.swayward.stop_signal.stop();
                 },
             )
             .unwrap();

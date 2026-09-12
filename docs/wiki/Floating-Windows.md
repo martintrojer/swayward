@@ -13,4 +13,4 @@ You can also use the `open-floating true/false` window rule to either force a wi
 Use `switch-focus-between-floating-and-tiling` to switch the focus between the two layouts.
 When focused on the floating layout, binds (like `focus-column-right`) will operate on the floating window.
 
-You can precisely position a floating window with a command like `niri msg action move-floating-window -x 100 -y 200`.
+You can precisely position a floating window with a command like `swayward msg action move-floating-window -x 100 -y 200`.

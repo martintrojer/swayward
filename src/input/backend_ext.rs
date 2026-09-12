@@ -3,7 +3,7 @@ use smithay::backend::input;
 use smithay::backend::winit::WinitVirtualDevice;
 use smithay::output::Output;
 
-use crate::niri::State;
+use crate::swayward::State;
 use crate::protocols::virtual_pointer::VirtualPointer;
 
 pub trait NiriInputBackend: input::InputBackend<Device = Self::NiriDevice> {
