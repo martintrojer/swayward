@@ -1,4 +1,3 @@
-use smithay::desktop::Window;
 use smithay::utils::{Logical, Rectangle};
 use swayward_ipc::{
     IdleInhibitors, Node, NodeBorder, NodeLayout, NodeProperties, NodeType, Output, OutputMode,
@@ -259,7 +258,12 @@ fn describe_workspace_node(
     index: usize,
     rect: Rect,
 ) -> Node {
-    let mut tiled = describe_tiling(workspace, workspace.ipc_tiling_tree(), rect);
+    let mut tiled = describe_tiling(
+        workspace.ipc_tiling_tree(),
+        &|window| workspace.windows().find(|mapped| mapped.window == *window),
+        rect,
+    )
+    .unwrap_or_else(|| empty_tiling_node(rect));
     let Node {
         layout,
         orientation,
@@ -311,11 +315,11 @@ fn describe_workspace_node(
     )
 }
 
-fn describe_tiling(
-    workspace: &crate::layout::workspace::Workspace<Mapped>,
-    node: IpcNode<Window>,
+pub(crate) fn describe_tiling<'a, I>(
+    node: IpcNode<I>,
+    find_window: &impl Fn(&I) -> Option<&'a Mapped>,
     workspace_rect: Rect,
-) -> Node {
+) -> Option<Node> {
     match node {
         IpcNode::Split {
             id,
@@ -325,7 +329,7 @@ fn describe_tiling(
         } => {
             let children: Vec<_> = children
                 .into_iter()
-                .map(|child| describe_tiling(workspace, child, workspace_rect))
+                .filter_map(|child| describe_tiling(child, find_window, workspace_rect))
                 .collect();
             let focus = children
                 .iter()
@@ -348,7 +352,7 @@ fn describe_tiling(
                 NodeProperties::None {},
             );
             node.percent = percent;
-            node
+            Some(node)
         }
         IpcNode::Leaf {
             window,
@@ -356,10 +360,10 @@ fn describe_tiling(
             rect,
             ..
         } => {
-            let mapped = workspace
-                .windows()
-                .find(|mapped| mapped.window == window)
-                .expect("tree leaf window must exist in workspace");
+            let Some(mapped) = find_window(&window) else {
+                warn!("omitting stale tree leaf from IPC output");
+                return None;
+            };
             let mut node = describe_window(
                 mapped,
                 offset_rect(rect, workspace_rect),
@@ -368,9 +372,25 @@ fn describe_tiling(
                 None,
             );
             node.percent = percent;
-            node
+            Some(node)
         }
     }
+}
+
+fn empty_tiling_node(rect: Rect) -> Node {
+    common_node(
+        0,
+        NodeType::Con,
+        NodeLayout::SplitH,
+        "horizontal",
+        None,
+        rect,
+        vec![],
+        vec![],
+        vec![],
+        false,
+        NodeProperties::None {},
+    )
 }
 
 fn describe_window(

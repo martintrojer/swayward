@@ -4,6 +4,7 @@ use serde_json::Value;
 
 use super::*;
 use crate::ipc::tree::{describe_outputs, describe_tree, describe_workspaces};
+use crate::layout::tiling_tree::{IpcNode, Layout as TreeLayout, NodeId};
 
 fn assert_same_shape(expected: &Value, actual: &Value, path: &str) {
     assert_eq!(
@@ -296,6 +297,31 @@ fn live_ipc_descriptions_match_sway_schema() {
     ))
     .unwrap();
     assert_same_shape(&fixture, &ours, "$outputs");
+}
+
+#[test]
+fn stale_tree_leaf_is_omitted_without_panicking() {
+    let tree = IpcNode::Leaf {
+        id: NodeId(1),
+        window: (),
+        percent: Some(1.),
+        rect: Default::default(),
+    };
+    assert!(crate::ipc::tree::describe_tiling(tree, &|_| None, Default::default()).is_none());
+
+    let tree = IpcNode::Split {
+        id: NodeId(0),
+        layout: TreeLayout::SplitH,
+        percent: None,
+        children: vec![IpcNode::Leaf {
+            id: NodeId(1),
+            window: (),
+            percent: Some(1.),
+            rect: Default::default(),
+        }],
+    };
+    let node = crate::ipc::tree::describe_tiling(tree, &|_| None, Default::default()).unwrap();
+    assert!(node.nodes.is_empty());
 }
 
 #[test]
