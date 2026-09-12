@@ -45,7 +45,7 @@ fn windowed_fullscreen() {
     let window = f.client(id).window(&surface);
     assert_snapshot!(
         window.format_recent_configures(),
-        @"size: 936 × 1048, bounds: 1888 × 1048, states: [Activated, Fullscreen]"
+        @"size: 1888 × 1048, bounds: 1888 × 1048, states: [Activated, Fullscreen]"
     );
 
     let mapped = f.swayward().layout.windows().next().unwrap().1;
@@ -69,7 +69,7 @@ fn windowed_fullscreen() {
     let window = f.client(id).window(&surface);
     assert_snapshot!(
         window.format_recent_configures(),
-        @"size: 936 × 1048, bounds: 1888 × 1048, states: [Activated]"
+        @"size: 1888 × 1048, bounds: 1888 × 1048, states: [Activated]"
     );
 
     let mapped = f.swayward().layout.windows().next().unwrap().1;
@@ -109,10 +109,10 @@ fn windowed_fullscreen_chain() {
     assert_snapshot!(
         window.format_recent_configures(),
         @r"
-    size: 936 × 1048, bounds: 1888 × 1048, states: [Activated, Fullscreen]
-    size: 936 × 1048, bounds: 1888 × 1048, states: [Activated]
-    size: 936 × 1048, bounds: 1888 × 1048, states: [Activated, Fullscreen]
-    size: 936 × 1048, bounds: 1888 × 1048, states: [Activated]
+    size: 1888 × 1048, bounds: 1888 × 1048, states: [Activated, Fullscreen]
+    size: 1888 × 1048, bounds: 1888 × 1048, states: [Activated]
+    size: 1888 × 1048, bounds: 1888 × 1048, states: [Activated, Fullscreen]
+    size: 1888 × 1048, bounds: 1888 × 1048, states: [Activated]
     "
     );
 
@@ -192,7 +192,7 @@ fn interactive_move_unfullscreen_to_scrolling_restores_size() {
     // This should request the tiled size.
     assert_snapshot!(
         f.client(id).window(&surface).format_recent_configures(),
-        @"size: 936 × 1048, bounds: 1920 × 1080, states: [Activated]"
+        @"size: 1888 × 1048, bounds: 1920 × 1080, states: [Activated]"
     );
 }
 
@@ -233,6 +233,6 @@ fn interactive_move_unmaximize_to_scrolling_restores_size() {
     // This should request the tiled size.
     assert_snapshot!(
         f.client(id).window(&surface).format_recent_configures(),
-        @"size: 936 × 1048, bounds: 1920 × 1080, states: [Activated]"
+        @"size: 1888 × 1048, bounds: 1920 × 1080, states: [Activated]"
     );
 }

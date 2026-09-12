@@ -82,13 +82,6 @@ impl Fixture {
         swayward.layout.focus_output(output);
     }
 
-    pub fn niri_complete_animations(&mut self) {
-        let swayward = self.swayward();
-        swayward.clock.set_complete_instantly(true);
-        swayward.advance_animations();
-        swayward.clock.set_complete_instantly(false);
-    }
-
     pub fn add_output(&mut self, n: u8, size: (u16, u16)) {
         let state = self.niri_state();
         let swayward = &mut state.swayward;

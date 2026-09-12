@@ -315,7 +315,7 @@ fn restore_floating_size() {
     // We should get a tiling size configure.
     assert_snapshot!(
         f.client(id).window(&surface).format_recent_configures(),
-        @"size: 200 × 1048, bounds: 1888 × 1048, states: [Activated]"
+        @"size: 1888 × 1048, bounds: 1888 × 1048, states: [Activated]"
     );
 
     // Resize as requested.
@@ -397,29 +397,53 @@ fn moving_across_workspaces_doesnt_cancel_resize() {
 
 #[test]
 fn moving_to_floating_doesnt_cancel_resize() {
-    let (mut f, id, surface) = set_up();
+    let (mut f, id, first_surface) = set_up();
+
+    // A tree resize needs a sibling boundary. Add a second tiled window and resize it.
+    let second = f.client(id).create_window();
+    let surface = second.surface.clone();
+    second.commit();
+    f.roundtrip(id);
+    let second = f.client(id).window(&surface);
+    second.attach_new_buffer();
+    second.ack_last_and_commit();
+    f.double_roundtrip(id);
+    f.client(id).window(&first_surface).ack_last_and_commit();
+    f.roundtrip(id);
+    f.swayward().layout.focus_right();
+    let window_id = f
+        .swayward()
+        .layout
+        .active_workspace()
+        .unwrap()
+        .active_window()
+        .unwrap()
+        .window
+        .clone();
+    f.client(id).window(&surface).ack_last_and_commit();
+    f.roundtrip(id);
     let _ = f.client(id).window(&surface).recent_configures();
 
-    // Request a size change to a different size.
+    // Request a size change at the real sibling boundary.
     f.swayward()
         .layout
-        .set_column_width(SizeChange::SetFixed(500));
+        .set_window_width(Some(&window_id), SizeChange::SetFixed(500));
     f.double_roundtrip(id);
 
-    // This should request the new size (500 ×).
+    // The tree converts the requested boundary to sibling percentages, including the gap.
     assert_snapshot!(
         f.client(id).window(&surface).format_recent_configures(),
-        @"size: 500 × 1048, bounds: 1888 × 1048, states: [Activated]"
+        @"size: 510 × 1048, bounds: 1888 × 1048, states: [Activated]"
     );
 
     // Before the window has a chance to respond, make it floating.
     f.swayward().layout.toggle_window_floating(None);
     f.double_roundtrip(id);
 
-    // This should keep requesting the new size (500 ×).
+    // Moving to floating must keep the outstanding tree resize request.
     assert_snapshot!(
         f.client(id).window(&surface).format_recent_configures(),
-        @"size: 500 × 1048, bounds: 1920 × 1080, states: [Activated]"
+        @"size: 510 × 1048, bounds: 1920 × 1080, states: [Activated]"
     );
 }
 
@@ -751,7 +775,7 @@ fn interactive_move_restores_floating_size_when_set_to_floating() {
     // We should get a tiled size configure.
     assert_snapshot!(
         f.client(id).window(&surface).format_recent_configures(),
-        @"size: 200 × 1048, bounds: 1888 × 1048, states: [Activated]"
+        @"size: 1888 × 1048, bounds: 1888 × 1048, states: [Activated]"
     );
 
     // Resize as requested.
@@ -777,10 +801,10 @@ fn interactive_move_restores_floating_size_when_set_to_floating() {
     );
     f.double_roundtrip(id);
 
-    // This shouldn't request any new size because interactive move targets tiling.
+    // Interactive move still targets the sole tiled leaf, which fills the workspace.
     assert_snapshot!(
         f.client(id).window(&surface).format_recent_configures(),
-        @"size: 200 × 1048, bounds: 1920 × 1080, states: [Activated]"
+        @"size: 1888 × 1048, bounds: 1920 × 1080, states: [Activated]"
     );
 
     // Change interactive move to target floating.
@@ -844,7 +868,7 @@ fn floating_doesnt_store_fullscreen_size() {
     // This should request the tiled size.
     assert_snapshot!(
         f.client(id).window(&surface).format_recent_configures(),
-        @"size: 1920 × 1048, bounds: 1888 × 1048, states: [Activated]"
+        @"size: 1888 × 1048, bounds: 1888 × 1048, states: [Activated]"
     );
 
     // Commit in response.
@@ -904,7 +928,7 @@ fn floating_doesnt_store_maximized_size() {
     // This should request the tiled size.
     assert_snapshot!(
         f.client(id).window(&surface).format_recent_configures(),
-        @"size: 1920 × 1048, bounds: 1888 × 1048, states: [Activated]"
+        @"size: 1888 × 1048, bounds: 1888 × 1048, states: [Activated]"
     );
 
     // Commit in response.
@@ -1017,7 +1041,7 @@ fn unfullscreen_to_floating_doesnt_send_extra_configure() {
     // This should configure only once and not twice.
     assert_snapshot!(
         f.client(id).window(&surface).format_recent_configures(),
-        @"size: 936 × 1048, bounds: 1920 × 1080, states: [Activated]"
+        @"size: 1888 × 1048, bounds: 1920 × 1080, states: [Activated]"
     );
 }
 
@@ -1044,7 +1068,7 @@ fn unmaximize_to_floating_doesnt_send_extra_configure() {
     // This should configure only once and not twice.
     assert_snapshot!(
         f.client(id).window(&surface).format_recent_configures(),
-        @"size: 936 × 1048, bounds: 1920 × 1080, states: [Activated]"
+        @"size: 1888 × 1048, bounds: 1920 × 1080, states: [Activated]"
     );
 }
 
@@ -1326,7 +1350,7 @@ fn repeated_size_request() {
     // The floating configure.
     assert_snapshot!(
         f.client(id).window(&surface).format_recent_configures(),
-        @"size: 936 × 1048, bounds: 1920 × 1080, states: [Activated]"
+        @"size: 1888 × 1048, bounds: 1920 × 1080, states: [Activated]"
     );
 
     // Request a different width (200x100).

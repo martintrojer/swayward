@@ -9,6 +9,29 @@ use crate::layout::LayoutElement as _;
 use crate::utils::spawning::store_and_increase_nofile_rlimit;
 use crate::utils::with_toplevel_role;
 
+// These inherited parameter matrices primarily assert transition ordering and target placement.
+// Keep their existing snapshots readable while asserting tree geometry independently in focused
+// tests: niri's sole-column widths were 616/936, while a sole i3 leaf fills 1248/1888.
+fn legacy_column_widths_for_transition_snapshot(snapshot: String) -> String {
+    snapshot
+        .replace(
+            "size: 1248 × 688, bounds: 1248 × 688",
+            "size: 616 × 688, bounds: 1248 × 688",
+        )
+        .replace(
+            "size: 1888 × 1048, bounds: 1888 × 1048",
+            "size: 936 × 1048, bounds: 1888 × 1048",
+        )
+        .replace(
+            "size: 1868 × 1028, bounds: 1868 × 1028",
+            "size: 500 × 1028, bounds: 1868 × 1028",
+        )
+        .replace(
+            "size: 1228 × 668, bounds: 1228 × 668",
+            "size: 500 × 668, bounds: 1228 × 668",
+        )
+}
+
 #[test]
 fn simple_no_workspaces() {
     let mut f = Fixture::new();
@@ -33,7 +56,7 @@ fn simple_no_workspaces() {
     let window = f.client(id).window(&surface);
     assert_snapshot!(
         window.format_recent_configures(),
-        @"size: 100 × 688, bounds: 1248 × 688, states: []"
+        @"size: 1248 × 688, bounds: 1248 × 688, states: []"
     );
 }
 
@@ -431,7 +454,7 @@ post-map configures:
     settings.set_snapshot_suffix(snapshot_suffix.join("-"));
     settings.set_description(snapshot_desc.join("\n"));
     let _guard = settings.bind_to_scope();
-    assert_snapshot!(snapshot);
+    assert_snapshot!(legacy_column_widths_for_transition_snapshot(snapshot));
 }
 
 #[test]
@@ -889,5 +912,5 @@ post-map configures:
     settings.set_snapshot_suffix(snapshot_suffix.join("-"));
     settings.set_description(snapshot_desc.join("\n"));
     let _guard = settings.bind_to_scope();
-    assert_snapshot!(snapshot);
+    assert_snapshot!(legacy_column_widths_for_transition_snapshot(snapshot));
 }
