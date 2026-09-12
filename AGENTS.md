@@ -19,6 +19,48 @@ nightly-only options, and the CI fmt job runs on nightly. Stable rustfmt reports
 clean while leaving nightly diffs in place — that trap has already cost one
 round-trip.
 
+## Running a nested compositor: cap it or it eats the machine
+
+Testing against a live swayward means running a second compositor and real
+clients inside the developer's own session. That has already OOM-killed a
+machine: a test waybar reached **9 GB RSS / 34.6 GB virtual** before the kernel
+stepped in, dragging swap down with it.
+
+A runaway client must fail fast and locally instead of exhausting the host.
+**Cap memory and wall time, and reap on exit:**
+
+```bash
+#!/bin/bash
+trap 'pkill -9 -f "^\./target/debug/swayward"; pkill -9 -f "$MY_CFG"' EXIT
+
+systemd-run --user --scope -p MemoryMax=2G -p MemorySwapMax=0 \
+  timeout 60 ./target/debug/swayward -c /tmp/swcfg/config.kdl
+```
+
+`MemorySwapMax=0` is the load-bearing half. Without it a leak grinds the machine
+through 31 GB of swap for minutes before anything dies.
+
+Four rules that follow from that incident:
+
+- **One script, one lifetime.** Launch, query and reap inside a *single* shell
+  invocation. Agent tool calls are isolated processes, so a `pkill` in a later
+  call cannot see what an earlier call started — that is how a dozen orphaned
+  compositors accumulated unnoticed.
+- **Strip `spawn-at-startup` from the test config.** A spawned bar competes for
+  the IPC socket and can starve `swaymsg`:
+  `grep -v 'spawn-at-startup' ~/.config/swayward/config.kdl > /tmp/swcfg/config.kdl`
+- **Match the exact binary when reaping.** `pkill -f swayward` also matches your
+  own shell command line and the operator's session. `pgrep -af
+  '^\./target/debug/swayward'` does not.
+- **Never kill the operator's processes.** Their `sway` and their `waybar` run
+  alongside yours. Identify yours by the pid you launched, not by name.
+
+Prefer the headless harness wherever it can answer the question. `src/tests/`
+drives a real compositor and real `wayland-client` clients with no nested session
+at all — `tests::floating::two_windows_tile_side_by_side_and_focus_follows`
+replaced a manual two-terminal check that way, and unlike a human watching a
+screen it runs in CI.
+
 ## History is rebase fuel
 
 We merge upstream niri releases forever (`git fetch upstream --tags && git merge
