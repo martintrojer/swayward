@@ -320,6 +320,7 @@ fn describe_tiling(
         IpcNode::Split {
             id,
             layout,
+            percent,
             children,
         } => {
             let children: Vec<_> = children
@@ -333,7 +334,7 @@ fn describe_tiling(
                 .chain(children.iter().map(|child| child.id))
                 .take(1)
                 .collect();
-            common_node(
+            let mut node = common_node(
                 container_id(id),
                 NodeType::Con,
                 ipc_layout(layout),
@@ -345,20 +346,29 @@ fn describe_tiling(
                 focus,
                 false,
                 NodeProperties::None {},
-            )
+            );
+            node.percent = percent;
+            node
         }
-        IpcNode::Leaf { window, rect, .. } => {
+        IpcNode::Leaf {
+            window,
+            percent,
+            rect,
+            ..
+        } => {
             let mapped = workspace
                 .windows()
                 .find(|mapped| mapped.window == window)
                 .expect("tree leaf window must exist in workspace");
-            describe_window(
+            let mut node = describe_window(
                 mapped,
                 offset_rect(rect, workspace_rect),
                 NodeType::Con,
                 "auto_off",
-                Some(workspace_rect),
-            )
+                None,
+            );
+            node.percent = percent;
+            node
         }
     }
 }

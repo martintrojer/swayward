@@ -46,11 +46,13 @@ pub enum IpcNode<I> {
     Split {
         id: NodeId,
         layout: Layout,
+        percent: Option<f64>,
         children: Vec<IpcNode<I>>,
     },
     Leaf {
         id: NodeId,
         window: I,
+        percent: Option<f64>,
         rect: Rectangle<f64, Logical>,
     },
 }
@@ -1520,29 +1522,35 @@ impl<W: LayoutElement> TilingTree<W> {
         fn snapshot<W: LayoutElement>(
             tree: &TilingTree<W>,
             id: NodeId,
+            percent: Option<f64>,
             geometries: &HashMap<NodeId, Rectangle<f64, Logical>>,
         ) -> IpcNode<W::Id> {
             match &tree.nodes[&id].value {
                 TreeNode::Split {
-                    layout, children, ..
+                    layout,
+                    children,
+                    percents,
                 } => IpcNode::Split {
                     id,
                     layout: *layout,
+                    percent,
                     children: children
                         .iter()
-                        .map(|child| snapshot(tree, *child, geometries))
+                        .zip(percents)
+                        .map(|(child, percent)| snapshot(tree, *child, Some(*percent), geometries))
                         .collect(),
                 },
                 TreeNode::Leaf { tile } => IpcNode::Leaf {
                     id,
                     window: tile.window().id().clone(),
+                    percent,
                     rect: geometries[&id],
                 },
             }
         }
 
         let geometries = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
-        snapshot(self, self.root, &geometries)
+        snapshot(self, self.root, None, &geometries)
     }
 
     pub fn iter_depth_first(&self) -> impl Iterator<Item = (NodeId, &TreeNode<W>)> {
