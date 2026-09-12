@@ -211,7 +211,8 @@ fn nested_live_tree() -> Value {
         f.double_roundtrip(id);
     }
     f.swayward().layout.consume_or_expel_window_left(None);
-    serde_json::to_value(describe_tree(&f.swayward().layout)).unwrap()
+    let swayward = f.swayward();
+    serde_json::to_value(describe_tree(&swayward.layout, &swayward.global_space)).unwrap()
 }
 
 fn nested_fixture_tree() -> Value {
@@ -249,8 +250,9 @@ fn live_ipc_descriptions_match_sway_schema() {
     window.ack_last_and_commit();
     f.double_roundtrip(id);
 
-    let layout = &f.swayward().layout;
-    let ours = serde_json::to_value(describe_tree(layout)).unwrap();
+    let swayward = f.swayward();
+    let layout = &swayward.layout;
+    let ours = serde_json::to_value(describe_tree(layout, &swayward.global_space)).unwrap();
     let fixture: Value = serde_json::from_str(include_str!(
         "../../tests/fixtures/sway/one_window.tree.json"
     ))
@@ -284,19 +286,37 @@ fn live_ipc_descriptions_match_sway_schema() {
     assert_eq!(scratch["nodes"][0]["name"], "__i3_scratch");
     assert!(ours["nodes"][1]["nodes"][0]["nodes"][0]["app_id"].is_string());
 
-    let ours = serde_json::to_value(describe_workspaces(layout)).unwrap();
+    let ours = serde_json::to_value(describe_workspaces(layout, &swayward.global_space)).unwrap();
     let fixture: Value = serde_json::from_str(include_str!(
         "../../tests/fixtures/sway/one_window.workspaces.json"
     ))
     .unwrap();
     assert_same_shape(&fixture, &ours, "$workspaces");
 
-    let ours = serde_json::to_value(describe_outputs(layout)).unwrap();
+    let ours = serde_json::to_value(describe_outputs(layout, &swayward.global_space)).unwrap();
     let fixture: Value = serde_json::from_str(include_str!(
         "../../tests/fixtures/sway/one_window.outputs.json"
     ))
     .unwrap();
     assert_same_shape(&fixture, &ours, "$outputs");
+}
+
+#[test]
+fn ipc_output_rects_use_global_positions() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1280, 720));
+    f.add_output(2, (1920, 1080));
+    let swayward = f.swayward();
+    let outputs = describe_outputs(&swayward.layout, &swayward.global_space);
+    let rects = outputs.iter().map(|output| output.rect).collect::<Vec<_>>();
+    assert_eq!(rects[0].x, 0);
+    assert_eq!(rects[0].width, 1280);
+    assert_eq!(rects[1].x, 1280);
+    assert_eq!(rects[1].width, 1920);
+
+    let root = describe_tree(&swayward.layout, &swayward.global_space);
+    assert_eq!(root.rect.width, 3200);
+    assert_eq!(root.rect.height, 1080);
 }
 
 #[test]

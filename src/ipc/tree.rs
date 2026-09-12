@@ -1,3 +1,4 @@
+use smithay::desktop::{Space, Window};
 use smithay::utils::{Logical, Rectangle};
 use swayward_ipc::{
     IdleInhibitors, Node, NodeBorder, NodeLayout, NodeProperties, NodeType, Output, OutputMode,
@@ -19,21 +20,19 @@ const WORKSPACE_ID_BASE: i64 = 2 * ID_NAMESPACE_SIZE;
 const CONTAINER_ID_BASE: i64 = 3 * ID_NAMESPACE_SIZE;
 const WINDOW_ID_BASE: i64 = 4 * ID_NAMESPACE_SIZE;
 
-pub fn describe_tree(layout: &Layout<Mapped>) -> Node {
+pub fn describe_tree(layout: &Layout<Mapped>, global_space: &Space<Window>) -> Node {
     let outputs: Vec<_> = layout.monitors().collect();
     let root_rect = outputs
         .iter()
-        .filter_map(|monitor| monitor.output().current_mode().map(|mode| mode.size))
-        .fold(Rect::default(), |mut rect, size| {
-            rect.width += size.w;
-            rect.height = rect.height.max(size.h);
-            rect
-        });
+        .filter_map(|monitor| global_space.output_geometry(monitor.output()))
+        .reduce(|a, b| a.merge(b))
+        .map(rect_from_rectangle)
+        .unwrap_or_default();
     let mut nodes = vec![scratch_output(root_rect)];
     nodes.extend(
         outputs
             .iter()
-            .map(|monitor| describe_output_node(layout, monitor)),
+            .map(|monitor| describe_output_node(layout, global_space, monitor)),
     );
     let focus = outputs
         .iter()
@@ -57,7 +56,10 @@ pub fn describe_tree(layout: &Layout<Mapped>) -> Node {
     )
 }
 
-pub fn describe_workspaces(layout: &Layout<Mapped>) -> Vec<Workspace> {
+pub fn describe_workspaces(
+    layout: &Layout<Mapped>,
+    global_space: &Space<Window>,
+) -> Vec<Workspace> {
     layout
         .workspaces()
         .filter_map(|(monitor, index, workspace)| {
@@ -71,7 +73,7 @@ pub fn describe_workspaces(layout: &Layout<Mapped>) -> Vec<Workspace> {
                 .name()
                 .cloned()
                 .unwrap_or_else(|| (index + 1).to_string());
-            let rect = output_rect(layout, monitor.output());
+            let rect = output_rect(global_space, monitor.output());
             let focused = monitor.active_workspace_idx() == index;
             let focus = workspace
                 .active_window()
@@ -111,7 +113,7 @@ pub fn describe_workspaces(layout: &Layout<Mapped>) -> Vec<Workspace> {
         .collect()
 }
 
-pub fn describe_outputs(layout: &Layout<Mapped>) -> Vec<Output> {
+pub fn describe_outputs(layout: &Layout<Mapped>, global_space: &Space<Window>) -> Vec<Output> {
     layout
         .monitors()
         .map(|monitor| {
@@ -175,7 +177,7 @@ pub fn describe_outputs(layout: &Layout<Mapped>) -> Vec<Output> {
                 percent: Some(1.),
                 power: true,
                 primary: false,
-                rect: output_rect(layout, output),
+                rect: output_rect(global_space, output),
                 scale: output.current_scale().fractional_scale(),
                 scale_filter: "nearest".into(),
                 scratchpad_state: None,
@@ -194,9 +196,10 @@ pub fn describe_outputs(layout: &Layout<Mapped>) -> Vec<Output> {
 
 fn describe_output_node(
     layout: &Layout<Mapped>,
+    global_space: &Space<Window>,
     monitor: &crate::layout::monitor::Monitor<Mapped>,
 ) -> Node {
-    let rect = output_rect(layout, monitor.output());
+    let rect = output_rect(global_space, monitor.output());
     let workspaces = layout
         .workspaces()
         .filter(|(candidate, _, workspace)| {
@@ -215,7 +218,7 @@ fn describe_output_node(
         .map(|workspace| workspace.id)
         .into_iter()
         .collect();
-    let output = describe_outputs(layout)
+    let output = describe_outputs(layout, global_space)
         .into_iter()
         .find(|output| output.name == *monitor.output_name())
         .unwrap();
@@ -574,9 +577,18 @@ fn offset_rect(rect: Rectangle<f64, Logical>, output: Rect) -> Rect {
         rect.size.h,
     )
 }
-fn output_rect(layout: &Layout<Mapped>, output: &smithay::output::Output) -> Rect {
-    layout
-        .monitor_for_output(output)
-        .map(|monitor| rect_from(0., 0., monitor.view_size().w, monitor.view_size().h))
+fn rect_from_rectangle(rect: Rectangle<i32, Logical>) -> Rect {
+    Rect {
+        x: rect.loc.x,
+        y: rect.loc.y,
+        width: rect.size.w,
+        height: rect.size.h,
+    }
+}
+
+fn output_rect(global_space: &Space<Window>, output: &smithay::output::Output) -> Rect {
+    global_space
+        .output_geometry(output)
+        .map(rect_from_rectangle)
         .unwrap_or_default()
 }

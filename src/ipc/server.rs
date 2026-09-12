@@ -152,7 +152,11 @@ fn on_new_ipc_client(state: &mut State, stream: UnixStream) {
     let Some(server) = &state.swayward.ipc_server else {
         return;
     };
-    refresh_query_state(&state.swayward.layout, &mut server.query_state.borrow_mut());
+    refresh_query_state(
+        &state.swayward.layout,
+        &state.swayward.global_space,
+        &mut server.query_state.borrow_mut(),
+    );
     let ctx = ClientCtx {
         query_state: server.query_state.clone(),
         event_streams: server.event_streams.clone(),
@@ -287,12 +291,16 @@ fn find_node<'a>(
     })
 }
 
-fn refresh_query_state(layout: &crate::layout::Layout<Mapped>, state: &mut QueryState) {
-    state.tree = serde_json::to_string(&describe_tree(layout))
+fn refresh_query_state(
+    layout: &crate::layout::Layout<Mapped>,
+    global_space: &smithay::desktop::Space<smithay::desktop::Window>,
+    state: &mut QueryState,
+) {
+    state.tree = serde_json::to_string(&describe_tree(layout, global_space))
         .unwrap_or_else(|_| r#"{"success":false,"error":"serialization failed"}"#.into());
-    state.workspaces = serde_json::to_string(&describe_workspaces(layout))
+    state.workspaces = serde_json::to_string(&describe_workspaces(layout, global_space))
         .unwrap_or_else(|_| r#"{"success":false,"error":"serialization failed"}"#.into());
-    state.outputs = serde_json::to_string(&describe_outputs(layout))
+    state.outputs = serde_json::to_string(&describe_outputs(layout, global_space))
         .unwrap_or_else(|_| r#"{"success":false,"error":"serialization failed"}"#.into());
 }
 
@@ -474,7 +482,11 @@ impl State {
 
     pub fn ipc_refresh_layout(&mut self) {
         if let Some(server) = &self.swayward.ipc_server {
-            refresh_query_state(&self.swayward.layout, &mut server.query_state.borrow_mut());
+            refresh_query_state(
+                &self.swayward.layout,
+                &self.swayward.global_space,
+                &mut server.query_state.borrow_mut(),
+            );
         }
         self.ipc_refresh_workspaces();
         self.ipc_refresh_windows();
