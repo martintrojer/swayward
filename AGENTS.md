@@ -83,6 +83,19 @@ Corollary: keep unrelated changes out of a commit. A rename commit contains only
 renames; a fmt commit contains only formatting. Mixed commits are the ones that
 turn a trivial merge into an archaeology problem.
 
+**Squashing does not reduce merge cost — don't bother.** `git merge` is a
+three-way comparison of base, our and their *trees*; it never walks our commit
+list. Measured: two branches with byte-identical trees, one built from two
+commits and one squashed into one, produce the same conflict count and the same
+hunk count against the same upstream change. So squash for human legibility if
+you like, and never at the price of a commit's verifiability — folding formatting
+into a rename destroys a reviewer's ability to confirm "this diff is only
+renames", which is worth far more than a shorter log.
+
+What *does* need rewriting is content that should never have been committed —
+test artefacts, secrets, generated files. Those live in the trees a merge
+actually reads.
+
 ## Divergence ledger
 
 Prefer new modules over editing inherited files. When an inherited file genuinely
