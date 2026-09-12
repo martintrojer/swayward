@@ -3,19 +3,19 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use proptest::prelude::*;
+use smithay::output::{self, Output};
+use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+use smithay::utils::{Point, Serial, Transform};
 
 use super::*;
 use crate::animation::Clock;
+use crate::layout::tile::Tile;
 use crate::layout::{
-    tile::Tile, ConfigureIntent, InteractiveResizeData, LayoutElementRenderSnapshot, Options,
-    SizingMode,
+    ConfigureIntent, InteractiveResizeData, LayoutElementRenderSnapshot, Options, SizingMode,
 };
 use crate::render_helpers::offscreen::OffscreenData;
 use crate::utils::transaction::Transaction;
 use crate::window::ResolvedWindowRules;
-use smithay::output::{self, Output};
-use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::utils::{Point, Serial, Transform};
 
 #[derive(Debug)]
 struct TestWindowInner {

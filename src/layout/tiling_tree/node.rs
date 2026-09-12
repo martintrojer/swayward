@@ -1,5 +1,6 @@
 use super::Layout;
-use crate::layout::{tile::Tile, LayoutElement};
+use crate::layout::tile::Tile;
+use crate::layout::LayoutElement;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct NodeId(pub(crate) u64);

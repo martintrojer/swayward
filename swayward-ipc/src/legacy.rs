@@ -181,8 +181,8 @@ pub struct PickedColor {
 }
 
 /// Actions that niri can perform.
-// Variants in this enum should match the spelling of the ones in swayward-config. Most, but not all,
-// variants from swayward-config should be present here.
+// Variants in this enum should match the spelling of the ones in swayward-config. Most, but not
+// all, variants from swayward-config should be present here.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
 #[cfg_attr(feature = "clap", command(subcommand_value_name = "ACTION"))]
