@@ -1418,3 +1418,78 @@ fn repeated_size_request() {
         @""
     );
 }
+
+/// Two mapped windows must tile side by side through the real compositor, and a
+/// directional focus move must land on the other one. This is the headless
+/// equivalent of the manual two-terminal check: it drives real Wayland clients
+/// through the real layout, so it proves placement and focus rather than
+/// asserting tree arithmetic directly.
+#[test]
+fn two_windows_tile_side_by_side_and_focus_follows() {
+    let (mut f, id, first_surface) = set_up();
+
+    let second = f.client(id).create_window();
+    let second_surface = second.surface.clone();
+    second.commit();
+    f.roundtrip(id);
+    let second = f.client(id).window(&second_surface);
+    second.attach_new_buffer();
+    second.ack_last_and_commit();
+    f.double_roundtrip(id);
+    f.client(id).window(&first_surface).ack_last_and_commit();
+    f.roundtrip(id);
+
+    let first_width = f
+        .client(id)
+        .window(&first_surface)
+        .configures_received
+        .last()
+        .unwrap()
+        .1
+        .size
+        .0;
+    let second_width = f
+        .client(id)
+        .window(&second_surface)
+        .configures_received
+        .last()
+        .unwrap()
+        .1
+        .size
+        .0;
+
+    // Two tiled leaves split the 1888px working area, so neither fills it.
+    assert_eq!(
+        first_width, second_width,
+        "two tiled leaves must share the working area evenly"
+    );
+    assert!(
+        first_width > 0 && first_width < 1888,
+        "each leaf must be narrower than the full working area, got {first_width}"
+    );
+
+    // Focus must follow a directional move between the two leaves.
+    let focused_before = f
+        .swayward()
+        .layout
+        .active_workspace()
+        .unwrap()
+        .active_window()
+        .unwrap()
+        .window
+        .clone();
+    f.swayward().layout.focus_left();
+    let focused_after = f
+        .swayward()
+        .layout
+        .active_workspace()
+        .unwrap()
+        .active_window()
+        .unwrap()
+        .window
+        .clone();
+    assert_ne!(
+        focused_before, focused_after,
+        "focus_left must move focus to the sibling leaf"
+    );
+}
