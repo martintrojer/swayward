@@ -1,6 +1,6 @@
 ### Overview
 
-Niri has several animations which you can configure in the same way.
+swayward has several animations which you can configure in the same way.
 Additionally, you can disable or slow down all animations at once.
 
 Here's a quick glance at the available animations with their default values.
@@ -30,10 +30,6 @@ animations {
         curve "ease-out-quad"
     }
 
-    horizontal-view-movement {
-        spring damping-ratio=1.0 stiffness=800 epsilon=0.0001
-    }
-
     window-movement {
         spring damping-ratio=1.0 stiffness=800 epsilon=0.0001
     }
@@ -53,10 +49,6 @@ animations {
     screenshot-ui-open {
         duration-ms 200
         curve "ease-out-quad"
-    }
-
-    overview-open-close {
-        spring damping-ratio=1.0 stiffness=800 epsilon=0.0001
     }
 
     recent-windows-close {
@@ -88,7 +80,7 @@ animations {
 }
 ```
 
-Currently, niri only supports five curves.
+Currently, swayward only supports five curves.
 You can get a feel for them on pages like [easings.net](https://easings.net/).
 
 - `ease-out-quad` <sup>Since: 0.1.5</sup>
@@ -187,8 +179,8 @@ You can write a custom shader for drawing the window during an open animation.
 
 See [this example shader](./examples/open_custom_shader.frag) for a full documentation with several animations to experiment with.
 
-If a custom shader fails to compile, niri will print a warning and fall back to the default, or previous successfully compiled shader.
-When running niri as a systemd service, you can see the warnings in the journal: `journalctl -ef /usr/bin/swayward`
+If a custom shader fails to compile, swayward will print a warning and fall back to the default, or previous successfully compiled shader.
+When running swayward as a systemd service, you can see the warnings in the journal: `journalctl -ef /usr/bin/swayward`
 
 > [!WARNING]
 >
@@ -247,8 +239,8 @@ You can write a custom shader for drawing the window during a close animation.
 
 See [this example shader](./examples/close_custom_shader.frag) for a full documentation with several animations to experiment with.
 
-If a custom shader fails to compile, niri will print a warning and fall back to the default, or previous successfully compiled shader.
-When running niri as a systemd service, you can see the warnings in the journal: `journalctl -ef /usr/bin/swayward`
+If a custom shader fails to compile, swayward will print a warning and fall back to the default, or previous successfully compiled shader.
+When running swayward as a systemd service, you can see the warnings in the journal: `journalctl -ef /usr/bin/swayward`
 
 > [!WARNING]
 >
@@ -275,22 +267,6 @@ animations {
                 return color * (1.0 - niri_clamped_progress);
             }
         "
-    }
-}
-```
-
-#### `horizontal-view-movement`
-
-All horizontal camera view movement animations, such as:
-
-- When a window off-screen is focused and the camera scrolls to it.
-- When a new window appears off-screen and the camera scrolls to it.
-- After a horizontal touchpad gesture (a spring is recommended).
-
-```kdl
-animations {
-    horizontal-view-movement {
-        spring damping-ratio=1.0 stiffness=800 epsilon=0.0001
     }
 }
 ```
@@ -343,8 +319,8 @@ You can write a custom shader for drawing the window during a resize animation.
 
 See [this example shader](./examples/resize_custom_shader.frag) for a full documentation with several animations to experiment with.
 
-If a custom shader fails to compile, niri will print a warning and fall back to the default, or previous successfully compiled shader.
-When running niri as a systemd service, you can see the warnings in the journal: `journalctl -ef /usr/bin/swayward`
+If a custom shader fails to compile, swayward will print a warning and fall back to the default, or previous successfully compiled shader.
+When running swayward as a systemd service, you can see the warnings in the journal: `journalctl -ef /usr/bin/swayward`
 
 > [!WARNING]
 >
@@ -412,20 +388,6 @@ animations {
 }
 ```
 
-#### `overview-open-close`
-
-<sup>Since: 25.05</sup>
-
-The open/close zoom animation of the [Overview](./Overview.md).
-
-```kdl
-animations {
-    overview-open-close {
-        spring damping-ratio=1.0 stiffness=800 epsilon=0.0001
-    }
-}
-```
-
 #### `recent-windows-close`
 
 <sup>Since: 25.11</sup>
@@ -440,21 +402,6 @@ animations {
 }
 ```
 
-### Synchronized Animations
+---
 
-<sup>Since: 0.1.5</sup>
-
-Sometimes, when two animations are meant to play together synchronized, niri will drive them both with the same configuration.
-
-For example, if a window resize causes the view to move, then that view movement animation will also use the `window-resize` configuration (rather than the `horizontal-view-movement` configuration).
-This is especially important for animated resizes to look good when using `center-focused-column "always"`.
-
-As another example, resizing a window in a column vertically causes other windows to move up or down into their new position.
-This movement will use the `window-resize` configuration, rather than the `window-movement` configuration, to keep the animations synchronized.
-
-A few actions are still missing this synchronization logic, since in some cases it is difficult to implement properly.
-Therefore, for the best results, consider using the same parameters for related animations (they are all the same by default):
-
-- `horizontal-view-movement`
-- `window-movement`
-- `window-resize`
+*This page is adapted from the niri documentation.*

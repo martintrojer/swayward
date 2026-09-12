@@ -152,8 +152,8 @@ input {
 >
 > <sup>Since: 25.08</sup>
 >
-> If the `xkb` section is empty (like it is by default), niri will fetch xkb settings from systemd-localed at `org.freedesktop.locale1` over D-Bus.
-> This way, for example, system installers can dynamically set the niri keyboard layout.
+> If the `xkb` section is empty (like it is by default), swayward will fetch xkb settings from systemd-localed at `org.freedesktop.locale1` over D-Bus.
+> This way, for example, system installers can dynamically set the swayward keyboard layout.
 > You can see this layout in `localectl` and change it with `localectl set-x11-keymap`, for example:
 >
 > ```sh
@@ -176,7 +176,7 @@ input {
 >
 > These settings are picked up by some other programs too, like GDM.
 
-When using multiple layouts, niri can remember the current layout globally (the default) or per-window.
+When using multiple layouts, swayward can remember the current layout globally (the default) or per-window.
 You can control this with the `track-layout` option.
 
 - `global`: layout change is global for all windows.
@@ -288,7 +288,7 @@ Settings specific to `tablet`:
 - `map-to-focused-output`: <sup>Since: 26.04</sup> will map the tablet to the focused output, takes precedence over `map-to-output`.
 
 - `map-to-focused-window`: <sup>Since: next release</sup> will map the tablet to the focused window's geometry, takes precedence over `map-to-focused-output` and `map-to-output`.
-Falls back to those when no window is focused (for example, in the overview).
+Falls back to those when no window is focused.
 
     When the tablet is also mapped to a specific output via `map-to-output`, the `map-to-focused-window` flag will map the tablet to the active window on that output.
     If the tablet isn't mapped to any specific output, it will map the tablet to the current focused window regardless of where it is.
@@ -299,7 +299,7 @@ These settings are not specific to a particular input device.
 
 #### `disable-power-key-handling`
 
-By default, niri will take over the power button to make it sleep instead of power off.
+By default, swayward will take over the power button to make it sleep instead of power off.
 Set this if you would like to configure the power button elsewhere (i.e. `logind.conf`).
 
 ```kdl
@@ -368,7 +368,7 @@ input {
 Normally, switching to the same workspace by index twice will do nothing (since you're already on that workspace).
 If this flag is enabled, switching to the same workspace by index twice will switch back to the previous workspace.
 
-Niri will correctly switch to the workspace you came from, even if workspaces were reordered in the meantime.
+swayward will correctly switch to the workspace you came from, even if workspaces were reordered in the meantime.
 
 ```kdl
 input {
@@ -383,7 +383,7 @@ input {
 Customize the `Mod` key for [key bindings](./Configuration:-Key-Bindings.md).
 Only valid modifiers are allowed, e.g. `Super`, `Alt`, `Mod3`, `Mod5`, `Ctrl`, `Shift`.
 
-By default, `Mod` is equal to `Super` when running niri on a TTY, and to `Alt` when running niri as a nested winit window.
+By default, `Mod` is equal to `Super` when running swayward on a TTY, and to `Alt` when running swayward as a nested winit window.
 
 > [!NOTE]
 > There are a lot of default bindings with Mod, none of them "make it through" to the underlying window.
@@ -396,3 +396,7 @@ input {
     mod-key-nested "Super"
 }
 ```
+
+---
+
+*This page is adapted from the niri documentation.*

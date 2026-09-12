@@ -191,3 +191,7 @@ For example, if you have <kbd>Mod</kbd><kbd>Shift</kbd><kbd>C</kbd> bound to `cl
 
 This way we don't need to hardcode things like HJKL directional movements.
 If you have, say, Colemak-DH MNEI binds instead, they will work for you in the window switcher (as long as they don't conflict with the hardcoded ones).
+
+---
+
+*This page is adapted from the niri documentation.*

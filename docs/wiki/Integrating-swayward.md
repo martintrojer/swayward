@@ -1,69 +1,46 @@
-This page contains various bits of information helpful for integrating niri in a distribution.
-First, for creating a niri package, see the [Packaging](./Packaging-niri.md) page.
+# Integrating swayward
 
-### Configuration
+Install swayward as a standalone Wayland session. See [Packaging
+swayward](./Packaging-swayward.md) for file locations and recommended runtime
+dependencies.
 
-Niri will load configuration from `$XDG_CONFIG_HOME/swayward/config.kdl` or `~/.config/swayward/config.kdl`, falling back to `/etc/swayward/config.kdl`.
-If both of these files are missing, niri will create `$XDG_CONFIG_HOME/swayward/config.kdl` with the contents of [the default configuration file](https://github.com/niri-wm/niri/blob/main/resources/default-config.kdl), which are embedded into the niri binary at build time.
+## Configuration
 
-This means that you can customize your distribution defaults by creating `/etc/swayward/config.kdl`.
-When this file is present, niri *will not* automatically create a config at `~/.config/swayward/`, so you'll need to direct your users how to do it themselves.
+swayward reads `$XDG_CONFIG_HOME/swayward/config.kdl` or
+`~/.config/swayward/config.kdl`, then `/etc/swayward/config.kdl`. Distributions
+can provide `/etc/swayward/config.kdl` as their default. Keep local defaults in
+sync with changes to `resources/default-config.kdl`.
 
-Keep in mind that we update the default config in new releases, so if you have a custom `/etc/swayward/config.kdl`, you likely want to inspect and apply the relevant changes too.
+Set `SWAYWARD_CONFIG` to override the path.
 
-The default configuration locations can be overridden with the `SWAYWARD_CONFIG` environment variable.
+## Session services
 
-<sup>Since: 26.04</sup> You can also change the configuration path at runtime via the niri IPC or using the command `swayward msg action load-config-file --path <path-to-config.kdl>`.
+`swayward.service` starts `graphical-session.target` and
+`xdg-desktop-autostart.target`. Desktop components can use normal XDG autostart
+files or user units wanted by `graphical-session.target`.
 
-<sup>Since: 25.11</sup> You can split the niri config file into multiple files using [`include`](./Configuration:-Include.md).
+A usable session normally includes:
 
-### Xwayland
+- a notification daemon;
+- `xdg-desktop-portal-gnome` and `xdg-desktop-portal-gtk`;
+- an authentication agent;
+- a panel, launcher, wallpaper tool, and screen locker;
+- xwayland-satellite for X11 applications.
 
-Xwayland is required for running X11 apps and games, and also the Orca screen reader.
+See [Important software](./Important-Software.md) and [Example systemd
+setup](./Example-systemd-Setup.md).
 
-<sup>Since: 25.08</sup> Niri integrates with [xwayland-satellite](https://github.com/Supreeeme/xwayland-satellite) out of the box.
-The integration requires xwayland-satellite >= 0.7 available in `$PATH`.
-Please consider making niri depend on (or at least recommend) the xwayland-satellite package.
-If you had a custom config which manually started `xwayland-satellite` and set `$DISPLAY`, you should remove those customizations for the automatic integration to work.
+## Keyboard layout
 
-You can change the path where niri looks for xwayland-satellite using the [`xwayland-satellite` top-level option](./Configuration:-Miscellaneous.md#xwayland-satellite).
+Unless the KDL config specifies an XKB layout, swayward reads the system layout
+from `org.freedesktop.locale1`. Installers should set the layout through
+systemd-localed.
 
-### Keyboard layout
+## Accessibility
 
-<sup>Since: 25.08</sup> By default (unless [manually configured](./Configuration:-Input.md#layout) otherwise), niri reads keyboard layout settings from systemd-localed at `org.freedesktop.locale1` over D-Bus.
-Make sure your system installer sets the keyboard layout via systemd-localed, and niri should pick it up.
+A full session exposes the D-Bus and AccessKit interfaces used by Orca. See
+[Accessibility](./Accessibility.md).
 
-### Autostart
+---
 
-Niri works with the normal systemd autostart.
-The default [swayward.service](https://github.com/niri-wm/niri/blob/main/resources/swayward.service) brings up `graphical-session.target` as well as `xdg-desktop-autostart.target`.
-
-To make a program run at niri startup without editing the niri config, you can either link its .desktop to `~/.config/autostart/`, or use a .service file with `WantedBy=graphical-session.target`.
-See the [example systemd setup](./Example-systemd-Setup.md) page for some examples.
-
-If this is inconvenient, you can also add [`spawn-at-startup`](./Configuration:-Miscellaneous.md#spawn-at-startup) lines in the niri config.
-
-### Screen readers
-
-<sup>Since: 25.08</sup> Niri works with the [Orca](https://orca.gnome.org) screen reader.
-Please see the [Accessibility](./Accessibility.md) page for details and advice for accessibility-focused distributions.
-
-### Desktop components
-
-You very likely want to run at least a notification daemon, portals, and an authentication agent.
-This is detailed on the [Important Software](./Important-Software.md) page.
-
-On top of that, you may want to preconfigure some desktop shell components to make the experience less barebones.
-Niri's default config spawns [Waybar](https://github.com/Alexays/Waybar), which is a good starting point, but you may want to consider changing its default configuration to be less of a kitchen sink, and adding the `niri/workspaces` module.
-You will probably also want a desktop background tool ([swaybg](https://github.com/swaywm/swaybg) or [awww (which used to be swww)](https://codeberg.org/LGFae/awww/)), and a nicer screen locker (compared to the default `swaylock`), like [hyprlock](https://github.com/hyprwm/hyprlock/).
-
-Alternatively, some desktop environments and shells work with niri, and can give a more cohesive experience in one package:
-
-- [LXQt](https://lxqt-project.org/) officially supports niri, see [their wiki](https://lxqt-project.org/wiki/Wayland-Session) for details on setting it up.
-- Many [XFCE](https://www.xfce.org/) components work on Wayland, including niri. See [their wiki](https://wiki.xfce.org/releng/wayland_roadmap#component_specific_status) for details.
-- There are complete desktop shells based on Quickshell that support niri, for example [DankMaterialShell](https://github.com/AvengeMedia/DankMaterialShell) and [Noctalia](https://github.com/noctalia-dev/noctalia-shell).
-- You can run a [COSMIC](https://system76.com/cosmic/) session with niri using [cosmic-ext-extra-sessions](https://github.com/Drakulix/cosmic-ext-extra-sessions).
-
-### Security model
-
-See the [Security Model](./Security-Model.md) page for an overview of niri's security model.
+*This page is adapted from the niri documentation.*

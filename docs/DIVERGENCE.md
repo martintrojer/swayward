@@ -21,3 +21,4 @@ src/layout/monitor.rs, src/layout/mod.rs — transfer focused tree tiles rather 
 ## Deliberate behavioural deviations from sway
 
 src/layout/workspace.rs — retire niri's horizontal viewport offset and its gesture state; the i3 tree always occupies the workspace view.
+docs/wiki/, docs/mkdocs.yaml — retire scroll-layout documentation and rebrand retained niri subsystem guides for swayward.

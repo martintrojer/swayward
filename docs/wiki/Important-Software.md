@@ -1,4 +1,4 @@
-Since niri is not a complete desktop environment, you will very likely want to run the following software to make sure that other apps work fine.
+Since swayward is not a complete desktop environment, you will very likely want to run the following software to make sure that other apps work fine.
 
 ### Notification Daemon
 
@@ -8,7 +8,7 @@ Many apps need one. For example, [mako](https://github.com/emersion/mako) works 
 
 These provide a cross-desktop API for apps to use for various things like file pickers or UI settings. Flatpak apps in particular require working portals.
 
-Portals **require** [running niri as a session](./Getting-Started.md), which means through the `swayward-session` script or from a display manager. You will want the following portals installed:
+Portals **require** [running swayward as a session](./Getting-Started.md), which means through the `swayward-session` script or from a display manager. You will want the following portals installed:
 
 * `xdg-desktop-portal-gtk`: implements most of the basic functionality, this is the "default fallback portal".
 * `xdg-desktop-portal-gnome`: required for screencasting support.
@@ -47,3 +47,7 @@ To run X11 apps like Steam or Discord, you can use [xwayland-satellite].
 Check [the Xwayland wiki page](./Xwayland.md) for instructions.
 
 [xwayland-satellite]: https://github.com/Supreeeme/xwayland-satellite
+
+---
+
+*This page is adapted from the niri documentation.*

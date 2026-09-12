@@ -1,19 +1,19 @@
 ## Running a Local Build
 
-The main way of testing niri during development is running it as a nested window. The second step is usually switching to a different TTY and running niri there.
+The main way of testing swayward during development is running it as a nested window. The second step is usually switching to a different TTY and running swayward there.
 
-Once a feature or fix is reasonably complete, you generally want to run a local build as your main compositor for proper testing. The easiest way to do that is to install niri normally (from a distro package for example), then overwrite the binary with `sudo cp ./target/release/swayward /usr/bin/swayward`. Do make sure that you know how to revert to a working version in case everything breaks though.
+Once a feature or fix is reasonably complete, you generally want to run a local build as your main compositor for proper testing. The easiest way to do that is to install swayward normally (from a distro package for example), then overwrite the binary with `sudo cp ./target/release/swayward /usr/bin/swayward`. Do make sure that you know how to revert to a working version in case everything breaks though.
 
 If you use an RPM-based distro, you can generate an RPM package for a local build with `cargo generate-rpm`.
 
 ## Logging Levels
 
-Niri uses [`tracing`](https://lib.rs/crates/tracing) for logging. This is how logging levels are used:
+swayward uses [`tracing`](https://lib.rs/crates/tracing) for logging. This is how logging levels are used:
 
-- `error!`: programming errors and bugs that are recoverable. Things you'd normally use `unwrap()` for. However, when a Wayland compositor crashes, it brings down the entire session, so it's better to recover and log an `error!` whenever reasonable. If you see an `ERROR` in the niri log, that always indicates a *bug*.
+- `error!`: programming errors and bugs that are recoverable. Things you'd normally use `unwrap()` for. However, when a Wayland compositor crashes, it brings down the entire session, so it's better to recover and log an `error!` whenever reasonable. If you see an `ERROR` in the swayward log, that always indicates a *bug*.
 - `warn!`: something bad but still *possible* happened. Informing the user that they did something wrong, or that their hardware did something weird, falls into this category. For example, config parsing errors should be indicated with a `warn!`.
-- `info!`: the most important messages related to normal operation. Running niri with `RUST_LOG=swayward=info` should not make the user want to disable logging altogether.
-- `debug!`: less important messages related to normal operation. Running niri with `debug!` messages hidden should not negatively impact the UX.
+- `info!`: the most important messages related to normal operation. Running swayward with `RUST_LOG=swayward=info` should not make the user want to disable logging altogether.
+- `debug!`: less important messages related to normal operation. Running swayward with `debug!` messages hidden should not negatively impact the UX.
 - `trace!`: everything that can be useful for debugging but is otherwise too spammy or performance intensive. `trace!` messages are *compiled out* of release builds.
 
 ## Tests
@@ -46,24 +46,24 @@ The `swayward-visual-tests` sub-crate is a GTK application that runs hard-coded 
 
 ## Profiling
 
-We have integration with the [Tracy](https://github.com/wolfpld/tracy) profiler which you can enable by building niri with a feature flag:
+We have integration with the [Tracy](https://github.com/wolfpld/tracy) profiler which you can enable by building swayward with a feature flag:
 
 ```
 cargo build --release --features=profile-with-tracy-ondemand
 ```
 
-Then you can open Tracy (you will need the latest stable release) and attach to a running niri instance to collect profiling data. Profiling data is collected "on demand"—that is, only when Tracy is connected. You can run a niri build like this as your main compositor if you'd like.
+Then you can open Tracy (you will need the latest stable release) and attach to a running swayward instance to collect profiling data. Profiling data is collected "on demand"—that is, only when Tracy is connected. You can run a swayward build like this as your main compositor if you'd like.
 
 > [!NOTE]
-> If you need to profile niri startup or the niri CLI, you can opt for "always on" profiling instead, using this feature flag:
+> If you need to profile swayward startup or the swayward CLI, you can opt for "always on" profiling instead, using this feature flag:
 >
 > ```
 > cargo build --release --features=profile-with-tracy
 > ```
 >
-> When compiled this way, niri will **always** collect profiling data, so you can't run a build like this as your main compositor.
+> When compiled this way, swayward will **always** collect profiling data, so you can't run a build like this as your main compositor.
 
-To make a niri function show up in Tracy, instrument it like this:
+To make a swayward function show up in Tracy, instrument it like this:
 
 ```rust
 pub fn some_function() {
@@ -74,3 +74,7 @@ pub fn some_function() {
 ```
 
 You can also enable Rust memory allocation profiling with `--features=profile-with-tracy-allocations`.
+
+---
+
+*This page is adapted from the niri documentation.*
