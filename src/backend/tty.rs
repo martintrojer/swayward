@@ -2216,7 +2216,7 @@ impl Tty {
                         .map(|v| v as u8)
                 });
 
-                let ipc_output = swayward_ipc::Output {
+                let ipc_output = swayward_ipc::legacy::Output {
                     name: connector_name,
                     make: output_name.make.unwrap_or_else(|| "Unknown".into()),
                     model: output_name.model.unwrap_or_else(|| "Unknown".into()),

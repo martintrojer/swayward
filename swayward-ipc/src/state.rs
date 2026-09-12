@@ -9,7 +9,8 @@
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
-use crate::{Cast, Event, KeyboardLayouts, Window, Workspace};
+use crate::legacy::{Event, Workspace};
+use crate::{Cast, KeyboardLayouts, Window};
 
 /// Part of the state communicated via the event stream.
 pub trait EventStreamStatePart {

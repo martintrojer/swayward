@@ -39,7 +39,7 @@ pub struct OutputManagementManagerState {
     display: DisplayHandle,
     serial: u32,
     clients: HashMap<ClientId, ClientData>,
-    current_state: HashMap<OutputId, swayward_ipc::Output>,
+    current_state: HashMap<OutputId, swayward_ipc::legacy::Output>,
     current_config: swayward_config::Outputs,
 }
 
@@ -93,7 +93,7 @@ impl OutputManagementManagerState {
         self.current_config = new_config;
     }
 
-    pub fn notify_changes(&mut self, new_state: HashMap<OutputId, swayward_ipc::Output>) {
+    pub fn notify_changes(&mut self, new_state: HashMap<OutputId, swayward_ipc::legacy::Output>) {
         let mut changed = false; /* most likely to end up true */
         for (output, conf) in new_state.iter() {
             if let Some(old) = self.current_state.get(output) {
@@ -780,7 +780,7 @@ fn notify_removed_head(clients: &mut HashMap<ClientId, ClientData>, head: &Outpu
 fn notify_new_head(
     state: &mut OutputManagementManagerState,
     output: &OutputId,
-    conf: &swayward_ipc::Output,
+    conf: &swayward_ipc::legacy::Output,
 ) {
     let display = &state.display;
     let clients = &mut state.clients;
@@ -796,7 +796,7 @@ fn send_new_head<D>(
     client: &Client,
     client_data: &mut ClientData,
     output: OutputId,
-    conf: &swayward_ipc::Output,
+    conf: &swayward_ipc::legacy::Output,
 ) where
     D: Dispatch<ZwlrOutputModeV1, EmptyData>,
     D: Dispatch<ZwlrOutputHeadV1, OutputId>,

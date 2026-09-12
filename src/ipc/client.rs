@@ -5,9 +5,10 @@ use std::{env, slice};
 
 use anyhow::{anyhow, bail, Context};
 use swayward_config::OutputName;
+use swayward_ipc::legacy::{Event, Output};
 use swayward_ipc::socket::Socket;
 use swayward_ipc::{
-    Action, Cast, CastKind, CastTarget, Event, KeyboardLayouts, LogicalOutput, Mode, Output,
+    Action, Cast, CastKind, CastTarget, KeyboardLayouts, LogicalOutput, Mode,
     OutputConfigChanged, Overview, Request, Response, Transform, Window, WindowLayout,
 };
 use serde_json::json;

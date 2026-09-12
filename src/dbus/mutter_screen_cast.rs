@@ -72,7 +72,7 @@ pub struct Stream {
 #[derive(Clone)]
 enum StreamTarget {
     // FIXME: update on scale changes and whatnot.
-    Output(swayward_ipc::Output),
+    Output(swayward_ipc::legacy::Output),
     Window { id: u64 },
 }
 

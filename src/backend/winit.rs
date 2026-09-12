@@ -80,7 +80,7 @@ impl Winit {
         let physical_properties = output.physical_properties();
         let ipc_outputs = Arc::new(Mutex::new(HashMap::from([(
             OutputId::next(),
-            swayward_ipc::Output {
+            swayward_ipc::legacy::Output {
                 name: output.name(),
                 make: physical_properties.make,
                 model: physical_properties.model,

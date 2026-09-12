@@ -309,7 +309,7 @@ impl Start for DisplayConfig {
 }
 
 // Adapted from Mutter.
-fn make_display_name(output: &swayward_ipc::Output, is_laptop_panel: bool) -> String {
+fn make_display_name(output: &swayward_ipc::legacy::Output, is_laptop_panel: bool) -> String {
     if is_laptop_panel {
         return String::from("Built-in display");
     }

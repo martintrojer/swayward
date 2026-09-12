@@ -6,7 +6,8 @@ use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 
-use crate::{Event, Reply, Request};
+use crate::legacy::Event;
+use crate::{Reply, Request};
 
 /// Name of the environment variable containing the niri IPC socket path.
 pub const SOCKET_PATH_ENV: &str = "SWAYWARD_SOCKET";

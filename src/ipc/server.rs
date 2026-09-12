@@ -15,10 +15,11 @@ use directories::BaseDirs;
 use futures_util::io::{AsyncReadExt, BufReader};
 use futures_util::{select_biased, AsyncBufReadExt, AsyncWrite, AsyncWriteExt, FutureExt as _};
 use swayward_config::OutputName;
+use swayward_ipc::legacy::{Event, Workspace};
 use swayward_ipc::state::{EventStreamState, EventStreamStatePart as _};
 use swayward_ipc::{
-    Action, Event, KeyboardLayouts, OutputConfigChanged, Overview, Reply, Request, Response,
-    Timestamp, WindowLayout, Workspace,
+    Action, KeyboardLayouts, OutputConfigChanged, Overview, Reply, Request, Response, Timestamp,
+    WindowLayout,
 };
 use smithay::desktop::layer_map_for_output;
 use smithay::input::pointer::{

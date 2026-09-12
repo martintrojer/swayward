@@ -92,7 +92,7 @@ impl Headless {
         let physical_properties = output.physical_properties();
         self.ipc_outputs.lock().unwrap().insert(
             OutputId::next(),
-            swayward_ipc::Output {
+            swayward_ipc::legacy::Output {
                 name: output.name(),
                 make: physical_properties.make,
                 model: physical_properties.model,
