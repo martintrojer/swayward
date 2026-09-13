@@ -1632,6 +1632,59 @@ fn criteria_targeted_scratchpad_commands_move_only_the_matching_window() {
 }
 
 #[test]
+fn floating_rejects_hidden_scratchpad_window_without_panicking() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.xdg_toplevel.set_app_id("hidden".into());
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    assert!(crate::command::execute(f.niri_state(), "move scratchpad")[0].success);
+    let outcome = crate::command::execute(f.niri_state(), r#"[app_id="hidden"] floating enable"#);
+    assert_eq!(outcome.len(), 1);
+    assert!(!outcome[0].success);
+    assert_eq!(
+        outcome[0].error.as_deref(),
+        Some("Can't change floating on hidden scratchpad container")
+    );
+}
+
+#[test]
+fn resize_rejects_hidden_scratchpad_window_without_panicking() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.xdg_toplevel.set_app_id("hidden".into());
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    assert!(crate::command::execute(f.niri_state(), "move scratchpad")[0].success);
+    let outcome = crate::command::execute(
+        f.niri_state(),
+        r#"[app_id="hidden"] resize grow width 10 px"#,
+    );
+    assert_eq!(outcome.len(), 1);
+    assert!(!outcome[0].success);
+    assert_eq!(
+        outcome[0].error.as_deref(),
+        Some("Cannot resize a hidden scratchpad container")
+    );
+}
+
+#[test]
 fn move_output_accepts_direction_name_and_workspace_forms() {
     let mut f = Fixture::new();
     f.add_output(1, (1280, 720));

@@ -32,6 +32,7 @@ src/layout/workspace.rs — expose a read-only TilingTree snapshot for sway GET_
 src/handlers/compositor.rs, src/swayward.rs — apply for_window commands when a toplevel maps and remove its marks when it unmaps.
 src/layout/mod.rs, src/handlers/mod.rs, src/protocols/foreign_toplevel.rs — store sway scratchpad windows and map foreign-toplevel minimize requests to hide/show them.
 src/command.rs — apply criteria-targeted scratchpad move and show commands to the matched window, matching sway's overridden-node command context.
+src/command.rs, src/layout/mod.rs — reject floating and resize changes to hidden scratchpad windows like sway and guard typed by-id actions from reaching workspace-only mutation paths.
 swayward-ipc/src/command.rs, src/command.rs — parse and execute sway's container and workspace move-to-output forms by output name or direction.
 (workspace-wide) — run `cargo fmt --all` after the rename changed identifier sort order; no behavioural change.
 

@@ -1989,6 +1989,9 @@ impl<W: LayoutElement> Layout<W> {
     }
 
     pub fn consume_or_expel_window_left(&mut self, window: Option<&W::Id>) {
+        if window.is_some_and(|window| self.is_scratchpad_hidden(window)) {
+            return;
+        }
         if let Some(InteractiveMoveState::Moving(move_)) = &mut self.interactive_move {
             if window.is_none() || window == Some(move_.tile.window().id()) {
                 return;
@@ -2012,6 +2015,9 @@ impl<W: LayoutElement> Layout<W> {
     }
 
     pub fn consume_or_expel_window_right(&mut self, window: Option<&W::Id>) {
+        if window.is_some_and(|window| self.is_scratchpad_hidden(window)) {
+            return;
+        }
         if let Some(InteractiveMoveState::Moving(move_)) = &mut self.interactive_move {
             if window.is_none() || window == Some(move_.tile.window().id()) {
                 return;
@@ -2860,6 +2866,9 @@ impl<W: LayoutElement> Layout<W> {
     }
 
     pub fn center_window(&mut self, id: Option<&W::Id>) {
+        if id.is_some_and(|window| self.is_scratchpad_hidden(window)) {
+            return;
+        }
         if let Some(InteractiveMoveState::Moving(move_)) = &mut self.interactive_move {
             if id.is_none() || id == Some(move_.tile.window().id()) {
                 return;
@@ -3598,6 +3607,9 @@ impl<W: LayoutElement> Layout<W> {
     }
 
     pub fn toggle_window_width(&mut self, window: Option<&W::Id>, forwards: bool) {
+        if window.is_some_and(|window| self.is_scratchpad_hidden(window)) {
+            return;
+        }
         if let Some(InteractiveMoveState::Moving(move_)) = &mut self.interactive_move {
             if window.is_none() || window == Some(move_.tile.window().id()) {
                 return;
@@ -3621,6 +3633,9 @@ impl<W: LayoutElement> Layout<W> {
     }
 
     pub fn toggle_window_height(&mut self, window: Option<&W::Id>, forwards: bool) {
+        if window.is_some_and(|window| self.is_scratchpad_hidden(window)) {
+            return;
+        }
         if let Some(InteractiveMoveState::Moving(move_)) = &mut self.interactive_move {
             if window.is_none() || window == Some(move_.tile.window().id()) {
                 return;
@@ -3658,6 +3673,9 @@ impl<W: LayoutElement> Layout<W> {
     }
 
     pub fn set_window_width(&mut self, window: Option<&W::Id>, change: SizeChange) {
+        if window.is_some_and(|window| self.is_scratchpad_hidden(window)) {
+            return;
+        }
         if let Some(InteractiveMoveState::Moving(move_)) = &mut self.interactive_move {
             if window.is_none() || window == Some(move_.tile.window().id()) {
                 return;
@@ -3681,6 +3699,9 @@ impl<W: LayoutElement> Layout<W> {
     }
 
     pub fn set_window_height(&mut self, window: Option<&W::Id>, change: SizeChange) {
+        if window.is_some_and(|window| self.is_scratchpad_hidden(window)) {
+            return;
+        }
         if let Some(InteractiveMoveState::Moving(move_)) = &mut self.interactive_move {
             if window.is_none() || window == Some(move_.tile.window().id()) {
                 return;
@@ -3720,6 +3741,9 @@ impl<W: LayoutElement> Layout<W> {
     }
 
     pub fn reset_window_height(&mut self, window: Option<&W::Id>) {
+        if window.is_some_and(|window| self.is_scratchpad_hidden(window)) {
+            return;
+        }
         if let Some(InteractiveMoveState::Moving(move_)) = &mut self.interactive_move {
             if window.is_none() || window == Some(move_.tile.window().id()) {
                 return;
@@ -3750,6 +3774,9 @@ impl<W: LayoutElement> Layout<W> {
     }
 
     pub fn toggle_window_floating(&mut self, window: Option<&W::Id>) {
+        if window.is_some_and(|window| self.is_scratchpad_hidden(window)) {
+            return;
+        }
         if let Some(InteractiveMoveState::Moving(move_)) = &mut self.interactive_move {
             if window.is_none() || window == Some(move_.tile.window().id()) {
                 move_.is_floating = !move_.is_floating;
@@ -3813,6 +3840,9 @@ impl<W: LayoutElement> Layout<W> {
     }
 
     pub fn set_window_floating(&mut self, window: Option<&W::Id>, floating: bool) {
+        if window.is_some_and(|window| self.is_scratchpad_hidden(window)) {
+            return;
+        }
         if let Some(InteractiveMoveState::Moving(move_)) = &mut self.interactive_move {
             if window.is_none() || window == Some(move_.tile.window().id()) {
                 if move_.is_floating != floating {
@@ -3866,6 +3896,9 @@ impl<W: LayoutElement> Layout<W> {
         y: PositionChange,
         animate: bool,
     ) {
+        if id.is_some_and(|window| self.is_scratchpad_hidden(window)) {
+            return;
+        }
         if let Some(InteractiveMoveState::Moving(move_)) = &mut self.interactive_move {
             if id.is_none() || id == Some(move_.tile.window().id()) {
                 return;

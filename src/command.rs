@@ -606,6 +606,9 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
             let Some(window) = window else {
                 return failure("No matching node.");
             };
+            if state.swayward.layout.is_scratchpad_hidden(&window) {
+                return failure("Can't change floating on hidden scratchpad container");
+            }
             match mode {
                 Toggle::Enable => state
                     .swayward
@@ -642,6 +645,9 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
             let Some(window) = window else {
                 return failure("No matching node.");
             };
+            if state.swayward.layout.is_scratchpad_hidden(&window) {
+                return failure("Cannot resize a hidden scratchpad container");
+            }
             let floating = state
                 .swayward
                 .layout
