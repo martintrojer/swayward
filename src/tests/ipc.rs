@@ -1061,12 +1061,17 @@ fn focus_parent_then_layout_targets_the_parent_of_the_focused_container() {
     ))
     .unwrap();
     let workspace = &tree["nodes"][1]["nodes"][0];
+    // `split v` retargets the singleton workspace root rather than wrapping it
+    // (sway container.c:1565), so the two windows sit directly under the
+    // workspace. `focus parent` then focuses that root, and `layout tabbed`
+    // targets its parent, the workspace itself.
     assert_eq!(workspace["layout"], "tabbed");
-    assert_eq!(workspace["nodes"].as_array().unwrap().len(), 1);
-    let focused = &workspace["nodes"][0];
-    assert_eq!(focused["layout"], "splitv");
-    assert_eq!(focused["nodes"].as_array().unwrap().len(), 2);
-    assert!(focused["focused"].as_bool().unwrap());
+    assert_eq!(workspace["nodes"].as_array().unwrap().len(), 2);
+    assert!(workspace["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|node| node["focused"] == false));
 }
 
 #[test]
