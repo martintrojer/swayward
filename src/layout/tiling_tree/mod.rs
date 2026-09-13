@@ -132,6 +132,7 @@ pub struct TilingTree<W: LayoutElement> {
     focus: Option<NodeId>,
     focus_history: Vec<NodeId>,
     pending_splits: HashMap<NodeId, Layout>,
+    previous_split_layouts: HashMap<NodeId, Layout>,
     pending_modes: HashMap<NodeId, PendingMode>,
     interactive_resize: Option<InteractiveResize<W::Id>>,
     tab_indicators: HashMap<NodeId, TabIndicator>,
@@ -174,6 +175,7 @@ impl<W: LayoutElement> TilingTree<W> {
             focus: None,
             focus_history: Vec::new(),
             pending_splits: HashMap::new(),
+            previous_split_layouts: HashMap::new(),
             pending_modes: HashMap::new(),
             interactive_resize: None,
             tab_indicators: HashMap::new(),
@@ -419,6 +421,7 @@ impl<W: LayoutElement> TilingTree<W> {
             return None;
         };
         self.pending_splits.remove(&id);
+        self.previous_split_layouts.remove(&id);
         self.pending_modes.remove(&id);
         self.focus_history.retain(|candidate| *candidate != id);
         if self
@@ -643,6 +646,9 @@ impl<W: LayoutElement> TilingTree<W> {
             ..
         }) = self.nodes.get_mut(&id)
         {
+            if matches!(*current, Layout::SplitH | Layout::SplitV) && *current != layout {
+                self.previous_split_layouts.insert(id, *current);
+            }
             *current = layout;
             self.compact_tree();
             self.request_window_sizes();
@@ -1126,7 +1132,15 @@ impl<W: LayoutElement> TilingTree<W> {
                 layout: Layout::SplitH,
                 ..
             }) => Layout::SplitV,
-            _ => Layout::SplitH,
+            Some(TreeNode::Split {
+                layout: Layout::SplitV,
+                ..
+            }) => Layout::SplitH,
+            _ => self
+                .previous_split_layouts
+                .get(&target)
+                .copied()
+                .unwrap_or(Layout::SplitH),
         };
         self.set_layout_for_command(target, layout);
     }
@@ -2217,6 +2231,9 @@ impl<W: LayoutElement> TilingTree<W> {
             ..
         }) = self.nodes.get_mut(&id)
         {
+            if matches!(*current, Layout::SplitH | Layout::SplitV) && *current != layout {
+                self.previous_split_layouts.insert(id, *current);
+            }
             *current = layout;
             self.request_window_sizes();
         }

@@ -568,6 +568,25 @@ fn parent_and_child_focus_walk_the_tree_and_layout_the_selected_parent() {
 }
 
 #[test]
+fn layout_toggle_restores_the_previous_split_axis() {
+    for previous in [Layout::SplitH, Layout::SplitV] {
+        let mut t = tree((1200., 800.), 0.);
+        t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+        t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+        t.set_layout(t.root, previous);
+        t.set_focused_layout(Layout::Tabbed);
+
+        t.toggle_focused_layout_split();
+
+        assert!(matches!(
+            t.nodes[&t.root].value,
+            TreeNode::Split { layout, .. } if layout == previous
+        ));
+        t.check_invariants();
+    }
+}
+
+#[test]
 fn layout_toggle_targets_the_parent_and_flattens_one_singleton_ancestor() {
     let mut t = tree((1200., 800.), 0.);
     let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
