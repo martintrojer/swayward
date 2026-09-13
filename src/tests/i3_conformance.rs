@@ -122,8 +122,10 @@ fn handle_control(fixture: &mut Fixture, client: super::client::ClientId, stream
 }
 
 fn run_i3_test(test: &str) {
-    let mut fixture = Fixture::new();
-    fixture.add_output(1, (1920, 1080));
+    let mut config = swayward_config::Config::default();
+    config.layout.gaps = 0.;
+    let mut fixture = Fixture::with_config(config);
+    fixture.add_output(1, (1280, 800));
     let client = fixture.add_client();
 
     let handle = fixture.swayward().event_loop.clone();
