@@ -59,10 +59,29 @@ impl Headless {
     }
 
     pub fn add_output(&mut self, swayward: &mut Swayward, n: u8, size: (u16, u16)) {
-        let connector = format!("headless-{n}");
+        self.add_output_at(swayward, n, size, None);
+    }
+
+    pub fn add_output_at(
+        &mut self,
+        swayward: &mut Swayward,
+        n: u8,
+        size: (u16, u16),
+        position: Option<(i32, i32)>,
+    ) {
+        self.add_named_output_at(swayward, format!("headless-{n}"), size, position);
+    }
+
+    pub fn add_named_output_at(
+        &mut self,
+        swayward: &mut Swayward,
+        connector: String,
+        size: (u16, u16),
+        position: Option<(i32, i32)>,
+    ) {
         let make = "swayward".to_string();
         let model = "headless".to_string();
-        let serial = n.to_string();
+        let serial = connector.clone();
 
         let output = Output::new(
             connector.clone(),
@@ -83,7 +102,7 @@ impl Headless {
         output.set_preferred(mode);
 
         output.user_data().insert_if_missing(|| OutputName {
-            connector,
+            connector: connector.clone(),
             make: Some(make),
             model: Some(model),
             serial: Some(serial),
@@ -113,7 +132,26 @@ impl Headless {
             },
         );
 
+        if let Some((x, y)) = position {
+            swayward
+                .config
+                .borrow_mut()
+                .outputs
+                .0
+                .push(swayward_config::Output {
+                    name: connector.clone(),
+                    position: Some(swayward_config::Position { x, y }),
+                    ..Default::default()
+                });
+        }
         swayward.add_output(output, None, false);
+    }
+
+    pub fn retain_ipc_outputs(&mut self, names: &[String]) {
+        self.ipc_outputs
+            .lock()
+            .unwrap()
+            .retain(|_, output| names.contains(&output.name));
     }
 
     pub fn seat_name(&self) -> String {

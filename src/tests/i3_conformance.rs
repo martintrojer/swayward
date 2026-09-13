@@ -137,9 +137,64 @@ fn close_window(fixture: &mut Fixture, client: super::client::ClientId, id: i64)
     surface_id.is_some_and(|surface_id| remove_window_for_surface(fixture, client, surface_id))
 }
 
+type FakeOutput = ((i32, i32), (u16, u16));
+
+fn fake_outputs(config: &str) -> Result<Option<Vec<FakeOutput>>, String> {
+    let Some(spec) = config.lines().find_map(|line| {
+        line.trim()
+            .strip_prefix("fake-outputs ")
+            .or_else(|| line.trim().strip_prefix("fake_outputs "))
+    }) else {
+        return Ok(None);
+    };
+    let outputs = spec
+        .split(',')
+        .map(|output| {
+            let output = output.strip_suffix('P').unwrap_or(output);
+            let (width, rest) = output
+                .split_once('x')
+                .ok_or_else(|| format!("invalid fake-outputs entry '{output}'"))?;
+            let (height, rest) = rest
+                .split_once('+')
+                .ok_or_else(|| format!("invalid fake-outputs entry '{output}'"))?;
+            let (x, y) = rest
+                .split_once('+')
+                .ok_or_else(|| format!("invalid fake-outputs entry '{output}'"))?;
+            Ok((
+                (
+                    x.parse().map_err(|_| format!("invalid output x '{x}'"))?,
+                    y.parse().map_err(|_| format!("invalid output y '{y}'"))?,
+                ),
+                (
+                    width
+                        .parse()
+                        .map_err(|_| format!("invalid output width '{width}'"))?,
+                    height
+                        .parse()
+                        .map_err(|_| format!("invalid output height '{height}'"))?,
+                ),
+            ))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    (!outputs.is_empty())
+        .then_some(outputs)
+        .ok_or_else(|| "fake-outputs lists no outputs".into())
+        .map(Some)
+}
+
 fn translate_config(config: &str) -> Result<swayward_config::Config, String> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = socket_path("config");
+    let config = config
+        .lines()
+        .filter(|line| {
+            !matches!(
+                line.split_whitespace().next(),
+                Some("fake-outputs" | "fake_outputs")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
     std::fs::write(&path, config).map_err(|error| error.to_string())?;
     let output = Command::new(root.join("contrib/sway-to-kdl"))
         .arg(&path)
@@ -165,13 +220,19 @@ fn handle_control(fixture: &mut Fixture, client: super::client::ClientId, stream
         .unwrap();
     let request: Value = serde_json::from_str(&request).unwrap();
     let reply = match request["action"].as_str().unwrap() {
-        "config" => match translate_config(request["config"].as_str().unwrap()) {
-            Ok(config) => {
-                fixture.niri_state().reload_config(Ok(config));
-                json!({ "success": true })
+        "config" => {
+            let source = request["config"].as_str().unwrap();
+            match (fake_outputs(source), translate_config(source)) {
+                (Ok(outputs), Ok(config)) => {
+                    fixture.niri_state().reload_config(Ok(config));
+                    if let Some(outputs) = outputs {
+                        fixture.replace_outputs(outputs);
+                    }
+                    json!({ "success": true })
+                }
+                (Err(error), _) | (_, Err(error)) => json!({ "success": false, "error": error }),
             }
-            Err(error) => json!({ "success": false, "error": error }),
-        },
+        }
         "create" => json!({ "handle": create_window(fixture, client, &request) }),
         "open" => {
             let handle = create_window(fixture, client, &request);
@@ -268,6 +329,46 @@ fn run_i3_test(test: &str) {
 /// list in its own file rather than in this runner lets slices land in
 /// parallel without editing the same Rust source.
 const PASSING: &str = include_str!("../../tests/i3/passing.txt");
+
+#[test]
+fn fake_outputs_create_real_outputs_with_requested_geometry() {
+    let outputs = fake_outputs("font monospace\nfake-outputs 1024x768+0+0P,800x600+1024+20\n")
+        .unwrap()
+        .unwrap();
+    assert_eq!(outputs, [((0, 0), (1024, 768)), ((1024, 20), (800, 600))]);
+
+    let mut fixture = Fixture::new();
+    fixture.add_output(1, (1280, 800));
+    fixture.replace_outputs(outputs);
+    let swayward = fixture.swayward();
+    let actual = crate::ipc::tree::describe_outputs(&swayward.layout, &swayward.global_space);
+    assert_eq!(
+        actual
+            .iter()
+            .map(|output| (output.name.as_str(), output.rect))
+            .collect::<Vec<_>>(),
+        [
+            (
+                "fake-0",
+                swayward_ipc::Rect {
+                    x: 0,
+                    y: 0,
+                    width: 1024,
+                    height: 768
+                }
+            ),
+            (
+                "fake-1",
+                swayward_ipc::Rect {
+                    x: 1024,
+                    y: 20,
+                    width: 800,
+                    height: 600
+                }
+            ),
+        ]
+    );
+}
 
 #[test]
 fn i3_config_translation_rejects_unhandled_directives() {

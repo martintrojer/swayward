@@ -83,9 +83,52 @@ impl Fixture {
     }
 
     pub fn add_output(&mut self, n: u8, size: (u16, u16)) {
+        self.add_output_at(n, size, None);
+    }
+
+    pub fn add_output_at(&mut self, n: u8, size: (u16, u16), position: Option<(i32, i32)>) {
+        self.add_named_output_at(format!("headless-{n}"), size, position);
+    }
+
+    pub fn add_named_output_at(
+        &mut self,
+        name: String,
+        size: (u16, u16),
+        position: Option<(i32, i32)>,
+    ) {
         let state = self.niri_state();
         let swayward = &mut state.swayward;
-        state.backend.headless().add_output(swayward, n, size);
+        state
+            .backend
+            .headless()
+            .add_named_output_at(swayward, name, size, position);
+    }
+
+    pub fn replace_outputs(&mut self, outputs: Vec<((i32, i32), (u16, u16))>) {
+        let existing = self
+            .swayward()
+            .layout
+            .outputs()
+            .cloned()
+            .collect::<Vec<_>>();
+        for output in existing {
+            self.swayward().remove_output(&output);
+        }
+        let names = outputs
+            .into_iter()
+            .enumerate()
+            .map(|(index, (position, size))| {
+                let name = format!("fake-{index}");
+                self.add_named_output_at(name.clone(), size, Some(position));
+                name
+            })
+            .collect::<Vec<_>>();
+        self.niri_state()
+            .backend
+            .headless()
+            .retain_ipc_outputs(&names);
+        self.niri_state().refresh_ipc_outputs();
+        self.niri_state().ipc_refresh_layout();
     }
 
     pub fn add_client(&mut self) -> ClientId {

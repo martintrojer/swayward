@@ -29,6 +29,14 @@ adapter maps X11 `class` criteria to Wayland `app_id` criteria. It supports
 `assign` and the `floating enable` or `floating disable` subset of `for_window`.
 It does not silently discard unsupported directives.
 
+The runner handles i3's `fake-outputs` test directive separately because it
+configures i3's test server rather than normal sway configuration. Each
+`WIDTHxHEIGHT+X+Y` entry creates a real headless output named `fake-N` through
+the compositor's output-add path. Sizes, positions, count, and optional `P`
+markers are parsed; the zero-origin output remains primary by the fixture's
+normal insertion order. Of i3's 285 tests, 57 use `fake-outputs`; 38 are among
+the 217 tests without the initial X11 protocol exclusions.
+
 The adapter also preserves `open_window(dont_map => 1)`: it creates the
 `xdg_toplevel` without committing the surface, and the test's later `map` call
 performs the initial commit, configure acknowledgment, and buffer attachment.
@@ -137,7 +145,7 @@ without fabricating a tree that real sway clients do not see. See
 | `104-focus-stack.t` | 2 | pass | Closing the focused floating window restores the prior tiling focus, matching sway's focus-stack restoration (`sway/input/seat.c:260-315`). |
 | `129-focus-after-close.t` | 15 | finished: 13 pass; 2 skip | Assertions 5 and 6 require i3's `open` command and empty containers. Sway has no `open` entry in its command tables (`sway/sway/commands.c:44-144`), so swayward correctly rejects it. The adapter substitutes a real Wayland window for `open_empty_con`; passing assertions that use this helper do not prove empty-container behavior. See [The i3 `open` command and empty containers](../../docs/KNOWN_DEVIATIONS.md#the-i3-open-command-and-empty-containers). |
 | `140-focus-lost.t` | 3 | pass | Focus survives a layout change. |
-| `156-fullscreen-focus.t` | 19 | unproven | The scenario requires i3's `fake-outputs` directive to build two outputs with fixed coordinates. The config translator correctly rejects that unsupported directive rather than silently changing the test input; the single-output fixture cannot ask its cross-output global-fullscreen questions. |
+| `156-fullscreen-focus.t` | 57 | 44 pass; 13 fail | The harness now creates the two real 1024×768 outputs requested by `fake-outputs`. Remaining failures expose fullscreen focus/move behavior, including the rejected `fullscreen global`; report those separately. |
 | `005-floating.t` | 13 | finished: 6 pass; 7 unproven | Assertions 5 and 7–13 depend on i3's X11 `rect` creation input. Wayland `xdg_toplevel` has no equivalent absolute-position request; using a window rule or compositor move would test a different input. Sway clamps and centers natural floating geometry (`sway/tree/container.c:793-905,955-982`). See the adapter limitation above. |
 | `135-floating-focus.t` | 82 | finished: 66 pass; 16 skip | Assertions 23–25 require distinct X11 positions that the Wayland adapter cannot request. Assertions 31, 32, 34, 35, 37, 40, 43, 46, 50, 54, 58, 62, 66, 70, 73, and 74 use i3's floating wrappers, X11-only `window` field, or opposite floating-list insertion order; equivalent direct-node checks pass where the hierarchy agrees. Layer focus modes, workspace child descent, cross-workspace focus, nested reinsertion, and close restoration match sway. Assertions 75 and 77 pass through a temporary direct-node diagnostic after preserving non-root parents across floating transitions (`sway/tree/container.c:955-1013`). Assertions 50 and 58 expect i3's new floating wrapper at index 0, while sway appends new floating containers (`sway/tree/workspace.c:961-971`). See [Floating container wrappers](../../docs/KNOWN_DEVIATIONS.md#floating-container-wrappers). |
 | `136-floating-ws-empty.t` | 11 | pass | An inactive workspace remains present while it contains floating windows, matching sway's emptiness check over both tiled and non-sticky floating children (`sway/tree/workspace.c:752-764`). |
