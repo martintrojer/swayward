@@ -10,7 +10,7 @@ Run the setup script from the repository root:
 ./contrib/dev-container.sh
 ```
 
-The script creates `swayward-dev` from `registry.fedoraproject.org/fedora-toolbox:44` and installs the build dependencies. You can run it again to update an existing container.
+The script creates `swayward-dev` from `registry.fedoraproject.org/fedora-toolbox:44` and installs the build dependencies. You can run it again to update an existing container. The test dependencies include Perl, `Test::More`, and `JSON::PP`; the i3 conformance runner executes upstream Perl test files against swayward's headless compositor and IPC socket.
 
 ## Build and test
 

@@ -14,10 +14,12 @@ src/layout/mod.rs, src/layout/workspace.rs — expose focused-tree layout mutati
 src/layout/mod.rs, src/window/mapped.rs — expose window titles to the tree renderer for sway-style server-side titlebars.
 src/layout/mod.rs, src/layout/monitor.rs, src/layout/workspace.rs — give workspaces stable global sway names/numbers, sparse creation, switching, movement, and output assignment while retaining monitor animations.
 src/ipc/server.rs — include the Wayland socket name in IPC socket paths so parallel headless tests do not collide.
+src/tests/mod.rs — run vendored i3 Perl assertions against the existing headless compositor and real sway IPC socket.
 swayward-ipc/src/message.rs — omit absent optional command-result fields to match sway's RUN_COMMAND reply schema.
 .github/FUNDING.yml — remove inherited niri sponsorship attribution because swayward is not soliciting sponsorship.
 .github/ISSUE_TEMPLATE/bug_report.md, .github/ISSUE_TEMPLATE/config.yml — point issue reporting and support at swayward rather than niri.
 .github/workflows/ci.yml — retain only checks that protect supported swayward builds and stop publishing inherited niri documentation.
+.github/workflows/ci.yml — install the Perl modules required by the vendored i3 conformance runner.
 .github/workflows/release.yml — remove niri's release process until swayward has release artifacts and a versioning policy.
 src/layout/mod.rs — export `tiling_tree` and apply cargo-fmt import reordering so the new i3 tree module is compiled and tested.
 src/layout/workspace.rs — replace the scrolling tiling field and render element with TilingTree while preserving FloatingSpace.

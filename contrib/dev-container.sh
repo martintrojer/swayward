@@ -33,7 +33,9 @@ distrobox enter "$NAME" -- sudo dnf install -y \
 	mesa-libEGL-devel \
 	dbus-devel \
 	pipewire-devel \
-	libadwaita-devel
+	libadwaita-devel \
+	perl-JSON-PP \
+	perl-Test-Simple
 
 printf '%s\n' "Done. Build with:" \
 	"  distrobox enter $NAME -- bash -lc 'cd $(pwd) && cargo build'"

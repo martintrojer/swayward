@@ -1,0 +1,135 @@
+//! Runner for unmodified layout tests from i3's Perl testsuite.
+
+use std::ffi::OsStr;
+use std::io::{BufRead as _, BufReader, Write as _};
+use std::os::unix::net::{UnixListener, UnixStream};
+use std::path::PathBuf;
+use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::thread;
+use std::time::{Duration, Instant};
+
+use serde_json::{json, Value};
+
+use super::Fixture;
+
+static NEXT_SOCKET: AtomicU64 = AtomicU64::new(0);
+
+fn socket_path(kind: &str) -> PathBuf {
+    std::env::temp_dir().join(format!(
+        "swayward-i3-{kind}-{}-{}.sock",
+        std::process::id(),
+        NEXT_SOCKET.fetch_add(1, Ordering::Relaxed)
+    ))
+}
+
+fn open_window(fixture: &mut Fixture, client: super::client::ClientId, request: &Value) -> i64 {
+    let window = fixture.client(client).create_window();
+    if let Some(app_id) = request["app_id"].as_str() {
+        window.xdg_toplevel.set_app_id(app_id.to_owned());
+    }
+    if let Some(name) = request["name"].as_str() {
+        window.set_title(name);
+    }
+    window.commit();
+    let surface = window.surface.clone();
+    fixture.roundtrip(client);
+    let window = fixture.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    fixture.double_roundtrip(client);
+    let mapped = fixture.swayward().layout.focus().unwrap().id();
+    crate::ipc::tree::window_id(mapped)
+}
+
+fn reap_closed_windows(fixture: &mut Fixture, client: super::client::ClientId) {
+    let windows = &mut fixture.client(client).state.windows;
+    let mut index = 0;
+    while index < windows.len() {
+        if windows[index].close_requested {
+            let window = windows.swap_remove(index);
+            window.xdg_toplevel.destroy();
+            window.xdg_surface.destroy();
+            window.surface.destroy();
+        } else {
+            index += 1;
+        }
+    }
+    fixture.double_roundtrip(client);
+}
+
+fn handle_control(fixture: &mut Fixture, client: super::client::ClientId, stream: UnixStream) {
+    let mut request = String::new();
+    BufReader::new(stream.try_clone().unwrap())
+        .read_line(&mut request)
+        .unwrap();
+    let request: Value = serde_json::from_str(&request).unwrap();
+    let reply = match request["action"].as_str().unwrap() {
+        "open" => json!({ "id": open_window(fixture, client, &request) }),
+        "reap_closed" => {
+            reap_closed_windows(fixture, client);
+            json!({ "success": true })
+        }
+        action => panic!("unknown i3 test control action: {action}"),
+    };
+    writeln!(&stream, "{reply}").unwrap();
+}
+
+fn run_i3_test(test: &str) {
+    let mut fixture = Fixture::new();
+    fixture.add_output(1, (1920, 1080));
+    let client = fixture.add_client();
+
+    let handle = fixture.swayward().event_loop.clone();
+    let ipc_server =
+        crate::ipc::server::IpcServer::start(&handle, Some(OsStr::new("i3-tests"))).unwrap();
+    let ipc_socket = ipc_server.socket_path.clone().unwrap();
+    fixture.swayward().ipc_server = Some(ipc_server);
+    fixture.niri_state().ipc_keyboard_layouts_changed();
+    fixture.niri_state().ipc_refresh_layout();
+
+    let control_path = socket_path("control");
+    let control = UnixListener::bind(&control_path).unwrap();
+    control.set_nonblocking(true).unwrap();
+
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut child = Command::new("perl")
+        .arg(format!("-I{}", root.join("tests/i3/lib").display()))
+        .arg(root.join("tests/i3/t").join(test))
+        .env("I3SOCK", &ipc_socket)
+        .env("SWAYWARD_TEST_CONTROL", &control_path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        fixture.dispatch();
+        match control.accept() {
+            Ok((stream, _)) => handle_control(&mut fixture, client, stream),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
+            Err(error) => panic!("test control accept failed: {error}"),
+        }
+        if let Some(status) = child.try_wait().unwrap() {
+            let output = child.wait_with_output().unwrap();
+            assert!(
+                status.success(),
+                "i3 test {test} failed\nstdout:\n{}\nstderr:\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            break;
+        }
+        assert!(Instant::now() < deadline, "i3 test {test} timed out");
+        thread::yield_now();
+    }
+}
+
+#[test]
+fn i3_conformance_runner() {
+    run_i3_test(
+        &std::env::var("SWAYWARD_I3_TEST")
+            .unwrap_or_else(|_| "197-regression-move-vanish.t".to_owned()),
+    );
+}
