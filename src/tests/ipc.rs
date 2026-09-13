@@ -551,6 +551,103 @@ fn live_ipc_descriptions_match_sway_schema() {
 }
 
 #[test]
+fn scratchpad_hides_focused_window_and_show_cycles_windows() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let mut surfaces = Vec::new();
+    for _ in 0..2 {
+        let window = f.client(client).create_window();
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+        surfaces.push(surface);
+        assert!(crate::command::execute(f.niri_state(), "move scratchpad")[0].success);
+    }
+
+    let swayward = f.swayward();
+    assert!(swayward.layout.focus().is_none());
+    let tree = describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &swayward.marks_by_window,
+    );
+    assert_eq!(tree.nodes[0].nodes[0].floating_nodes.len(), 2);
+    assert!(tree.nodes[0].nodes[0]
+        .floating_nodes
+        .iter()
+        .all(|node| node.scratchpad_state.as_deref() == Some("fresh")));
+
+    assert!(crate::command::execute(f.niri_state(), "scratchpad show")[0].success);
+    let first = f.swayward().layout.focus().unwrap().id().clone();
+    assert!(crate::command::execute(f.niri_state(), "scratchpad show")[0].success);
+    assert!(f.swayward().layout.focus().is_none());
+    assert!(crate::command::execute(f.niri_state(), "scratchpad show")[0].success);
+    let second = f.swayward().layout.focus().unwrap().id().clone();
+    assert_ne!(first, second);
+    assert_eq!(f.swayward().layout.scratchpad_windows().count(), 1);
+
+    assert!(crate::command::execute(f.niri_state(), "move scratchpad")[0].success);
+    assert!(f.swayward().layout.focus().is_none());
+    assert_eq!(f.swayward().layout.scratchpad_windows().count(), 2);
+    assert_eq!(surfaces.len(), 2);
+}
+
+#[test]
+fn scratchpad_show_toggles_the_only_window() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    for command in ["move scratchpad", "scratchpad show"] {
+        assert!(crate::command::execute(f.niri_state(), command)[0].success);
+    }
+    assert!(f.swayward().layout.focus().is_some());
+    assert!(crate::command::execute(f.niri_state(), "scratchpad show")[0].success);
+    assert!(f.swayward().layout.focus().is_none());
+    assert_eq!(f.swayward().layout.scratchpad_windows().count(), 1);
+}
+
+#[test]
+fn empty_scratch_workspace_is_always_serialized() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+    for command in ["move scratchpad", "scratchpad show"] {
+        assert!(crate::command::execute(f.niri_state(), command)[0].success);
+    }
+
+    let swayward = f.swayward();
+    let tree = describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &swayward.marks_by_window,
+    );
+    assert_eq!(tree.nodes[0].nodes[0].name.as_deref(), Some("__i3_scratch"));
+    assert!(tree.nodes[0].nodes[0].floating_nodes.is_empty());
+}
+
+#[test]
 fn workspace_commands_create_sparse_global_identities() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));

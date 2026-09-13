@@ -592,6 +592,22 @@ impl ForeignToplevelHandler for State {
             self.swayward.layout.set_maximized(&window, false);
         }
     }
+
+    fn set_minimized(&mut self, wl_surface: WlSurface) {
+        if let Some((mapped, _)) = self.swayward.layout.find_window_and_output(&wl_surface) {
+            let window = mapped.window.clone();
+            self.swayward.layout.move_to_scratchpad(Some(&window));
+            self.swayward.queue_redraw_all();
+        }
+    }
+
+    fn unset_minimized(&mut self, wl_surface: WlSurface) {
+        if let Some((mapped, _)) = self.swayward.layout.find_window_and_output(&wl_surface) {
+            let window = mapped.window.clone();
+            self.swayward.layout.show_scratchpad(Some(&window));
+            self.swayward.queue_redraw_all();
+        }
+    }
 }
 
 impl ExtWorkspaceHandler for State {

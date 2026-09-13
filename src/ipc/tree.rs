@@ -32,7 +32,7 @@ pub fn describe_tree(
         .reduce(|a, b| a.merge(b))
         .map(rect_from_rectangle)
         .unwrap_or_default();
-    let mut nodes = vec![scratch_output(root_rect)];
+    let mut nodes = vec![scratch_output(layout, root_rect, marks)];
     nodes.extend(
         outputs
             .iter()
@@ -238,7 +238,7 @@ fn describe_output_node(
                 && candidate.is_some_and(|candidate| candidate.output() == monitor.output())
         })
         .map(|(_, index, workspace)| {
-            describe_workspace_node(workspace, monitor.output_name(), index, rect, marks)
+            describe_workspace_node(layout, workspace, monitor.output_name(), index, rect, marks)
         })
         .collect::<Vec<_>>();
     let active_workspace_id = workspace_id(monitor.active_workspace_ref().id().get());
@@ -288,6 +288,7 @@ fn describe_output_node(
 }
 
 fn describe_workspace_node(
+    compositor_layout: &Layout<Mapped>,
     workspace: &crate::layout::workspace::Workspace<Mapped>,
     output: &str,
     index: usize,
@@ -328,6 +329,8 @@ fn describe_workspace_node(
                 "user_on",
                 None,
                 marks,
+                compositor_layout.is_scratchpad_window(&tile.window().window),
+                true,
             )
         })
         .collect();
@@ -435,6 +438,8 @@ pub(crate) fn describe_tiling<'a, I>(
                 "auto_off",
                 None,
                 marks,
+                false,
+                true,
             );
             node.percent = percent;
             Some(node)
@@ -465,6 +470,8 @@ fn describe_window(
     floating: &str,
     parent: Option<Rect>,
     marks: &std::collections::HashMap<MappedId, Vec<String>>,
+    in_scratchpad: bool,
+    visible: bool,
 ) -> Node {
     let properties = with_toplevel_role(mapped.toplevel(), |role| ViewProperties {
         allow_tearing: false,
@@ -483,7 +490,7 @@ fn describe_window(
         sandbox_engine: None,
         sandbox_instance_id: None,
         shell: Some("xdg_shell".into()),
-        visible: true,
+        visible,
     });
     let title = with_toplevel_role(mapped.toplevel(), |role| role.title.clone());
     let percent = parent.and_then(|parent| {
@@ -509,7 +516,7 @@ fn describe_window(
     node.current_border_width = 2;
     node.floating = Some(floating.into());
     node.percent = percent;
-    node.scratchpad_state = Some("none".into());
+    node.scratchpad_state = Some(if in_scratchpad { "fresh" } else { "none" }.into());
     node.fullscreen_mode = i32::from(mapped.pending_sizing_mode().is_fullscreen());
     node.geometry = rect_from(0., 0., mapped.size().w.into(), mapped.size().h.into());
     node.marks = marks.get(&mapped.id()).cloned().unwrap_or_default();
@@ -586,7 +593,26 @@ fn tree_representation(layout: NodeLayout, children: &[Node]) -> String {
     format!("{prefix}[{children}]")
 }
 
-fn scratch_output(rect: Rect) -> Node {
+fn scratch_output(
+    layout: &Layout<Mapped>,
+    rect: Rect,
+    marks: &std::collections::HashMap<MappedId, Vec<String>>,
+) -> Node {
+    let floating_nodes = layout
+        .scratchpad_windows()
+        .map(|mapped| {
+            describe_window(
+                mapped,
+                Rect::default(),
+                NodeType::FloatingCon,
+                "user_on",
+                None,
+                marks,
+                true,
+                false,
+            )
+        })
+        .collect();
     let workspace = common_node(
         SCRATCH_WORKSPACE_ID,
         NodeType::Workspace,
@@ -595,7 +621,7 @@ fn scratch_output(rect: Rect) -> Node {
         Some("__i3_scratch"),
         rect,
         vec![],
-        vec![],
+        floating_nodes,
         vec![],
         false,
         NodeProperties::None {},

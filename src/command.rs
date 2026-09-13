@@ -63,6 +63,8 @@ pub enum Command {
         pixels: Option<i32>,
     },
     MoveToWorkspace(WorkspaceTarget),
+    MoveScratchpad,
+    ScratchpadShow,
     Layout(Layout),
     Split(Option<Layout>),
     Fullscreen {
@@ -272,6 +274,10 @@ fn parse_one(input: &str) -> Result<Command, String> {
             .and_then(parse_toggle)
             .map(Command::Floating),
         "workspace" => parse_workspace_command(rest),
+        "scratchpad" => match rest {
+            [show] if show.eq_ignore_ascii_case("show") => Ok(Command::ScratchpadShow),
+            _ => Err("Expected 'scratchpad show'".into()),
+        },
         "kill" => no_args(rest, "kill").map(|()| Command::Kill),
         "resize" => parse_resize(rest),
         "reload" => no_args(rest, "reload").map(|()| Command::Reload),
@@ -336,6 +342,9 @@ fn parse_focus(args: &[&str]) -> Result<Command, String> {
 }
 
 fn parse_move(args: &[&str]) -> Result<Command, String> {
+    if matches!(args, [scratchpad] if scratchpad.eq_ignore_ascii_case("scratchpad")) {
+        return Ok(Command::MoveScratchpad);
+    }
     if let Some(direction) = args.first().and_then(|arg| parse_direction(arg)) {
         let pixels = match &args[1..] {
             [] => None,
@@ -634,6 +643,16 @@ fn execute_one(state: &mut State, parsed: ParsedCommand) -> CommandOutcome {
             if let Err(error) = state.swayward.layout.move_to_sway_workspace(target) {
                 return failure(error);
             }
+            state.swayward.queue_redraw_all();
+            None
+        }
+        Command::MoveScratchpad => {
+            state.swayward.layout.move_to_scratchpad(None);
+            state.swayward.queue_redraw_all();
+            None
+        }
+        Command::ScratchpadShow => {
+            state.swayward.layout.show_scratchpad(None);
             state.swayward.queue_redraw_all();
             None
         }
@@ -975,6 +994,8 @@ mod tests {
             command("move to workspace number 3:web"),
             Command::MoveToWorkspace(WorkspaceTarget::Number("3:web".into()))
         );
+        assert_eq!(command("move scratchpad"), Command::MoveScratchpad);
+        assert_eq!(command("scratchpad show"), Command::ScratchpadShow);
         assert_eq!(command("layout stacked"), Command::Layout(Layout::Stacked));
         assert_eq!(
             command("layout toggle split"),

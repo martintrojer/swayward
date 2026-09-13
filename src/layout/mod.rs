@@ -31,7 +31,7 @@
 //! workspace just like any other. Then they come back, reconnect the second monitor, and now we
 //! don't want an unassuming workspace to end up on it.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::mem;
 use std::rc::Rc;
 use std::time::Duration;
@@ -358,6 +358,10 @@ pub struct Layout<W: LayoutElement> {
     /// The workspace id does not necessarily point to a valid workspace. If it doesn't, then it is
     /// simply ignored.
     last_active_workspace_id: HashMap<String, WorkspaceId>,
+    /// Windows hidden on sway's synthetic scratchpad workspace.
+    scratchpad: VecDeque<RemovedTile<W>>,
+    /// All scratchpad windows, including the one currently shown.
+    scratchpad_windows: Vec<W::Id>,
     /// Ongoing interactive move.
     interactive_move: Option<InteractiveMoveState<W>>,
     /// Ongoing drag-and-drop operation.
@@ -498,6 +502,7 @@ pub enum ConfigureIntent {
 }
 
 /// Tile that was just removed from the layout.
+#[derive(Debug)]
 pub struct RemovedTile<W: LayoutElement> {
     tile: Tile<W>,
     /// Width of the column the tile was in.
@@ -767,6 +772,8 @@ impl<W: LayoutElement> Layout<W> {
             monitor_set: MonitorSet::NoOutputs { workspaces: vec![] },
             is_active: true,
             last_active_workspace_id: HashMap::new(),
+            scratchpad: VecDeque::new(),
+            scratchpad_windows: Vec::new(),
             interactive_move: None,
             dnd: None,
             clock,
@@ -792,6 +799,8 @@ impl<W: LayoutElement> Layout<W> {
             monitor_set: MonitorSet::NoOutputs { workspaces },
             is_active: true,
             last_active_workspace_id: HashMap::new(),
+            scratchpad: VecDeque::new(),
+            scratchpad_windows: Vec::new(),
             interactive_move: None,
             dnd: None,
             clock,
@@ -1182,6 +1191,15 @@ impl<W: LayoutElement> Layout<W> {
         window: &W::Id,
         transaction: Transaction,
     ) -> Option<RemovedTile<W>> {
+        if let Some(index) = self
+            .scratchpad
+            .iter()
+            .position(|removed| removed.tile.window().id() == window)
+        {
+            self.scratchpad_windows.retain(|id| id != window);
+            return self.scratchpad.remove(index);
+        }
+
         if let Some(state) = &self.interactive_move {
             match state {
                 InteractiveMoveState::Starting { window_id, .. } => {
@@ -1427,6 +1445,15 @@ impl<W: LayoutElement> Layout<W> {
     }
 
     pub fn find_window_and_output(&self, wl_surface: &WlSurface) -> Option<(&W, Option<&Output>)> {
+        if let Some(window) = self
+            .scratchpad
+            .iter()
+            .map(|removed| removed.tile.window())
+            .find(|window| window.is_wl_surface(wl_surface))
+        {
+            return Some((window, None));
+        }
+
         if let Some(InteractiveMoveState::Moving(move_)) = &self.interactive_move {
             if move_.tile.window().is_wl_surface(wl_surface) {
                 return Some((move_.tile.window(), Some(&move_.output)));
@@ -1459,6 +1486,15 @@ impl<W: LayoutElement> Layout<W> {
         &mut self,
         wl_surface: &WlSurface,
     ) -> Option<(&mut W, Option<&Output>)> {
+        if let Some(window) = self
+            .scratchpad
+            .iter_mut()
+            .map(|removed| removed.tile.window_mut())
+            .find(|window| window.is_wl_surface(wl_surface))
+        {
+            return Some((window, None));
+        }
+
         if let Some(InteractiveMoveState::Moving(move_)) = &mut self.interactive_move {
             if move_.tile.window().is_wl_surface(wl_surface) {
                 return Some((move_.tile.window_mut(), Some(&move_.output)));
@@ -1737,6 +1773,11 @@ impl<W: LayoutElement> Layout<W> {
             // We don't fill any positions for interactively moved windows.
             let layout = move_.tile.ipc_layout_template();
             f(move_.tile.window(), Some(&move_.output), None, layout);
+        }
+
+        for removed in &self.scratchpad {
+            let layout = removed.tile.ipc_layout_template();
+            f(removed.tile.window(), None, None, layout);
         }
 
         match &self.monitor_set {
@@ -2420,6 +2461,92 @@ impl<W: LayoutElement> Layout<W> {
             self.move_to_workspace(None, target_index, ActivateWindow::No);
         }
         Ok(())
+    }
+
+    pub fn move_to_scratchpad(&mut self, window: Option<&W::Id>) {
+        let window = window
+            .cloned()
+            .or_else(|| self.focus().map(|window| window.id().clone()));
+        let Some(window) = window else {
+            return;
+        };
+        if self
+            .scratchpad
+            .iter()
+            .any(|removed| removed.tile.window().id() == &window)
+        {
+            return;
+        }
+        let Some(removed) = self.remove_window(&window, Transaction::new()) else {
+            return;
+        };
+        if !self.scratchpad_windows.contains(&window) {
+            self.scratchpad_windows.push(window);
+        }
+        self.scratchpad.push_back(removed);
+    }
+
+    pub fn show_scratchpad(&mut self, window: Option<&W::Id>) {
+        let shown = self
+            .scratchpad_windows
+            .iter()
+            .find(|id| {
+                !self
+                    .scratchpad
+                    .iter()
+                    .any(|removed| removed.tile.window().id() == *id)
+            })
+            .cloned();
+        let target_index = window.and_then(|window| {
+            self.scratchpad
+                .iter()
+                .position(|removed| removed.tile.window().id() == window)
+        });
+        if target_index.is_none() {
+            if let Some(shown) = shown {
+                if self.focus().is_some_and(|focused| focused.id() == &shown) {
+                    self.move_to_scratchpad(Some(&shown));
+                } else {
+                    self.activate_window(&shown);
+                }
+                return;
+            }
+        } else if let Some(shown) = shown {
+            self.move_to_scratchpad(Some(&shown));
+        }
+
+        let index = target_index.unwrap_or(0);
+        let Some(mut removed) = self.scratchpad.remove(index) else {
+            return;
+        };
+        removed.is_floating = true;
+        let Some(workspace) = self.active_workspace_mut() else {
+            self.scratchpad.push_front(removed);
+            return;
+        };
+        workspace.add_tile(
+            removed.tile,
+            WorkspaceAddWindowTarget::Auto,
+            ActivateWindow::Yes,
+            removed.width,
+            removed.is_full_width,
+            true,
+            None,
+        );
+    }
+
+    pub fn scratchpad_windows(&self) -> impl Iterator<Item = &W> {
+        self.scratchpad.iter().map(|removed| removed.tile.window())
+    }
+
+    pub fn is_scratchpad_window(&self, window: &W::Id) -> bool {
+        self.scratchpad_windows.contains(window)
+    }
+
+    pub fn is_scratchpad_hidden(&self, window: &W::Id) -> bool {
+        self.scratchpad
+            .iter()
+            .any(|removed| removed.tile.window().id() == window)
     }
 
     pub fn assign_sway_workspace(
@@ -5221,11 +5348,15 @@ impl<W: LayoutElement> Layout<W> {
             .map(|move_| (self.monitor_for_output(&move_.output), move_.tile.window()))
             .into_iter();
 
+        let scratchpad = self
+            .scratchpad
+            .iter()
+            .map(|removed| (None, removed.tile.window()));
         let rest = self
             .workspaces()
             .flat_map(|(mon, _, ws)| ws.windows().map(move |win| (mon, win)));
 
-        moving_window.chain(rest)
+        moving_window.chain(scratchpad).chain(rest)
     }
 
     pub fn has_window(&self, window: &W::Id) -> bool {
