@@ -1441,6 +1441,43 @@ fn comma_chain_keeps_the_original_criteria_targets() {
 }
 
 #[test]
+fn rename_workspace_updates_name_number_and_rejects_collisions() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+
+    for command in [
+        "workspace 5",
+        "rename workspace to 7: web",
+        "workspace mail",
+        "rename workspace mail to inbox",
+        "rename workspace inbox to mail",
+    ] {
+        let outcome = crate::command::execute(f.niri_state(), command);
+        assert!(outcome[0].success, "{command}: {outcome:?}");
+    }
+    let collision = crate::command::execute(f.niri_state(), "rename workspace mail to 7: web");
+    assert!(!collision[0].success);
+    for command in [
+        "rename workspace mail to chat",
+        "rename workspace chat to CHAT",
+        "rename workspace chat to 9 web",
+    ] {
+        let outcome = crate::command::execute(f.niri_state(), command);
+        assert!(outcome[0].success, "{command}: {outcome:?}");
+    }
+    assert!(!crate::command::execute(f.niri_state(), "rename workspace to next")[0].success);
+
+    let swayward = f.swayward();
+    assert_eq!(
+        describe_workspaces(&swayward.layout, &swayward.global_space)
+            .iter()
+            .map(|workspace| (workspace.num, workspace.name.as_str()))
+            .collect::<Vec<_>>(),
+        [(7, "7: web"), (9, "9 web")]
+    );
+}
+
+#[test]
 fn workspace_criteria_uses_sparse_and_named_sway_identities() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));

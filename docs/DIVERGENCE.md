@@ -13,7 +13,7 @@ src/backend/winit.rs — disable Mesa swap throttling in nested sessions because
 src/layout/mod.rs, src/layout/workspace.rs, src/layout/tile.rs — expose focused-tree layout mutation and direct container focus for sway runtime commands, including sway's parent targeting, workspace-level layer history, one-level singleton flatten, and focus rank and parent preservation across floating transitions.
 src/layout/tiling_tree/mod.rs — apply split commands to an empty workspace root, expose workspace-root focus, retain intentional nested and tabbed/stacked singleton wrappers, assign new siblings an equal share, use directional focus and resize by parent layout axis, and preserve MRU focus through removal and reinsertion, matching sway's tree behavior.
 src/layout/mod.rs, src/window/mapped.rs — expose window titles to the tree renderer for sway-style server-side titlebars.
-src/layout/mod.rs, src/layout/monitor.rs, src/layout/workspace.rs — give workspaces stable global sway names/numbers, sparse creation, switching, movement, output assignment, and sway-compatible inactive-workspace cleanup while retaining monitor animations.
+src/layout/mod.rs, src/layout/monitor.rs, src/layout/workspace.rs — give workspaces stable global sway names/numbers, sparse creation, switching, movement, output assignment, rename sorting, and sway-compatible inactive-workspace cleanup while retaining monitor animations.
 src/layout/mod.rs — resolve relative move-to-workspace targets with sway's global numbered and per-output workspace ordering.
 src/ipc/server.rs — include the Wayland socket name in IPC socket paths so parallel headless tests do not collide.
 src/tests/mod.rs — run vendored i3 Perl assertions against the existing headless compositor and real sway IPC socket.

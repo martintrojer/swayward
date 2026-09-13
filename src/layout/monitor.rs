@@ -422,6 +422,16 @@ impl<W: LayoutElement> Monitor<W> {
         self.insert_new_workspace_at(idx, ws);
     }
 
+    pub fn sort_sway_workspaces(&mut self) {
+        let active = self.active_workspace_ref().id();
+        self.workspaces.sort_by_key(|workspace| {
+            workspace
+                .number()
+                .map_or((true, 0), |number| (false, number))
+        });
+        self.active_workspace_idx = self.idx_of_ws(active).unwrap();
+    }
+
     pub fn add_sway_workspace_at(&mut self, idx: usize, name: Option<String>, number: Option<i32>) {
         let mut ws = Workspace::new(
             self.output.clone(),

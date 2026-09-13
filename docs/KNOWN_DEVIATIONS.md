@@ -66,6 +66,20 @@ Swayward follows sway. The command parser returns a well-formed failure for
 `open`, as required by the IPC compatibility decisions Q1, Q8, and Q11. It does
 not create i3 empty containers.
 
+### Workspace rename edge cases
+
+Sway parses `rename workspace to to bla` as the current-workspace form and uses
+all arguments after the first `to` as the new name, producing `to bla`
+(`sway/sway/commands/rename.c:36-38,66-72`). i3's `117-workspace.t` expects the
+same command to rename workspace `to` to `bla`; swayward follows sway, so that
+assertion is skipped.
+
+Sway workspace lookup is case-insensitive (`sway/sway/tree/workspace.c:508-513`).
+When the requested new name differs only by case, the rename command finds the
+same workspace and returns success without changing its spelling
+(`sway/sway/commands/rename.c:84-92`). i3 expects `11: bar` to become `11: BAR`;
+swayward follows sway's no-op behavior, so the spelling assertion is skipped.
+
 The i3 test adapter cannot preserve this behavior. Its `cmd 'open'` and
 `open_empty_con` paths create a real Wayland window through the test control
 socket (`tests/i3/lib/i3test.pm:97-114`). Assertions that pass after this

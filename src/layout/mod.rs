@@ -726,8 +726,10 @@ impl RenderLayer {
 }
 
 fn parse_workspace_num(name: &str) -> Option<i32> {
-    let prefix = name.split_once(':').map_or(name, |(prefix, _)| prefix);
-    prefix.parse::<i32>().ok().filter(|number| *number >= 0)
+    let end = name
+        .find(|character: char| !character.is_ascii_digit())
+        .unwrap_or(name.len());
+    (end > 0).then(|| name[..end].parse().ok()).flatten()
 }
 
 fn workspace_matches_target<W: LayoutElement>(
@@ -738,12 +740,9 @@ fn workspace_matches_target<W: LayoutElement>(
         crate::command::WorkspaceTarget::Number(value) => {
             workspace.number() == parse_workspace_num(value)
         }
-        crate::command::WorkspaceTarget::Name(value) => {
-            workspace
-                .sway_name()
-                .is_some_and(|name| name.eq_ignore_ascii_case(value))
-                || workspace.number() == parse_workspace_num(value)
-        }
+        crate::command::WorkspaceTarget::Name(value) => workspace
+            .sway_name()
+            .is_some_and(|name| name.eq_ignore_ascii_case(value)),
         _ => false,
     }
 }
@@ -2429,6 +2428,56 @@ impl<W: LayoutElement> Layout<W> {
         let index = monitor.workspaces.len().saturating_sub(1);
         monitor.add_sway_workspace_at(index, name, number);
         monitor.activate_workspace(index);
+        Ok(())
+    }
+
+    pub fn rename_sway_workspace(
+        &mut self,
+        old: Option<crate::command::WorkspaceTarget>,
+        new_name: String,
+    ) -> Result<(), String> {
+        let id = match old {
+            Some(ref target) => self
+                .workspaces()
+                .find(|(_, _, workspace)| workspace_matches_target(workspace, target))
+                .map(|(_, _, workspace)| workspace.id()),
+            None => self.active_workspace().map(Workspace::id),
+        }
+        .ok_or_else(|| "There is no workspace with that name".to_owned())?;
+        if matches!(
+            new_name.to_ascii_lowercase().as_str(),
+            "next"
+                | "prev"
+                | "next_on_output"
+                | "prev_on_output"
+                | "back_and_forth"
+                | "current"
+                | "number"
+        ) {
+            return Err(format!("Cannot use special workspace name '{new_name}'"));
+        }
+        if let Some(existing) = self.workspaces().find_map(|(_, _, workspace)| {
+            workspace
+                .sway_name()
+                .is_some_and(|name| name.eq_ignore_ascii_case(&new_name))
+                .then(|| workspace.id())
+        }) {
+            return (existing == id)
+                .then_some(())
+                .ok_or_else(|| "Workspace already exists".into());
+        }
+
+        let (name, number) =
+            sway_workspace_identity(crate::command::WorkspaceTarget::Name(new_name))?;
+        self.workspaces_mut()
+            .find(|workspace| workspace.id() == id)
+            .unwrap()
+            .set_sway_identity(name, number);
+        if let MonitorSet::Normal { monitors, .. } = &mut self.monitor_set {
+            if let Some(monitor) = monitors.iter_mut().find(|monitor| monitor.has_ws(id)) {
+                monitor.sort_sway_workspaces();
+            }
+        }
         Ok(())
     }
 

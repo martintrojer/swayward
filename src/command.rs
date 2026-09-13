@@ -277,6 +277,13 @@ fn execute_one(
             state.swayward.queue_redraw_all();
             None
         }
+        Command::RenameWorkspace { old, new_name } => {
+            if let Err(error) = state.swayward.layout.rename_sway_workspace(old, new_name) {
+                return failure(error);
+            }
+            state.swayward.queue_redraw_all();
+            None
+        }
         Command::Kill => {
             let windows = state
                 .swayward
@@ -835,6 +842,24 @@ mod tests {
 
     fn command(input: &str) -> Command {
         parse(input).into_iter().next().unwrap().unwrap().command
+    }
+
+    #[test]
+    fn parses_workspace_rename_forms() {
+        assert_eq!(
+            command("rename workspace number 5 to 7: web"),
+            Command::RenameWorkspace {
+                old: Some(WorkspaceTarget::Number("5".into())),
+                new_name: "7: web".into(),
+            }
+        );
+        assert_eq!(
+            command("rename workspace to mail"),
+            Command::RenameWorkspace {
+                old: None,
+                new_name: "mail".into(),
+            }
+        );
     }
 
     #[test]

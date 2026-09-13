@@ -104,6 +104,10 @@ pub enum Command {
         target: WorkspaceTarget,
         output: String,
     },
+    RenameWorkspace {
+        old: Option<WorkspaceTarget>,
+        new_name: String,
+    },
     Kill,
     Resize {
         grow: bool,
@@ -319,6 +323,7 @@ fn parse_one(input: &str) -> Result<Command, String> {
             .and_then(parse_toggle)
             .map(Command::Floating),
         "workspace" => parse_workspace_command(rest),
+        "rename" => parse_rename(rest),
         "scratchpad" => match rest {
             [show] if show.eq_ignore_ascii_case("show") => Ok(Command::ScratchpadShow),
             _ => Err("Expected 'scratchpad show'".into()),
@@ -501,6 +506,38 @@ fn parse_fullscreen(args: &[&str]) -> Result<Command, String> {
         _ => return Err(syntax.into()),
     };
     Ok(Command::Fullscreen { mode, global })
+}
+
+fn parse_rename(args: &[&str]) -> Result<Command, String> {
+    const SYNTAX: &str =
+        "Expected 'rename workspace <old_name> to <new_name>' or 'rename workspace to <new_name>'";
+    let [workspace, rest @ ..] = args else {
+        return Err(SYNTAX.into());
+    };
+    if !workspace.eq_ignore_ascii_case("workspace") {
+        return Err(SYNTAX.into());
+    }
+    if rest
+        .first()
+        .is_some_and(|arg| arg.eq_ignore_ascii_case("to"))
+    {
+        return (rest.len() > 1)
+            .then(|| Command::RenameWorkspace {
+                old: None,
+                new_name: join_words(&rest[1..]),
+            })
+            .ok_or_else(|| SYNTAX.into());
+    }
+    let Some(to) = rest.iter().position(|arg| arg.eq_ignore_ascii_case("to")) else {
+        return Err(SYNTAX.into());
+    };
+    if to + 1 == rest.len() {
+        return Err(SYNTAX.into());
+    }
+    Ok(Command::RenameWorkspace {
+        old: Some(parse_workspace(&rest[..to])?),
+        new_name: join_words(&rest[to + 1..]),
+    })
 }
 
 fn parse_workspace_command(args: &[&str]) -> Result<Command, String> {
