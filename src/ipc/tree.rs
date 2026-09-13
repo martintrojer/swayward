@@ -335,7 +335,7 @@ fn describe_workspace_node(
         || workspace
             .active_window()
             .is_some_and(|window| window.is_focused());
-    let floating_nodes = workspace
+    let mut floating_nodes = workspace
         .tiles_with_render_positions()
         .filter(|(tile, _, _)| workspace.is_floating(&tile.window().window))
         .map(|(tile, pos, _)| {
@@ -351,7 +351,8 @@ fn describe_workspace_node(
             )
         })
         .collect::<Vec<_>>();
-    let floating_focus = floating_nodes.iter().map(|node| node.id);
+    floating_nodes.reverse();
+    let floating_focus = floating_nodes.iter().rev().map(|node| node.id);
     if workspace.floating_is_active() {
         focus.splice(0..0, floating_focus);
     } else {

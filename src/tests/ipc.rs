@@ -1977,6 +1977,59 @@ fn workspace_focus_spans_tiled_and_floating_children() {
 }
 
 #[test]
+fn focused_floating_window_is_last_in_stacking_order_and_first_in_focus() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let mut ids = Vec::new();
+    for _ in 0..2 {
+        let window = f.client(client).create_window();
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+        assert!(crate::command::execute(f.niri_state(), "floating enable")[0].success);
+        ids.push(f.swayward().layout.focus().unwrap().id());
+    }
+
+    assert!(
+        crate::command::execute(
+            f.niri_state(),
+            &format!("[con_id={}] focus", crate::ipc::tree::window_id(ids[0]))
+        )[0]
+        .success
+    );
+    let swayward = f.swayward();
+    let tree = describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &Default::default(),
+        &Default::default(),
+    );
+    let workspace = &tree.nodes[1].nodes[0];
+    let floating = workspace
+        .floating_nodes
+        .iter()
+        .map(|node| node.id)
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        floating,
+        ids.into_iter()
+            .rev()
+            .map(crate::ipc::tree::window_id)
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        workspace.focus,
+        floating.into_iter().rev().collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn live_ipc_rectangle_roles_match_sway_relationships() {
     let expected = nested_fixture_tree();
     let actual = nested_live_tree();
