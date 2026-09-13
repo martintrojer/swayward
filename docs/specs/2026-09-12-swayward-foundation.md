@@ -336,7 +336,7 @@ plumbing; replace only the payload types.
 
 | # | Decision | Rationale |
 |---|---|---|
-| Q1 | IPC byte-compatible; **config not compatible**, KDL instead | deletes sway's config parser and command tables; ship a translator instead |
+| Q1 | IPC byte-compatible; **config not compatible**, KDL instead | deletes sway's config parser and command tables; ship a translator instead. See [Q1 in detail](#q1-in-detail-why-kdl-earns-the-incompatibility) |
 | Q2 | GPL-3.0-or-later | makes niri's protocol and D-Bus code liftable |
 | Q3 | fork niri | niri's internals are not published as libraries |
 | Q4 | mutter/GNOME D-Bus **and** wlr-screencopy | portal-gnome for the real experience; screencopy for grim/OBS |
@@ -354,8 +354,42 @@ plumbing; replace only the payload types.
 | Q16 | **fully nested tree, all of it, immediately** | this is the entire point of the project |
 | Q17 | full sway scratchpad, wired to foreign-toplevel minimize | one feature, two audiences (sway users and taskbars) |
 | Q18 | marks and full criteria | cheap, and heavily used in real configs |
-| Q19 | niri's existing effect config blocks, names unchanged | zero diff for zero lost function |
+| Q19 | niri's existing effect config blocks, names unchanged | zero diff for zero lost function; KDL's nested blocks already express them, and sway's flat syntax could not |
 | Q20 | **rebuild sway's global named/numbered workspace model** | bars key off `num`; this is the difference between sway-compatible and sway-flavoured |
+
+### Q1 in detail: why KDL earns the incompatibility
+
+Dropping config compatibility is the most user-visible cost in this design, so
+it needs more than "niri already parses KDL". Two properties make it a gain
+rather than a concession.
+
+**Nested blocks already express the effects.** The inherited effect
+configuration is deeply structured: `focus-ring`, `border`, `shadow` and
+`animations` each carry nested children, per-state colour variants, Oklab and
+Oklch gradients with interpolation hints, and per-animation curve parameters.
+KDL expresses that natively, so Q5 and Q19 cost a zero-diff inheritance. Sway's
+flat `key value` grammar has no nesting, so keeping config compatibility would
+have required inventing a sway-flavoured syntax for every one of these blocks:
+new grammar, new parser, new documentation, and a permanent translation layer
+between it and the renderer that already consumes the KDL types. The
+incompatible choice is the one that writes *less* code, and it preserves the 18
+shaders and 13 animations we would otherwise have had to re-express.
+
+**It fits the "sway, but modern" mantra.** Both config languages support
+includes. Sway globs them through `wordexp` and refuses a file already included
+once (`../sway/sway/config.c:573`); the inherited KDL loader resolves them
+relative to the including file and has its own recursive-include detection
+(`swayward-config/src/lib.rs:297`). Includes are therefore not the
+differentiator on their own. What differs is what they compose *over*: a KDL
+include contributes typed, nested, span-checked structure, so a shared base plus
+per-machine overrides for a desktop and a laptop compose blocks instead of
+replaying flat directives. Parse failures carry source spans that name a line
+and column, which is also why binds take a quoted command string rather than a
+bare one (Q13) — a hand-rolled preprocessor would have destroyed exactly that
+diagnostic.
+
+The translator (`contrib/sway-to-kdl`) turns the remaining cost into a one-time
+migration instead of a permanent constraint.
 
 ### Q20 in detail, because it is the expensive one
 
