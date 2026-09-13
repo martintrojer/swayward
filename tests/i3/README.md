@@ -22,12 +22,25 @@ intermediate states or clients that delay or omit configure acknowledgements.
 `open_empty_con` also creates a real Wayland window because swayward cannot
 create an empty container through IPC.
 
+The adapter gives each `open_window` object the real swayward container id and
+translates a test-side `node.window` read for a native `xdg_shell` node to that
+same `node.id`. It does not add `window` to the IPC object: key iteration and
+`exists` still expose sway's native Wayland schema, which omits `window`
+(`sway/sway/ipc-json.c:670-683`). These comparisons prove container identity and
+the behavior addressed through it, but do not prove X11 window identity or
+Xwayland serialization.
+
 For an `i3_config` import, the adapter sends the complete config to the Rust
 runner. The runner translates it with the shipped `contrib/sway-to-kdl` tool and
-refuses to run if the translator reports any manual-attention item. The current
-adapter maps X11 `class` criteria to Wayland `app_id` criteria. It supports
-`assign` and the `floating enable` or `floating disable` subset of `for_window`.
-It does not silently discard unsupported directives.
+refuses to run if the translator reports any manual-attention item. The adapter
+maps the i3 suite's X11 `class` and `instance` criteria to Wayland `app_id`
+criteria. This is a portability substitution, not sway criteria equivalence:
+sway matches native Wayland views by `app_id` and evaluates `class` and
+`instance` only for Xwayland views (`sway/sway/criteria.c:243-259,355-390`).
+These tests therefore prove equivalent matching behavior against the identity
+the adapter can assign, but do not prove X11 class or instance matching. The
+translator supports `assign` and the `floating enable` or `floating disable`
+subset of `for_window`. It does not silently discard unsupported directives.
 
 The runner handles i3's `fake-outputs` test directive separately because it
 configures i3's test server rather than normal sway configuration. Each
@@ -132,8 +145,8 @@ without fabricating a tree that real sway clients do not see. See
 | `299-regress-scratchpad-focus.t` | 1 | pass | Showing a scratchpad window from another workspace moves and focuses it, matching `sway/tree/root.c:157-200`. |
 | `303-regress-move-floating.t` | 3 | pass | Moving a nested floating container leaves two tiled nodes and no floating node. |
 | `173-get-marks.t` | 3 | pass | `GET_MARKS` starts empty, includes a new mark, and drops the mark when its window closes. |
-| `210-mark-unmark.t` | 17 | finished: 6 pass; 11 skip | Assertions 7–13 and 16–17 identify X11 windows through the `window` field, which sway emits only for Xwayland views (`sway/sway/ipc-json.c:670-683`); direct Wayland-node diagnostics pass these nine mark and toggle checks. Assertions 14, 15, and 17 expect i3 to reject one mark applied to several matches. Sway instead runs the command for each match and moves the duplicate mark to the last container (`sway/sway/commands.c:301-326`, `sway/sway/commands/mark.c:46-58`); a direct swayward test confirms the same last-match-wins result and symmetric criteria-driven `unmark`. Assertion 17 belongs to both sets. |
-| `119-match.t` | 27 | finished: 25 pass; 2 skip | Assertions 12 and 17 use X11 `class`; sway exposes `class` only for Xwayland and uses `app_id` for native Wayland views (`sway/sway/criteria.c:243-259,355-390`). Temporary `app_id` diagnostics pass both. The UTF-8 `\w` title assertion now passes because criteria preserve regex backslashes, matching sway's quote-only unescape before PCRE2 compilation (`sway/sway/criteria.c:49-53,115-119,779-797,827-832`). |
+| `210-mark-unmark.t` | 17 | finished: 14 pass; 3 skip | Test-side Wayland identity translation proves assertions 7–13 and 16. Assertions 14, 15, and 17 expect i3 to reject one mark applied to several matches. Sway instead runs the command for each match and moves the duplicate mark to the last container (`sway/sway/commands.c:301-326`, `sway/sway/commands/mark.c:46-58`); the translated `instance` criterion and node identity expose that last-match-wins result. X11 identity remains unproven (`sway/sway/ipc-json.c:670-683`). |
+| `119-match.t` | 27 | pass with portability substitution | The adapter maps X11 `class` to Wayland `app_id`; sway evaluates those properties on different view types (`sway/sway/criteria.c:243-259,355-390`), so this proves matching behavior but not X11 class matching. The UTF-8 `\w` title assertion passes because criteria preserve regex backslashes, matching sway's quote-only unescape before PCRE2 compilation (`sway/sway/criteria.c:49-53,115-119,779-797,827-832`). |
 | `208-regress-floating-criteria.t` | 1 | pass | The translator converts all three directives used by the test: `font`, X11-class `assign`, and X11-class `for_window`. The adapter creates the `xdg_toplevel` without mapping it until the test calls `map`; the criteria chain then runs before focus. The final X11-class focus command is rejected, but `does_i3_live` intentionally asserts only that this historical command sequence does not crash. |
 
 ## Coverage

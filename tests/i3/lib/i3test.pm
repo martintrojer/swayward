@@ -86,7 +86,24 @@ sub _request {
         defined($read) && $read > 0 or die 'short IPC payload';
         $reply .= $chunk;
     }
-    decode_json($reply);
+    my $decoded = decode_json($reply);
+    # Let unchanged i3 tests use their X11 `node.window` lookup against the
+    # Wayland node id. Iteration and `exists` still expose sway's real schema.
+    _translate_wayland_identity($decoded) if $type == 4;
+    return $decoded;
+}
+
+sub _translate_wayland_identity {
+    my ($value) = @_;
+    if (ref($value) eq 'ARRAY') {
+        _translate_wayland_identity($_) for @{$value};
+        return;
+    }
+    return unless ref($value) eq 'HASH';
+    _translate_wayland_identity($_) for values %{$value};
+    return unless ($value->{shell} // '') eq 'xdg_shell' && !defined($value->{window});
+    my %fields = %{$value};
+    tie %{$value}, 'i3test::WaylandNode', \%fields;
 }
 
 sub _control {
@@ -160,7 +177,7 @@ sub get_socket_path { $ENV{I3SOCK} // die 'I3SOCK is not set' }
 sub cmd_nosync {
     my ($command) = @_;
     return [_control({ action => 'open' })] if $command eq 'open';
-    $command =~ s/\bclass=/app_id=/g;
+    $command =~ s/\b(?:class|instance)=/app_id=/g;
     my $settle_configures = scalar(
         $command =~ /\b(?:resize\s+(?:grow|shrink)|floating\s+enable)\b/i
     );
@@ -278,6 +295,14 @@ sub kill_all_windows {
 
 sub sync_with_i3 { _control({ action => 'reap_closed' }) }
 sub wait_for_unmap { sync_with_i3() }
+
+package i3test::WaylandNode;
+sub TIEHASH { bless $_[1], $_[0] }
+sub FETCH { $_[1] eq 'window' ? $_[0]->{id} : $_[0]->{$_[1]} }
+sub EXISTS { exists($_[0]->{$_[1]}) }
+sub FIRSTKEY { scalar keys %{$_[0]}; each %{$_[0]} }
+sub NEXTKEY { each %{$_[0]} }
+sub SCALAR { scalar %{$_[0]} }
 
 package i3test::IPC;
 sub command { i3test::Future->new(i3test::_request(0, $_[1])) }
