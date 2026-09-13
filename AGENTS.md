@@ -54,6 +54,16 @@ Four rules that follow from that incident:
   '^\./target/debug/swayward'` does not.
 - **Never kill the operator's processes.** Their `sway` and their `waybar` run
   alongside yours. Identify yours by the pid you launched, not by name.
+- **Force test clients to be *server-less*.** `foot` and friends default to a
+  socket-activated server, so `foot -e cmd` hands the request to the operator's
+  existing `foot --server` and opens a window in *their* session instead of the
+  nested one. Your memory cap then applies to a client that exits immediately,
+  capping nothing. Use `foot --server-socket=/dev/null` or a terminal with no
+  server mode, and confirm the window actually appeared in the nested tree
+  before trusting the result.
+- **Delete the sockets you leave behind.** `rm -f /run/user/$UID/swayward-ipc.*.sock`
+  at the end of a run. 25 accumulated in one session, and `ls -t | head -1`
+  then picks a dead one, which looks exactly like a compositor bug.
 
 Prefer the headless harness wherever it can answer the question. `src/tests/`
 drives a real compositor and real `wayland-client` clients with no nested session
