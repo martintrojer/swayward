@@ -155,8 +155,8 @@ layout {
 
     // You can change how the focus ring looks.
     focus-ring {
-        // Uncomment this line to disable the focus ring.
-        // off
+        // The border below marks every container, so keep the focus ring off.
+        off
 
         // How many logical pixels the ring extends out from the windows.
         width 4
@@ -191,11 +191,10 @@ layout {
         // inactive-gradient from="#505050" to="#808080" angle=45 relative-to="workspace-view"
     }
 
-    // You can also add a border. It's similar to the focus ring, but always visible.
+    // Draw a quiet border around every window. The active color shows focus.
     border {
         // The settings are the same as for the focus ring.
-        // If you enable the border, you probably want to disable the focus ring.
-        off
+        on
 
         width 4
         active-color "#ffc87f"
@@ -212,10 +211,9 @@ layout {
         // inactive-gradient from="#505050" to="#808080" angle=45 relative-to="workspace-view"
     }
 
-    // You can enable drop shadows for windows.
+    // Add a soft shadow that separates windows without obscuring their content.
     shadow {
-        // Uncomment the next line to enable shadows.
-        // on
+        on
 
         // By default, the shadow draws only around its window, and not behind it.
         // Uncomment this setting to make the shadow draw behind its window.
@@ -304,6 +302,10 @@ animations {
     // slowdown 3.0
 }
 
+// Background blur is available, but remains opt-in because it adds GPU work on
+// every affected frame. Enable it together with a window-rule background-effect.
+// blur { on; }
+
 // Window rules let you adjust behavior for individual windows.
 // Find more information on the wiki:
 // docs/wiki/Configuration:-Window-Rules.md
@@ -339,9 +341,8 @@ window-rule {
     // block-out-from "screencast"
 }
 
-// Example: enable rounded corners for all windows.
-// (This example rule is commented out with a "/-" in front.)
-/-window-rule {
+// Round and clip window content so the border and shadow share the same outline.
+window-rule {
     geometry-corner-radius 12
     clip-to-geometry true
 }

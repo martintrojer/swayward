@@ -84,6 +84,10 @@ impl TestWindow {
         self.inner.borrow_mut().max_size = size;
     }
 
+    pub fn set_rules(&mut self, rules: ResolvedWindowRules) {
+        self.rules = rules;
+    }
+
     pub fn set_color(&self, color: [f32; 4]) {
         self.inner.borrow_mut().buffer.set_color(color);
     }

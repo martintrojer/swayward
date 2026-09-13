@@ -7,9 +7,9 @@ use smithay::desktop::layer_map_for_output;
 use smithay::output::{Mode, Output, PhysicalProperties, Subpixel};
 use smithay::utils::{Physical, Size};
 use swayward::animation::Clock;
-use swayward::layout::{ActivateWindow, AddWindowTarget, LayoutElement as _, Options, SizingMode};
+use swayward::layout::{ActivateWindow, AddWindowTarget, LayoutElement as _, SizingMode};
 use swayward::render_helpers::{RenderCtx, RenderTarget};
-use swayward_config::{Color, OutputName, PresetSize};
+use swayward_config::{OutputName, PresetSize};
 
 use super::{Args, TestCase};
 use crate::test_window::TestWindow;
@@ -21,6 +21,7 @@ pub struct Layout {
     windows: Vec<TestWindow>,
     clock: Clock,
     layout: swayward::layout::Layout<TestWindow>,
+    default_rules: swayward::window::ResolvedWindowRules,
     start_time: Duration,
     steps: HashMap<Duration, DynStepFn>,
 }
@@ -51,27 +52,22 @@ impl Layout {
             serial: None,
         });
 
-        let options = Options {
-            layout: swayward_config::Layout {
-                focus_ring: swayward_config::FocusRing {
-                    off: true,
-                    ..Default::default()
-                },
-                border: swayward_config::Border {
-                    off: false,
-                    width: 4.,
-                    active_color: Color::from_rgba8_unpremul(255, 163, 72, 255),
-                    inactive_color: Color::from_rgba8_unpremul(50, 50, 50, 255),
-                    urgent_color: Color::from_rgba8_unpremul(155, 0, 0, 255),
-                    active_gradient: None,
-                    inactive_gradient: None,
-                    urgent_gradient: None,
-                },
-                ..Default::default()
+        let config = swayward_config::Config::load_default();
+        let default_rules = config.window_rules.iter().fold(
+            swayward::window::ResolvedWindowRules::default(),
+            |mut rules, rule| {
+                swayward_config::utils::MergeWith::merge_with(&mut rules.border, &rule.border);
+                swayward_config::utils::MergeWith::merge_with(&mut rules.shadow, &rule.shadow);
+                if let Some(radius) = rule.geometry_corner_radius {
+                    rules.geometry_corner_radius = Some(radius);
+                }
+                if let Some(clip) = rule.clip_to_geometry {
+                    rules.clip_to_geometry = Some(clip);
+                }
+                rules
             },
-            ..Default::default()
-        };
-        let mut layout = swayward::layout::Layout::with_options(clock.clone(), options);
+        );
+        let mut layout = swayward::layout::Layout::new(clock.clone(), &config);
         layout.add_output(output.clone(), None);
 
         let start_time = clock.now_unadjusted();
@@ -81,6 +77,7 @@ impl Layout {
             windows: Vec::new(),
             clock,
             layout,
+            default_rules,
             start_time,
             steps: HashMap::new(),
         }
@@ -186,6 +183,7 @@ impl Layout {
     }
 
     fn add_window(&mut self, mut window: TestWindow, width: Option<PresetSize>) {
+        window.set_rules(self.default_rules.clone());
         let ws = self.layout.active_workspace().unwrap();
         let min_size = window.min_size();
         let max_size = window.max_size();
@@ -215,6 +213,7 @@ impl Layout {
         mut window: TestWindow,
         width: Option<PresetSize>,
     ) {
+        window.set_rules(self.default_rules.clone());
         let ws = self.layout.active_workspace().unwrap();
         let min_size = window.min_size();
         let max_size = window.max_size();

@@ -645,6 +645,26 @@ mod tests {
     }
 
     #[test]
+    fn default_config_enables_the_quiet_effect_set() {
+        let config = Config::load_default();
+        assert!(config.layout.focus_ring.off);
+        assert!(!config.layout.border.off);
+        assert!(config.layout.shadow.on);
+        assert!(config
+            .window_rules
+            .iter()
+            .all(|rule| rule.background_effect.blur != Some(true)));
+
+        let default_rule = config
+            .window_rules
+            .iter()
+            .find(|rule| rule.matches.is_empty() && rule.excludes.is_empty())
+            .unwrap();
+        assert_eq!(default_rule.geometry_corner_radius, Some(12_f32.into()));
+        assert_eq!(default_rule.clip_to_geometry, Some(true));
+    }
+
+    #[test]
     fn default_config_exposes_core_tree_commands() {
         let config = Config::load_default();
         let command_for = |key: &str| {
@@ -2581,6 +2601,15 @@ mod tests {
         +            ],
         +        },
         +    ],
+
+        -            off: false,
+        +            off: true,
+
+        -            off: true,
+        +            off: false,
+
+        -            on: false,
+        +            on: true,
 
         -                0.3333333333333333,
         +                0.33333,
