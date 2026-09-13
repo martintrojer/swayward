@@ -208,6 +208,72 @@ fn inserting_a_sibling_subdivides_the_target_share() {
 }
 
 #[test]
+fn split_retargets_a_singleton_split_parent() {
+    for (parent_layout, requested_layout) in [
+        (Layout::SplitH, Layout::SplitH),
+        (Layout::SplitH, Layout::SplitV),
+        (Layout::SplitV, Layout::SplitV),
+        (Layout::SplitV, Layout::SplitH),
+    ] {
+        let mut t = tree((1200., 800.), 0.);
+        let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+        t.set_layout(t.root, parent_layout);
+
+        t.split(first, requested_layout);
+        t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+
+        assert_eq!(t.ipc_tree().nodes().len(), 3);
+        assert!(matches!(
+            t.nodes[&t.root].value,
+            TreeNode::Split { layout, .. } if layout == requested_layout
+        ));
+        t.check_invariants();
+    }
+}
+
+#[test]
+fn repeating_split_on_a_singleton_parent_does_not_grow_the_tree() {
+    let mut t = tree((1200., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    t.set_layout(t.root, Layout::SplitV);
+
+    for _ in 0..10 {
+        t.split(first, Layout::SplitV);
+    }
+    t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+
+    assert_eq!(t.ipc_tree().nodes().len(), 3);
+    assert_eq!(t.nodes[&first].parent, Some(t.root));
+    t.check_invariants();
+}
+
+#[test]
+fn split_wraps_a_leaf_with_multiple_or_tabbed_siblings() {
+    for parent_layout in [Layout::SplitH, Layout::SplitV, Layout::Tabbed] {
+        for requested_layout in [Layout::SplitH, Layout::SplitV] {
+            let mut t = tree((1200., 800.), 0.);
+            let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+            t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+            t.set_layout(t.root, parent_layout);
+            t.set_focus(first);
+
+            t.split(first, requested_layout);
+            let inserted = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+
+            let wrapper = t.nodes[&first].parent.unwrap();
+            assert_ne!(wrapper, t.root);
+            assert_eq!(t.nodes[&inserted].parent, Some(wrapper));
+            assert_eq!(t.ipc_tree().nodes().len(), 5);
+            assert!(matches!(
+                t.nodes[&wrapper].value,
+                TreeNode::Split { layout, .. } if layout == requested_layout
+            ));
+            t.check_invariants();
+        }
+    }
+}
+
+#[test]
 fn removing_a_sibling_collapses_the_implicit_container() {
     let mut t = tree((1920., 1080.), 0.);
     let a = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);

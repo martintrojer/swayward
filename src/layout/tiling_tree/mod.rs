@@ -543,7 +543,35 @@ impl<W: LayoutElement> TilingTree<W> {
             self.nodes.get(&id).map(|node| &node.value),
             Some(TreeNode::Leaf { .. })
         ) {
-            self.pending_splits.insert(id, layout);
+            let singleton_split_parent =
+                self.nodes
+                    .get(&id)
+                    .and_then(|node| node.parent)
+                    .filter(|parent| {
+                        matches!(
+                            self.nodes.get(parent).map(|node| &node.value),
+                            Some(TreeNode::Split {
+                                layout: Layout::SplitH | Layout::SplitV,
+                                children,
+                                ..
+                            }) if children.len() == 1
+                        )
+                    });
+            if let Some(parent) = singleton_split_parent {
+                if let Some(Node {
+                    value:
+                        TreeNode::Split {
+                            layout: current, ..
+                        },
+                    ..
+                }) = self.nodes.get_mut(&parent)
+                {
+                    *current = layout;
+                }
+                self.pending_splits.remove(&id);
+            } else {
+                self.pending_splits.insert(id, layout);
+            }
         } else if let Some(Node {
             value: TreeNode::Split {
                 layout: current, ..

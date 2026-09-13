@@ -1061,15 +1061,9 @@ fn focus_parent_then_layout_targets_the_whole_subtree() {
     ))
     .unwrap();
     let workspace = &tree["nodes"][1]["nodes"][0];
-    let focused = workspace["nodes"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|node| node["focused"] == true)
-        .unwrap();
-    assert_eq!(focused["layout"], "tabbed");
-    assert_eq!(focused["nodes"].as_array().unwrap().len(), 2);
-    assert!(focused["nodes"]
+    assert_eq!(workspace["layout"], "tabbed");
+    assert_eq!(workspace["nodes"].as_array().unwrap().len(), 2);
+    assert!(workspace["nodes"]
         .as_array()
         .unwrap()
         .iter()
