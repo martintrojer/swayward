@@ -1007,7 +1007,7 @@ impl<W: LayoutElement> Monitor<W> {
         self.activate_workspace(new_idx);
     }
 
-    fn previous_workspace_idx(&self) -> Option<usize> {
+    pub(super) fn previous_workspace_idx(&self) -> Option<usize> {
         let id = self.previous_workspace_id?;
         self.idx_of_ws(id)
     }

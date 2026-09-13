@@ -2357,6 +2357,17 @@ impl<W: LayoutElement> Layout<W> {
         use crate::command::WorkspaceTarget;
 
         match target {
+            WorkspaceTarget::Current => return Ok(()),
+            WorkspaceTarget::BackAndForth => {
+                let Some(monitor) = self.active_monitor() else {
+                    return Err("cannot switch workspaces without an output".into());
+                };
+                let Some(previous) = monitor.previous_workspace_idx() else {
+                    return Err("No workspace was previously active.".into());
+                };
+                self.switch_workspace(previous);
+                return Ok(());
+            }
             WorkspaceTarget::NextOnOutput => {
                 self.switch_workspace_down();
                 return Ok(());
@@ -2537,6 +2548,18 @@ impl<W: LayoutElement> Layout<W> {
         Some((Some(output.clone()), *target))
     }
 
+    fn active_workspace_position(&self) -> Option<(Option<Output>, usize)> {
+        let output = self.active_output()?.clone();
+        let monitor = self.monitor_for_output(&output)?;
+        Some((Some(output), monitor.active_workspace_idx))
+    }
+
+    fn previous_workspace_position(&self) -> Option<(Option<Output>, usize)> {
+        let output = self.active_output()?.clone();
+        let monitor = self.monitor_for_output(&output)?;
+        Some((Some(output), monitor.previous_workspace_idx()?))
+    }
+
     pub fn move_to_sway_workspace(
         &mut self,
         target: crate::command::WorkspaceTarget,
@@ -2544,6 +2567,8 @@ impl<W: LayoutElement> Layout<W> {
         use crate::command::WorkspaceTarget;
 
         let target_position = match target {
+            WorkspaceTarget::Current => self.active_workspace_position(),
+            WorkspaceTarget::BackAndForth => self.previous_workspace_position(),
             WorkspaceTarget::Next | WorkspaceTarget::Prev => {
                 let next = target == WorkspaceTarget::Next;
                 self.relative_sway_workspace_position(next)

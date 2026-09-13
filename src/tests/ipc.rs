@@ -1472,6 +1472,76 @@ fn relative_move_includes_empty_active_workspace_and_uses_direction() {
 }
 
 #[test]
+fn move_workspace_back_and_forth_targets_the_previous_workspace() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+
+    for workspace in ["1", "2"] {
+        assert!(
+            crate::command::execute(f.niri_state(), &format!("workspace {workspace}"))[0].success
+        );
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(workspace.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+
+    assert!(crate::command::execute(f.niri_state(), "move workspace back_and_forth")[0].success);
+
+    let workspace_apps = f
+        .swayward()
+        .layout
+        .workspaces()
+        .filter_map(|(_, _, workspace)| {
+            workspace.number().map(|number| {
+                let apps = workspace
+                    .windows()
+                    .map(|window| {
+                        crate::utils::with_toplevel_role(window.toplevel(), |role| {
+                            role.app_id.clone().unwrap()
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                (number, apps)
+            })
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        workspace_apps,
+        [(1, vec!["1".into(), "2".into()]), (2, vec![])]
+    );
+}
+
+#[test]
+fn move_workspace_current_keeps_the_window_on_its_workspace() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    assert!(crate::command::execute(f.niri_state(), "workspace 7")[0].success);
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    assert!(crate::command::execute(f.niri_state(), "move workspace current")[0].success);
+
+    let swayward = f.swayward();
+    let workspaces = describe_workspaces(&swayward.layout, &swayward.global_space);
+    assert_eq!(workspaces[0].num, 7);
+    assert_eq!(workspaces[0].focus.len(), 1);
+}
+
+#[test]
 fn move_to_workspace_creates_the_target_and_moves_the_window() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));

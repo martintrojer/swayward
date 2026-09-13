@@ -44,6 +44,8 @@ pub enum WorkspaceTarget {
     Prev,
     NextOnOutput,
     PrevOnOutput,
+    BackAndForth,
+    Current,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -451,6 +453,8 @@ fn parse_workspace(args: &[&str]) -> Result<WorkspaceTarget, String> {
         [name] if name.eq_ignore_ascii_case("prev") => Ok(WorkspaceTarget::Prev),
         [name] if name.eq_ignore_ascii_case("next_on_output") => Ok(WorkspaceTarget::NextOnOutput),
         [name] if name.eq_ignore_ascii_case("prev_on_output") => Ok(WorkspaceTarget::PrevOnOutput),
+        [name] if name.eq_ignore_ascii_case("back_and_forth") => Ok(WorkspaceTarget::BackAndForth),
+        [name] if name.eq_ignore_ascii_case("current") => Ok(WorkspaceTarget::Current),
         [number, names @ ..] if number.eq_ignore_ascii_case("number") && !names.is_empty() => {
             Ok(WorkspaceTarget::Number(join_words(names)))
         }
