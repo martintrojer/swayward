@@ -775,6 +775,59 @@ fn workspace_commands_create_sparse_global_identities() {
 }
 
 #[test]
+fn workspace_criteria_uses_sparse_and_named_sway_identities() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+
+    for workspace in ["1", "7", "mail"] {
+        assert!(
+            crate::command::execute(f.niri_state(), &format!("workspace {workspace}"))[0].success
+        );
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(workspace.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+
+    for (workspace, mark) in [("7", "sparse"), ("mail", "named")] {
+        assert!(
+            crate::command::execute(
+                f.niri_state(),
+                &format!(r#"[workspace="^{workspace}$"] mark {mark}"#)
+            )[0]
+            .success
+        );
+    }
+
+    let swayward = f.swayward();
+    let marked_apps = swayward
+        .layout
+        .windows()
+        .filter_map(|(_, window)| {
+            swayward.marks_by_window.get(&window.id()).map(|marks| {
+                let app_id = crate::utils::with_toplevel_role(window.toplevel(), |role| {
+                    role.app_id.clone().unwrap()
+                });
+                (app_id, marks.clone())
+            })
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        marked_apps,
+        [
+            ("7".into(), vec!["sparse".into()]),
+            ("mail".into(), vec!["named".into()])
+        ]
+    );
+}
+
+#[test]
 fn workspace_next_and_prev_cross_outputs() {
     let mut f = Fixture::new();
     f.add_output(1, (1280, 720));

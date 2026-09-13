@@ -914,13 +914,7 @@ fn matching_ids(
                     .swayward
                     .layout
                     .workspaces()
-                    .find_map(|(_, index, ws)| {
-                        (ws.id() == id).then(|| {
-                            ws.name()
-                                .cloned()
-                                .unwrap_or_else(|| (index + 1).to_string())
-                        })
-                    })
+                    .find_map(|(_, _, ws)| (ws.id() == id).then(|| ws.sway_name()).flatten())
             });
             snapshots.push((
                 mapped.id(),
