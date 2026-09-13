@@ -1,6 +1,7 @@
 package i3test;
 use strict;
 use warnings;
+use Encode qw(decode_utf8);
 use Exporter ();
 use File::Temp qw(tmpnam);
 use IO::Select;
@@ -99,7 +100,7 @@ sub cmp_float ($$;$) {
     my ($a, $b, $name) = @_;
     $tester->cmp_ok(abs($a - $b), '<', 0.000001, $name);
 }
-sub is_deeply ($$;$) { Test::More::is_deeply(@_) }
+sub is_deeply { Test::More::is_deeply(@_) }
 sub isa_ok ($$;$) {
     my ($value, $class, $name) = @_;
     $name //= "The object isa $class";
@@ -180,6 +181,8 @@ sub open_window {
     my %args = @_ == 1 ? %{$_[0]} : @_;
     my $name = $args{name} // 'Window ' . $window_count++;
     my $class = $args{wm_class} // $name;
+    $name = decode_utf8($name) unless utf8::is_utf8($name);
+    $class = decode_utf8($class) unless utf8::is_utf8($class);
     return X11::XCB::Window->new(_control({
         action => 'open',
         name => $name,
@@ -257,6 +260,7 @@ package i3test::IPC;
 sub command { i3test::Future->new(i3test::_request(0, $_[1])) }
 sub get_workspaces { i3test::Future->new(i3test::_request(1)) }
 sub get_tree { i3test::Future->new(i3test::_request(4)) }
+sub get_marks { i3test::Future->new(i3test::_request(5)) }
 
 package i3test::Future;
 sub new { bless { value => $_[1] }, $_[0] }

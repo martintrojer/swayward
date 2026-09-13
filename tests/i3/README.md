@@ -81,6 +81,10 @@ without fabricating a tree that real sway clients do not see. See
 | `292-regress-layout-toggle.t` | 1 | pass | `does_i3_live` after invalid `layout toggle` parameters; sway validates the accepted syntax in `sway/commands/layout.c:25-27`. |
 | `299-regress-scratchpad-focus.t` | 1 | pass | Showing a scratchpad window from another workspace moves and focuses it, matching `sway/tree/root.c:157-200`. |
 | `303-regress-move-floating.t` | 3 | pass | Moving a nested floating container leaves two tiled nodes and no floating node. |
+| `173-get-marks.t` | 3 | pass | `GET_MARKS` starts empty, includes a new mark, and drops the mark when its window closes. |
+| `210-mark-unmark.t` | 17 | finished: 6 pass; 11 skip | Assertions 7–13 and 16–17 identify X11 windows through the `window` field, which sway emits only for Xwayland views (`sway/sway/ipc-json.c:670-683`); direct Wayland-node diagnostics pass these nine mark and toggle checks. Assertions 14, 15, and 17 expect i3 to reject one mark applied to several matches, while sway runs the command for each match and moves the duplicate mark to the last container (`sway/sway/commands.c:301-326`, `sway/sway/commands/mark.c:46-58`). Assertion 17 belongs to both sets. |
+| `119-match.t` | 27 | finished: 24 pass; 3 skip | Assertions 12 and 17 use X11 `class`; sway exposes `class` only for Xwayland and uses `app_id` for native Wayland views (`sway/sway/criteria.c:243-259,355-390`). Temporary `app_id` diagnostics pass both. Assertion 22 exposes a real criteria-parser bug: swayward strips the backslash from PCRE2 `\w`, while sway compiles the original value (`sway/sway/criteria.c:49-53,115-119`). |
+| `208-regress-floating-criteria.t` | 1 | unproven | The test requires startup `assign` and `for_window` configuration plus a window created unmapped and mapped later. The adapter ignores `i3_config` and `dont_map`, so it cannot reach the assertion. |
 
 ## Coverage
 

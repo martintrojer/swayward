@@ -53,10 +53,13 @@ fn remove_window_for_surface(
     let window = {
         fixture.swayward().layout.windows().find_map(|(_, mapped)| {
             (mapped.toplevel().wl_surface().id().protocol_id() == surface_id)
-                .then(|| mapped.window.clone())
+                .then(|| (mapped.id(), mapped.window.clone()))
         })
     };
-    let Some(window) = window else { return false };
+    let Some((id, window)) = window else {
+        return false;
+    };
+    fixture.swayward().unmark(Some(id), None);
     fixture
         .swayward()
         .layout

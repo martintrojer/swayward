@@ -121,5 +121,18 @@ the adapter would make an upstream assertion observe a tree that a real sway IPC
 client never receives. Tests that directly traverse or inspect i3's `content`
 node are excluded as i3-only tree-structure tests.
 
+### Marks applied to several matching containers
+
+The i3 command `[criteria] mark name` fails when the criteria match more than
+one container. Sway runs the command once for every match
+(`sway/sway/commands.c:301-326`). Each run removes the mark from its previous
+container before adding it to the current one
+(`sway/sway/commands/mark.c:46-58` and
+`sway/sway/tree/container.c:1639-1654`). The command therefore succeeds, and the
+last matched container retains the mark.
+
+Swayward follows sway. Assertions 14, 15, and 17 in i3's
+`210-mark-unmark.t` expect i3's rejection and are excluded.
+
 X11 applications run through `xwayland-satellite`. Swayward does not include
 sway's in-process Xwayland window manager.
