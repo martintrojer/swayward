@@ -32,6 +32,7 @@ our @EXPORT = qw(
     is_deeply
     is_num_children
     isa_ok
+    kill_all_windows
     isnt
     ok
     open_empty_con
@@ -159,6 +160,7 @@ sub get_socket_path { $ENV{I3SOCK} // die 'I3SOCK is not set' }
 sub cmd_nosync {
     my ($command) = @_;
     return [_control({ action => 'open' })] if $command eq 'open';
+    $command =~ s/\bclass=/app_id=/g;
     my $settle_configures = scalar(
         $command =~ /\b(?:resize\s+(?:grow|shrink)|floating\s+enable)\b/i
     );
@@ -204,11 +206,14 @@ sub open_window {
     return $window;
 }
 
-sub get_workspace_names {
-    [map { $_->{name} } map { @{$_->{nodes}} }
-        grep { $_->{type} eq 'output' && $_->{name} ne '__i3' }
-        @{_request(4)->{nodes}}]
+sub _workspace_nodes {
+    map {
+        my ($content) = grep { $_->{type} eq 'con' } @{$_->{nodes}};
+        $content ? @{$content->{nodes}} : grep { $_->{type} eq 'workspace' } @{$_->{nodes}}
+    } grep { $_->{type} eq 'output' } @{_request(4)->{nodes}};
 }
+
+sub get_workspace_names { [map { $_->{name} } _workspace_nodes()] }
 
 sub get_unused_workspace {
     my %used = map { $_ => 1 } @{get_workspace_names()};
@@ -232,9 +237,8 @@ sub focused_ws {
 
 sub get_ws {
     my ($name) = @_;
-    for my $output (@{_request(4)->{nodes}}) {
-        return $_ for grep { $_->{type} eq 'workspace' && $_->{name} eq $name }
-            @{$output->{nodes}};
+    for my $workspace (_workspace_nodes()) {
+        return $workspace if $workspace->{name} eq $name;
     }
     return;
 }
@@ -267,6 +271,11 @@ sub is_num_children {
     $tester->is_num(scalar @{$node->{nodes}}, $expected, $name);
 }
 
+sub kill_all_windows {
+    sync_with_i3();
+    cmd('[app_id=".*"] kill');
+}
+
 sub sync_with_i3 { _control({ action => 'reap_closed' }) }
 sub wait_for_unmap { sync_with_i3() }
 
@@ -274,6 +283,7 @@ package i3test::IPC;
 sub command { i3test::Future->new(i3test::_request(0, $_[1])) }
 sub get_workspaces { i3test::Future->new(i3test::_request(1)) }
 sub get_tree { i3test::Future->new(i3test::_request(4)) }
+sub get_outputs { i3test::Future->new(i3test::_request(3)) }
 sub get_marks { i3test::Future->new(i3test::_request(5)) }
 
 package i3test::Future;
