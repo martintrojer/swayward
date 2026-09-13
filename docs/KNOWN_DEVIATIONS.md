@@ -145,8 +145,13 @@ container before adding it to the current one
 `sway/sway/tree/container.c:1639-1654`). The command therefore succeeds, and the
 last matched container retains the mark.
 
-Swayward follows sway. Assertions 14, 15, and 17 in i3's
-`210-mark-unmark.t` expect i3's rejection and are excluded.
+Swayward follows sway. The
+`multi_target_mark_moves_to_last_match_and_unmark_clears_every_match` test pins
+both effects: `mark` leaves the mark only on the last match, and a criteria-driven
+`unmark` clears every matched container. The latter matches sway's per-match
+command loop and its targeted clear operation
+(`sway/sway/commands/unmark.c:24-54`). Assertions 14, 15, and 17 in i3's
+`210-mark-unmark.t` expect i3's multi-target `mark` rejection and are excluded.
 
 X11 applications run through `xwayland-satellite`. Swayward does not include
 sway's in-process Xwayland window manager.

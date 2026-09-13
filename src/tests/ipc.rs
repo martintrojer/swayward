@@ -1415,6 +1415,58 @@ fn criteria_commands_do_not_change_focus() {
 }
 
 #[test]
+fn multi_target_mark_moves_to_last_match_and_unmark_clears_every_match() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let mut ids = Vec::new();
+
+    for title in ["first", "second"] {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id("shared-app".into());
+        window.set_title(title);
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+        ids.push(f.swayward().layout.focus().unwrap().id());
+    }
+
+    let outcome = crate::command::execute(f.niri_state(), r#"[app_id="shared-app"] mark shared"#);
+    assert_eq!(outcome.len(), 1);
+    assert!(outcome[0].success);
+    assert!(f
+        .swayward()
+        .marks_by_window
+        .get(&ids[0])
+        .is_none_or(Vec::is_empty));
+    assert_eq!(
+        f.swayward().marks_by_window.get(&ids[1]).map(Vec::as_slice),
+        Some(["shared".to_owned()].as_slice())
+    );
+
+    for (id, mark) in ids.iter().zip(["first", "second"]) {
+        let outcome = crate::command::execute(
+            f.niri_state(),
+            &format!(
+                r#"[con_id="{}"] mark {mark}"#,
+                crate::ipc::tree::window_id(*id)
+            ),
+        );
+        assert!(outcome[0].success);
+    }
+    assert!(crate::command::execute(f.niri_state(), r#"[app_id="shared-app"] unmark"#)[0].success);
+    assert!(ids.iter().all(|id| f
+        .swayward()
+        .marks_by_window
+        .get(id)
+        .is_none_or(Vec::is_empty)));
+}
+
+#[test]
 fn comma_chain_keeps_the_original_criteria_targets() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));
