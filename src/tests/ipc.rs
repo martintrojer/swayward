@@ -146,6 +146,53 @@ fn assert_percent_value_matches_fixture(expected: &Value, actual: &Value, path: 
     }
 }
 
+fn assert_rectangle_roles_match_fixture(expected: &Value, actual: &Value, path: &str) {
+    if expected["type"] == "con" && expected["nodes"].as_array().unwrap().is_empty() {
+        let expected_rect = &expected["rect"];
+        let actual_rect = &actual["rect"];
+        for role in ["window_rect", "deco_rect", "geometry"] {
+            assert_eq!(
+                expected[role] == *expected_rect,
+                actual[role] == *actual_rect,
+                "{role} outer-rect relationship at {path}"
+            );
+        }
+
+        for dimension in ["width", "height"] {
+            let expected_window = expected["window_rect"][dimension].as_i64().unwrap();
+            let expected_outer = expected_rect[dimension].as_i64().unwrap();
+            let actual_window = actual["window_rect"][dimension].as_i64().unwrap();
+            let actual_outer = actual_rect[dimension].as_i64().unwrap();
+            assert!(
+                actual_window <= actual_outer,
+                "window_rect {dimension} at {path}"
+            );
+            if expected_window < expected_outer {
+                assert!(
+                    actual_window < actual_outer,
+                    "window_rect {dimension} at {path}"
+                );
+            }
+        }
+    }
+
+    for key in ["nodes", "floating_nodes"] {
+        for (index, (expected, actual)) in expected[key]
+            .as_array()
+            .unwrap()
+            .iter()
+            .zip(actual[key].as_array().unwrap())
+            .enumerate()
+        {
+            assert_rectangle_roles_match_fixture(
+                expected,
+                actual,
+                &format!("{path}.{key}[{index}]"),
+            );
+        }
+    }
+}
+
 fn assert_percent_matches_fixture(expected: &Value, actual: &Value, path: &str) {
     if expected["type"] == "con" && !expected["nodes"].as_array().unwrap().is_empty() {
         assert_percent_value_matches_fixture(expected, actual, path);
@@ -1242,6 +1289,13 @@ fn stale_tree_leaf_is_omitted_without_panicking() {
 #[test]
 fn live_ipc_focus_matches_sway_mru_arrays() {
     assert_focus_matches_fixture(&nested_fixture_tree(), &nested_live_tree(), "$tree");
+}
+
+#[test]
+fn live_ipc_rectangle_roles_match_sway_relationships() {
+    let expected = nested_fixture_tree();
+    let actual = nested_live_tree();
+    assert_rectangle_roles_match_fixture(&expected, &actual, "$tree");
 }
 
 #[test]
