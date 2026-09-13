@@ -11,14 +11,22 @@ JSON schema.
 - backend: wlroots Wayland backend, nested inside the operator's sway session
 - output: `WL-1`, 1270x1408, scale 1, normal transform
 - config: solid-color output background, 2 px normal borders, monospace 10
-- client: foot terminals with unique `fixture-*` app IDs
+- client: standalone foot terminals with unique `fixture-*` app IDs
 - capture command: `contrib/capture-sway-fixtures.sh <nested-SWAYSOCK>`
+- multi-floating capture: set `WAYLAND_DISPLAY` to the nested display, then run
+  `contrib/capture-sway-fixtures.sh <nested-SWAYSOCK> multi-floating`
 
 Each captured scenario has the raw replies to `get_tree`, `get_workspaces`, and
-`get_outputs`, formatted only with `jq -S .` for stable key order. Fourteen of
-the fifteen requested scenarios were captured. `urgent` is absent because foot
-did not expose an urgency hint after an unfocused terminal emitted BEL; no
-substitute fixture was invented.
+`get_outputs`, formatted only with `jq -S .` for stable key order. The
+`two_floating` and `three_floating_*` scenarios were captured on 2026-09-13 from
+the same sway 1.11 installation. They show that `floating_nodes` uses
+back-to-front stacking order, while the workspace `focus` array lists the
+focused floating window first. `three_floating_after_raise` focuses
+`fixture-1`, making the order change observable.
+
+Fourteen of the original fifteen requested scenarios were captured. `urgent`
+is absent because foot did not expose an urgency hint after an unfocused
+terminal emitted BEL; no substitute fixture was invented.
 
 ## Oracle policy
 

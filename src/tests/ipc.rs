@@ -2014,14 +2014,58 @@ fn workspace_focus_spans_tiled_and_floating_children() {
     assert_eq!(workspace["focus"].as_array().unwrap().len(), 2);
 }
 
+fn floating_order(tree: &Value) -> (Vec<&str>, Vec<&str>) {
+    let workspace = tree["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["name"] != "__i3")
+        .unwrap()["nodes"][0]
+        .as_object()
+        .unwrap();
+    let floating = workspace["floating_nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|node| node["app_id"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    let focus = workspace["focus"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|id| {
+            workspace["floating_nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|node| node["id"] == *id)
+                .and_then(|node| node["app_id"].as_str())
+        })
+        .collect::<Vec<_>>();
+    (floating, focus)
+}
+
 #[test]
-fn focused_floating_window_is_last_in_stacking_order_and_first_in_focus() {
+fn floating_stacking_and_focus_match_sway_before_and_after_raise() {
+    let two: Value = serde_json::from_str(include_str!(
+        "../../tests/fixtures/sway/two_floating.tree.json"
+    ))
+    .unwrap();
+    assert_eq!(
+        floating_order(&two),
+        (
+            vec!["fixture-1", "fixture-2"],
+            vec!["fixture-2", "fixture-1"]
+        )
+    );
+
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));
     let client = f.add_client();
-    let mut ids = Vec::new();
-    for _ in 0..2 {
+    for title in ["fixture-tiled", "fixture-1", "fixture-2", "fixture-3"] {
         let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(title.into());
+        window.set_title(title);
         window.commit();
         let surface = window.surface.clone();
         f.roundtrip(client);
@@ -2029,42 +2073,33 @@ fn focused_floating_window_is_last_in_stacking_order_and_first_in_focus() {
         window.attach_new_buffer();
         window.ack_last_and_commit();
         f.double_roundtrip(client);
-        assert!(crate::command::execute(f.niri_state(), "floating enable")[0].success);
-        ids.push(f.swayward().layout.focus().unwrap().id());
+        if title != "fixture-tiled" {
+            assert!(crate::command::execute(f.niri_state(), "floating enable")[0].success);
+        }
     }
 
-    assert!(
-        crate::command::execute(
-            f.niri_state(),
-            &format!("[con_id={}] focus", crate::ipc::tree::window_id(ids[0]))
-        )[0]
-        .success
-    );
-    let swayward = f.swayward();
-    let tree = describe_tree(
-        &swayward.layout,
-        &swayward.global_space,
-        &Default::default(),
-        &Default::default(),
-    );
-    let workspace = &tree.nodes[1].nodes[0];
-    let floating = workspace
-        .floating_nodes
-        .iter()
-        .map(|node| node.id)
-        .collect::<Vec<_>>();
+    let describe = |f: &mut Fixture| {
+        let swayward = f.swayward();
+        serde_json::to_value(describe_tree(
+            &swayward.layout,
+            &swayward.global_space,
+            &Default::default(),
+            &Default::default(),
+        ))
+        .unwrap()
+    };
+    let before: Value = serde_json::from_str(include_str!(
+        "../../tests/fixtures/sway/three_floating_before_raise.tree.json"
+    ))
+    .unwrap();
+    assert_eq!(floating_order(&describe(&mut f)), floating_order(&before));
 
-    assert_eq!(
-        floating,
-        ids.into_iter()
-            .rev()
-            .map(crate::ipc::tree::window_id)
-            .collect::<Vec<_>>()
-    );
-    assert_eq!(
-        workspace.focus,
-        floating.into_iter().rev().collect::<Vec<_>>()
-    );
+    assert!(crate::command::execute(f.niri_state(), r#"[app_id="^fixture-1$"] focus"#)[0].success);
+    let after: Value = serde_json::from_str(include_str!(
+        "../../tests/fixtures/sway/three_floating_after_raise.tree.json"
+    ))
+    .unwrap();
+    assert_eq!(floating_order(&describe(&mut f)), floating_order(&after));
 }
 
 #[test]

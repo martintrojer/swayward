@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if (( $# != 1 )); then
-    echo "usage: $0 /path/to/nested-sway-ipc.sock" >&2
+if (( $# < 1 || $# > 2 )); then
+    echo "usage: $0 /path/to/nested-sway-ipc.sock [multi-floating]" >&2
     exit 2
 fi
 
 TARGET_SWAYSOCK=$1
+SCENARIO=${2-all}
 AMBIENT_SWAYSOCK=${SWAYSOCK-}
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 OUT=$ROOT/tests/fixtures/sway
@@ -61,7 +62,7 @@ wait_for_windows() {
 
 spawn_window() {
     local id=$1
-    run_command exec "foot --app-id=$id --title=$id sh -c 'sleep 300'"
+    run_command exec "env WAYLAND_DISPLAY=$WAYLAND_DISPLAY foot --app-id=$id --title=$id sh -c 'sleep 300'"
 }
 
 reset_state() {
@@ -150,6 +151,33 @@ one_floating() {
     capture one_floating
 }
 
+two_floating() {
+    reset_state
+    spawn_window fixture-1
+    wait_for_windows 1
+    run_command floating enable
+    spawn_window fixture-2
+    wait_for_windows 2
+    run_command floating enable
+    capture two_floating
+}
+
+three_floating_raise() {
+    reset_state
+    spawn_window fixture-tiled
+    wait_for_windows 1
+    local count=1
+    for id in fixture-1 fixture-2 fixture-3; do
+        spawn_window "$id"
+        count=$((count + 1))
+        wait_for_windows "$count"
+        run_command floating enable
+    done
+    capture three_floating_before_raise
+    run_command '[app_id="^fixture-1$"] focus'
+    capture three_floating_after_raise
+}
+
 fullscreen() {
     reset_state
     spawn_window fixture-1
@@ -224,6 +252,16 @@ main() {
     local version
     version=$(msg -t get_version | jq -r '.human_readable')
     echo "capturing from sway $version at $TARGET_SWAYSOCK"
+    if [[ $SCENARIO == multi-floating ]]; then
+        two_floating
+        three_floating_raise
+        reset_state
+        return
+    fi
+    if [[ $SCENARIO != all ]]; then
+        echo "unknown scenario set: $SCENARIO" >&2
+        exit 2
+    fi
     rm -f "$OUT"/*.json
     empty
     one_window
@@ -233,6 +271,8 @@ main() {
     tabbed
     stacked
     one_floating
+    two_floating
+    three_floating_raise
     fullscreen
     marked
     two_workspaces

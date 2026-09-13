@@ -275,6 +275,24 @@ mod tests {
             include_str!("../../tests/fixtures/sway/one_floating.outputs.json"),
         ),
         (
+            "two_floating",
+            include_str!("../../tests/fixtures/sway/two_floating.tree.json"),
+            include_str!("../../tests/fixtures/sway/two_floating.workspaces.json"),
+            include_str!("../../tests/fixtures/sway/two_floating.outputs.json"),
+        ),
+        (
+            "three_floating_before_raise",
+            include_str!("../../tests/fixtures/sway/three_floating_before_raise.tree.json"),
+            include_str!("../../tests/fixtures/sway/three_floating_before_raise.workspaces.json"),
+            include_str!("../../tests/fixtures/sway/three_floating_before_raise.outputs.json"),
+        ),
+        (
+            "three_floating_after_raise",
+            include_str!("../../tests/fixtures/sway/three_floating_after_raise.tree.json"),
+            include_str!("../../tests/fixtures/sway/three_floating_after_raise.workspaces.json"),
+            include_str!("../../tests/fixtures/sway/three_floating_after_raise.outputs.json"),
+        ),
+        (
             "one_window",
             include_str!("../../tests/fixtures/sway/one_window.tree.json"),
             include_str!("../../tests/fixtures/sway/one_window.workspaces.json"),
