@@ -722,6 +722,9 @@ impl State {
         }
 
         match action {
+            Action::SwayCommand(command) => {
+                let _ = crate::command::execute(self, &command);
+            }
             Action::Quit(skip_confirmation) => {
                 if !skip_confirmation && self.swayward.exit_confirm_dialog.show() {
                     self.swayward.queue_redraw_all();

@@ -457,6 +457,7 @@ fn render(
 
 fn action_name(action: &Action) -> String {
     match action {
+        Action::SwayCommand(command) => command.clone(),
         Action::Quit(_) => String::from("Exit swayward"),
         Action::ShowHotkeyOverlay => String::from("Show Important Hotkeys"),
         Action::CloseWindow => String::from("Close Focused Window"),

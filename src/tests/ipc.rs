@@ -623,6 +623,131 @@ fn marks_round_trip_through_commands_get_marks_and_tree() {
     );
 }
 
+#[derive(Debug)]
+struct TestInput;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct TestDevice;
+
+impl crate::input::backend_ext::NiriInputDevice for TestDevice {
+    fn output(&self, _state: &crate::swayward::State) -> Option<smithay::output::Output> {
+        None
+    }
+}
+
+impl smithay::backend::input::Device for TestDevice {
+    fn id(&self) -> String {
+        "test-keyboard".into()
+    }
+
+    fn name(&self) -> String {
+        "test keyboard".into()
+    }
+
+    fn has_capability(&self, capability: smithay::backend::input::DeviceCapability) -> bool {
+        capability == smithay::backend::input::DeviceCapability::Keyboard
+    }
+
+    fn usb_id(&self) -> Option<(u32, u32)> {
+        None
+    }
+
+    fn syspath(&self) -> Option<std::path::PathBuf> {
+        None
+    }
+}
+
+#[derive(Debug)]
+struct TestKeyEvent {
+    key: u32,
+    count: u32,
+}
+
+impl smithay::backend::input::Event<TestInput> for TestKeyEvent {
+    fn time(&self) -> smithay::backend::input::InputTime {
+        smithay::backend::input::InputTime::from_millis(1)
+    }
+
+    fn device(&self) -> TestDevice {
+        TestDevice
+    }
+}
+
+impl smithay::backend::input::KeyboardKeyEvent<TestInput> for TestKeyEvent {
+    fn key_code(&self) -> smithay::backend::input::Keycode {
+        self.key.into()
+    }
+
+    fn state(&self) -> smithay::backend::input::KeyState {
+        smithay::backend::input::KeyState::Pressed
+    }
+
+    fn count(&self) -> u32 {
+        self.count
+    }
+}
+
+impl smithay::backend::input::InputBackend for TestInput {
+    type Device = TestDevice;
+    type KeyboardKeyEvent = TestKeyEvent;
+    type PointerAxisEvent = smithay::backend::input::UnusedEvent;
+    type PointerButtonEvent = smithay::backend::input::UnusedEvent;
+    type PointerMotionEvent = smithay::backend::input::UnusedEvent;
+    type PointerMotionAbsoluteEvent = smithay::backend::input::UnusedEvent;
+    type GestureSwipeBeginEvent = smithay::backend::input::UnusedEvent;
+    type GestureSwipeUpdateEvent = smithay::backend::input::UnusedEvent;
+    type GestureSwipeEndEvent = smithay::backend::input::UnusedEvent;
+    type GesturePinchBeginEvent = smithay::backend::input::UnusedEvent;
+    type GesturePinchUpdateEvent = smithay::backend::input::UnusedEvent;
+    type GesturePinchEndEvent = smithay::backend::input::UnusedEvent;
+    type GestureHoldBeginEvent = smithay::backend::input::UnusedEvent;
+    type GestureHoldEndEvent = smithay::backend::input::UnusedEvent;
+    type TouchDownEvent = smithay::backend::input::UnusedEvent;
+    type TouchUpEvent = smithay::backend::input::UnusedEvent;
+    type TouchMotionEvent = smithay::backend::input::UnusedEvent;
+    type TouchCancelEvent = smithay::backend::input::UnusedEvent;
+    type TouchFrameEvent = smithay::backend::input::UnusedEvent;
+    type TabletToolAxisEvent = smithay::backend::input::UnusedEvent;
+    type TabletToolProximityEvent = smithay::backend::input::UnusedEvent;
+    type TabletToolTipEvent = smithay::backend::input::UnusedEvent;
+    type TabletToolButtonEvent = smithay::backend::input::UnusedEvent;
+    type SwitchToggleEvent = smithay::backend::input::UnusedEvent;
+    type SpecialEvent = ();
+}
+
+#[test]
+fn command_bind_executes_the_sway_command_path() {
+    let config = swayward_config::Config::parse_mem(
+        "binds { Super+1 repeat=false { command \"workspace 7\"; }; }",
+    )
+    .unwrap();
+    let mut fixture = Fixture::with_config(config);
+    fixture.add_output(1, (1920, 1080));
+    fixture.niri_state().process_input_event::<TestInput>(
+        smithay::backend::input::InputEvent::Keyboard {
+            event: TestKeyEvent { key: 133, count: 1 },
+        },
+    );
+    assert!(
+        fixture
+            .swayward()
+            .seat
+            .get_keyboard()
+            .unwrap()
+            .modifier_state()
+            .logo
+    );
+    fixture.niri_state().process_input_event::<TestInput>(
+        smithay::backend::input::InputEvent::Keyboard {
+            event: TestKeyEvent { key: 10, count: 2 },
+        },
+    );
+
+    let swayward = fixture.swayward();
+    let workspaces = describe_workspaces(&swayward.layout, &swayward.global_space);
+    assert_eq!(workspaces[0].num, 7);
+}
+
 #[test]
 fn criteria_with_no_matches_returns_sway_failure() {
     let mut fixture = Fixture::new();

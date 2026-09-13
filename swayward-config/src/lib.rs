@@ -642,6 +642,30 @@ mod tests {
     }
 
     #[test]
+    fn sway_command_bind_parses_and_invalid_command_fails_at_load_time() {
+        let config = Config::parse_mem(
+            "binds { Mod+H repeat=false cooldown-ms=150 allow-when-locked=true hotkey-overlay-title=\"Left\" { command \"focus left\"; }; }",
+        )
+        .unwrap();
+        let bind = &config.binds.0[0];
+        assert_eq!(bind.action, Action::SwayCommand("focus left".into()));
+        assert!(!bind.repeat);
+        assert_eq!(bind.cooldown, Some(std::time::Duration::from_millis(150)));
+        assert!(bind.allow_when_locked);
+        assert_eq!(bind.hotkey_overlay_title, Some(Some("Left".into())));
+
+        let error = Config::parse_mem("binds { Mod+H { command \"frobnicate\"; }; }").unwrap_err();
+        assert!(format!("{error:?}").contains("Unknown/invalid command 'frobnicate'"));
+        let labels = miette::Diagnostic::related(&error)
+            .unwrap()
+            .flat_map(|diagnostic| diagnostic.labels().into_iter().flatten())
+            .collect::<Vec<_>>();
+        assert!(labels
+            .iter()
+            .any(|label| label.offset() == 16 && label.len() > 0));
+    }
+
+    #[test]
     fn default_repeat_params() {
         let config = Config::parse_mem("").unwrap();
         assert_eq!(config.input.keyboard.repeat_delay, 600);

@@ -103,6 +103,8 @@ pub struct SwitchAction {
 // Remember to add new actions to the CLI enum too.
 #[derive(knuffel::Decode, Debug, Clone, PartialEq)]
 pub enum Action {
+    #[knuffel(skip)]
+    SwayCommand(String),
     Quit(#[knuffel(property(name = "skip-confirmation"), default)] bool),
     #[knuffel(skip)]
     ChangeVt(i32),
@@ -933,6 +935,50 @@ where
                     "node",
                     "only one action is allowed per keybind",
                 ));
+            }
+            if child.node_name.as_ref() == "command" {
+                let command = match &child.arguments[..] {
+                    [argument] => match &*argument.literal {
+                        knuffel::ast::Literal::String(command) => command.to_string(),
+                        _ => {
+                            ctx.emit_error(DecodeError::unexpected(
+                                &argument.literal,
+                                "argument",
+                                "command must be a quoted string",
+                            ));
+                            return Ok(dummy);
+                        }
+                    },
+                    _ => {
+                        ctx.emit_error(DecodeError::unexpected(
+                            child,
+                            "node",
+                            "expected command \"<sway command>\"",
+                        ));
+                        return Ok(dummy);
+                    }
+                };
+                if child.children.is_some() || !child.properties.is_empty() {
+                    ctx.emit_error(DecodeError::unexpected(
+                        child,
+                        "node",
+                        "command accepts one quoted string and no children or properties",
+                    ));
+                    return Ok(dummy);
+                }
+                if let Err(error) = swayward_ipc::command::validate(&command) {
+                    ctx.emit_error(DecodeError::unexpected(child, "command", error));
+                    return Ok(dummy);
+                }
+                return Ok(Self {
+                    key,
+                    action: Action::SwayCommand(command),
+                    repeat,
+                    cooldown,
+                    allow_when_locked,
+                    allow_inhibiting,
+                    hotkey_overlay_title,
+                });
             }
             match Action::decode_node(child, ctx) {
                 Ok(action) => {

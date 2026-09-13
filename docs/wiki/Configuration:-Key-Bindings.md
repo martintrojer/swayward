@@ -5,7 +5,9 @@ Key bindings are declared in the `binds` section of
 
 ```kdl
 binds {
-    Mod+Return { spawn "alacritty"; }
+    Mod+H { command "focus left"; }
+    Mod+1 { command "workspace 1"; }
+    Mod+Return { command "exec alacritty"; }
     Super+Alt+L { spawn "swaylock"; }
 }
 ```
@@ -15,10 +17,13 @@ Valid modifiers include `Ctrl`, `Shift`, `Alt`, `Super`, `Mod3`, `Mod5`, and
 `Mod`. `Mod` defaults to `Super` in a full session and `Alt` in a nested window.
 Use `wev` to find XKB key names.
 
-The inherited typed actions remain available for compositor functions such as
-spawning programs, screenshots, floating state, and session control. Tree and
-workspace operations use sway command strings so that config binds and
-`swaymsg` share the same command language.
+Use `command "..."` to run a sway command. The command must be one quoted KDL
+string. Swayward validates it when loading the config, then uses the same parser
+and executor as `swaymsg` when the key is pressed.
+
+The inherited typed actions remain available for compositor functions that the
+current sway command subset cannot express, including screenshots and session
+control.
 
 ## Bind properties
 

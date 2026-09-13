@@ -3598,6 +3598,7 @@ name = "swayward-ipc"
 version = "26.4.0"
 dependencies = [
  "clap",
+ "pcre2",
  "schemars",
  "serde",
  "serde_json",

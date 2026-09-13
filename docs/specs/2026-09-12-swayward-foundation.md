@@ -371,10 +371,12 @@ workspace-switch and animation machinery underneath it.
 
 ### Binds carry sway command strings
 
-`binds { Mod+H { focus left; } }` — the action is a sway command string, parsed
-by the same parser that serves `swaymsg`. One parser, one semantics, and users
-can copy command syntax straight out of `man 5 sway`. Typed KDL actions were
-considered and rejected: they would duplicate the command grammar.
+`binds { Mod+H { command "focus left"; } }` — the action is a quoted sway
+command string, parsed by the same parser that serves `swaymsg`. The explicit
+`command` child follows KDL syntax and preserves Knuffel's source-span errors; a
+preprocessor for bare `focus left` text would create a second config parser.
+Inherited typed actions remain available for features outside the current sway
+command subset.
 
 ## Testing approach
 

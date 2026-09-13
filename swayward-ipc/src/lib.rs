@@ -1,5 +1,7 @@
 //! Rust types for sway's IPC JSON schemas.
 
+pub mod command;
+pub mod criteria;
 mod event;
 pub mod legacy;
 mod message;
