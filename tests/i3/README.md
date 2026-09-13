@@ -27,12 +27,25 @@ Select another vendored file with, for example:
 SWAYWARD_I3_TEST=122-split.t cargo test -p swayward i3_conformance_runner -- --nocapture
 ```
 
-The default file passes and keeps the adapter wired into the normal test gate.
-Other vendored files intentionally retain their failing assertions: those
-failures are conformance findings, not expectations to bless or silently skip.
-The first imported slice currently finds failures in `122-split.t`,
-`130-close-empty-split.t`, and `192-layout.t`; `197-regression-move-vanish.t`
-passes. See the task report for assertion-level results.
+Passing files keep the adapter wired into the normal test gate. Other vendored
+files intentionally retain their failing assertions: those failures are
+conformance findings, not expectations to bless or silently skip. See the task
+report for assertion-level results.
+
+## Coverage
+
+| File | Assertions | Status | Reason |
+| --- | ---: | --- | --- |
+| `122-split.t` | 31 | fail | Executable conformance finding. |
+| `126-regress-close.t` | 1 | pass | `does_i3_live` after closing a floating container. |
+| `130-close-empty-split.t` | 8 | fail | Executable conformance finding. |
+| `152-regress-level-up.t` | 1 | pass | `does_i3_live` after focusing above the workspace tree. |
+| `179-regress-multiple-ws.t` | 6 | fail | `move workspace prev` leaves the window behind; sway resolves `prev` through `workspace_by_name` in `sway/commands/move.c:455-461`, so swayward should move it too. |
+| `192-layout.t` | 34 | fail | Executable conformance finding. |
+| `197-regression-move-vanish.t` | 2 | pass | Moving a child from a split preserves both windows. |
+| `224-regress-resize-branch.t` | 1 | pass | `does_i3_live` after resizing a split container. |
+| `273-regress-focus-toggle.t` | 1 | pass | `does_i3_live` after `focus mode_toggle` on an empty workspace; sway implements this command in `sway/commands/focus.c:422`. |
+| `292-regress-layout-toggle.t` | 1 | pass | `does_i3_live` after invalid `layout toggle` parameters; sway validates the accepted syntax in `sway/commands/layout.c:25-27`. |
 
 The initial X11-protocol exclusions are `113-urgent.t`,
 `162-regress-dock-urgent.t`, `196-randr-output-names.t`,

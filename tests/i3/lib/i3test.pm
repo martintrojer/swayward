@@ -9,7 +9,7 @@ use Test::Builder;
 
 our @ISA = qw(Exporter);
 our @EXPORT = qw(
-    cmd cmd_nosync done_testing fresh_workspace get_focused get_socket_path
+    cmd cmd_nosync does_i3_live done_testing fresh_workspace get_focused get_socket_path
     get_unused_workspace get_ws get_ws_content i3 is isnt is_num_children ok open_empty_con
     open_window
 );
@@ -68,6 +68,7 @@ sub cmd_nosync {
     $reply;
 }
 sub cmd { cmd_nosync(@_) }
+sub does_i3_live { $tester->ok(defined(_request(4)), 'i3 lives') }
 
 sub i3 { bless {}, 'i3test::IPC' }
 sub open_empty_con { _control({ action => 'open' })->{id} }
