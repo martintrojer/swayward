@@ -1031,7 +1031,7 @@ fn live_ipc_descriptions_match_sway_schema() {
 }
 
 #[test]
-fn focus_parent_then_layout_targets_the_whole_subtree() {
+fn focus_parent_then_layout_targets_the_parent_of_the_focused_container() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));
     let client = f.add_client();
@@ -1062,12 +1062,11 @@ fn focus_parent_then_layout_targets_the_whole_subtree() {
     .unwrap();
     let workspace = &tree["nodes"][1]["nodes"][0];
     assert_eq!(workspace["layout"], "tabbed");
-    assert_eq!(workspace["nodes"].as_array().unwrap().len(), 2);
-    assert!(workspace["nodes"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .all(|node| node["focused"] == false));
+    assert_eq!(workspace["nodes"].as_array().unwrap().len(), 1);
+    let focused = &workspace["nodes"][0];
+    assert_eq!(focused["layout"], "splitv");
+    assert_eq!(focused["nodes"].as_array().unwrap().len(), 2);
+    assert!(focused["focused"].as_bool().unwrap());
 }
 
 #[test]

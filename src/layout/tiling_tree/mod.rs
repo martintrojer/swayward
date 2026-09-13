@@ -1054,19 +1054,10 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub fn set_focused_layout(&mut self, layout: Layout) {
-        let Some(focus) = self.focus else { return };
-        let target = if matches!(
-            self.nodes.get(&focus).map(|node| &node.value),
-            Some(TreeNode::Split { .. })
-        ) {
-            focus
-        } else {
-            self.nodes
-                .get(&focus)
-                .and_then(|node| node.parent)
-                .unwrap_or(focus)
+        let Some(target) = self.focused_layout_target() else {
+            return;
         };
-        self.set_layout(target, layout);
+        self.set_layout_for_command(target, layout);
     }
 
     pub fn split_focused(&mut self, layout: Layout) {
@@ -1075,18 +1066,9 @@ impl<W: LayoutElement> TilingTree<W> {
         }
     }
 
-    pub fn toggle_focused_split(&mut self) {
-        let Some(focus) = self.focus else { return };
-        let target = if matches!(
-            self.nodes.get(&focus).map(|node| &node.value),
-            Some(TreeNode::Split { .. })
-        ) {
-            focus
-        } else {
-            self.nodes
-                .get(&focus)
-                .and_then(|node| node.parent)
-                .unwrap_or(focus)
+    pub fn toggle_focused_layout_split(&mut self) {
+        let Some(target) = self.focused_layout_target() else {
+            return;
         };
         let layout = match self.nodes.get(&target).map(|node| &node.value) {
             Some(TreeNode::Split {
@@ -1095,7 +1077,19 @@ impl<W: LayoutElement> TilingTree<W> {
             }) => Layout::SplitV,
             _ => Layout::SplitH,
         };
-        self.set_layout(target, layout);
+        self.set_layout_for_command(target, layout);
+    }
+
+    pub fn toggle_focused_split(&mut self) {
+        let Some(focus) = self.focus else { return };
+        let layout = match self.nodes.get(&focus).map(|node| &node.value) {
+            Some(TreeNode::Split {
+                layout: Layout::SplitH,
+                ..
+            }) => Layout::SplitV,
+            _ => Layout::SplitH,
+        };
+        self.split(focus, layout);
     }
 
     pub fn set_column_display(&mut self, display: ColumnDisplay) {
@@ -1843,11 +1837,6 @@ impl<W: LayoutElement> TilingTree<W> {
             assert_eq!(self.node_for_window(&resize.window), Some(resize.target));
             assert!(self.sibling_percents(resize.first, resize.second).is_some());
         }
-        assert!(
-            self.iter_depth_first()
-                .all(|(id, _)| self.squashable_child(id).is_none()),
-            "tree contains a split pair sway would squash"
-        );
     }
 
     fn alloc(&mut self, node: Node<W>) -> NodeId {
@@ -2147,6 +2136,51 @@ impl<W: LayoutElement> TilingTree<W> {
             self.focus_history.retain(|candidate| *candidate != id);
             id = parent;
         }
+    }
+
+    // Unlike general tree compaction, sway's `layout` command flattens at most one ancestor.
+    fn set_layout_for_command(&mut self, id: NodeId, layout: Layout) {
+        self.interactive_resize = None;
+        if let Some(Node {
+            value: TreeNode::Split {
+                layout: current, ..
+            },
+            ..
+        }) = self.nodes.get_mut(&id)
+        {
+            *current = layout;
+            self.request_window_sizes();
+        }
+    }
+
+    // Sway operates on the focused container's parent. When both that parent and its parent are
+    // singletons, it replaces the parent with its child once and operates on the grandparent.
+    fn focused_layout_target(&mut self) -> Option<NodeId> {
+        let focus = self.focus?;
+        let target = if focus == self.root {
+            self.root
+        } else {
+            self.nodes.get(&focus)?.parent.unwrap_or(self.root)
+        };
+        if target == self.root || self.split_len(target) != Some(1) {
+            return Some(target);
+        }
+        let grandparent = self.nodes.get(&target)?.parent?;
+        if grandparent == self.root || self.split_len(grandparent) != Some(1) {
+            return Some(target);
+        }
+        let child = match &self.nodes.get(&target)?.value {
+            TreeNode::Split { children, .. } => children[0],
+            TreeNode::Leaf { .. } => return Some(target),
+        };
+        let TreeNode::Split { children, .. } = &mut self.nodes.get_mut(&grandparent)?.value else {
+            return Some(target);
+        };
+        children[0] = child;
+        self.nodes.get_mut(&child)?.parent = Some(grandparent);
+        self.nodes.remove(&target);
+        self.focus_history.retain(|candidate| *candidate != target);
+        Some(grandparent)
     }
 
     fn compact_tree(&mut self) {

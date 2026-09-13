@@ -287,7 +287,7 @@ fn removing_a_sibling_collapses_the_implicit_container() {
 }
 
 #[test]
-fn parent_and_child_focus_walk_the_tree_and_layout_the_selected_subtree() {
+fn parent_and_child_focus_walk_the_tree_and_layout_the_selected_parent() {
     let mut t = tree((1200., 800.), 0.);
     let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
     let second = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
@@ -311,9 +311,16 @@ fn parent_and_child_focus_walk_the_tree_and_layout_the_selected_subtree() {
     ));
     t.set_focused_layout(Layout::Tabbed);
     assert!(matches!(
-        t.nodes[&nested].value,
+        t.nodes[&t.root].value,
         TreeNode::Split {
             layout: Layout::Tabbed,
+            ..
+        }
+    ));
+    assert!(matches!(
+        t.nodes[&nested].value,
+        TreeNode::Split {
+            layout: Layout::SplitV,
             ..
         }
     ));
@@ -327,6 +334,68 @@ fn parent_and_child_focus_walk_the_tree_and_layout_the_selected_subtree() {
     assert!(!t.focus_child());
     assert!(t.geometry(first).is_some());
     t.check_invariants();
+}
+
+#[test]
+fn layout_toggle_targets_the_parent_and_flattens_one_singleton_ancestor() {
+    let mut t = tree((1200., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let second = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    let focused = t.alloc(Node {
+        parent: None,
+        value: TreeNode::Split {
+            layout: Layout::SplitV,
+            children: vec![first, second],
+            percents: vec![0.5, 0.5],
+        },
+    });
+    let parent = t.alloc(Node {
+        parent: None,
+        value: TreeNode::Split {
+            layout: Layout::Stacked,
+            children: vec![focused],
+            percents: vec![1.],
+        },
+    });
+    let grandparent = t.alloc(Node {
+        parent: Some(t.root),
+        value: TreeNode::Split {
+            layout: Layout::SplitV,
+            children: vec![parent],
+            percents: vec![1.],
+        },
+    });
+    t.nodes.get_mut(&first).unwrap().parent = Some(focused);
+    t.nodes.get_mut(&second).unwrap().parent = Some(focused);
+    t.nodes.get_mut(&focused).unwrap().parent = Some(parent);
+    t.nodes.get_mut(&parent).unwrap().parent = Some(grandparent);
+    t.nodes.get_mut(&t.root).unwrap().value = TreeNode::Split {
+        layout: Layout::SplitV,
+        children: vec![grandparent],
+        percents: vec![1.],
+    };
+    t.set_focus(focused);
+
+    t.toggle_focused_layout_split();
+
+    assert_eq!(t.ipc_tree().nodes().len(), 5);
+    assert!(!t.nodes.contains_key(&parent));
+    assert!(t.nodes.contains_key(&focused));
+    assert_eq!(t.nodes[&focused].parent, Some(grandparent));
+    assert!(matches!(
+        t.nodes[&grandparent].value,
+        TreeNode::Split {
+            layout: Layout::SplitH,
+            ..
+        }
+    ));
+    assert!(matches!(
+        t.nodes[&focused].value,
+        TreeNode::Split {
+            layout: Layout::SplitV,
+            ..
+        }
+    ));
 }
 
 #[test]

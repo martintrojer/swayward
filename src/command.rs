@@ -158,7 +158,7 @@ fn execute_one(
                     .swayward
                     .layout
                     .set_focused_layout(crate::layout::tiling_tree::Layout::Stacked),
-                Layout::ToggleSplit => state.swayward.layout.toggle_focused_split(),
+                Layout::ToggleSplit => state.swayward.layout.toggle_focused_layout_split(),
             }
             state.swayward.queue_redraw_all();
             None
