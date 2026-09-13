@@ -775,6 +775,34 @@ fn workspace_commands_create_sparse_global_identities() {
 }
 
 #[test]
+fn criteria_commands_do_not_change_focus() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let mut surfaces = Vec::new();
+    for app_id in ["target", "focused"] {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+        surfaces.push(surface);
+    }
+    let focused = f.swayward().layout.focus().unwrap().id();
+
+    assert!(
+        crate::command::execute(f.niri_state(), r#"[app_id="target"] mark selected"#)[0].success
+    );
+
+    assert_eq!(f.swayward().layout.focus().unwrap().id(), focused);
+    assert_eq!(surfaces.len(), 2);
+}
+
+#[test]
 fn comma_chain_keeps_the_original_criteria_targets() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));

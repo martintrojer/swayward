@@ -611,25 +611,9 @@ fn execute_one(
             return success();
         }
         for target in targets {
-            let window = state
-                .swayward
-                .layout
-                .windows()
-                .find_map(|(_, mapped)| (mapped.id() == target).then(|| mapped.window.clone()));
-            if let Some(window) = window {
-                state.swayward.layout.activate_window(&window);
-                let outcome = execute_one(
-                    state,
-                    ParsedCommand {
-                        command: parsed.command.clone(),
-                        criteria: None,
-                        criteria_start: false,
-                    },
-                    &mut None,
-                );
-                if !outcome.success {
-                    return outcome;
-                }
+            let outcome = execute_targeted(state, &parsed.command, target);
+            if !outcome.success {
+                return outcome;
             }
         }
         return success();
@@ -871,6 +855,66 @@ fn execute_one(
 
     if let Some(action) = action {
         state.do_action(action, false);
+    }
+    state.ipc_refresh_layout();
+    success()
+}
+
+fn execute_targeted(
+    state: &mut State,
+    command: &Command,
+    target: crate::window::mapped::MappedId,
+) -> CommandOutcome {
+    match command {
+        Command::Mark {
+            add,
+            toggle,
+            identifier,
+        } => state.swayward.set_mark(target, identifier, *add, *toggle),
+        Command::Unmark(identifier) => state.swayward.unmark(Some(target), identifier.as_deref()),
+        Command::Fullscreen {
+            mode,
+            global: false,
+        } => {
+            let window = state
+                .swayward
+                .layout
+                .windows()
+                .find_map(|(_, mapped)| (mapped.id() == target).then(|| mapped.window.clone()));
+            let Some(window) = window else {
+                return failure("No matching node.");
+            };
+            match mode {
+                Toggle::Enable => state.swayward.layout.set_fullscreen(&window, true),
+                Toggle::Disable => state.swayward.layout.set_fullscreen(&window, false),
+                Toggle::Toggle => state.swayward.layout.toggle_fullscreen(&window),
+            }
+            state.swayward.queue_redraw_all();
+        }
+        Command::Floating(mode) => {
+            let window = state
+                .swayward
+                .layout
+                .windows()
+                .find_map(|(_, mapped)| (mapped.id() == target).then(|| mapped.window.clone()));
+            let Some(window) = window else {
+                return failure("No matching node.");
+            };
+            match mode {
+                Toggle::Enable => state
+                    .swayward
+                    .layout
+                    .set_window_floating(Some(&window), true),
+                Toggle::Disable => state
+                    .swayward
+                    .layout
+                    .set_window_floating(Some(&window), false),
+                Toggle::Toggle => state.swayward.layout.toggle_window_floating(Some(&window)),
+            }
+            state.swayward.queue_redraw_all();
+        }
+        Command::Nop => {}
+        _ => return failure("criteria targets are not implemented for this command yet"),
     }
     state.ipc_refresh_layout();
     success()
