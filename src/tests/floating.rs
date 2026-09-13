@@ -1004,6 +1004,41 @@ window-rule {
 }
 
 #[test]
+fn unmapping_focused_floating_restores_previous_tiling_focus() {
+    let (mut f, id, _) = set_up();
+
+    let second = f.client(id).create_window();
+    let second_surface = second.surface.clone();
+    second.commit();
+    f.roundtrip(id);
+    let second = f.client(id).window(&second_surface);
+    second.attach_new_buffer();
+    second.ack_last_and_commit();
+    f.double_roundtrip(id);
+
+    let second_window = f.swayward().layout.focus().unwrap().window.clone();
+    f.swayward().layout.activate_window(&second_window);
+    let second_id = f.swayward().layout.focus().unwrap().id();
+
+    let floating = f.client(id).create_window();
+    let floating_surface = floating.surface.clone();
+    floating.commit();
+    f.roundtrip(id);
+    let floating = f.client(id).window(&floating_surface);
+    floating.attach_new_buffer();
+    floating.ack_last_and_commit();
+    f.double_roundtrip(id);
+    f.swayward().layout.toggle_window_floating(None);
+    f.double_roundtrip(id);
+
+    f.client(id).window(&floating_surface).attach_null();
+    f.client(id).window(&floating_surface).commit();
+    f.double_roundtrip(id);
+
+    assert_eq!(f.swayward().layout.focus().unwrap().id(), second_id);
+}
+
+#[test]
 fn unmap_from_floating() {
     let (mut f, id, surface) = set_up();
 

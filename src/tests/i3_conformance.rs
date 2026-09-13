@@ -10,8 +10,11 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
+use wayland_client::Proxy as _;
+use wayland_server::Resource as _;
 
 use super::Fixture;
+use crate::utils::transaction::Transaction;
 
 static NEXT_SOCKET: AtomicU64 = AtomicU64::new(0);
 
@@ -42,21 +45,53 @@ fn open_window(fixture: &mut Fixture, client: super::client::ClientId, request: 
     crate::ipc::tree::window_id(mapped)
 }
 
+fn remove_window_for_surface(
+    fixture: &mut Fixture,
+    client: super::client::ClientId,
+    surface_id: u32,
+) -> bool {
+    let window = {
+        fixture.swayward().layout.windows().find_map(|(_, mapped)| {
+            (mapped.toplevel().wl_surface().id().protocol_id() == surface_id)
+                .then(|| mapped.window.clone())
+        })
+    };
+    let Some(window) = window else { return false };
+    fixture
+        .swayward()
+        .layout
+        .remove_window(&window, Transaction::new());
+    let windows = &mut fixture.client(client).state.windows;
+    if let Some(index) = windows
+        .iter()
+        .position(|window| window.surface.id().protocol_id() == surface_id)
+    {
+        windows.swap_remove(index);
+    }
+    true
+}
+
 fn reap_closed_windows(fixture: &mut Fixture, client: super::client::ClientId) {
     fixture.double_roundtrip(client);
-    let windows = &mut fixture.client(client).state.windows;
-    let mut index = 0;
-    while index < windows.len() {
-        if windows[index].close_requested {
-            let window = windows.swap_remove(index);
-            window.xdg_toplevel.destroy();
-            window.xdg_surface.destroy();
-            window.surface.destroy();
-        } else {
-            index += 1;
-        }
+    let closed = fixture
+        .client(client)
+        .state
+        .windows
+        .iter()
+        .filter(|window| window.close_requested)
+        .map(|window| window.surface.id().protocol_id())
+        .collect::<Vec<_>>();
+    for surface_id in closed {
+        remove_window_for_surface(fixture, client, surface_id);
     }
-    fixture.double_roundtrip(client);
+}
+
+fn close_window(fixture: &mut Fixture, client: super::client::ClientId, id: i64) -> bool {
+    let surface_id = fixture.swayward().layout.windows().find_map(|(_, mapped)| {
+        (crate::ipc::tree::window_id(mapped.id()) == id)
+            .then(|| mapped.toplevel().wl_surface().id().protocol_id())
+    });
+    surface_id.is_some_and(|surface_id| remove_window_for_surface(fixture, client, surface_id))
 }
 
 fn handle_control(fixture: &mut Fixture, client: super::client::ClientId, stream: UnixStream) {
@@ -67,6 +102,9 @@ fn handle_control(fixture: &mut Fixture, client: super::client::ClientId, stream
     let request: Value = serde_json::from_str(&request).unwrap();
     let reply = match request["action"].as_str().unwrap() {
         "open" => json!({ "id": open_window(fixture, client, &request) }),
+        "close" => {
+            json!({ "success": close_window(fixture, client, request["id"].as_i64().unwrap()) })
+        }
         "focused" => json!({
             "id": fixture
                 .swayward()

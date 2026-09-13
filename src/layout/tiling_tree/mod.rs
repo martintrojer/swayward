@@ -434,7 +434,7 @@ impl<W: LayoutElement> TilingTree<W> {
             self.compact_tree();
         }
         if self.focus == Some(id) || self.windows().next().is_none() {
-            self.set_focus_id(self.first_leaf());
+            self.set_focus_id(self.focused_leaf_in(self.root));
         }
         self.animate_geometry_changes(old_geometries, None);
         Some(*tile)

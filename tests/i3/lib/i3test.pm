@@ -167,9 +167,6 @@ package i3test::Window;
 sub new { bless $_[1], $_[0] }
 sub id { $_[0]->{id} }
 sub unmap { $_[0]->destroy }
-sub destroy {
-    i3test::cmd('[con_id=' . $_[0]->{id} . '] kill');
-    i3test::_control({ action => 'reap_closed' });
-}
+sub destroy { i3test::_control({ action => 'close', id => $_[0]->{id} }) }
 
 1;
