@@ -3,9 +3,11 @@ use strict;
 use warnings;
 use Exporter ();
 use File::Temp qw(tmpnam);
+use IO::Select;
 use IO::Socket::UNIX;
-use JSON::PP qw(decode_json);
+use JSON::PP qw(decode_json encode_json);
 use Test::Builder;
+use Test::More ();
 
 our @ISA = qw(Exporter);
 our @EXPORT = qw(
@@ -17,7 +19,9 @@ our @EXPORT = qw(
     diag
     does_i3_live
     done_testing
+    events_for
     fresh_workspace
+    focused_ws
     get_focused
     get_socket_path
     get_unused_workspace
@@ -33,6 +37,7 @@ our @EXPORT = qw(
     open_empty_con
     open_floating_window
     open_window
+    subtest
     sync_with_i3
     wait_for_unmap
     workspace_exists
@@ -41,6 +46,13 @@ our @EXPORT = qw(
 my $tester = Test::Builder->new;
 my $window_count = 0;
 our $x = bless {}, 'i3test::X';
+
+package AnyEvent;
+sub condvar { bless {}, 'i3test::CondVar' }
+
+package i3test::CondVar;
+
+package i3test;
 
 sub import {
     my ($class, %args) = @_;
@@ -87,7 +99,7 @@ sub cmp_float ($$;$) {
     my ($a, $b, $name) = @_;
     $tester->cmp_ok(abs($a - $b), '<', 0.000001, $name);
 }
-sub is_deeply ($$;$) { $tester->is_deeply(@_) }
+sub is_deeply ($$;$) { Test::More::is_deeply(@_) }
 sub isa_ok ($$;$) {
     my ($value, $class, $name) = @_;
     $name //= "The object isa $class";
@@ -95,6 +107,40 @@ sub isa_ok ($$;$) {
 }
 sub diag (@) { $tester->diag(@_) }
 sub done_testing (;$) { $tester->done_testing(@_) }
+sub subtest ($&) { Test::More::subtest(@_) }
+
+sub _read_reply {
+    my ($socket) = @_;
+    read($socket, my $header, 14) == 14 or die 'short IPC header';
+    substr($header, 0, 6) eq 'i3-ipc' or die 'bad IPC magic';
+    my ($length, $reply_type) = unpack('LL', substr($header, 6));
+    my $reply = '';
+    while (length($reply) < $length) {
+        my $read = read($socket, my $chunk, $length - length($reply));
+        defined($read) && $read > 0 or die 'short IPC payload';
+        $reply .= $chunk;
+    }
+    return ($reply_type, decode_json($reply));
+}
+
+sub events_for {
+    my ($callback, $event) = @_;
+    my $socket = IO::Socket::UNIX->new(Peer => get_socket_path())
+        or die "connect $ENV{I3SOCK}: $!";
+    my $payload = encode_json([$event]);
+    print {$socket} 'i3-ipc', pack('LL', length($payload), 2), $payload;
+    my ($reply_type, $reply) = _read_reply($socket);
+    $reply_type == 2 && $reply->{success} or die 'IPC subscription failed';
+    $callback->();
+
+    my @events;
+    my $select = IO::Select->new($socket);
+    while ($select->can_read(0.05)) {
+        my ($type, $payload) = _read_reply($socket);
+        push @events, $payload if ($type & 0x7fffffff) == 0;
+    }
+    @events;
+}
 
 sub get_socket_path { $ENV{I3SOCK} // die 'I3SOCK is not set' }
 sub cmd_nosync {
@@ -161,6 +207,11 @@ sub fresh_workspace {
 }
 
 sub workspace_exists { defined(get_ws($_[0])) }
+
+sub focused_ws {
+    my ($workspace) = grep { $_->{focused} } @{_request(1)};
+    return $workspace->{name};
+}
 
 sub get_ws {
     my ($name) = @_;
