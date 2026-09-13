@@ -12,6 +12,8 @@ our @EXPORT = qw(
     $x
     cmd
     cmd_nosync
+    cmp_float
+    cmp_ok
     diag
     does_i3_live
     done_testing
@@ -79,6 +81,11 @@ sub _control {
 sub ok ($;$) { $tester->ok(@_) }
 sub is ($$;$) { $tester->is_eq(@_) }
 sub isnt ($$;$) { $tester->isnt_eq(@_) }
+sub cmp_ok ($$$;$) { $tester->cmp_ok(@_) }
+sub cmp_float ($$;$) {
+    my ($a, $b, $name) = @_;
+    $tester->cmp_ok(abs($a - $b), '<', 0.000001, $name);
+}
 sub is_deeply ($$;$) { $tester->is_deeply(@_) }
 sub diag (@) { $tester->diag(@_) }
 sub done_testing (;$) { $tester->done_testing(@_) }
