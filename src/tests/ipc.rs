@@ -444,6 +444,21 @@ fn marks_round_trip_through_commands_get_marks_and_tree() {
 }
 
 #[test]
+fn criteria_with_no_matches_returns_sway_failure() {
+    let mut fixture = Fixture::new();
+    fixture.add_output(1, (1920, 1080));
+
+    assert_eq!(
+        crate::command::execute(fixture.niri_state(), r#"[app_id="missing"] nop"#),
+        [swayward_ipc::CommandOutcome {
+            success: false,
+            error: Some("No matching node.".into()),
+            parse_error: None,
+        }]
+    );
+}
+
+#[test]
 fn for_window_applies_matching_command_when_window_maps() {
     let (mut fixture, socket) = ipc_fixture();
     fixture.add_output(1, (1920, 1080));

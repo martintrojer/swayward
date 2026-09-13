@@ -584,6 +584,9 @@ fn execute_one(state: &mut State, parsed: ParsedCommand) -> CommandOutcome {
         None => Vec::new(),
     };
     if parsed.criteria.is_some() {
+        if targets.is_empty() {
+            return failure("No matching node.");
+        }
         if let Command::Unmark(identifier) = &parsed.command {
             for target in targets {
                 state.swayward.unmark(Some(target), identifier.as_deref());
