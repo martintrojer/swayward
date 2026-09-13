@@ -1882,6 +1882,9 @@ fn make_dynamic_opened_binds(config: &Config) -> Vec<Bind> {
     let mut binds: HashMap<Trigger, Vec<Bind>> = HashMap::new();
 
     for bind in &config.binds.0 {
+        // Keep inherited typed focus actions as compatibility aliases while the MRU is open. The
+        // shipped sway command binds do not enter this match, and these aliases only traverse the
+        // timestamp-sorted MRU list; they do not impose the old column order on the container tree.
         let action = match &bind.action {
             Action::FocusColumnRight
             | Action::FocusColumnRightOrFirst
