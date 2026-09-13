@@ -50,7 +50,7 @@ without fabricating a tree that real sway clients do not see. See
 | `152-regress-level-up.t` | 1 | pass | `does_i3_live` after focusing above the workspace tree. |
 | `178-regress-workspace-open.t` | 1 | pass | An inactive named workspace is removed after its final window closes. |
 | `179-regress-multiple-ws.t` | 6 | pass | Relative `move workspace prev` resolves against sway's global workspace order before moving. |
-| `191-resize-levels.t` | 3 | fail (1 pass) | Bare criteria focus and directional resize parse (0 rejected). The remaining nested ancestor resize geometry differs from sway's ancestor-aware behavior (`sway/commands/resize.c:45-72`). |
+| `191-resize-levels.t` | 3 | fail (1 pass) | Bare criteria focus is covered by `41d76f65`, and directional resize parses (0 rejected). The remaining two assertions expose nested same-axis ancestor resize geometry, not command dispatch; sway searches upward for a usable boundary (`sway/commands/resize.c:45-72`). |
 | `192-layout.t` | 34 | pass | Supports default, `all`, and custom layout-toggle cycles; list forms skip unknown entries as sway does (`sway/commands/layout.c:47-95`). Sway rejects the i3 no-op `layout toggle stacked` (`layout.c:57-71`); see `docs/KNOWN_DEVIATIONS.md`. |
 | `197-regression-move-vanish.t` | 2 | pass | Moving a child from a split preserves both windows. |
 | `198-regression-scratchpad-crash.t` | 1 | pass | Moving and immediately showing an invisible window does not crash. |
