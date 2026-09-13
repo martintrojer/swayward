@@ -435,6 +435,14 @@ impl<W: LayoutElement> TilingTree<W> {
         self.focus
     }
 
+    pub fn root_is_focused(&self) -> bool {
+        self.focus == Some(self.root)
+    }
+
+    pub fn focus_root(&mut self) {
+        self.set_focus_id(Some(self.root));
+    }
+
     pub fn set_focus(&mut self, id: NodeId) {
         if self.nodes.contains_key(&id) {
             self.set_focus_id(Some(id));

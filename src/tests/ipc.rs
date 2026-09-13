@@ -1462,6 +1462,76 @@ fn workspace_next_and_prev_cross_outputs() {
 }
 
 #[test]
+fn killing_focused_workspace_closes_tiled_and_floating_windows() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    assert!(crate::command::execute(f.niri_state(), "workspace 9")[0].success);
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    assert!(crate::command::execute(f.niri_state(), "workspace 7")[0].success);
+    for floating in [false, true] {
+        let window = f.client(client).create_window();
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+        if floating {
+            assert!(crate::command::execute(f.niri_state(), "floating enable")[0].success);
+        }
+    }
+
+    let victims = f
+        .swayward()
+        .layout
+        .active_workspace()
+        .unwrap()
+        .windows()
+        .map(|window| window.window.clone())
+        .collect::<Vec<_>>();
+    assert!(crate::command::execute(f.niri_state(), "focus parent")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "focus parent")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "kill")[0].success);
+    f.double_roundtrip(client);
+
+    assert_eq!(
+        f.client(client)
+            .state
+            .windows
+            .iter()
+            .filter(|window| window.close_requested)
+            .count(),
+        2
+    );
+    for victim in victims {
+        f.swayward()
+            .layout
+            .remove_window(&victim, crate::utils::transaction::Transaction::new());
+    }
+    let workspace = f.swayward().layout.active_workspace().unwrap();
+    assert_eq!(workspace.number(), Some(7));
+    assert_eq!(workspace.windows().count(), 0);
+    let mut numbers = f
+        .swayward()
+        .layout
+        .workspaces()
+        .filter_map(|(_, _, workspace)| workspace.number())
+        .collect::<Vec<_>>();
+    numbers.sort_unstable();
+    assert_eq!(numbers, [7, 9]);
+}
+
+#[test]
 fn closing_last_window_removes_inactive_named_workspace_from_ipc() {
     let mut config = swayward_config::Config::default();
     config.animations.off = true;

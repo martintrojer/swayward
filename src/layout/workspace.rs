@@ -955,7 +955,13 @@ impl<W: LayoutElement> Workspace<W> {
     }
 
     pub fn focus_parent(&mut self) -> bool {
-        !self.floating_is_active.get() && self.tiling.focus_parent()
+        if self.floating_is_active.get() {
+            self.floating_is_active = FloatingActive::No;
+            self.tiling.focus_root();
+            true
+        } else {
+            self.tiling.focus_parent()
+        }
     }
 
     pub fn focus_child(&mut self) -> bool {
@@ -976,6 +982,10 @@ impl<W: LayoutElement> Workspace<W> {
         (!self.floating_is_active.get())
             .then(|| self.tiling.focus())
             .flatten()
+    }
+
+    pub fn is_workspace_focused(&self) -> bool {
+        !self.floating_is_active.get() && self.tiling.root_is_focused()
     }
 
     pub fn set_tiling_node_layout(

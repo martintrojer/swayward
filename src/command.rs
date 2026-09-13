@@ -274,7 +274,28 @@ fn execute_one(
             state.swayward.queue_redraw_all();
             None
         }
-        Command::Kill => Some(Action::CloseWindow),
+        Command::Kill => {
+            let windows = state
+                .swayward
+                .layout
+                .active_workspace()
+                .and_then(|workspace| {
+                    workspace.is_workspace_focused().then(|| {
+                        workspace
+                            .windows()
+                            .map(|window| window.id().get())
+                            .collect::<Vec<_>>()
+                    })
+                });
+            if let Some(windows) = windows {
+                for window in windows {
+                    state.do_action(Action::CloseWindowById(window), false);
+                }
+                None
+            } else {
+                Some(Action::CloseWindow)
+            }
+        }
         Command::Resize {
             grow,
             axis,

@@ -68,7 +68,7 @@ without fabricating a tree that real sway clients do not see. See
 | --- | ---: | --- | --- |
 | `101-focus.t` | 8 | pass | Directional focus follows sway's sibling traversal, ancestor escalation, and wrapping rules (`sway/commands/focus.c:158-220`). |
 | `104-focus-stack.t` | 2 | pass | Closing the focused floating window restores the prior tiling focus, matching sway's focus-stack restoration (`sway/input/seat.c:260-315`). |
-| `129-focus-after-close.t` | 15 | fail (10 pass) | Container split focus and targeted `focus` now pass. Remaining failures cover empty-container lifecycle (`m6_fix_empty_containers`), workspace kill (`m6_fix_workspace_kill`), and floating focus membership (`m6_fix_workspace_focus_membership`). |
+| `129-focus-after-close.t` | 15 | fail (12 pass) | Workspace kill closes tiled and floating descendants while retaining the active workspace, matching `sway/commands/kill.c:15-32` and `sway/tree/workspace.c:314-331`. Remaining failures cover empty-container lifecycle (`m6_fix_empty_containers`) and floating focus membership (`m6_fix_workspace_focus_membership`). |
 | `140-focus-lost.t` | 3 | pass | Focus survives a layout change. |
 
 The initial X11-protocol exclusions are `113-urgent.t`,
