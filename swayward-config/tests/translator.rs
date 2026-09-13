@@ -4,6 +4,38 @@ use std::process::Command;
 use swayward_config::Config;
 
 #[test]
+fn sway_outer_gaps_translate_to_equal_struts() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_owned();
+    let fixture = std::env::temp_dir().join(format!(
+        "swayward-outer-gaps-{}-{}.conf",
+        std::process::id(),
+        std::thread::current().name().unwrap_or("test")
+    ));
+    std::fs::write(&fixture, "gaps outer 10\n").unwrap();
+    let output = Command::new("python3")
+        .arg(root.join("contrib/sway-to-kdl"))
+        .arg(&fixture)
+        .output()
+        .unwrap();
+    std::fs::remove_file(fixture).unwrap();
+
+    assert!(output.status.success());
+    let translated = String::from_utf8(output.stdout).unwrap();
+    assert!(translated.contains("        left 10"), "{translated}");
+    assert!(translated.contains("        right 10"), "{translated}");
+    assert!(translated.contains("        top 10"), "{translated}");
+    assert!(translated.contains("        bottom 10"), "{translated}");
+    assert_eq!(
+        String::from_utf8(output.stderr).unwrap(),
+        "manual attention: none\n"
+    );
+    Config::parse_mem(&translated).unwrap();
+}
+
+#[test]
 fn upstream_sway_and_swayfx_defaults_translate_to_valid_config() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()

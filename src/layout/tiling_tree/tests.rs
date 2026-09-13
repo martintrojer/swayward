@@ -164,6 +164,96 @@ impl LayoutElement for TestWindow {
 }
 
 #[test]
+fn working_area_starts_at_physical_pixel() {
+    let struts = swayward_config::Struts {
+        left: swayward_config::FloatOrInt(0.5),
+        right: swayward_config::FloatOrInt(1.),
+        top: swayward_config::FloatOrInt(0.75),
+        bottom: swayward_config::FloatOrInt(1.),
+    };
+
+    let parent_area = Rectangle::from_size(Size::from((1280., 720.)));
+    let area = apply_struts(parent_area, 1., struts);
+
+    assert_eq!(
+        crate::utils::round_logical_in_physical(1., area.loc.x),
+        area.loc.x
+    );
+    assert_eq!(
+        crate::utils::round_logical_in_physical(1., area.loc.y),
+        area.loc.y
+    );
+}
+
+#[test]
+fn large_fractional_strut() {
+    let struts = swayward_config::Struts {
+        left: swayward_config::FloatOrInt(0.),
+        right: swayward_config::FloatOrInt(0.),
+        top: swayward_config::FloatOrInt(50000.5),
+        bottom: swayward_config::FloatOrInt(0.),
+    };
+
+    let parent_area = Rectangle::from_size(Size::from((1280., 720.)));
+    let area = apply_struts(parent_area, 1., struts);
+
+    assert_eq!(area.size.h, 0.);
+}
+
+#[test]
+fn asymmetric_struts_move_the_tiled_window_from_the_left_and_top_edges() {
+    let mut options = Options::default();
+    options.layout.gaps = 0.;
+    options.layout.struts = swayward_config::Struts {
+        left: swayward_config::FloatOrInt(40.),
+        right: swayward_config::FloatOrInt(0.),
+        top: swayward_config::FloatOrInt(20.),
+        bottom: swayward_config::FloatOrInt(0.),
+    };
+    let size = Size::from((1200., 800.));
+    let mut t = TilingTree::new(
+        size,
+        Rectangle::from_size(size),
+        1.,
+        Clock::with_time(Duration::ZERO),
+        Rc::new(options),
+    );
+    let id = t.add_tile(tile(1, size), InsertTarget::Focused);
+
+    let window = t.geometry(id).unwrap();
+    assert_eq!(window.loc, Point::from((40., 20.)));
+    assert_eq!(window.size, Size::from((1160., 780.)));
+    assert_eq!(window.loc.x + window.size.w, 1200.);
+    assert_eq!(window.loc.y + window.size.h, 800.);
+}
+
+#[test]
+fn struts_reduce_new_window_bounds() {
+    let mut options = Options::default();
+    options.layout.gaps = 0.;
+    options.layout.border.off = true;
+    options.layout.struts = swayward_config::Struts {
+        left: swayward_config::FloatOrInt(40.),
+        right: swayward_config::FloatOrInt(0.),
+        top: swayward_config::FloatOrInt(20.),
+        bottom: swayward_config::FloatOrInt(0.),
+    };
+    let size = Size::from((1200., 800.));
+    let t = TilingTree::<TestWindow>::new(
+        size,
+        Rectangle::from_size(size),
+        1.,
+        Clock::with_time(Duration::ZERO),
+        Rc::new(options),
+    );
+
+    assert_eq!(
+        t.new_window_toplevel_bounds(&ResolvedWindowRules::default()),
+        Size::from((1160, 780))
+    );
+}
+
+#[test]
 fn empty_tree_has_no_focus() {
     let t = tree((1920., 1080.), 0.);
     assert!(t.is_empty());

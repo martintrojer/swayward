@@ -9,7 +9,7 @@ use smithay::utils::{Physical, Size};
 use swayward::animation::Clock;
 use swayward::layout::{ActivateWindow, AddWindowTarget, LayoutElement as _, SizingMode};
 use swayward::render_helpers::{RenderCtx, RenderTarget};
-use swayward_config::{OutputName, PresetSize};
+use swayward_config::{FloatOrInt, OutputName, PresetSize, Struts};
 
 use super::{Args, TestCase};
 use crate::test_window::TestWindow;
@@ -29,7 +29,14 @@ pub struct Layout {
 impl Layout {
     pub fn new(args: Args) -> Self {
         let Args { size, clock } = args;
+        Self::with_config(size, clock, swayward_config::Config::load_default())
+    }
 
+    fn with_config(
+        size: Size<i32, smithay::utils::Logical>,
+        clock: Clock,
+        config: swayward_config::Config,
+    ) -> Self {
         let output = Output::new(
             String::new(),
             PhysicalProperties {
@@ -52,7 +59,6 @@ impl Layout {
             serial: None,
         });
 
-        let config = swayward_config::Config::load_default();
         let default_rules = config.window_rules.iter().fold(
             swayward::window::ResolvedWindowRules::default(),
             |mut rules, rule| {
@@ -85,6 +91,21 @@ impl Layout {
 
     pub fn tiling_tree(args: Args) -> Self {
         let mut rv = Self::new(args);
+        rv.add_window(TestWindow::freeform(0), None);
+        rv.add_window(TestWindow::freeform(1), None);
+        rv
+    }
+
+    pub fn asymmetric_struts(args: Args) -> Self {
+        let Args { size, clock } = args;
+        let mut config = swayward_config::Config::load_default();
+        config.layout.struts = Struts {
+            left: FloatOrInt(40.),
+            right: FloatOrInt(0.),
+            top: FloatOrInt(20.),
+            bottom: FloatOrInt(0.),
+        };
+        let mut rv = Self::with_config(size, clock, config);
         rv.add_window(TestWindow::freeform(0), None);
         rv.add_window(TestWindow::freeform(1), None);
         rv

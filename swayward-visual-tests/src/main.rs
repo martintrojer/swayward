@@ -82,6 +82,7 @@ fn build_ui(app: &adw::Application) {
         anim_adjustment: anim_adjustment.clone(),
     };
 
+    s.add(Layout::asymmetric_struts, "Layout - Asymmetric Struts");
     s.add(Hotkeys::new, "Important Hotkeys");
 
     s.add(Window::freeform, "Freeform Window");

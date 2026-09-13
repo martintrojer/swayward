@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use smithay::utils::{Logical, Point, Rectangle, Size};
+use swayward_config::Struts;
 
 use super::{Layout, Node, NodeId, TreeNode};
 use crate::layout::titlebar::Titlebar;
@@ -11,10 +12,14 @@ pub(crate) struct Geometry<I> {
     pub titlebars: HashMap<NodeId, Titlebar<I>>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn compute<W: LayoutElement>(
     nodes: &HashMap<NodeId, Node<W>>,
     root: NodeId,
     view_size: Size<f64, Logical>,
+    parent_area: Rectangle<f64, Logical>,
+    scale: f64,
+    struts: Struts,
     gaps: f64,
     titlebar_height: f64,
     fullscreen: &HashSet<NodeId>,
@@ -24,7 +29,11 @@ pub(crate) fn compute<W: LayoutElement>(
         titlebars: HashMap::new(),
     };
     let gaps = gaps.max(0.);
-    let mut area = Rectangle::from_size(view_size);
+    let mut area = if fullscreen.is_empty() {
+        apply_struts(parent_area, scale, struts)
+    } else {
+        Rectangle::from_size(view_size)
+    };
     area.loc.x += gaps;
     area.loc.y += gaps;
     area.size.w = (area.size.w - gaps * 2.).max(0.);
@@ -41,6 +50,29 @@ pub(crate) fn compute<W: LayoutElement>(
         &mut result,
     );
     result
+}
+
+pub(super) fn apply_struts(
+    parent_area: Rectangle<f64, Logical>,
+    scale: f64,
+    struts: Struts,
+) -> Rectangle<f64, Logical> {
+    let mut working_area = parent_area;
+    working_area.size.w = (working_area.size.w - struts.left.0 - struts.right.0).max(0.);
+    working_area.loc.x += struts.left.0;
+    working_area.size.h = (working_area.size.h - struts.top.0 - struts.bottom.0).max(0.);
+    working_area.loc.y += struts.top.0;
+
+    let loc = working_area
+        .loc
+        .to_physical_precise_ceil(scale)
+        .to_logical(scale);
+    let mut size_diff = (loc - working_area.loc).to_size();
+    size_diff.w = working_area.size.w.min(size_diff.w);
+    size_diff.h = working_area.size.h.min(size_diff.h);
+    working_area.size -= size_diff;
+    working_area.loc = loc;
+    working_area
 }
 
 #[allow(clippy::too_many_arguments)]

@@ -20,6 +20,7 @@ class Translator:
         self.sections: list[str] = []
         self.blur_settings: dict[str, str] = {}
         self.layout_settings: list[str] = []
+        self.outer_gaps: str | None = None
         self.manual: list[str] = []
         self.visited: set[Path] = set()
 
@@ -101,6 +102,8 @@ class Translator:
                 self.translate_for_window(path, line_no, match.group(1), match.group(2))
             elif match := re.fullmatch(r"gaps\s+inner\s+(.+)", text):
                 self.layout_settings.append(f"    gaps {match.group(1)}")
+            elif match := re.fullmatch(r"gaps\s+outer\s+(.+)", text):
+                self.outer_gaps = match.group(1)
             elif not self.translate_swayfx(path, line_no, text):
                 self.warn(path, line_no, text, "unhandled")
 
@@ -475,6 +478,15 @@ class Translator:
                 "blur {",
                 *self.blur_settings.values(),
                 "}",
+            ]
+        if self.outer_gaps is not None:
+            self.layout_settings += [
+                "    struts {",
+                f"        left {self.outer_gaps}",
+                f"        right {self.outer_gaps}",
+                f"        top {self.outer_gaps}",
+                f"        bottom {self.outer_gaps}",
+                "    }",
             ]
         if self.layout_settings:
             output += ["", "layout {", *self.layout_settings, "}"]

@@ -5,6 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::time::Duration;
 
+use geometry::apply_struts;
 use node::Node;
 pub use node::{NodeId, TreeNode};
 use smithay::backend::renderer::gles::GlesRenderer;
@@ -272,7 +273,7 @@ impl<W: LayoutElement> TilingTree<W> {
 
     pub fn new_window_toplevel_bounds(&self, rules: &ResolvedWindowRules) -> Size<i32, Logical> {
         let border = self.options.layout.border.merged_with(&rules.border);
-        let mut size = self.parent_area.size;
+        let mut size = self.working_area().size;
         let padding = self.gaps * 2. + if border.off { 0. } else { border.width * 2. };
         size.w = (size.w - padding).max(1.);
         size.h = (size.h - padding).max(1.);
@@ -1711,6 +1712,10 @@ impl<W: LayoutElement> TilingTree<W> {
             .collect()
     }
 
+    fn working_area(&self) -> Rectangle<f64, Logical> {
+        apply_struts(self.parent_area, self.scale, self.options.layout.struts)
+    }
+
     fn compute_geometry(&self) -> geometry::Geometry<W::Id> {
         let fullscreen = self
             .pending_modes
@@ -1721,6 +1726,9 @@ impl<W: LayoutElement> TilingTree<W> {
             &self.nodes,
             self.root,
             self.view_size,
+            self.parent_area,
+            self.scale,
+            self.options.layout.struts,
             self.gaps,
             self.titlebar_height,
             &fullscreen,
