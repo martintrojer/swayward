@@ -1,9 +1,9 @@
 # Contributing to swayward
 
 Thanks for your interest in swayward!
-The project has grown quite a bit, and we could use all help that we can.
 
-Make sure to join our Matrix chat if you have any questions or want to discuss anything: https://matrix.to/#/#niri:matrix.org
+Open a GitHub issue or discussion if you have questions or want to discuss
+anything: https://github.com/martintrojer/swayward/issues
 
 ## Issues and discussions
 
