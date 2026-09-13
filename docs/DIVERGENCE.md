@@ -11,6 +11,7 @@ src/ipc/server.rs, src/ipc/wire.rs — replace niri's line-delimited request dis
 src/ipc/client.rs — remove niri's client because swaymsg is swayward's supported IPC client.
 src/backend/winit.rs — disable Mesa swap throttling in nested sessions because a blocking EGL swap deadlocks the compositor event loop and IPC.
 src/layout/mod.rs, src/layout/workspace.rs — expose focused-tree layout mutation and container focus navigation for sway runtime commands, including sway's parent targeting and one-level singleton flatten.
+src/layout/tiling_tree/mod.rs — apply split commands to an empty workspace root, matching sway's workspace_split behavior.
 src/layout/mod.rs, src/window/mapped.rs — expose window titles to the tree renderer for sway-style server-side titlebars.
 src/layout/mod.rs, src/layout/monitor.rs, src/layout/workspace.rs — give workspaces stable global sway names/numbers, sparse creation, switching, movement, and output assignment while retaining monitor animations.
 src/ipc/server.rs — include the Wayland socket name in IPC socket paths so parallel headless tests do not collide.

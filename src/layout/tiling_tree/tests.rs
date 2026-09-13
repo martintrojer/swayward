@@ -341,6 +341,22 @@ fn inserting_a_sibling_subdivides_the_target_share() {
 }
 
 #[test]
+fn split_on_an_empty_tree_sets_the_root_layout() {
+    let mut t = tree((1200., 800.), 0.);
+
+    t.split_focused(Layout::SplitV);
+
+    assert!(matches!(
+        t.nodes[&t.root].value,
+        TreeNode::Split {
+            layout: Layout::SplitV,
+            ..
+        }
+    ));
+    t.check_invariants();
+}
+
+#[test]
 fn split_retargets_a_singleton_split_parent() {
     for (parent_layout, requested_layout) in [
         (Layout::SplitH, Layout::SplitH),

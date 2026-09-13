@@ -1065,6 +1065,8 @@ impl<W: LayoutElement> TilingTree<W> {
     pub fn split_focused(&mut self, layout: Layout) {
         if let Some(focus) = self.focus {
             self.split(focus, layout);
+        } else {
+            self.set_layout(self.root, layout);
         }
     }
 
