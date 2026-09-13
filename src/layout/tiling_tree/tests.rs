@@ -974,6 +974,27 @@ fn reordering_a_subtree_preserves_its_share() {
 }
 
 #[test]
+fn axis_resize_compensates_every_sibling() {
+    let mut t = tree((1000., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let second = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    let third = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+    let fourth = t.add_tile(tile(4, t.view_size()), InsertTarget::Focused);
+
+    let TreeNode::Split { percents, .. } = &mut t.nodes.get_mut(&t.root).unwrap().value else {
+        panic!("root must be a split");
+    };
+    percents.fill(0.25);
+    t.set_window_width(Some(&4), SizeChange::AdjustProportion(25.));
+
+    for id in [first, second, third] {
+        assert!((t.geometry(id).unwrap().size.w - 1000. / 6.).abs() < 1e-9);
+    }
+    assert!((t.geometry(fourth).unwrap().size.w - 500.).abs() < 1e-9);
+    t.check_invariants();
+}
+
+#[test]
 fn resizing_adjacent_siblings_changes_only_that_boundary() {
     let mut t = tree((1000., 800.), 0.);
     let a = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);

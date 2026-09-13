@@ -2807,12 +2807,6 @@ impl<W: LayoutElement> TilingTree<W> {
         } else {
             self.view_size.h
         };
-        let target = match change {
-            SizeChange::SetFixed(value) => f64::from(value),
-            SizeChange::SetProportion(value) => total * value / 100.,
-            SizeChange::AdjustFixed(value) => current + f64::from(value),
-            SizeChange::AdjustProportion(value) => current + total * value / 100.,
-        };
         let mut branch = id;
         let mut parent = self.nodes.get(&id).and_then(|node| node.parent);
         while let Some(parent_id) = parent {
@@ -2825,28 +2819,78 @@ impl<W: LayoutElement> TilingTree<W> {
             else {
                 return;
             };
-            if *layout == wanted {
-                let Some(index) = children.iter().position(|child| *child == branch) else {
-                    return;
-                };
-                let neighbor = children.get(index + 1).copied().or_else(|| {
-                    index
-                        .checked_sub(1)
-                        .and_then(|index| children.get(index).copied())
-                });
-                let Some(neighbor) = neighbor else { return };
+            if *layout == wanted && children.len() > 1 {
                 let extent = self
                     .node_geometry(parent_id)
                     .map(|rect| if width { rect.size.w } else { rect.size.h })
                     .unwrap_or(total)
                     .max(1.);
-                let delta = (target - current) / extent;
-                self.resize_adjacent(branch, neighbor, delta);
+                let (delta, across_all_siblings) = match change {
+                    SizeChange::AdjustFixed(value) => (f64::from(value) / extent, true),
+                    SizeChange::AdjustProportion(value) => (value / 100., true),
+                    SizeChange::SetFixed(value) => ((f64::from(value) - current) / extent, false),
+                    SizeChange::SetProportion(value) => {
+                        ((total * value / 100. - current) / extent, false)
+                    }
+                };
+                if across_all_siblings {
+                    self.resize_across_siblings(parent_id, branch, delta);
+                } else {
+                    let Some(index) = children.iter().position(|child| *child == branch) else {
+                        return;
+                    };
+                    let neighbor = children.get(index + 1).copied().or_else(|| {
+                        index
+                            .checked_sub(1)
+                            .and_then(|index| children.get(index).copied())
+                    });
+                    if let Some(neighbor) = neighbor {
+                        self.resize_adjacent(branch, neighbor, delta);
+                    }
+                }
                 return;
             }
             branch = parent_id;
             parent = *grandparent;
         }
+    }
+
+    fn resize_across_siblings(&mut self, parent: NodeId, target: NodeId, delta: f64) -> bool {
+        if !delta.is_finite() {
+            return false;
+        }
+        let old = self.compute_geometry();
+        let Some(Node {
+            value: TreeNode::Split {
+                children, percents, ..
+            },
+            ..
+        }) = self.nodes.get_mut(&parent)
+        else {
+            return false;
+        };
+        let Some(target_index) = children.iter().position(|child| *child == target) else {
+            return false;
+        };
+        let compensation = delta / (children.len() - 1) as f64;
+        if percents[target_index] + delta <= 0.
+            || percents
+                .iter()
+                .enumerate()
+                .any(|(index, percent)| index != target_index && percent - compensation <= 0.)
+        {
+            return false;
+        }
+        for (index, percent) in percents.iter_mut().enumerate() {
+            *percent += if index == target_index {
+                delta
+            } else {
+                -compensation
+            };
+        }
+        self.request_window_sizes();
+        self.animate_geometry_changes(old, None);
+        true
     }
 
     fn root_children(&self) -> Option<&[NodeId]> {
