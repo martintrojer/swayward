@@ -133,6 +133,14 @@ fn execute_one(
             None
         }
         Command::Layout(layout) => {
+            if state
+                .swayward
+                .layout
+                .active_workspace()
+                .is_some_and(|workspace| workspace.floating_is_active())
+            {
+                return failure("Unable to change layout of floating windows");
+            }
             match layout {
                 Layout::SplitH => state
                     .swayward
@@ -392,8 +400,20 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
             state.swayward.queue_redraw_all();
         }
         Command::Layout(layout) => {
-            let CommandTarget::Container(_, node) = target else {
-                return failure("command requires a container target");
+            let node = match target {
+                CommandTarget::Container(_, node) => node,
+                CommandTarget::Window(target) => {
+                    let floating = state
+                        .swayward
+                        .layout
+                        .windows()
+                        .any(|(_, mapped)| mapped.id() == target && mapped.is_floating());
+                    return failure(if floating {
+                        "Unable to change layout of floating windows"
+                    } else {
+                        "command requires a container target"
+                    });
+                }
             };
             let layout = match layout {
                 Layout::SplitH => crate::layout::tiling_tree::Layout::SplitH,

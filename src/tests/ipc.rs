@@ -834,6 +834,56 @@ fn criteria_with_no_matches_returns_sway_failure() {
 }
 
 #[test]
+fn layout_and_split_commands_preserve_a_focused_floating_window_and_the_tree() {
+    let (mut fixture, socket) = ipc_fixture();
+    fixture.add_output(1, (1920, 1080));
+    let client = fixture.add_client();
+    let window = fixture.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    fixture.roundtrip(client);
+    let window = fixture.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    fixture.double_roundtrip(client);
+    fixture.swayward().layout.toggle_window_floating(None);
+
+    let mut stream = UnixStream::connect(socket).unwrap();
+    for (command, expected_reply) in [
+        ("split v", r#"[{"success":true}]"#),
+        (
+            "layout tabbed",
+            r#"[{"success":false,"error":"Unable to change layout of floating windows"}]"#,
+        ),
+        (
+            "layout toggle split",
+            r#"[{"success":false,"error":"Unable to change layout of floating windows"}]"#,
+        ),
+    ] {
+        let before = fixture
+            .swayward()
+            .layout
+            .active_workspace()
+            .unwrap()
+            .ipc_tiling_tree();
+
+        stream
+            .write_all(&crate::ipc::wire::encode(MessageType::RunCommand, command))
+            .unwrap();
+        let (_, reply) = read_ipc_reply(&mut fixture, &mut stream);
+        assert_eq!(reply, expected_reply, "reply for {command}");
+
+        let after = fixture
+            .swayward()
+            .layout
+            .active_workspace()
+            .unwrap()
+            .ipc_tiling_tree();
+        assert_eq!(after, before, "tree changed after {command}");
+    }
+}
+
+#[test]
 fn for_window_applies_matching_command_when_window_maps() {
     let (mut fixture, socket) = ipc_fixture();
     fixture.add_output(1, (1920, 1080));
