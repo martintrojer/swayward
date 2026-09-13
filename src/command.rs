@@ -100,6 +100,9 @@ fn execute_one(
         }
         Command::FocusNext => Some(Action::FocusColumnRightOrFirst),
         Command::FocusPrev => Some(Action::FocusColumnLeftOrLast),
+        Command::FocusFloating => Some(Action::FocusFloating),
+        Command::FocusTiling => Some(Action::FocusTiling),
+        Command::FocusModeToggle => Some(Action::SwitchFocusBetweenFloatingAndTiling),
         Command::MoveDirection {
             direction,
             pixels: None,
@@ -835,6 +838,13 @@ mod tests {
     }
 
     #[test]
+    fn parses_sway_focus_modes() {
+        for input in ["focus tiling", "focus floating", "focus mode_toggle"] {
+            assert!(parse(input)[0].is_ok(), "{input}");
+        }
+    }
+
+    #[test]
     fn parses_every_supported_command_family() {
         assert_eq!(command("focus"), Command::Focus);
         assert_eq!(
@@ -842,6 +852,9 @@ mod tests {
             Command::FocusDirection(Direction::Left)
         );
         assert_eq!(command("focus parent"), Command::FocusParent);
+        assert_eq!(command("focus floating"), Command::FocusFloating);
+        assert_eq!(command("focus tiling"), Command::FocusTiling);
+        assert_eq!(command("focus mode_toggle"), Command::FocusModeToggle);
         assert_eq!(
             command("move right 12 px"),
             Command::MoveDirection {

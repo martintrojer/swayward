@@ -81,6 +81,9 @@ pub enum Command {
     FocusChild,
     FocusNext,
     FocusPrev,
+    FocusFloating,
+    FocusTiling,
+    FocusModeToggle,
     MoveDirection {
         direction: Direction,
         pixels: Option<i32>,
@@ -374,7 +377,10 @@ fn parse_focus(args: &[&str]) -> Result<Command, String> {
     if args.is_empty() {
         return Ok(Command::Focus);
     }
-    let arg = one(args, "focus <left|right|up|down|parent|child|next|prev>")?;
+    let arg = one(
+        args,
+        "focus <left|right|up|down|parent|child|next|prev|floating|tiling|mode_toggle>",
+    )?;
     if let Some(direction) = parse_direction(arg) {
         return Ok(Command::FocusDirection(direction));
     }
@@ -383,7 +389,13 @@ fn parse_focus(args: &[&str]) -> Result<Command, String> {
         "child" => Ok(Command::FocusChild),
         "next" => Ok(Command::FocusNext),
         "prev" => Ok(Command::FocusPrev),
-        _ => Err("Expected 'focus <left|right|up|down|parent|child|next|prev>'".into()),
+        "floating" => Ok(Command::FocusFloating),
+        "tiling" => Ok(Command::FocusTiling),
+        "mode_toggle" => Ok(Command::FocusModeToggle),
+        _ => Err(
+            "Expected 'focus <left|right|up|down|parent|child|next|prev|floating|tiling|mode_toggle>'"
+                .into(),
+        ),
     }
 }
 
