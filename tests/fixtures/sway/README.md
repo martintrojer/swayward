@@ -46,6 +46,13 @@ on 2026-09-13. Three read-only `swaymsg -t subscribe -m` clients recorded the
 raw workspace, window, and mode event streams. The JSON files contain the first
 captured payload for each `change` value, formatted only with `jq -S .`.
 
+The `*.sequence.json` files preserve complete ordered workspace event lists from
+the same sway 1.11 installation. `workspace-switch-empty` captures a switch to
+an empty workspace and back. `workspace-close-last` captures closing the final
+window on an inactive workspace. `workspace-rename` captures a rename. Run
+`contrib/capture-sway-fixtures.sh <nested-SWAYSOCK> event-sequences` to replace
+them. The script uses a sway `SEND_TICK` request as the end-of-stream barrier.
+
 The capture produced all requested workspace changes: `init`, `empty`, `focus`,
 `move`, `rename`, `urgent`, and `reload`. It also produced all requested window
 changes: `new`, `close`, `focus`, `title`, `fullscreen_mode`, `move`, `floating`,

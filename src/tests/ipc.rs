@@ -441,6 +441,31 @@ fn ipc_fixture() -> (Fixture, std::path::PathBuf) {
 }
 
 #[test]
+fn captured_workspace_event_sequences_pin_order_and_multiplicity() {
+    for (fixture, expected) in [
+        (
+            include_str!("../../tests/fixtures/sway/events/workspace-switch-empty.sequence.json"),
+            &["init", "focus", "focus", "empty"][..],
+        ),
+        (
+            include_str!("../../tests/fixtures/sway/events/workspace-close-last.sequence.json"),
+            &["empty"][..],
+        ),
+        (
+            include_str!("../../tests/fixtures/sway/events/workspace-rename.sequence.json"),
+            &["rename"][..],
+        ),
+    ] {
+        let events = serde_json::from_str::<Vec<Value>>(fixture).unwrap();
+        let changes = events
+            .iter()
+            .map(|event| event["change"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(changes, expected);
+    }
+}
+
+#[test]
 fn event_subscription_does_not_block_a_concurrent_query() {
     let (mut fixture, socket) = ipc_fixture();
     let mut subscriber = UnixStream::connect(&socket).unwrap();

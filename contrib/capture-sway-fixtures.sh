@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if (( $# < 1 || $# > 2 )); then
-    echo "usage: $0 /path/to/nested-sway-ipc.sock [multi-floating]" >&2
+    echo "usage: $0 /path/to/nested-sway-ipc.sock [multi-floating|event-sequences]" >&2
     exit 2
 fi
 
@@ -70,6 +70,62 @@ reset_state() {
     run_command workspace __fixture_reset
     run_command workspace 1
     wait_for_windows 0
+}
+
+capture_event_sequence() {
+    local name=$1
+    shift
+    local stream
+    stream=$(mktemp)
+    swaymsg -s "$TARGET_SWAYSOCK" -t subscribe -m '["workspace","tick"]' >"$stream" &
+    local subscriber=$!
+    trap 'kill "$subscriber" 2>/dev/null || true; rm -f "$stream"' RETURN
+    for _ in {1..100}; do
+        kill -0 "$subscriber" 2>/dev/null || return 1
+        if [[ -s $stream ]] && jq -e 'select(.first? == true)' "$stream" >/dev/null 2>&1; then
+            break
+        fi
+        sleep 0.01
+    done
+    "$@"
+    msg -t send_tick "fixture-$name" >/dev/null
+    for _ in {1..100}; do
+        jq -e --arg payload "fixture-$name" 'select(.payload? == $payload)' "$stream" >/dev/null 2>&1 && break
+        sleep 0.01
+    done
+    jq -e --arg payload "fixture-$name" -s '
+        [ .[] | select(.first? != true and .payload? != $payload) ]
+    ' "$stream" >"$OUT/events/$name.sequence.json"
+    kill "$subscriber" 2>/dev/null || true
+    wait "$subscriber" 2>/dev/null || true
+    rm -f "$stream"
+    trap - RETURN
+    printf 'captured %s\n' "$name"
+}
+
+switch_to_empty_and_back() {
+    run_command workspace __fixture_empty
+    run_command workspace 1
+}
+
+switch_empty_events() {
+    reset_state
+    spawn_window fixture-switch
+    wait_for_windows 1
+    capture_event_sequence workspace-switch-empty switch_to_empty_and_back
+}
+
+close_last_window_events() {
+    reset_state
+    spawn_window fixture-close
+    wait_for_windows 1
+    run_command workspace __fixture_other
+    capture_event_sequence workspace-close-last run_command '[app_id="^fixture-close$"] kill'
+}
+
+rename_events() {
+    reset_state
+    capture_event_sequence workspace-rename run_command 'rename workspace 1 to fixture-renamed'
 }
 
 capture() {
@@ -255,6 +311,14 @@ main() {
     if [[ $SCENARIO == multi-floating ]]; then
         two_floating
         three_floating_raise
+        reset_state
+        return
+    fi
+    if [[ $SCENARIO == event-sequences ]]; then
+        mkdir -p "$OUT/events"
+        switch_empty_events
+        close_last_window_events
+        rename_events
         reset_state
         return
     fi
