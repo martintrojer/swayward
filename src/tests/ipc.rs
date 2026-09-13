@@ -1111,6 +1111,44 @@ fn focus_parent_then_layout_targets_the_parent_of_the_focused_container() {
 }
 
 #[test]
+fn focus_child_from_workspace_restores_the_floating_child() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    for floating in [false, true] {
+        let window = f.client(client).create_window();
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+        if floating {
+            assert!(crate::command::execute(f.niri_state(), "floating enable")[0].success);
+        }
+    }
+    let floating = f.swayward().layout.focus().unwrap().id();
+
+    assert!(crate::command::execute(f.niri_state(), "focus parent")[0].success);
+    assert!(f
+        .swayward()
+        .layout
+        .active_workspace()
+        .unwrap()
+        .is_workspace_focused());
+    assert!(crate::command::execute(f.niri_state(), "focus child")[0].success);
+
+    assert_eq!(f.swayward().layout.focus().unwrap().id(), floating);
+
+    assert!(crate::command::execute(f.niri_state(), "focus parent")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "focus tiling")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "focus parent")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "focus child")[0].success);
+    assert_ne!(f.swayward().layout.focus().unwrap().id(), floating);
+}
+
+#[test]
 fn focused_container_can_be_marked_and_targeted_by_con_id() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));

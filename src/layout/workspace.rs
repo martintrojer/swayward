@@ -956,16 +956,25 @@ impl<W: LayoutElement> Workspace<W> {
 
     pub fn focus_parent(&mut self) -> bool {
         if self.floating_is_active.get() {
-            self.floating_is_active = FloatingActive::No;
+            self.floating_is_active = FloatingActive::NoButRaised;
             self.tiling.focus_root();
             true
         } else {
-            self.tiling.focus_parent()
+            let changed = self.tiling.focus_parent();
+            if self.tiling.root_is_focused() {
+                self.floating_is_active = FloatingActive::No;
+            }
+            changed
         }
     }
 
     pub fn focus_child(&mut self) -> bool {
-        !self.floating_is_active.get() && self.tiling.focus_child()
+        if self.is_workspace_focused() && self.floating_is_active == FloatingActive::NoButRaised {
+            self.floating_is_active = FloatingActive::Yes;
+            true
+        } else {
+            !self.floating_is_active.get() && self.tiling.focus_child()
+        }
     }
 
     pub fn focus_tiling_node(&mut self, id: crate::layout::tiling_tree::NodeId) -> bool {
