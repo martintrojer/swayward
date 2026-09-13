@@ -35,14 +35,25 @@ performs the initial commit, configure acknowledgment, and buffer attachment.
 
 Sway sorts its stored workspace list when it creates or moves a workspace
 (`sway/sway/tree/workspace.c:255-259`; `sway/sway/tree/output.c:387-404`). The
-IPC serializer preserves that stored order. Swayward retains niri's trailing
-unnamed workspace as an internal creation target, so sorting the stored list on
-creation makes the placeholder visible through its index-derived fallback name
-and changes `workspace next` and `workspace prev`. The adapter therefore does
-not claim creation-order conformance. This is a compositor-model limitation,
-not an adapter substitution; fixing it requires separating sway workspaces from
-niri's internal placeholder slots. This limitation does not affect explicit
-workspace names or their `num` fields.
+IPC serializer preserves that stored order. Swayward instead inherits niri's
+trailing unnamed workspace as an internal creation target. This makes
+"sway-visible" context-dependent: IPC, relative navigation, and cleanup need
+different membership rules. One shared predicate broke `117-workspace.t`
+because inactive transient named workspaces must disappear from IPC, while
+configured empty workspaces and active empty workspaces remain visible.
+
+Sorting also requires materializing an occupied implicit workspace's
+index-derived number as stable identity. That conflicts with niri's current
+name and persistence fields, which cleanup uses to decide whether an empty
+workspace survives. Sorting only during serialization is not equivalent because
+sway sorts during insertion and navigation observes that order. This is a
+deferred design issue, not a closed compatibility decision. A correct fix needs
+a workspace identity and lifecycle representation distinct from niri's name and
+persistence state, with coordinated changes to creation, cleanup, navigation,
+IPC, and output assignment. In `117-workspace.t`, assertions 11 and 15 exercise
+next/previous order but cannot establish sway's insertion-sorted model;
+assertions 33 and 41 only prove that no internal placeholder leaks as workspace
+`4` or `7`. The file's reported 89 passes and 3 unrelated skips are unchanged.
 
 The adapter cannot reproduce a compositor restart. Rebuilding `Fixture` destroys
 its Wayland clients and windows, while `State::reload_config` preserves them and
