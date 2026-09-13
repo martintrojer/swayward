@@ -20,6 +20,8 @@ class Translator:
         self.sections: list[str] = []
         self.blur_settings: dict[str, str] = {}
         self.layout_settings: list[str] = []
+        self.titlebar_font: str | None = None
+        self.titlebar_colors: dict[str, tuple[str, str]] = {}
         self.outer_gaps: str | None = None
         self.manual: list[str] = []
         self.visited: set[Path] = set()
@@ -100,12 +102,40 @@ class Translator:
                 self.translate_bind(path, line_no, match.group(1), match.group(2))
             elif match := re.match(r"for_window\s+(\[[^]]+\])\s+(.+)", text):
                 self.translate_for_window(path, line_no, match.group(1), match.group(2))
+            elif match := re.fullmatch(r"font\s+(?:pango:)?(.+)", text):
+                self.titlebar_font = match.group(1)
+            elif match := re.fullmatch(
+                r"client\.(focused|focused_inactive|focused_tab_title|unfocused|urgent)\s+(.+)",
+                text,
+            ):
+                self.translate_client_colors(path, line_no, text, match.group(1), match.group(2))
             elif match := re.fullmatch(r"gaps\s+inner\s+(.+)", text):
                 self.layout_settings.append(f"    gaps {match.group(1)}")
             elif match := re.fullmatch(r"gaps\s+outer\s+(.+)", text):
                 self.outer_gaps = match.group(1)
             elif not self.translate_swayfx(path, line_no, text):
                 self.warn(path, line_no, text, "unhandled")
+
+    def translate_client_colors(
+        self, source: Path, line: int, text: str, state: str, arguments: str
+    ) -> None:
+        colors = arguments.split()
+        if len(colors) < 3 or len(colors) > 5:
+            self.warn(source, line, text, "client color requires 3 to 5 colors")
+            return
+        state = state.replace("_", "-")
+        self.titlebar_colors[state] = (colors[1], colors[2])
+        ignored = ["border"]
+        if len(colors) > 3:
+            ignored.append("indicator")
+        if len(colors) > 4:
+            ignored.append("child_border")
+        self.warn(
+            source,
+            line,
+            text,
+            f"client.{state} {'/'.join(ignored)} colors have no titlebar equivalent",
+        )
 
     def translate_include(self, source: Path, line: int, text: str) -> None:
         pattern = text.removeprefix("include ").strip().strip('"\'')
@@ -479,6 +509,19 @@ class Translator:
                 *self.blur_settings.values(),
                 "}",
             ]
+        if self.titlebar_font is not None or self.titlebar_colors:
+            titlebar = ["    titlebar {"]
+            if self.titlebar_font is not None:
+                titlebar.append(f"        font {self.quote(self.titlebar_font)}")
+            for state, (background, text) in self.titlebar_colors.items():
+                titlebar += [
+                    f"        {state} {{",
+                    f"            background-color {self.quote(background)}",
+                    f"            text-color {self.quote(text)}",
+                    "        }",
+                ]
+            titlebar.append("    }")
+            self.layout_settings += titlebar
         if self.outer_gaps is not None:
             self.layout_settings += [
                 "    struts {",

@@ -194,6 +194,35 @@ layout {
         // inactive-gradient from="#505050" to="#808080" angle=45 relative-to="workspace-view"
     }
 
+    // Style server-side titlebars and tab/stack title strips.
+    // Height is derived from the font plus twice the vertical padding.
+    titlebar {
+        font "monospace 10"
+        horizontal-padding 5
+        vertical-padding 4
+
+        focused {
+            background-color "rgb(71.4, 117.3, 163.2)"
+            text-color "#fff"
+        }
+        focused-inactive {
+            background-color "rgb(40.8, 40.8, 40.8)"
+            text-color "#fff"
+        }
+        focused-tab-title {
+            background-color "rgb(40.8, 40.8, 40.8)"
+            text-color "#fff"
+        }
+        unfocused {
+            background-color "rgb(40.8, 40.8, 40.8)"
+            text-color "#fff"
+        }
+        urgent {
+            background-color "rgb(40.8, 40.8, 40.8)"
+            text-color "#fff"
+        }
+    }
+
     // Add a soft shadow that separates windows without obscuring their content.
     shadow {
         on

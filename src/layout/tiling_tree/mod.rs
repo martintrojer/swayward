@@ -18,6 +18,7 @@ use super::closing_window::{ClosingWindow, ClosingWindowRenderElement};
 use super::scrolling::ScrollDirection;
 use super::tab_indicator::{TabIndicator, TabIndicatorRenderElement, TabInfo};
 use super::tile::{Tile, TileRenderElement};
+use super::titlebar::TitlebarState;
 use super::{ConfigureIntent, HitType, InteractiveResizeData, LayoutElement, Options, RenderLayer};
 use crate::animation::Clock;
 use crate::render_helpers::renderer::NiriRenderer;
@@ -182,7 +183,7 @@ impl<W: LayoutElement> TilingTree<W> {
             view_size,
             parent_area,
             scale,
-            titlebar_height: super::titlebar::height(scale),
+            titlebar_height: super::titlebar::height(scale, &options.layout.titlebar),
             clock,
             gaps: options.layout.gaps,
             options,
@@ -209,7 +210,7 @@ impl<W: LayoutElement> TilingTree<W> {
         self.view_size = view_size;
         self.parent_area = parent_area;
         self.scale = scale;
-        self.titlebar_height = super::titlebar::height(scale);
+        self.titlebar_height = super::titlebar::height(scale, &options.layout.titlebar);
         self.gaps = options.layout.gaps;
         self.options = options;
         self.request_window_sizes_with(None, false);
@@ -1453,12 +1454,15 @@ impl<W: LayoutElement> TilingTree<W> {
         self.titlebars.retain(geometries.titlebars.keys().copied());
         for (id, titlebar) in &geometries.titlebars {
             let mut titlebar = titlebar.clone();
-            titlebar.active = self.focus == Some(*id);
+            titlebar.state = self.titlebar_state(*id, focus_ring);
             if titlebar.visible {
-                if let Some(element) =
-                    self.titlebars
-                        .render(ctx.renderer, *id, &titlebar, self.scale)
-                {
+                if let Some(element) = self.titlebars.render(
+                    ctx.renderer,
+                    *id,
+                    &titlebar,
+                    self.scale,
+                    &self.options.layout.titlebar,
+                ) {
                     push(element.into());
                 }
             }
@@ -2331,6 +2335,41 @@ impl<W: LayoutElement> TilingTree<W> {
                     tile.animate_move_from(offset);
                 }
             }
+        }
+    }
+
+    fn titlebar_state(&self, id: NodeId, workspace_focused: bool) -> TitlebarState {
+        let urgent = self.tile(id).is_some_and(|tile| tile.window().is_urgent());
+        if urgent {
+            return TitlebarState::Urgent;
+        }
+        let Some(focus) = self.focus else {
+            return TitlebarState::Unfocused;
+        };
+        if id == focus {
+            return if workspace_focused {
+                TitlebarState::Focused
+            } else {
+                TitlebarState::FocusedInactive
+            };
+        }
+        let is_tab_title_with_focused_descendant = self.nodes.values().any(|node| {
+            let TreeNode::Split {
+                layout: Layout::Tabbed | Layout::Stacked,
+                children,
+                ..
+            } = &node.value
+            else {
+                return false;
+            };
+            children.iter().any(|child| {
+                self.first_leaf_in(*child) == Some(id) && self.contains_node(*child, focus)
+            })
+        });
+        if is_tab_title_with_focused_descendant {
+            TitlebarState::FocusedTabTitle
+        } else {
+            TitlebarState::Unfocused
         }
     }
 

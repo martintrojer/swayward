@@ -262,6 +262,49 @@ fn empty_tree_has_no_focus() {
 }
 
 #[test]
+fn shipped_config_preserves_the_default_titlebar_geometry() {
+    let config = swayward_config::Config::load_default();
+    assert_eq!(config.layout.titlebar, swayward_config::Titlebar::default());
+    assert_eq!(titlebar::height(1., &config.layout.titlebar), 22.);
+}
+
+#[test]
+fn titlebar_padding_changes_derived_height() {
+    let mut config = swayward_config::Titlebar::default();
+    let default_height = titlebar::height(1., &config);
+    config.vertical_padding += 3.;
+    assert_eq!(titlebar::height(1., &config), default_height + 6.);
+}
+
+#[test]
+fn titlebar_state_distinguishes_sway_color_classes() {
+    let mut t = tree((1200., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let second = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.set_focus(first);
+    t.split(first, Layout::SplitV);
+    let third = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+    t.set_layout(t.root, Layout::Tabbed);
+
+    assert_eq!(
+        t.titlebar_state(third, true),
+        titlebar::TitlebarState::Focused
+    );
+    assert_eq!(
+        t.titlebar_state(third, false),
+        titlebar::TitlebarState::FocusedInactive
+    );
+    assert_eq!(
+        t.titlebar_state(first, true),
+        titlebar::TitlebarState::FocusedTabTitle
+    );
+    assert_eq!(
+        t.titlebar_state(second, true),
+        titlebar::TitlebarState::Unfocused
+    );
+}
+
+#[test]
 fn one_window_reserves_a_titlebar_above_its_content() {
     let mut t = tree((1920., 1080.), 0.);
     let id = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
@@ -833,7 +876,7 @@ fn tabbed_split_only_exposes_the_focused_branch() {
         .collect();
     assert_eq!(visible, vec![(1, true), (2, false)]);
     assert_eq!(t.geometry(first), t.geometry(second));
-    let titlebar_height = titlebar::height(1.);
+    let titlebar_height = titlebar::height(1., &swayward_config::Titlebar::default());
     assert!(t.geometry(first).unwrap().loc.y > 0.);
     assert!(t.geometry(first).unwrap().size.h < 800.);
     let first_bar = t.ipc_decoration_rect(&1).unwrap();
@@ -999,7 +1042,7 @@ fn ipc_layout_contains_the_tree_position() {
         .tiles_with_ipc_layouts()
         .map(|(tile, layout)| (*tile.window().id(), layout.tile_pos_in_workspace_view))
         .collect();
-    let titlebar_height = titlebar::height(1.);
+    let titlebar_height = titlebar::height(1., &swayward_config::Titlebar::default());
     assert_eq!(positions[0].1, Some((0., titlebar_height)));
     assert_eq!(positions[1].1, Some((500., titlebar_height)));
 }
@@ -1025,7 +1068,10 @@ fn removing_a_tile_resizes_survivors_in_one_transaction() {
     assert!(t.remove_tile(&2, Transaction::new()).is_some());
     assert_eq!(
         first_state.0.requested_size.get(),
-        Some(Size::from((992, 800 - titlebar::height(1.) as i32 - 8)))
+        Some(Size::from((
+            992,
+            800 - titlebar::height(1., &swayward_config::Titlebar::default()) as i32 - 8
+        )))
     );
     assert!(first_state.0.received_transaction.get());
     t.check_invariants();

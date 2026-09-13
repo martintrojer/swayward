@@ -1522,6 +1522,81 @@ mod tests {
                     inactive_gradient: None,
                     urgent_gradient: None,
                 },
+                titlebar: Titlebar {
+                    font: "monospace 10",
+                    horizontal_padding: 5.0,
+                    vertical_padding: 4.0,
+                    focused: TitlebarColors {
+                        background_color: Color {
+                            r: 0.28,
+                            g: 0.46,
+                            b: 0.64,
+                            a: 1.0,
+                        },
+                        text_color: Color {
+                            r: 1.0,
+                            g: 1.0,
+                            b: 1.0,
+                            a: 1.0,
+                        },
+                    },
+                    focused_inactive: TitlebarColors {
+                        background_color: Color {
+                            r: 0.16,
+                            g: 0.16,
+                            b: 0.16,
+                            a: 1.0,
+                        },
+                        text_color: Color {
+                            r: 1.0,
+                            g: 1.0,
+                            b: 1.0,
+                            a: 1.0,
+                        },
+                    },
+                    focused_tab_title: TitlebarColors {
+                        background_color: Color {
+                            r: 0.16,
+                            g: 0.16,
+                            b: 0.16,
+                            a: 1.0,
+                        },
+                        text_color: Color {
+                            r: 1.0,
+                            g: 1.0,
+                            b: 1.0,
+                            a: 1.0,
+                        },
+                    },
+                    unfocused: TitlebarColors {
+                        background_color: Color {
+                            r: 0.16,
+                            g: 0.16,
+                            b: 0.16,
+                            a: 1.0,
+                        },
+                        text_color: Color {
+                            r: 1.0,
+                            g: 1.0,
+                            b: 1.0,
+                            a: 1.0,
+                        },
+                    },
+                    urgent: TitlebarColors {
+                        background_color: Color {
+                            r: 0.16,
+                            g: 0.16,
+                            b: 0.16,
+                            a: 1.0,
+                        },
+                        text_color: Color {
+                            r: 1.0,
+                            g: 1.0,
+                            b: 1.0,
+                            a: 1.0,
+                        },
+                    },
+                },
                 insert_hint: InsertHint {
                     off: false,
                     color: Color {

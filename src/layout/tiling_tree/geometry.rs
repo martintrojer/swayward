@@ -4,7 +4,7 @@ use smithay::utils::{Logical, Point, Rectangle, Size};
 use swayward_config::Struts;
 
 use super::{Layout, Node, NodeId, TreeNode};
-use crate::layout::titlebar::Titlebar;
+use crate::layout::titlebar::{Titlebar, TitlebarState};
 use crate::layout::LayoutElement;
 
 pub(crate) struct Geometry<I> {
@@ -102,7 +102,7 @@ fn assign<W: LayoutElement>(
                         rect: titlebar,
                         ipc_rect: Rectangle::new(titlebar.loc - ipc_origin, titlebar.size),
                         title: tile.window().title(),
-                        active: false,
+                        state: TitlebarState::Unfocused,
                         visible: true,
                     },
                 );
@@ -193,7 +193,7 @@ fn assign<W: LayoutElement>(
                                     title_rect.size,
                                 ),
                                 title,
-                                active: false,
+                                state: TitlebarState::Unfocused,
                                 visible: fullscreen.is_empty(),
                             },
                         );
