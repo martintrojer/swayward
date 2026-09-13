@@ -15,6 +15,12 @@ The runner requires Perl with `Test::More` and `JSON::PP`. On Fedora install
 `perl libtest-simple-perl libjson-pp-perl`. `contrib/dev-container.sh` installs
 the Fedora packages. The runner uses a 1280×800 output with zero gaps to match
 i3's `testcases/lib/StartXServer.pm:106-108` and `testcases/i3-test.config`.
+It disables window movement and resize animations and makes its Wayland clients
+acknowledge and commit the latest configure around floating and resize commands.
+Green conformance tests therefore cover settled geometry, not animated
+intermediate states or clients that delay or omit configure acknowledgements.
+`open_empty_con` also creates a real
+Wayland window because swayward cannot create an empty container through IPC.
 
 `tests/i3/passing.txt` lists the files that pass in full, and the default gate
 runs every one of them. A conformance slice adds its file to that list the
@@ -46,7 +52,7 @@ without fabricating a tree that real sway clients do not see. See
 | `122-split.t` | 31 | 31 pass; remainder skip: i3-only tree structure | Singleton stacked assertions 28 and 30 pass. The remainder starts by inspecting i3's `content` node at line 157, which sway does not have (`sway/sway/ipc-json.c:869-874`). |
 | `126-regress-close.t` | 1 | pass | `does_i3_live` after closing a floating container. |
 | `130-close-empty-split.t` | 8 | pass | Container splits retain leaf focus and collapse after their children close or move, matching `sway/tree/container.c:1590-1616`. |
-| `141-resize.t` | 84 | fail (59 pass) | All resize forms parse (0 rejected). The harness now matches i3's 1280×800 output and zero-gap test configuration, fixing assertions 30–37. Remaining failures expose insertion-time percentage distribution and inherited floating resize/configure behavior. |
+| `141-resize.t` | 84 | fail (75 pass) | All resize forms parse (0 rejected). The harness matches i3's 1280×800 output, zero-gap configuration, synchronous command barrier, and immediate geometry presentation. Remaining failures cover insertion-time percentage distribution and assertion 84's i3-only floating wrapper traversal. |
 | `144-regress-floating-resize.t` | 1 | pass | Closing a floating child does not corrupt the tiled siblings' combined width. |
 | `152-regress-level-up.t` | 1 | pass | `does_i3_live` after focusing above the workspace tree. |
 | `178-regress-workspace-open.t` | 1 | pass | An inactive named workspace is removed after its final window closes. |

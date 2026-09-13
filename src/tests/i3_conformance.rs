@@ -71,6 +71,27 @@ fn remove_window_for_surface(
     true
 }
 
+fn settle_configures(fixture: &mut Fixture, client: super::client::ClientId) {
+    fixture.double_roundtrip(client);
+    let windows = &mut fixture.client(client).state.windows;
+    for window in windows {
+        let count = window.configures_received.len();
+        if window.configures_looked_at == count {
+            continue;
+        }
+        window.configures_looked_at = count;
+        let Some((_, configure)) = window.configures_received.last() else {
+            continue;
+        };
+        let size = configure.size;
+        if size.0 > 0 && size.1 > 0 {
+            window.set_size(size.0 as u16, size.1 as u16);
+        }
+        window.ack_last_and_commit();
+    }
+    fixture.double_roundtrip(client);
+}
+
 fn reap_closed_windows(fixture: &mut Fixture, client: super::client::ClientId) {
     fixture.double_roundtrip(client);
     let closed = fixture
@@ -112,7 +133,15 @@ fn handle_control(fixture: &mut Fixture, client: super::client::ClientId, stream
                 .focus()
                 .map(|mapped| crate::ipc::tree::window_id(mapped.id()))
         }),
+        "prepare_resize" => {
+            settle_configures(fixture, client);
+            json!({ "success": true })
+        }
         "reap_closed" => {
+            let settle = request["settle_configures"].as_bool() == Some(true);
+            if settle {
+                settle_configures(fixture, client);
+            }
             reap_closed_windows(fixture, client);
             json!({ "success": true })
         }
@@ -124,6 +153,8 @@ fn handle_control(fixture: &mut Fixture, client: super::client::ClientId, stream
 fn run_i3_test(test: &str) {
     let mut config = swayward_config::Config::default();
     config.layout.gaps = 0.;
+    config.animations.window_movement.0.off = true;
+    config.animations.window_resize.anim.off = true;
     let mut fixture = Fixture::with_config(config);
     fixture.add_output(1, (1280, 800));
     let client = fixture.add_client();

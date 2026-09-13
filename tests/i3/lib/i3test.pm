@@ -94,6 +94,10 @@ sub get_socket_path { $ENV{I3SOCK} // die 'I3SOCK is not set' }
 sub cmd_nosync {
     my ($command) = @_;
     return [_control({ action => 'open' })] if $command eq 'open';
+    my $settle_configures = scalar(
+        $command =~ /\b(?:resize\s+(?:grow|shrink)|floating\s+enable)\b/i
+    );
+    _control({ action => 'prepare_resize' }) if $settle_configures;
     my $reply = _request(0, $command);
     # Upstream tests ignore command replies, so a command swayward REJECTS looks
     # identical to one that ran and did nothing. That once hid a parser gap
@@ -104,7 +108,10 @@ sub cmd_nosync {
         my $error = $outcome->{error} // 'no error text';
         $tester->diag("swayward rejected `$command`: $error");
     }
-    _control({ action => 'reap_closed' });
+    _control({
+        action => 'reap_closed',
+        settle_configures => $settle_configures,
+    });
     $reply;
 }
 sub cmd { cmd_nosync(@_) }
