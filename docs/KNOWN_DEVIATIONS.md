@@ -46,6 +46,10 @@ the [IPC oracle coverage](IPC_ORACLE_COVERAGE.md) for its test boundary.
 
 ## Layout and Xwayland
 
+Sway rejects `layout toggle stacked` because its two-token form accepts only
+`split` or `all` (`sway/commands/layout.c:57-71`). i3 accepts the command as a
+no-op. Swayward follows sway and reports a command error.
+
 Swayward has no scrollable-tiling mode. It uses an i3-style nested container tree.
 Niri's horizontal viewport and overview animations were retired because their
 layout no longer exists.

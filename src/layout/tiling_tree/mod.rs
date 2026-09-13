@@ -12,6 +12,7 @@ use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::utils::{Logical, Point, Rectangle, Scale, Serial, Size};
 use swayward_config::utils::MergeWith as _;
 use swayward_config::PresetSize;
+use swayward_ipc::command::{LayoutToggle, LayoutToggleEntry};
 use swayward_ipc::{ColumnDisplay, SizeChange, WindowLayout};
 
 use super::closing_window::{ClosingWindow, ClosingWindowRenderElement};
@@ -1118,10 +1119,82 @@ impl<W: LayoutElement> TilingTree<W> {
         }
     }
 
+    pub fn toggle_focused_layout(&mut self, toggle: &LayoutToggle) {
+        let Some(target) = self.focused_layout_target() else {
+            return;
+        };
+        let current = match self.nodes.get(&target).map(|node| &node.value) {
+            Some(TreeNode::Split { layout, .. }) => *layout,
+            Some(TreeNode::Leaf { .. }) | None => return,
+        };
+        let tree_layout = |layout| match layout {
+            swayward_ipc::command::Layout::SplitH => Some(Layout::SplitH),
+            swayward_ipc::command::Layout::SplitV => Some(Layout::SplitV),
+            swayward_ipc::command::Layout::Tabbed => Some(Layout::Tabbed),
+            swayward_ipc::command::Layout::Stacked => Some(Layout::Stacked),
+            swayward_ipc::command::Layout::ToggleSplit => None,
+        };
+        let next = match toggle {
+            LayoutToggle::Default => match current {
+                Layout::SplitH | Layout::SplitV => Layout::Stacked,
+                Layout::Stacked => Layout::Tabbed,
+                Layout::Tabbed => self
+                    .previous_split_layouts
+                    .get(&target)
+                    .copied()
+                    .unwrap_or(Layout::SplitH),
+            },
+            LayoutToggle::Split => {
+                self.toggle_layout_split(target);
+                return;
+            }
+            LayoutToggle::All => match current {
+                Layout::SplitH => Layout::SplitV,
+                Layout::SplitV => Layout::Stacked,
+                Layout::Stacked => Layout::Tabbed,
+                Layout::Tabbed => Layout::SplitH,
+            },
+            LayoutToggle::Cycle(cycle) => {
+                let next = cycle
+                    .iter()
+                    .position(|candidate| match candidate {
+                        LayoutToggleEntry::Split => {
+                            matches!(current, Layout::SplitH | Layout::SplitV)
+                        }
+                        LayoutToggleEntry::Layout(layout) => tree_layout(*layout) == Some(current),
+                    })
+                    .and_then(|index| cycle.get((index + 1) % cycle.len()))
+                    .or_else(|| {
+                        cycle
+                            .iter()
+                            .find(|candidate| matches!(candidate, LayoutToggleEntry::Layout(_)))
+                    });
+                match next {
+                    Some(LayoutToggleEntry::Split) => {
+                        self.toggle_layout_split(target);
+                        return;
+                    }
+                    Some(LayoutToggleEntry::Layout(layout)) => {
+                        let Some(layout) = tree_layout(*layout) else {
+                            return;
+                        };
+                        layout
+                    }
+                    None => return,
+                }
+            }
+        };
+        self.set_layout_for_command(target, next);
+    }
+
     pub fn toggle_focused_layout_split(&mut self) {
         let Some(target) = self.focused_layout_target() else {
             return;
         };
+        self.toggle_layout_split(target);
+    }
+
+    fn toggle_layout_split(&mut self, target: NodeId) {
         let layout = match self.nodes.get(&target).map(|node| &node.value) {
             Some(TreeNode::Split {
                 layout: Layout::SplitH,

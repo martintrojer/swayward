@@ -24,6 +24,20 @@ pub enum Layout {
     ToggleSplit,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LayoutToggle {
+    Default,
+    Split,
+    All,
+    Cycle(Vec<LayoutToggleEntry>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LayoutToggleEntry {
+    Split,
+    Layout(Layout),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResizeAxis {
     Width,
@@ -63,6 +77,7 @@ pub enum Command {
     MoveScratchpad,
     ScratchpadShow,
     Layout(Layout),
+    LayoutToggle(LayoutToggle),
     Split(Option<Layout>),
     Fullscreen {
         mode: Toggle,
@@ -282,7 +297,7 @@ fn parse_one(input: &str) -> Result<Command, String> {
     match name.to_ascii_lowercase().as_str() {
         "focus" => parse_focus(rest),
         "move" => parse_move(rest),
-        "layout" => parse_layout(rest).map(Command::Layout),
+        "layout" => parse_layout(rest),
         "split" => parse_split(rest),
         "fullscreen" => parse_fullscreen(rest),
         "floating" => one(rest, "floating <enable|disable|toggle>")
@@ -393,21 +408,48 @@ fn parse_move(args: &[&str]) -> Result<Command, String> {
     Ok(Command::MoveToWorkspace(target))
 }
 
-fn parse_layout(args: &[&str]) -> Result<Layout, String> {
-    match args {
-        [layout] if layout.eq_ignore_ascii_case("splith") => Ok(Layout::SplitH),
-        [layout] if layout.eq_ignore_ascii_case("splitv") => Ok(Layout::SplitV),
-        [layout] if layout.eq_ignore_ascii_case("tabbed") => Ok(Layout::Tabbed),
-        [layout] if matches!(layout.to_ascii_lowercase().as_str(), "stacked" | "stacking") => {
-            Ok(Layout::Stacked)
+fn parse_layout(args: &[&str]) -> Result<Command, String> {
+    let direct = |layout: &str| match layout.to_ascii_lowercase().as_str() {
+        "splith" => Some(Layout::SplitH),
+        "splitv" => Some(Layout::SplitV),
+        "tabbed" => Some(Layout::Tabbed),
+        "stacked" | "stacking" => Some(Layout::Stacked),
+        _ => None,
+    };
+    if let [layout] = args {
+        if let Some(layout) = direct(layout) {
+            return Ok(Command::Layout(layout));
         }
-        [toggle, split]
-            if toggle.eq_ignore_ascii_case("toggle") && split.eq_ignore_ascii_case("split") =>
-        {
-            Ok(Layout::ToggleSplit)
-        }
-        _ => Err("Expected 'layout <splith|splitv|tabbed|stacked|toggle split>'".into()),
     }
+    let [toggle, rest @ ..] = args else {
+        return Err("Expected 'layout <splith|splitv|tabbed|stacking|toggle>'".into());
+    };
+    if !toggle.eq_ignore_ascii_case("toggle") {
+        return Err("Expected 'layout <splith|splitv|tabbed|stacking|toggle>'".into());
+    }
+    let toggle = match rest {
+        [] => LayoutToggle::Default,
+        ["split"] => LayoutToggle::Split,
+        ["all"] => LayoutToggle::All,
+        [_] => return Err("Expected 'layout toggle [split|all]' or a list of layouts".into()),
+        entries => {
+            let cycle = entries
+                .iter()
+                .filter_map(|entry| {
+                    if entry.eq_ignore_ascii_case("split") {
+                        Some(LayoutToggleEntry::Split)
+                    } else {
+                        direct(entry).map(LayoutToggleEntry::Layout)
+                    }
+                })
+                .collect::<Vec<_>>();
+            if cycle.is_empty() {
+                return Err("Expected a valid layout in the toggle list".into());
+            }
+            LayoutToggle::Cycle(cycle)
+        }
+    };
+    Ok(Command::LayoutToggle(toggle))
 }
 
 fn parse_split(args: &[&str]) -> Result<Command, String> {

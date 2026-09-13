@@ -2760,6 +2760,12 @@ impl<W: LayoutElement> Layout<W> {
         }
     }
 
+    pub fn toggle_focused_layout(&mut self, toggle: &swayward_ipc::command::LayoutToggle) {
+        if let Some(workspace) = self.active_workspace_mut() {
+            workspace.toggle_focused_layout(toggle);
+        }
+    }
+
     pub fn toggle_focused_layout_split(&mut self) {
         if let Some(workspace) = self.active_workspace_mut() {
             workspace.toggle_focused_layout_split();

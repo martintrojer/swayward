@@ -1,8 +1,8 @@
 use swayward_config::Action;
 use swayward_ipc::command::parse_error;
 pub use swayward_ipc::command::{
-    parse, Command, Direction, Layout, ParsedCommand, ResizeAxis, ResizeUnit, Toggle,
-    WorkspaceTarget,
+    parse, Command, Direction, Layout, LayoutToggle, LayoutToggleEntry, ParsedCommand, ResizeAxis,
+    ResizeUnit, Toggle, WorkspaceTarget,
 };
 use swayward_ipc::legacy::SizeChange;
 use swayward_ipc::{criteria, CommandOutcome};
@@ -141,6 +141,19 @@ fn execute_one(
                     });
                 }
             }
+            state.swayward.queue_redraw_all();
+            None
+        }
+        Command::LayoutToggle(cycle) => {
+            if state
+                .swayward
+                .layout
+                .active_workspace()
+                .is_some_and(|workspace| workspace.floating_is_active())
+            {
+                return failure("Unable to change layout of floating windows");
+            }
+            state.swayward.layout.toggle_focused_layout(&cycle);
             state.swayward.queue_redraw_all();
             None
         }
@@ -707,7 +720,32 @@ mod tests {
         assert_eq!(command("layout stacked"), Command::Layout(Layout::Stacked));
         assert_eq!(
             command("layout toggle split"),
-            Command::Layout(Layout::ToggleSplit)
+            Command::LayoutToggle(LayoutToggle::Split)
+        );
+        assert_eq!(
+            command("layout toggle"),
+            Command::LayoutToggle(LayoutToggle::Default)
+        );
+        assert_eq!(
+            command("layout toggle all"),
+            Command::LayoutToggle(LayoutToggle::All)
+        );
+        assert_eq!(
+            command("layout toggle splitv garbage stacking tabbed"),
+            Command::LayoutToggle(LayoutToggle::Cycle(vec![
+                LayoutToggleEntry::Layout(Layout::SplitV),
+                LayoutToggleEntry::Layout(Layout::Stacked),
+                LayoutToggleEntry::Layout(Layout::Tabbed),
+            ]))
+        );
+        assert!(parse("layout toggle stacked")[0].is_err());
+        assert_eq!(
+            command("layout toggle stacking splitv garbage tabbed"),
+            Command::LayoutToggle(LayoutToggle::Cycle(vec![
+                LayoutToggleEntry::Layout(Layout::Stacked),
+                LayoutToggleEntry::Layout(Layout::SplitV),
+                LayoutToggleEntry::Layout(Layout::Tabbed),
+            ]))
         );
         assert_eq!(command("split none"), Command::Split(None));
         assert_eq!(

@@ -1225,6 +1225,12 @@ impl<W: LayoutElement> Workspace<W> {
         }
     }
 
+    pub fn toggle_focused_layout(&mut self, toggle: &swayward_ipc::command::LayoutToggle) {
+        if !self.floating_is_active.get() {
+            self.tiling.toggle_focused_layout(toggle);
+        }
+    }
+
     pub fn toggle_focused_layout_split(&mut self) {
         if !self.floating_is_active.get() {
             self.tiling.toggle_focused_layout_split();
