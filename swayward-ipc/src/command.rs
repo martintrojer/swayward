@@ -371,6 +371,9 @@ fn parse_move(args: &[&str]) -> Result<Command, String> {
         return Ok(Command::MoveDirection { direction, pixels });
     }
     let target = match args {
+        [workspace, rest @ ..] if workspace.eq_ignore_ascii_case("workspace") => {
+            parse_workspace(rest)?
+        }
         [to, workspace, rest @ ..]
             if to.eq_ignore_ascii_case("to") && workspace.eq_ignore_ascii_case("workspace") =>
         {

@@ -2407,32 +2407,116 @@ impl<W: LayoutElement> Layout<W> {
     }
 
     fn activate_relative_sway_workspace(&mut self, next: bool) -> Result<(), String> {
-        let MonitorSet::Normal {
-            monitors,
-            active_monitor_idx,
-            ..
-        } = &mut self.monitor_set
-        else {
+        let Some((output, workspace)) = self.relative_sway_workspace_position(next) else {
             return Err("cannot switch workspaces without an output".into());
         };
-        let current_monitor = *active_monitor_idx;
-        let current_workspace = monitors[current_monitor].active_workspace_idx;
-        let positions = monitors
-            .iter()
-            .enumerate()
-            .flat_map(|(monitor, value)| {
-                value
-                    .workspaces
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, workspace)| workspace.has_windows_or_name())
-                    .map(move |(workspace, _)| (monitor, workspace))
+        if let Some(output) = output {
+            self.focus_output(&output);
+        }
+        self.switch_workspace(workspace);
+        Ok(())
+    }
+
+    fn relative_sway_workspace_position(&self, next: bool) -> Option<(Option<Output>, usize)> {
+        let active = self.active_workspace()?;
+        let current_number = active.number();
+        let positions = self
+            .workspaces()
+            .filter(|(_, _, workspace)| workspace.has_windows_or_name())
+            .map(|(monitor, index, workspace)| {
+                (
+                    monitor.map(|monitor| monitor.output().clone()),
+                    index,
+                    workspace.id(),
+                    workspace.number(),
+                )
             })
             .collect::<Vec<_>>();
         let current = positions
             .iter()
-            .position(|position| *position == (current_monitor, current_workspace))
-            .unwrap_or(0);
+            .position(|(_, _, id, _)| *id == active.id())?;
+
+        let target = if let Some(number) = current_number {
+            let numbered = positions
+                .iter()
+                .filter(|(_, _, _, candidate)| candidate.is_some());
+            let relative = numbered
+                .clone()
+                .filter(|(_, _, _, candidate)| {
+                    candidate.is_some_and(|candidate| {
+                        if next {
+                            candidate > number
+                        } else {
+                            candidate < number
+                        }
+                    })
+                })
+                .min_by_key(|(_, _, _, candidate)| {
+                    candidate.map(|candidate| candidate.abs_diff(number))
+                });
+            relative.or_else(|| {
+                let named = positions
+                    .iter()
+                    .filter(|(_, _, _, candidate)| candidate.is_none());
+                let other = if next {
+                    named.clone().next()
+                } else {
+                    named.clone().next_back()
+                };
+                other.or_else(|| {
+                    if next {
+                        numbered.min_by_key(|(_, _, _, candidate)| *candidate)
+                    } else {
+                        numbered.max_by_key(|(_, _, _, candidate)| *candidate)
+                    }
+                })
+            })
+        } else {
+            let named = positions
+                .iter()
+                .enumerate()
+                .filter(|(_, (_, _, _, number))| number.is_none());
+            let relative = if next {
+                named.clone().find(|(index, _)| *index > current)
+            } else {
+                named.clone().rev().find(|(index, _)| *index < current)
+            };
+            relative.map(|(_, position)| position).or_else(|| {
+                let numbered = positions
+                    .iter()
+                    .filter(|(_, _, _, number)| number.is_some());
+                if next {
+                    numbered.min_by_key(|(_, _, _, number)| *number)
+                } else {
+                    numbered.max_by_key(|(_, _, _, number)| *number)
+                }
+                .or_else(|| {
+                    if next {
+                        named.map(|(_, position)| position).next()
+                    } else {
+                        named.map(|(_, position)| position).next_back()
+                    }
+                })
+            })
+        }?;
+        Some((target.0.clone(), target.1))
+    }
+
+    fn relative_sway_workspace_position_on_output(
+        &self,
+        next: bool,
+    ) -> Option<(Option<Output>, usize)> {
+        let output = self.active_output()?;
+        let monitor = self.monitor_for_output(output)?;
+        let current = monitor.active_workspace_idx;
+        let positions = monitor
+            .workspaces
+            .iter()
+            .enumerate()
+            .filter(|(_, workspace)| workspace.has_windows_or_name())
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        let current = positions.iter().position(|index| *index == current)?;
         let target = if next {
             positions.get(current + 1).or_else(|| positions.first())
         } else {
@@ -2440,31 +2524,30 @@ impl<W: LayoutElement> Layout<W> {
                 .checked_sub(1)
                 .and_then(|index| positions.get(index))
                 .or_else(|| positions.last())
-        };
-        if let Some(&(monitor, workspace)) = target {
-            *active_monitor_idx = monitor;
-            monitors[monitor].activate_workspace(workspace);
-        }
-        Ok(())
+        }?;
+        Some((Some(output.clone()), *target))
     }
 
     pub fn move_to_sway_workspace(
         &mut self,
         target: crate::command::WorkspaceTarget,
     ) -> Result<(), String> {
-        if matches!(
-            target,
-            crate::command::WorkspaceTarget::Next
-                | crate::command::WorkspaceTarget::Prev
-                | crate::command::WorkspaceTarget::NextOnOutput
-                | crate::command::WorkspaceTarget::PrevOnOutput
-        ) {
-            return Err("relative move-to-workspace targets are not implemented yet".into());
-        }
-        let target_position = self.workspaces().find_map(|(monitor, index, workspace)| {
-            workspace_matches_target(workspace, &target)
-                .then(|| (monitor.map(|monitor| monitor.output().clone()), index))
-        });
+        use crate::command::WorkspaceTarget;
+
+        let target_position = match target {
+            WorkspaceTarget::Next | WorkspaceTarget::Prev => {
+                let next = target == WorkspaceTarget::Next;
+                self.relative_sway_workspace_position(next)
+            }
+            WorkspaceTarget::NextOnOutput | WorkspaceTarget::PrevOnOutput => {
+                let next = target == WorkspaceTarget::NextOnOutput;
+                self.relative_sway_workspace_position_on_output(next)
+            }
+            _ => self.workspaces().find_map(|(monitor, index, workspace)| {
+                workspace_matches_target(workspace, &target)
+                    .then(|| (monitor.map(|monitor| monitor.output().clone()), index))
+            }),
+        };
         let (target_output, target_index) = if let Some(position) = target_position {
             position
         } else {

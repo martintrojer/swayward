@@ -40,7 +40,7 @@ report for assertion-level results.
 | `126-regress-close.t` | 1 | pass | `does_i3_live` after closing a floating container. |
 | `130-close-empty-split.t` | 8 | fail | Executable conformance finding. |
 | `152-regress-level-up.t` | 1 | pass | `does_i3_live` after focusing above the workspace tree. |
-| `179-regress-multiple-ws.t` | 6 | fail | `move workspace prev` leaves the window behind; sway resolves `prev` through `workspace_by_name` in `sway/commands/move.c:455-461`, so swayward should move it too. |
+| `179-regress-multiple-ws.t` | 6 | pass | Relative `move workspace prev` resolves against sway's global workspace order before moving. |
 | `192-layout.t` | 34 | fail | Executable conformance finding. |
 | `197-regression-move-vanish.t` | 2 | pass | Moving a child from a split preserves both windows. |
 | `224-regress-resize-branch.t` | 1 | pass | `does_i3_live` after resizing a split container. |
