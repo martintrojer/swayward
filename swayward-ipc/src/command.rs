@@ -485,12 +485,13 @@ fn parse_move(args: &[&str]) -> Result<Command, String> {
 }
 
 fn parse_output(args: &[&str]) -> Result<OutputTarget, String> {
-    let value = one(
-        args,
-        "move [window|container|workspace] [to] output <name|direction>",
-    )?;
+    let Some(value) = args.first() else {
+        return Err(
+            "Expected 'move [window|container|workspace] [to] output <name|direction>'".into(),
+        );
+    };
     Ok(parse_direction(value).map_or_else(
-        || OutputTarget::Name(value.to_owned()),
+        || OutputTarget::Name((*value).to_owned()),
         OutputTarget::Direction,
     ))
 }

@@ -545,7 +545,22 @@ fn output_target(
             (Direction::Down, None) => state.swayward.output_down(),
         },
     };
-    output.ok_or_else(|| "Can't find output with name/direction".into())
+    output.ok_or_else(|| {
+        format!(
+            "Can't find output with name/direction '{}'",
+            output_target_name(target)
+        )
+    })
+}
+
+fn output_target_name(target: &OutputTarget) -> &str {
+    match target {
+        OutputTarget::Name(name) => name,
+        OutputTarget::Direction(Direction::Left) => "left",
+        OutputTarget::Direction(Direction::Right) => "right",
+        OutputTarget::Direction(Direction::Up) => "up",
+        OutputTarget::Direction(Direction::Down) => "down",
+    }
 }
 
 fn select_resize_amount(
@@ -1097,6 +1112,14 @@ mod tests {
         for input in ["focus tiling", "focus floating", "focus mode_toggle"] {
             assert!(parse(input)[0].is_ok(), "{input}");
         }
+    }
+
+    #[test]
+    fn move_output_uses_the_first_target_and_ignores_extra_names() {
+        assert_eq!(
+            command("move window to output fake-1 fake-2"),
+            Command::MoveToOutput(OutputTarget::Name("fake-1".into()))
+        );
     }
 
     #[test]
