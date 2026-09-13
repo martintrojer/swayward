@@ -34,6 +34,7 @@ input type:keyboard {
 }
 output DP-1 resolution 1920x1080 position 10,20 scale 1.5
 for_window [app_id="firefox"] floating enable
+assign [class="^mail$"] → 2: mail
 bar {
     position top
 }
@@ -61,6 +62,8 @@ bindsym $missing+x nop
         self.assertIn("scale 1.5", result.stdout)
         self.assertIn('match app-id="firefox"', result.stdout)
         self.assertIn("open-floating true", result.stdout)
+        self.assertIn('match app-id="^mail$"', result.stdout)
+        self.assertIn('open-on-workspace "2: mail"', result.stdout)
         self.assertIn("bar blocks are unsupported; use waybar", result.stdout)
         self.assertIn("SwayFX blur -> swayward blur", result.stdout)
         self.assertIn("SwayFX corner_radius -> window-rule geometry-corner-radius", result.stdout)
@@ -75,6 +78,15 @@ bindsym $missing+x nop
         self.assertIn("manual attention:", result.stderr)
         for item in result.stderr.splitlines()[1:]:
             self.assertIn(item.strip(), result.stdout)
+
+    def test_x11_class_translates_to_wayland_app_id_without_treating_regex_anchors_as_variables(self):
+        result = self.translate(
+            'for_window [class="^special$"] floating enable, floating disable\n'
+        )
+        self.assertIn('match app-id="^special$"', result.stdout)
+        self.assertNotIn("open-floating true", result.stdout)
+        self.assertIn("open-floating false", result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
 
     def test_duplicate_bind_is_reported_instead_of_silently_overwritten(self):
         result = self.translate("bindsym Mod4+h focus left\nbindsym Mod4+h focus right\n")

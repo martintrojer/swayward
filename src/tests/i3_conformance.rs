@@ -26,7 +26,7 @@ fn socket_path(kind: &str) -> PathBuf {
     ))
 }
 
-fn open_window(fixture: &mut Fixture, client: super::client::ClientId, request: &Value) -> i64 {
+fn create_window(fixture: &mut Fixture, client: super::client::ClientId, request: &Value) -> u32 {
     let window = fixture.client(client).create_window();
     if let Some(app_id) = request["app_id"].as_str() {
         window.xdg_toplevel.set_app_id(app_id.to_owned());
@@ -34,15 +34,34 @@ fn open_window(fixture: &mut Fixture, client: super::client::ClientId, request: 
     if let Some(name) = request["name"].as_str() {
         window.set_title(name);
     }
-    window.commit();
-    let surface = window.surface.clone();
+    window.surface.id().protocol_id()
+}
+
+fn map_window(fixture: &mut Fixture, client: super::client::ClientId, surface_id: u32) -> i64 {
+    let surface = fixture
+        .client(client)
+        .state
+        .windows
+        .iter()
+        .find(|window| window.surface.id().protocol_id() == surface_id)
+        .unwrap()
+        .surface
+        .clone();
+    fixture.client(client).window(&surface).commit();
     fixture.roundtrip(client);
     let window = fixture.client(client).window(&surface);
     window.attach_new_buffer();
     window.ack_last_and_commit();
     fixture.double_roundtrip(client);
-    let mapped = fixture.swayward().layout.focus().unwrap().id();
-    crate::ipc::tree::window_id(mapped)
+    fixture
+        .swayward()
+        .layout
+        .windows()
+        .find_map(|(_, mapped)| {
+            (mapped.toplevel().wl_surface().id().protocol_id() == surface_id)
+                .then(|| crate::ipc::tree::window_id(mapped.id()))
+        })
+        .unwrap()
 }
 
 fn remove_window_for_surface(
@@ -118,6 +137,27 @@ fn close_window(fixture: &mut Fixture, client: super::client::ClientId, id: i64)
     surface_id.is_some_and(|surface_id| remove_window_for_surface(fixture, client, surface_id))
 }
 
+fn translate_config(config: &str) -> Result<swayward_config::Config, String> {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = socket_path("config");
+    std::fs::write(&path, config).map_err(|error| error.to_string())?;
+    let output = Command::new(root.join("contrib/sway-to-kdl"))
+        .arg(&path)
+        .output()
+        .map_err(|error| error.to_string());
+    let _ = std::fs::remove_file(&path);
+    let output = output?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).into_owned());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !stderr.trim().eq("manual attention: none") {
+        return Err(format!("i3 config translation was incomplete:\n{stderr}"));
+    }
+    let translated = String::from_utf8(output.stdout).map_err(|error| error.to_string())?;
+    swayward_config::Config::parse_mem(&translated).map_err(|error| format!("{error:?}"))
+}
+
 fn handle_control(fixture: &mut Fixture, client: super::client::ClientId, stream: UnixStream) {
     let mut request = String::new();
     BufReader::new(stream.try_clone().unwrap())
@@ -125,7 +165,21 @@ fn handle_control(fixture: &mut Fixture, client: super::client::ClientId, stream
         .unwrap();
     let request: Value = serde_json::from_str(&request).unwrap();
     let reply = match request["action"].as_str().unwrap() {
-        "open" => json!({ "id": open_window(fixture, client, &request) }),
+        "config" => match translate_config(request["config"].as_str().unwrap()) {
+            Ok(config) => {
+                fixture.niri_state().reload_config(Ok(config));
+                json!({ "success": true })
+            }
+            Err(error) => json!({ "success": false, "error": error }),
+        },
+        "create" => json!({ "handle": create_window(fixture, client, &request) }),
+        "open" => {
+            let handle = create_window(fixture, client, &request);
+            json!({ "id": map_window(fixture, client, handle) })
+        }
+        "map" => json!({
+            "id": map_window(fixture, client, request["handle"].as_u64().unwrap() as u32)
+        }),
         "close" => {
             json!({ "success": close_window(fixture, client, request["id"].as_i64().unwrap()) })
         }
@@ -214,6 +268,13 @@ fn run_i3_test(test: &str) {
 /// list in its own file rather than in this runner lets slices land in
 /// parallel without editing the same Rust source.
 const PASSING: &str = include_str!("../../tests/i3/passing.txt");
+
+#[test]
+fn i3_config_translation_rejects_unhandled_directives() {
+    let error = translate_config("font monospace\nmystery value\n").unwrap_err();
+    assert!(error.contains("manual attention: 1 directive(s)"));
+    assert!(error.contains("unhandled: mystery value"));
+}
 
 fn passing_tests() -> impl Iterator<Item = &'static str> {
     PASSING

@@ -22,6 +22,24 @@ intermediate states or clients that delay or omit configure acknowledgements.
 `open_empty_con` also creates a real Wayland window because swayward cannot
 create an empty container through IPC.
 
+For an `i3_config` import, the adapter sends the complete config to the Rust
+runner. The runner translates it with the shipped `contrib/sway-to-kdl` tool and
+refuses to run if the translator reports any manual-attention item. The current
+adapter maps X11 `class` criteria to Wayland `app_id` criteria. It supports
+`assign` and the `floating enable` or `floating disable` subset of `for_window`.
+It does not silently discard unsupported directives.
+
+The adapter also preserves `open_window(dont_map => 1)`: it creates the
+`xdg_toplevel` without committing the surface, and the test's later `map` call
+performs the initial commit, configure acknowledgment, and buffer attachment.
+
+The adapter cannot reproduce a compositor restart. Rebuilding `Fixture` destroys
+its Wayland clients and windows, while `State::reload_config` preserves them and
+is not a restart. Tests that depend on state surviving a restart remain
+unproven. In particular, `176-workspace-baf.t` launches two compositor
+configurations and later verifies back-and-forth state across `restart`; using
+reload for either transition would test a weaker lifecycle.
+
 The adapter cannot reproduce i3's `open_window(rect => [x, y, width, height])`
 input. The i3 helper passes that rectangle when it creates an X11 child window
 (`i3/testcases/lib/i3test.pm.in:313-350`). An `xdg_toplevel` client can set its
@@ -67,7 +85,7 @@ without fabricating a tree that real sway clients do not see. See
 | `152-regress-level-up.t` | 1 | pass | `does_i3_live` after focusing above the workspace tree. |
 | `115-ipc-workspaces.t` | 8 | 8 fail | Workspace creation emits one generic `reload` event instead of sway's `init`, `focus`, and `empty` sequence. Sway emits those events at `sway/tree/workspace.c:268`, its focus path, and `sway/tree/workspace.c:301`; their payloads use `sway/sway/ipc-server.c:295-320`. |
 | `117-workspace.t` | 92 | 88 pass; 1 fail; 3 skip | A temporary direct-workspace diagnostic reached all assertions. Assertion 28 remains the negative-number serialization bug owned by its separate task. The upstream file stalls at its i3-only output `content` lookup (`sway/sway/ipc-json.c:869-874`); direct workspace nodes prove assertions 51, 57, 63, and 69, while assertion 75 cannot compare the same hierarchy. Assertions 81 and 92 expect i3 rename parsing and case-only spelling changes that sway deliberately does not perform (`sway/commands/rename.c:36-38,66-92`). |
-| `176-workspace-baf.t` | 26 | unproven | The file launches two compositor configurations, changes `workspace_auto_back_and_forth`, and restarts i3. The headless adapter runs one fixed compositor and has no launch, configuration-reload, or restart lifecycle, so it cannot ask these assertions without changing their inputs. |
+| `176-workspace-baf.t` | 26 | unproven | The file launches two compositor configurations, changes `workspace_auto_back_and_forth`, and restarts i3. Rebuilding `Fixture` destroys its Wayland clients and windows; `State::reload_config` preserves them and is not a compositor restart. Substituting either lifecycle would change the test's input. |
 | `178-regress-workspace-open.t` | 1 | pass | An inactive named workspace is removed after its final window closes. |
 | `179-regress-multiple-ws.t` | 6 | pass | Relative `move workspace prev` resolves against sway's global workspace order before moving. |
 | `191-resize-levels.t` | 3 | pass | Container split preserves the selected branch, so directional resize skips an unusable inner boundary and reaches the ancestor boundary, matching `sway/commands/resize.c:45-72`. |
@@ -84,7 +102,7 @@ without fabricating a tree that real sway clients do not see. See
 | `173-get-marks.t` | 3 | pass | `GET_MARKS` starts empty, includes a new mark, and drops the mark when its window closes. |
 | `210-mark-unmark.t` | 17 | finished: 6 pass; 11 skip | Assertions 7–13 and 16–17 identify X11 windows through the `window` field, which sway emits only for Xwayland views (`sway/sway/ipc-json.c:670-683`); direct Wayland-node diagnostics pass these nine mark and toggle checks. Assertions 14, 15, and 17 expect i3 to reject one mark applied to several matches, while sway runs the command for each match and moves the duplicate mark to the last container (`sway/sway/commands.c:301-326`, `sway/sway/commands/mark.c:46-58`). Assertion 17 belongs to both sets. |
 | `119-match.t` | 27 | finished: 24 pass; 3 skip | Assertions 12 and 17 use X11 `class`; sway exposes `class` only for Xwayland and uses `app_id` for native Wayland views (`sway/sway/criteria.c:243-259,355-390`). Temporary `app_id` diagnostics pass both. Assertion 22 exposes a real criteria-parser bug: swayward strips the backslash from PCRE2 `\w`, while sway compiles the original value (`sway/sway/criteria.c:49-53,115-119`). |
-| `208-regress-floating-criteria.t` | 1 | unproven | The test requires startup `assign` and `for_window` configuration plus a window created unmapped and mapped later. The adapter ignores `i3_config` and `dont_map`, so it cannot reach the assertion. |
+| `208-regress-floating-criteria.t` | 1 | pass | The translator converts all three directives used by the test: `font`, X11-class `assign`, and X11-class `for_window`. The adapter creates the `xdg_toplevel` without mapping it until the test calls `map`; the criteria chain then runs before focus. The final X11-class focus command is rejected, but `does_i3_live` intentionally asserts only that this historical command sequence does not crash. |
 
 ## Coverage
 

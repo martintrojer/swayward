@@ -60,6 +60,13 @@ sub import {
     my $pkg = caller;
     strict->import;
     warnings->import;
+    if (defined($args{i3_config}) && $args{i3_config} ne '-default') {
+        my $config = $args{i3_config};
+        $config =~ s/ \] /\$\"] /g;
+        $config = decode_utf8($config) unless utf8::is_utf8($config);
+        my $reply = _control({ action => 'config', config => $config });
+        die $reply->{error} unless $reply->{success};
+    }
     $class->export_to_level(1, $class);
 }
 
@@ -183,11 +190,13 @@ sub open_window {
     my $class = $args{wm_class} // $name;
     $name = decode_utf8($name) unless utf8::is_utf8($name);
     $class = decode_utf8($class) unless utf8::is_utf8($class);
-    return X11::XCB::Window->new(_control({
-        action => 'open',
+    my $window = X11::XCB::Window->new(_control({
+        action => 'create',
         name => $name,
         app_id => $class,
     }));
+    $window->map unless $args{dont_map};
+    return $window;
 }
 
 sub get_workspace_names {
@@ -286,6 +295,13 @@ sub _find_window {
 package X11::XCB::Window;
 sub new { bless $_[1], $_[0] }
 sub id { $_[0]->{id} }
+sub map {
+    my ($self) = @_;
+    return $self if defined($self->{id});
+    my $reply = i3test::_control({ action => 'map', handle => $self->{handle} });
+    $self->{id} = $reply->{id};
+    return $self;
+}
 sub _node { (i3test::_find_window(i3test::_request(4), $_[0]->{id}, 0))[0] }
 sub rect {
     my $node = $_[0]->_node;
@@ -293,6 +309,10 @@ sub rect {
 }
 sub mapped { (i3test::_find_window(i3test::_request(4), $_[0]->{id}, 0))[1] }
 sub unmap { $_[0]->destroy }
-sub destroy { i3test::_control({ action => 'close', id => $_[0]->{id} }) }
+sub destroy {
+    my ($self) = @_;
+    return unless defined($self->{id});
+    i3test::_control({ action => 'close', id => $self->{id} });
+}
 
 1;

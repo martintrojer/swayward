@@ -66,13 +66,13 @@ class Translator:
 
             if match := re.fullmatch(r"set\s+(\$\w+)\s+(.+)", text):
                 value = self.expand(match.group(2).strip())
-                if "$" in value:
+                if re.search(r"\$\w+", value):
                     self.warn(path, line_no, text, "variable value could not be fully expanded")
                 else:
                     self.variables[match.group(1)] = value
                 continue
             text = self.expand(text)
-            if "$" in text:
+            if re.search(r"\$\w+", text):
                 self.warn(path, line_no, text, "undefined variable")
                 continue
 
@@ -102,6 +102,8 @@ class Translator:
                 self.translate_bind(path, line_no, match.group(1), match.group(2))
             elif match := re.match(r"for_window\s+(\[[^]]+\])\s+(.+)", text):
                 self.translate_for_window(path, line_no, match.group(1), match.group(2))
+            elif match := re.match(r"assign\s+(\[[^]]+\])\s+(?:→|->)?\s*(.+)", text):
+                self.translate_assign(path, line_no, match.group(1), match.group(2))
             elif match := re.fullmatch(r"font\s+(?:pango:)?(.+)", text):
                 self.titlebar_font = match.group(1)
             elif match := re.fullmatch(
@@ -240,24 +242,47 @@ class Translator:
             return None
         return command
 
-    def translate_for_window(
-        self, source: Path, line: int, criteria: str, command: str
+    def translate_assign(
+        self, source: Path, line: int, criteria: str, workspace: str
     ) -> None:
-        if not re.fullmatch(r'\[app_id="[^"]+"\]', criteria):
+        app_id = self.translate_window_criteria(source, line, "assign", criteria)
+        if app_id is None:
+            return
+        self.sections += [
+            "window-rule {",
+            f"    match app-id={self.quote(app_id)}",
+            f"    open-on-workspace {self.quote(workspace.strip(chr(34)))}",
+            "}",
+        ]
+
+    def translate_window_criteria(
+        self, source: Path, line: int, directive: str, criteria: str
+    ) -> str | None:
+        match = re.fullmatch(r'\[(app_id|class)="([^"]+)"\]', criteria)
+        if match is None:
             self.warn(
                 source,
                 line,
-                f"for_window {criteria} {command}",
+                f"{directive} {criteria}",
                 "criteria need manual conversion to a window-rule match",
             )
+            return None
+        return match.group(2)
+
+    def translate_for_window(
+        self, source: Path, line: int, criteria: str, command: str
+    ) -> None:
+        app_id = self.translate_window_criteria(source, line, "for_window", criteria)
+        if app_id is None:
             return
-        app_id = criteria.removeprefix('[app_id="').removesuffix('"]')
         effects: list[str] = []
         for directive in re.split(r"\s*,\s*|\s*;\s*", command):
             words = directive.split()
             if words == ["floating", "enable"]:
+                effects = [effect for effect in effects if not effect.startswith("    open-floating ")]
                 effects.append("    open-floating true")
             elif words == ["floating", "disable"]:
+                effects = [effect for effect in effects if not effect.startswith("    open-floating ")]
                 effects.append("    open-floating false")
             elif words[:1] == ["dim_inactive"] and len(words) == 2:
                 effects.append(f"    opacity {1.0 - float(words[1]):g}")
