@@ -452,6 +452,51 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
             identifier,
         } => mark_target(state, target, identifier, *add, *toggle),
         Command::Unmark(identifier) => unmark_target(state, target, identifier.as_deref()),
+        Command::MoveScratchpad => {
+            let CommandTarget::Window(target) = target else {
+                return failure("command requires a window target");
+            };
+            let window = state
+                .swayward
+                .layout
+                .windows()
+                .find_map(|(_, mapped)| (mapped.id() == target).then(|| mapped.window.clone()));
+            let Some(window) = window else {
+                return failure("No matching node.");
+            };
+            state.swayward.layout.move_to_scratchpad(Some(&window));
+            state.swayward.queue_redraw_all();
+        }
+        Command::ScratchpadShow => {
+            let CommandTarget::Window(target) = target else {
+                return failure("command requires a window target");
+            };
+            let window = state
+                .swayward
+                .layout
+                .windows()
+                .find_map(|(_, mapped)| (mapped.id() == target).then(|| mapped.window.clone()));
+            let Some(window) = window else {
+                return failure("No matching node.");
+            };
+            if !state.swayward.layout.is_scratchpad_window(&window) {
+                return failure("Container is not in scratchpad.");
+            }
+            let shown = state.swayward.layout.show_scratchpad(Some(&window));
+            if let (Some(server), Some(shown)) = (&state.swayward.ipc_server, shown) {
+                let id = state
+                    .swayward
+                    .layout
+                    .windows()
+                    .find_map(|(_, mapped)| (mapped.window == shown).then(|| mapped.id()));
+                if let Some(id) = id {
+                    server.send_event(swayward_ipc::legacy::Event::WindowMoved {
+                        id: crate::ipc::tree::window_id(id),
+                    });
+                }
+            }
+            state.swayward.queue_redraw_all();
+        }
         Command::Fullscreen {
             mode,
             global: false,
