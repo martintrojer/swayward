@@ -114,19 +114,10 @@ pub fn describe_workspaces(
                 name,
                 nodes: vec![],
                 num: workspace.number().unwrap_or_else(|| {
-                    workspace
-                        .name()
-                        .and_then(|name| {
-                            name.split_once(':')
-                                .map_or(name.as_str(), |(prefix, _)| prefix)
-                                .parse()
-                                .ok()
-                        })
-                        .unwrap_or_else(|| {
-                            workspace
-                                .name()
-                                .map_or_else(|| i32::try_from(index + 1).unwrap_or(-1), |_| -1)
-                        })
+                    workspace.name().map_or_else(
+                        || i32::try_from(index + 1).unwrap_or(-1),
+                        |name| crate::layout::sway_workspace_num(name),
+                    )
                 }),
                 orientation,
                 output: monitor.output_name().clone(),
@@ -376,19 +367,10 @@ fn describe_workspace_node(
         focused,
         NodeProperties::Workspace(swayward_ipc::WorkspaceProperties {
             num: workspace.number().unwrap_or_else(|| {
-                workspace
-                    .name()
-                    .and_then(|name| {
-                        name.split_once(':')
-                            .map_or(name.as_str(), |(prefix, _)| prefix)
-                            .parse()
-                            .ok()
-                    })
-                    .unwrap_or_else(|| {
-                        workspace
-                            .name()
-                            .map_or_else(|| i32::try_from(index + 1).unwrap_or(-1), |_| -1)
-                    })
+                workspace.name().map_or_else(
+                    || i32::try_from(index + 1).unwrap_or(-1),
+                    |name| crate::layout::sway_workspace_num(name),
+                )
             }),
             output: output.into(),
             representation,

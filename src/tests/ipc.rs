@@ -1854,6 +1854,30 @@ fn named_workspace_has_no_number_and_active_empty_workspace_remains_visible() {
 }
 
 #[test]
+fn negative_and_unnumbered_workspace_names_report_minus_one_without_affecting_order() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+
+    for workspace in ["mail", "-42: negative", "7: numbered"] {
+        assert!(
+            crate::command::execute(f.niri_state(), &format!("workspace {workspace}"))[0].success
+        );
+    }
+    assert!(crate::command::execute(f.niri_state(), "rename workspace mail to inbox")[0].success);
+    f.niri_state().ipc_refresh_layout();
+
+    let swayward = f.swayward();
+    let workspaces = describe_workspaces(&swayward.layout, &swayward.global_space);
+    assert_eq!(
+        workspaces
+            .iter()
+            .map(|workspace| (workspace.name.as_str(), workspace.num))
+            .collect::<Vec<_>>(),
+        [("7: numbered", 7), ("inbox", -1), ("-42: negative", -1)]
+    );
+}
+
+#[test]
 fn relative_move_includes_empty_active_workspace_and_uses_direction() {
     for (source, direction) in [(1, "next"), (3, "prev")] {
         let mut f = Fixture::new();

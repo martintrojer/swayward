@@ -732,6 +732,10 @@ fn parse_workspace_num(name: &str) -> Option<i32> {
     (end > 0).then(|| name[..end].parse().ok()).flatten()
 }
 
+pub(crate) fn sway_workspace_num(name: &str) -> i32 {
+    parse_workspace_num(name).unwrap_or(-1)
+}
+
 fn workspace_matches_target<W: LayoutElement>(
     workspace: &Workspace<W>,
     target: &crate::command::WorkspaceTarget,

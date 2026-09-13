@@ -27,7 +27,7 @@ src/layout/mod.rs — export `tiling_tree` and apply cargo-fmt import reordering
 src/layout/floating.rs, src/layout/mod.rs, src/layout/workspace.rs — route sway directional resize commands to a specific floating or tiled edge and wrap directional focus among floating window centers while retaining niri's configure-driven floating resize model.
 src/layout/workspace.rs — replace the scrolling tiling field and render element with TilingTree while preserving FloatingSpace.
 src/layout/monitor.rs, src/layout/mod.rs — transfer focused tree tiles rather than concrete scrolling columns between workspaces and outputs.
-src/ipc/server.rs, src/ipc/tree.rs — serve sway GET_TREE, GET_WORKSPACES, and GET_OUTPUTS from live compositor state, including workspace focus membership and back-to-front stacking order for floating children, instead of niri IPC requests.
+src/ipc/server.rs, src/ipc/tree.rs — serve sway GET_TREE, GET_WORKSPACES, and GET_OUTPUTS from live compositor state, including workspace focus membership, sway-compatible workspace number parsing, and back-to-front stacking order for floating children, instead of niri IPC requests.
 src/layout/workspace.rs — expose a read-only TilingTree snapshot for sway GET_TREE serialization.
 src/handlers/compositor.rs, src/swayward.rs — apply for_window commands when a toplevel maps and remove its marks when it unmaps.
 src/layout/mod.rs, src/handlers/mod.rs, src/protocols/foreign_toplevel.rs — store sway scratchpad windows and map foreign-toplevel minimize requests to hide/show them.
