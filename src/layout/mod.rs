@@ -2024,6 +2024,18 @@ impl<W: LayoutElement> Layout<W> {
         workspace.consume_or_expel_window_right(window);
     }
 
+    pub fn focus_parent(&mut self) {
+        if let Some(workspace) = self.active_workspace_mut() {
+            workspace.focus_parent();
+        }
+    }
+
+    pub fn focus_child(&mut self) {
+        if let Some(workspace) = self.active_workspace_mut() {
+            workspace.focus_child();
+        }
+    }
+
     pub fn focus_left(&mut self) {
         let Some(workspace) = self.active_workspace_mut() else {
             return;

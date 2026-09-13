@@ -551,6 +551,51 @@ fn live_ipc_descriptions_match_sway_schema() {
 }
 
 #[test]
+fn focus_parent_then_layout_targets_the_whole_subtree() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+
+    for command in [None, Some("split v")] {
+        if let Some(command) = command {
+            assert!(crate::command::execute(f.niri_state(), command)[0].success);
+        }
+        let window = f.client(client).create_window();
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+
+    assert!(crate::command::execute(f.niri_state(), "focus parent")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "layout tabbed")[0].success);
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &Default::default(),
+    ))
+    .unwrap();
+    let workspace = &tree["nodes"][1]["nodes"][0];
+    let focused = workspace["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["focused"] == true)
+        .unwrap();
+    assert_eq!(focused["layout"], "tabbed");
+    assert_eq!(focused["nodes"].as_array().unwrap().len(), 2);
+    assert!(focused["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|node| node["focused"] == false));
+}
+
+#[test]
 fn scratchpad_hides_focused_window_and_show_cycles_windows() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));
@@ -806,6 +851,7 @@ fn stale_tree_leaf_is_omitted_without_panicking() {
         id: NodeId(1),
         window: (),
         percent: Some(1.),
+        focused: false,
         rect: Default::default(),
     };
     assert!(crate::ipc::tree::describe_tiling(
@@ -821,10 +867,12 @@ fn stale_tree_leaf_is_omitted_without_panicking() {
         layout: TreeLayout::SplitH,
         percent: None,
         focus: vec![NodeId(1)],
+        focused: false,
         children: vec![IpcNode::Leaf {
             id: NodeId(1),
             window: (),
             percent: Some(1.),
+            focused: false,
             rect: Default::default(),
         }],
     };

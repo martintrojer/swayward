@@ -48,12 +48,14 @@ pub enum IpcNode<I> {
         layout: Layout,
         percent: Option<f64>,
         focus: Vec<NodeId>,
+        focused: bool,
         children: Vec<IpcNode<I>>,
     },
     Leaf {
         id: NodeId,
         window: I,
         percent: Option<f64>,
+        focused: bool,
         rect: Rectangle<f64, Logical>,
     },
 }
@@ -395,7 +397,7 @@ impl<W: LayoutElement> TilingTree<W> {
             self.remove_child(parent, id);
             self.collapse_from(parent);
         }
-        if self.focus == Some(id) {
+        if self.focus == Some(id) || self.windows().next().is_none() {
             self.set_focus_id(self.first_leaf());
         }
         self.animate_geometry_changes(old_geometries, None);
@@ -415,11 +417,43 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub fn set_focus(&mut self, id: NodeId) {
-        if matches!(
-            self.nodes.get(&id).map(|node| &node.value),
-            Some(TreeNode::Leaf { .. })
-        ) {
+        if self.nodes.contains_key(&id) {
             self.set_focus_id(Some(id));
+        }
+    }
+
+    pub fn focus_parent(&mut self) -> bool {
+        let Some(parent) = self.focus.and_then(|focus| self.nodes.get(&focus)?.parent) else {
+            return false;
+        };
+        self.set_focus_id(Some(parent));
+        true
+    }
+
+    pub fn focus_child(&mut self) -> bool {
+        let Some(focus) = self.focus else {
+            return false;
+        };
+        let Some(TreeNode::Split { children, .. }) = self.nodes.get(&focus).map(|node| &node.value)
+        else {
+            return false;
+        };
+        let child = self
+            .focus_history
+            .iter()
+            .filter(|candidate| **candidate != focus)
+            .find_map(|candidate| {
+                children
+                    .iter()
+                    .copied()
+                    .find(|child| self.is_descendant(*candidate, *child))
+            })
+            .or_else(|| children.first().copied());
+        if let Some(child) = child {
+            self.set_focus_id(Some(child));
+            true
+        } else {
+            false
         }
     }
 
@@ -951,11 +985,17 @@ impl<W: LayoutElement> TilingTree<W> {
 
     pub fn set_focused_layout(&mut self, layout: Layout) {
         let Some(focus) = self.focus else { return };
-        let target = self
-            .nodes
-            .get(&focus)
-            .and_then(|node| node.parent)
-            .unwrap_or(focus);
+        let target = if matches!(
+            self.nodes.get(&focus).map(|node| &node.value),
+            Some(TreeNode::Split { .. })
+        ) {
+            focus
+        } else {
+            self.nodes
+                .get(&focus)
+                .and_then(|node| node.parent)
+                .unwrap_or(focus)
+        };
         self.set_layout(target, layout);
     }
 
@@ -967,11 +1007,17 @@ impl<W: LayoutElement> TilingTree<W> {
 
     pub fn toggle_focused_split(&mut self) {
         let Some(focus) = self.focus else { return };
-        let target = self
-            .nodes
-            .get(&focus)
-            .and_then(|node| node.parent)
-            .unwrap_or(focus);
+        let target = if matches!(
+            self.nodes.get(&focus).map(|node| &node.value),
+            Some(TreeNode::Split { .. })
+        ) {
+            focus
+        } else {
+            self.nodes
+                .get(&focus)
+                .and_then(|node| node.parent)
+                .unwrap_or(focus)
+        };
         let layout = match self.nodes.get(&target).map(|node| &node.value) {
             Some(TreeNode::Split {
                 layout: Layout::SplitH,
@@ -1596,6 +1642,7 @@ impl<W: LayoutElement> TilingTree<W> {
                             }
                             focus
                         }),
+                    focused: tree.focus == Some(id),
                     children: children
                         .iter()
                         .zip(percents)
@@ -1606,6 +1653,7 @@ impl<W: LayoutElement> TilingTree<W> {
                     id,
                     window: tile.window().id().clone(),
                     percent,
+                    focused: tree.focus == Some(id),
                     rect: geometries[&id],
                 },
             }
@@ -1651,10 +1699,8 @@ impl<W: LayoutElement> TilingTree<W> {
         self.check_node(self.root, &mut seen);
         assert_eq!(seen.len(), self.nodes.len(), "unreachable nodes in arena");
         if let Some(focus) = self.focus {
-            assert!(matches!(
-                self.nodes.get(&focus).map(|node| &node.value),
-                Some(TreeNode::Leaf { .. })
-            ));
+            assert!(self.nodes.contains_key(&focus));
+            assert!(self.windows().next().is_some());
         } else {
             assert!(self.windows().next().is_none());
         }
@@ -1932,7 +1978,11 @@ impl<W: LayoutElement> TilingTree<W> {
             }
             let Some(parent) = parent else { return };
             if empty {
+                if self.focus == Some(id) {
+                    self.set_focus_id(Some(parent));
+                }
                 self.nodes.remove(&id);
+                self.focus_history.retain(|candidate| *candidate != id);
                 self.remove_child(parent, id);
                 id = parent;
                 continue;
@@ -1952,7 +2002,11 @@ impl<W: LayoutElement> TilingTree<W> {
             };
             children[index] = child;
             self.nodes.get_mut(&child).unwrap().parent = Some(parent);
+            if self.focus == Some(id) {
+                self.set_focus_id(Some(child));
+            }
             self.nodes.remove(&id);
+            self.focus_history.retain(|candidate| *candidate != id);
             id = parent;
         }
     }

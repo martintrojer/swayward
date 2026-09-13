@@ -950,6 +950,14 @@ impl<W: LayoutElement> Workspace<W> {
         }
     }
 
+    pub fn focus_parent(&mut self) -> bool {
+        !self.floating_is_active.get() && self.tiling.focus_parent()
+    }
+
+    pub fn focus_child(&mut self) -> bool {
+        !self.floating_is_active.get() && self.tiling.focus_child()
+    }
+
     pub fn focus_left(&mut self) -> bool {
         if self.floating_is_active.get() {
             self.floating.focus_left()

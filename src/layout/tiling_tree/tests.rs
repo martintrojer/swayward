@@ -214,6 +214,67 @@ fn removing_a_sibling_collapses_the_implicit_container() {
 }
 
 #[test]
+fn parent_and_child_focus_walk_the_tree_and_layout_the_selected_subtree() {
+    let mut t = tree((1200., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let second = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.split(second, Layout::SplitV);
+    let third = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+    let nested = t.nodes[&third].parent.unwrap();
+
+    assert!(t.focus_parent());
+    assert_eq!(t.focus(), Some(nested));
+    let IpcNode::Split { children, .. } = t.ipc_tree() else {
+        panic!("root must be a split");
+    };
+    assert!(matches!(
+        &children[1],
+        IpcNode::Split {
+            id,
+            focused: true,
+            children,
+            ..
+        } if *id == nested && children.iter().all(|child| matches!(child, IpcNode::Leaf { focused: false, .. }))
+    ));
+    t.set_focused_layout(Layout::Tabbed);
+    assert!(matches!(
+        t.nodes[&nested].value,
+        TreeNode::Split {
+            layout: Layout::Tabbed,
+            ..
+        }
+    ));
+    assert!(t.focus_parent());
+    assert_eq!(t.focus(), Some(t.root));
+    assert!(!t.focus_parent());
+    assert!(t.focus_child());
+    assert_eq!(t.focus(), Some(nested));
+    assert!(t.focus_child());
+    assert_eq!(t.focus(), Some(third));
+    assert!(!t.focus_child());
+    assert!(t.geometry(first).is_some());
+    t.check_invariants();
+}
+
+#[test]
+fn focus_child_uses_the_most_recent_descendant() {
+    let mut t = tree((1200., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let second = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.split(second, Layout::SplitV);
+    let third = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+    let nested = t.nodes[&third].parent.unwrap();
+    t.set_focus(second);
+
+    assert!(t.focus_parent());
+    assert_eq!(t.focus(), Some(nested));
+    assert!(t.focus_child());
+    assert_eq!(t.focus(), Some(second));
+    assert!(t.geometry(first).is_some());
+    t.check_invariants();
+}
+
+#[test]
 fn directional_move_reorders_siblings_and_stops_at_tree_edge() {
     let mut t = tree((1200., 800.), 0.);
     let a = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
@@ -581,6 +642,8 @@ enum Op {
     Split(usize, Layout),
     SetLayout(usize, Layout),
     FocusDirection(Direction),
+    FocusParent,
+    FocusChild,
     Move(usize, Direction),
     ReorderFirst(usize),
     ReorderIndex(usize, usize),
@@ -618,6 +681,8 @@ fn op_strategy() -> impl Strategy<Value = Op> {
         (0..32usize, layout_strategy()).prop_map(|(id, layout)| Op::Split(id, layout)),
         (0..32usize, layout_strategy()).prop_map(|(id, layout)| Op::SetLayout(id, layout)),
         direction_strategy().prop_map(Op::FocusDirection),
+        Just(Op::FocusParent),
+        Just(Op::FocusChild),
         (0..32usize, direction_strategy()).prop_map(|(id, direction)| Op::Move(id, direction)),
         (0..32usize).prop_map(Op::ReorderFirst),
         (0..32usize, 0..32usize).prop_map(|(id, index)| Op::ReorderIndex(id, index)),
@@ -668,6 +733,8 @@ proptest! {
                     if !nodes.is_empty() { tree.set_layout(nodes[index % nodes.len()], layout); }
                 }
                 Op::FocusDirection(direction) => { tree.focus_direction(direction); }
+                Op::FocusParent => { tree.focus_parent(); }
+                Op::FocusChild => { tree.focus_child(); }
                 Op::Move(index, direction) => {
                     if !ids.is_empty() { tree.move_direction(ids[index % ids.len()], direction); }
                 }

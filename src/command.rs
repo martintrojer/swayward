@@ -618,8 +618,15 @@ fn execute_one(state: &mut State, parsed: ParsedCommand) -> CommandOutcome {
         Command::FocusDirection(Direction::Right) => Some(Action::FocusColumnRight),
         Command::FocusDirection(Direction::Up) => Some(Action::FocusWindowUp),
         Command::FocusDirection(Direction::Down) => Some(Action::FocusWindowDown),
-        Command::FocusParent | Command::FocusChild => {
-            return failure("container focus is not implemented yet");
+        Command::FocusParent => {
+            state.swayward.layout.focus_parent();
+            state.swayward.queue_redraw_all();
+            None
+        }
+        Command::FocusChild => {
+            state.swayward.layout.focus_child();
+            state.swayward.queue_redraw_all();
+            None
         }
         Command::FocusNext => Some(Action::FocusColumnRightOrFirst),
         Command::FocusPrev => Some(Action::FocusColumnLeftOrLast),

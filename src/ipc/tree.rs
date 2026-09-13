@@ -307,17 +307,20 @@ fn describe_workspace_node(
         orientation,
         nodes,
         focus,
+        focused,
         ..
     } = &mut tiled;
-    let (layout, orientation, nodes, focus) = (
+    let (layout, orientation, nodes, focus, container_focused) = (
         *layout,
         orientation.clone(),
         std::mem::take(nodes),
         std::mem::take(focus),
+        *focused,
     );
-    let focused = workspace
-        .active_window()
-        .is_some_and(|window| window.is_focused());
+    let focused = container_focused
+        || workspace
+            .active_window()
+            .is_some_and(|window| window.is_focused());
     let floating_nodes = workspace
         .tiles_with_render_positions()
         .filter(|(tile, _, _)| workspace.is_floating(&tile.window().window))
@@ -384,6 +387,7 @@ pub(crate) fn describe_tiling<'a, I>(
             layout,
             percent,
             focus,
+            focused,
             children,
         } => {
             let children = children
@@ -415,7 +419,7 @@ pub(crate) fn describe_tiling<'a, I>(
                 children,
                 vec![],
                 focus,
-                false,
+                focused,
                 NodeProperties::None {},
             );
             node.percent = percent;
@@ -424,6 +428,7 @@ pub(crate) fn describe_tiling<'a, I>(
         IpcNode::Leaf {
             window,
             percent,
+            focused,
             rect,
             ..
         } => {
@@ -442,6 +447,7 @@ pub(crate) fn describe_tiling<'a, I>(
                 true,
             );
             node.percent = percent;
+            node.focused = focused;
             Some(node)
         }
     }

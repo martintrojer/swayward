@@ -230,9 +230,9 @@ breakage loses the entire user base at once. This invariant is the project's
 value proposition in executable form.
 
 **I2 — The tree is always well-formed.**
-No empty containers survive an operation. The focus path is always valid and
-terminates on a leaf or an empty workspace. Sibling percentages sum to 1.
-Containers that should collapse, collapse.
+No empty containers survive an operation. The focus target is always a live
+node (a container or leaf), or absent on an empty workspace. Sibling percentages
+sum to 1. Containers that should collapse, collapse.
 *Verified by:* proptest over randomized op sequences, via the `Op` enum.
 *Why:* this is where sway itself still ships bugs, and the tree is our thesis.
 
