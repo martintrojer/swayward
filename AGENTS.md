@@ -133,6 +133,13 @@ Extend the inherited harness; do not build new infrastructure.
 - Headless compositor plus real `wayland-client` test clients: `src/tests/fixture.rs`.
 - New layout mutations go in the proptest `Op` enum so they are fuzzed automatically.
 - Slow gate: `env RUN_SLOW_TESTS=1 PROPTEST_CASES=20000 cargo test -p swayward tiling_tree`.
+  Run it **once**, in the workspace that changed tree code, and only when the
+  change touches `src/layout/`. CI already runs the same proptests at 200000
+  cases on every push (`.github/workflows/ci.yml`, job `randomized-tests`), so a
+  second local 20000-case run after a merge costs 90 seconds to re-prove weaker
+  coverage than the push will give for free. Reviewers verify merges with
+  `cargo test --all`, clippy and fmt; the slow gate is the author's job, not a
+  step to repeat per hand-off.
 - Visual features get a case in `swayward-visual-tests`.
 
 `#[ignore]` on a failing inherited test is a silent lie about coverage. Port it
