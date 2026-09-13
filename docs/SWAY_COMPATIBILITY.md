@@ -22,7 +22,7 @@ user-visible differences outside the request matrix.
 | `GET_VERSION` | Implemented | Returns sway's response fields with `variant` set to `swayward`. Most field values do not have a sway fixture comparison. |
 | `GET_BINDING_MODES` | Implemented | Returns `default` followed by configured mode names. |
 | `GET_CONFIG` | Unsupported | Returns `{"success":false,"error":"not implemented"}`. |
-| `SEND_TICK` | Unsupported | Returns `{"success":false,"error":"not implemented"}`. |
+| `SEND_TICK` | Supported | Replies with sway's success object and emits the payload to `tick` subscribers. |
 | `GET_BINDING_STATE` | Unsupported | Returns `{"success":false,"error":"not implemented"}`. |
 | `GET_INPUTS` | Unsupported | Returns `{"success":false,"error":"not implemented"}`. |
 | `GET_SEATS` | Unsupported | Returns `{"success":false,"error":"not implemented"}`. |

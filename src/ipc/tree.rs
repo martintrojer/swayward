@@ -707,7 +707,7 @@ fn orientation(layout: TreeLayout) -> &'static str {
 fn output_id(name: &str) -> i64 {
     OUTPUT_ID_BASE + stable_hash(name)
 }
-fn workspace_id(id: u64) -> i64 {
+pub(crate) fn workspace_id(id: u64) -> i64 {
     WORKSPACE_ID_BASE + i64::try_from(id % ID_NAMESPACE_SIZE as u64).unwrap_or_default()
 }
 pub(crate) fn container_id(id: NodeId) -> i64 {

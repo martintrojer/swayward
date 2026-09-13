@@ -138,6 +138,10 @@ impl EventStreamStatePart for WorkspacesState {
                         )
                 });
             }
+            Event::WorkspaceInitialized { .. }
+            | Event::WorkspaceRenamed { .. }
+            | Event::WorkspaceFocusChanged { .. }
+            | Event::Tick { .. } => {}
             Event::WorkspaceUrgencyChanged { id, urgent } => {
                 for ws in self.workspaces.values_mut() {
                     if ws.id == id {

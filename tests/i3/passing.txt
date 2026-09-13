@@ -5,6 +5,7 @@
 # list and run via SWAYWARD_I3_TEST, so the findings remain executable.
 101-focus.t
 104-focus-stack.t
+115-ipc-workspaces.t
 126-regress-close.t
 130-close-empty-split.t
 136-floating-ws-empty.t
@@ -22,6 +23,7 @@
 204-regress-scratchpad-move.t
 208-regress-floating-criteria.t
 224-regress-resize-branch.t
+227-ipc-workspace-empty.t
 273-regress-focus-toggle.t
 292-regress-layout-toggle.t
 299-regress-scratchpad-focus.t

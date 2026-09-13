@@ -39,7 +39,7 @@ a nested compositor and is not part of the automated suite.
 {"success":false,"error":"not implemented"}
 ```
 
-`SEND_TICK` and `GET_BINDING_STATE` currently return the same error. Commands
+`GET_BINDING_STATE` currently returns the same error. Commands
 outside the implemented subset return a sway-shaped `RUN_COMMAND` failure. See
 the [compatibility matrix](SWAY_COMPATIBILITY.md) for the supported subset and
 the [IPC oracle coverage](IPC_ORACLE_COVERAGE.md) for its test boundary.

@@ -1613,6 +1613,23 @@ pub enum Event {
         /// The removed workspace's last IPC tree representation.
         current: Box<crate::Node>,
     },
+    /// A workspace was created.
+    WorkspaceInitialized {
+        /// The new workspace's IPC tree representation.
+        current: Box<crate::Node>,
+    },
+    /// A workspace was renamed.
+    WorkspaceRenamed {
+        /// The renamed workspace's IPC tree representation.
+        current: Box<crate::Node>,
+    },
+    /// Focus moved between workspaces.
+    WorkspaceFocusChanged {
+        /// The previously focused workspace.
+        old: Option<Box<crate::Node>>,
+        /// The newly focused workspace.
+        current: Box<crate::Node>,
+    },
     /// The workspace urgency changed.
     WorkspaceUrgencyChanged {
         /// Id of the workspace.
@@ -1704,6 +1721,13 @@ pub enum Event {
     KeyboardLayoutSwitched {
         /// Index of the newly active layout.
         idx: u8,
+    },
+    /// A sway IPC synchronization tick.
+    Tick {
+        /// Client-provided tick payload.
+        payload: String,
+        /// Whether this is the initial subscription tick.
+        first: bool,
     },
     /// The sway-compatible binding mode changed.
     BindingModeChanged {

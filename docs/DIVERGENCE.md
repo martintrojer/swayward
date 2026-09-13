@@ -38,7 +38,7 @@ src/layout/mod.rs, src/handlers/mod.rs, src/protocols/foreign_toplevel.rs — st
 src/layout/workspace.rs — retire niri's horizontal viewport offset and its gesture state; the i3 tree always occupies the workspace view.
 docs/wiki/, docs/mkdocs.yaml — retire scroll-layout documentation and rebrand retained niri subsystem guides for swayward.
 src/layout/mod.rs, src/layout/workspace.rs, src/layout/tiling_tree/mod.rs — expose stable focused-node identity and targeted container layout mutation for sway command contexts.
-src/ipc/server.rs — emit sway-shaped workspace, window, and binding-mode subscription payloads for waybar-compatible event streams.
+src/ipc/server.rs — emit sway-shaped workspace, window, binding-mode, and tick subscription payloads for waybar-compatible event streams, including ordered workspace init, focus, rename, and empty events.
 swayward-config/src/binds.rs, src/input/mod.rs — add validated sway command-string binds while retaining inherited typed actions for unsupported compositor features.
 swayward-config/src/binds.rs, src/input/mod.rs, src/ui/hotkey_overlay.rs — accept numeric bindcode triggers so translated sway bindcode directives remain functional.
 swayward-ipc/src/command.rs, swayward-config/src/lib.rs, swayward-config/src/binds.rs, src/swayward.rs, src/input/mod.rs, src/command.rs, src/ipc/server.rs — support named binding modes, mode commands and events, GET_BINDING_MODES, and sway's full `layout toggle` grammar.

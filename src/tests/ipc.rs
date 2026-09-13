@@ -550,6 +550,39 @@ fn workspace_window_and_mode_events_match_sway_shapes() {
 }
 
 #[test]
+fn workspace_rename_event_matches_sway_shape() {
+    let (mut fixture, socket) = ipc_fixture();
+    fixture.add_output(1, (1920, 1080));
+    fixture.niri_state().ipc_refresh_layout();
+
+    let mut subscriber = UnixStream::connect(socket).unwrap();
+    subscriber
+        .write_all(&crate::ipc::wire::encode(
+            MessageType::Subscribe,
+            r#"["workspace"]"#,
+        ))
+        .unwrap();
+    let (_, reply) = read_ipc_reply(&mut fixture, &mut subscriber);
+    assert_eq!(reply, r#"{"success": true}"#);
+
+    assert!(
+        crate::command::execute(fixture.niri_state(), "rename workspace to event-renamed")[0]
+            .success
+    );
+    let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
+    assert_eq!(event_type, 1 << 31);
+    let actual = serde_json::from_str::<Value>(&payload).unwrap();
+    let expected = serde_json::from_str::<Value>(include_str!(
+        "../../tests/fixtures/sway/events/workspace.rename.json"
+    ))
+    .unwrap();
+    assert_event_shape(&expected, &actual, "$workspace");
+    assert_eq!(actual["change"], "rename");
+    assert_eq!(actual["old"], Value::Null);
+    assert_eq!(actual["current"]["name"], "event-renamed");
+}
+
+#[test]
 fn run_command_returns_one_outcome_per_command_and_keeps_connection_alive() {
     let (mut fixture, socket) = ipc_fixture();
     let mut stream = UnixStream::connect(socket).unwrap();

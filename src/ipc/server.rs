@@ -247,7 +247,7 @@ async fn handle_client(ctx: ClientCtx, stream: Async<'static, UnixStream>) -> an
             };
             if !subscriptions
                 .iter()
-                .all(|event| matches!(event.as_str(), "workspace" | "mode" | "window"))
+                .all(|event| matches!(event.as_str(), "workspace" | "mode" | "window" | "tick"))
             {
                 write
                     .write_all(&encode(msg_type, r#"{"success": false}"#))
@@ -329,6 +329,16 @@ async fn dispatch(ctx: &ClientCtx, msg_type: MessageType, payload: &[u8]) -> Str
             }
         }
         MessageType::GetBarConfig => "[]".into(),
+        MessageType::SendTick => {
+            let payload = String::from_utf8_lossy(payload).into_owned();
+            for stream in ctx.event_streams.borrow_mut().iter_mut() {
+                let _ = stream.events.try_send(Event::Tick {
+                    payload: payload.clone(),
+                    first: false,
+                });
+            }
+            r#"{"success":true}"#.into()
+        }
         _ => r#"{"success":false,"error":"not implemented"}"#.into(),
     }
 }
@@ -377,24 +387,16 @@ fn find_node<'a>(
     })
 }
 
-fn find_workspace_node<'a>(
-    node: &'a swayward_ipc::Node,
-    workspace: &Workspace,
-) -> Option<&'a swayward_ipc::Node> {
+fn find_workspace_by_id(node: &swayward_ipc::Node, id: u64) -> Option<&swayward_ipc::Node> {
     if node.node_type == swayward_ipc::NodeType::Workspace
-        && node.name.as_deref() == workspace.name.as_deref()
-        && matches!(
-            &node.properties,
-            swayward_ipc::NodeProperties::Workspace(properties)
-                if workspace.output.as_ref() == Some(&properties.output)
-        )
+        && node.id == crate::ipc::tree::workspace_id(id)
     {
         return Some(node);
     }
     node.nodes
         .iter()
         .chain(&node.floating_nodes)
-        .find_map(|child| find_workspace_node(child, workspace))
+        .find_map(|child| find_workspace_by_id(child, id))
 }
 
 fn refresh_query_state(
@@ -467,7 +469,7 @@ async fn handle_event_stream_client(client: EventStreamClient) -> anyhow::Result
                     .context("error parsing IPC subscription payload")?;
                 if !requested
                     .iter()
-                    .all(|event| matches!(event.as_str(), "workspace" | "mode" | "window"))
+                    .all(|event| matches!(event.as_str(), "workspace" | "mode" | "window" | "tick"))
                 {
                     write
                         .write_all(&encode(msg_type, r#"{"success": false}"#))
@@ -489,6 +491,22 @@ async fn handle_event_stream_client(client: EventStreamClient) -> anyhow::Result
                 1 << 31,
                 serde_json::json!({"change":"empty","old":null,"current":current}),
             ),
+            Event::WorkspaceInitialized { current } if subscriptions.contains("workspace") => (
+                1 << 31,
+                serde_json::json!({"change":"init","old":null,"current":current}),
+            ),
+            Event::WorkspaceRenamed { current } if subscriptions.contains("workspace") => (
+                1 << 31,
+                serde_json::json!({"change":"rename","old":null,"current":current}),
+            ),
+            Event::WorkspaceFocusChanged { old, current }
+                if subscriptions.contains("workspace") =>
+            {
+                (
+                    1 << 31,
+                    serde_json::json!({"change":"focus","old":old,"current":current}),
+                )
+            }
             Event::WorkspacesChanged { .. }
             | Event::WorkspaceActivated { .. }
             | Event::WorkspaceActiveWindowChanged { .. }
@@ -500,6 +518,10 @@ async fn handle_event_stream_client(client: EventStreamClient) -> anyhow::Result
                     serde_json::json!({"change":"reload","old":null,"current":null}),
                 )
             }
+            Event::Tick { payload, first } if subscriptions.contains("tick") => (
+                (1 << 31) | 7,
+                serde_json::json!({"first":first,"payload":payload}),
+            ),
             Event::BindingModeChanged { mode, pango_markup } if subscriptions.contains("mode") => (
                 (1 << 31) | 2,
                 serde_json::json!({"change":mode,"pango_markup":pango_markup}),
@@ -538,7 +560,7 @@ async fn handle_event_stream_client(client: EventStreamClient) -> anyhow::Result
         let buf = crate::ipc::wire::encode_raw(msg_type, &payload);
 
         match write.write_all(&buf).await {
-            Ok(()) => (),
+            Ok(()) => write.flush().await.context("error flushing IPC event")?,
             // Normal client disconnection.
             Err(err) if err.kind() == io::ErrorKind::BrokenPipe => return Ok(()),
             res @ Err(_) => res.context("error writing event")?,
@@ -645,27 +667,65 @@ impl State {
         let layout = &self.swayward.layout;
         let focused_ws_id = layout.active_workspace().map(|ws| ws.id().get());
 
+        let current_tree = crate::ipc::tree::describe_tree(
+            layout,
+            &self.swayward.global_space,
+            &self.swayward.marks_by_window,
+            &self.swayward.marks_by_container,
+        );
+        let old_focused = state
+            .workspaces
+            .values()
+            .find(|workspace| workspace.is_focused)
+            .cloned();
+        let old_focused_node = old_focused
+            .as_ref()
+            .and_then(|workspace| {
+                previous_tree
+                    .as_ref()
+                    .and_then(|tree| find_workspace_by_id(tree, workspace.id))
+            })
+            .cloned()
+            .map(Box::new);
+
         // Check for workspace changes.
         let mut seen = HashSet::new();
         let mut need_workspaces_changed = false;
         for (mon, ws_idx, ws) in layout.workspaces() {
             let id = ws.id().get();
+            let Some(current_node) = find_workspace_by_id(&current_tree, id) else {
+                continue;
+            };
             seen.insert(id);
 
             let Some(ipc_ws) = state.workspaces.get(&id) else {
-                // A new workspace was added.
+                let mut current = current_node.clone();
+                let focused = Some(id) == focused_ws_id;
+                current.focused = false;
+                events.push(Event::WorkspaceInitialized {
+                    current: Box::new(current),
+                });
+                if focused {
+                    let current = current_node.clone();
+                    events.push(Event::WorkspaceFocusChanged {
+                        old: old_focused_node.clone(),
+                        current: Box::new(current),
+                    });
+                }
                 need_workspaces_changed = true;
-                break;
+                continue;
             };
 
-            // Check for any changes that we can't signal as individual events.
             let output_name = mon.map(|mon| mon.output_name());
-            if ipc_ws.idx != u8::try_from(ws_idx + 1).unwrap_or(u8::MAX)
-                || ipc_ws.name != ws.sway_name()
-                || ipc_ws.output.as_ref() != output_name
-            {
+            if ipc_ws.name != ws.sway_name() {
+                if let Some(current) = find_workspace_by_id(&current_tree, id).cloned() {
+                    events.push(Event::WorkspaceRenamed {
+                        current: Box::new(current),
+                    });
+                }
                 need_workspaces_changed = true;
-                break;
+            } else if ipc_ws.output.as_ref() != output_name {
+                need_workspaces_changed = true;
             }
 
             let active_window_id = ws.active_window().map(|win| win.id().get());
@@ -685,7 +745,13 @@ impl State {
             // Check if this workspace became focused.
             let is_focused = Some(id) == focused_ws_id;
             if is_focused && !ipc_ws.is_focused {
-                events.push(Event::WorkspaceActivated { id, focused: true });
+                if let Some(current) = find_workspace_by_id(&current_tree, id).cloned() {
+                    events.push(Event::WorkspaceFocusChanged {
+                        old: old_focused_node.clone(),
+                        current: Box::new(current),
+                    });
+                }
+                state.apply(Event::WorkspaceActivated { id, focused: true });
                 continue;
             }
 
@@ -693,6 +759,18 @@ impl State {
             let is_active = mon.is_some_and(|mon| mon.active_workspace_idx() == ws_idx);
             if is_active && !ipc_ws.is_active {
                 events.push(Event::WorkspaceActivated { id, focused: false });
+            }
+        }
+
+        if old_focused.is_some_and(|workspace| !seen.contains(&workspace.id)) {
+            events.retain(|event| !matches!(event, Event::WorkspaceFocusChanged { .. }));
+            if let Some(id) = focused_ws_id {
+                if let Some(current) = find_workspace_by_id(&current_tree, id).cloned() {
+                    events.push(Event::WorkspaceFocusChanged {
+                        old: old_focused_node.clone(),
+                        current: Box::new(current),
+                    });
+                }
             }
         }
 
@@ -704,7 +782,7 @@ impl State {
         {
             if let Some(mut current) = previous_tree
                 .as_ref()
-                .and_then(|tree| find_workspace_node(tree, workspace))
+                .and_then(|tree| find_workspace_by_id(tree, workspace.id))
                 .cloned()
             {
                 current.nodes.clear();
@@ -723,18 +801,26 @@ impl State {
         }
 
         if need_workspaces_changed {
-            let empty_events = events
+            let sway_events = events
                 .iter()
-                .filter(|event| matches!(event, Event::WorkspaceEmptied { .. }))
+                .filter(|event| {
+                    matches!(
+                        event,
+                        Event::WorkspaceInitialized { .. }
+                            | Event::WorkspaceRenamed { .. }
+                            | Event::WorkspaceFocusChanged { .. }
+                            | Event::WorkspaceEmptied { .. }
+                    )
+                })
                 .cloned()
                 .collect::<Vec<_>>();
             events.clear();
 
             let workspaces = layout
                 .workspaces()
-                .map(|(mon, ws_idx, ws)| {
+                .filter_map(|(mon, ws_idx, ws)| {
                     let id = ws.id().get();
-                    Workspace {
+                    find_workspace_by_id(&current_tree, id).map(|_| Workspace {
                         id,
                         idx: u8::try_from(ws_idx + 1).unwrap_or(u8::MAX),
                         name: ws.sway_name(),
@@ -743,16 +829,12 @@ impl State {
                         is_active: mon.is_some_and(|mon| mon.active_workspace_idx() == ws_idx),
                         is_focused: Some(id) == focused_ws_id,
                         active_window_id: ws.active_window().map(|win| win.id().get()),
-                    }
+                    })
                 })
                 .collect();
 
-            if empty_events.is_empty() {
-                events.push(Event::WorkspacesChanged { workspaces });
-            } else {
-                state.apply(Event::WorkspacesChanged { workspaces });
-                events.extend(empty_events);
-            }
+            state.apply(Event::WorkspacesChanged { workspaces });
+            events.extend(sway_events);
         }
 
         for event in events {

@@ -4,7 +4,6 @@ use warnings;
 use Encode qw(decode_utf8);
 use Exporter ();
 use File::Temp qw(tmpnam);
-use IO::Select;
 use IO::Socket::UNIX;
 use JSON::PP qw(decode_json encode_json);
 use Test::Builder;
@@ -117,34 +116,40 @@ sub diag (@) { $tester->diag(@_) }
 sub done_testing (;$) { $tester->done_testing(@_) }
 sub subtest ($&) { Test::More::subtest(@_) }
 
+sub _read_exact {
+    my ($socket, $length) = @_;
+    my $value = '';
+    while (length($value) < $length) {
+        my $read = sysread($socket, my $chunk, $length - length($value));
+        defined($read) && $read > 0 or die 'short IPC payload';
+        $value .= $chunk;
+    }
+    $value;
+}
+
 sub _read_reply {
     my ($socket) = @_;
-    read($socket, my $header, 14) == 14 or die 'short IPC header';
+    my $header = _read_exact($socket, 14);
     substr($header, 0, 6) eq 'i3-ipc' or die 'bad IPC magic';
     my ($length, $reply_type) = unpack('LL', substr($header, 6));
-    my $reply = '';
-    while (length($reply) < $length) {
-        my $read = read($socket, my $chunk, $length - length($reply));
-        defined($read) && $read > 0 or die 'short IPC payload';
-        $reply .= $chunk;
-    }
-    return ($reply_type, decode_json($reply));
+    return ($reply_type, decode_json(_read_exact($socket, $length)));
 }
 
 sub events_for {
     my ($callback, $event) = @_;
     my $socket = IO::Socket::UNIX->new(Peer => get_socket_path())
         or die "connect $ENV{I3SOCK}: $!";
-    my $payload = encode_json([$event]);
+    my $payload = encode_json([$event, 'tick']);
     print {$socket} 'i3-ipc', pack('LL', length($payload), 2), $payload;
     my ($reply_type, $reply) = _read_reply($socket);
     $reply_type == 2 && $reply->{success} or die 'IPC subscription failed';
     $callback->();
+    _request(10, 'swayward-i3-flush');
 
     my @events;
-    my $select = IO::Select->new($socket);
-    while ($select->can_read(0.05)) {
+    while (1) {
         my ($type, $payload) = _read_reply($socket);
+        last if ($type & 0x7fffffff) == 7 && !$payload->{first};
         push @events, $payload if ($type & 0x7fffffff) == 0;
     }
     @events;
