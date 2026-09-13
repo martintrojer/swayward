@@ -286,6 +286,9 @@ fn parse_pairs(input: &str) -> Result<Vec<(String, Option<String>)>, String> {
                     break;
                 };
                 if escaped {
+                    if ch != '"' {
+                        value.push('\\');
+                    }
                     value.push(ch);
                     escaped = false;
                 } else if ch == '\\' {
@@ -324,6 +327,40 @@ mod tests {
 
         assert!(criteria.matches(&matching, &WindowInfo::default()));
         assert!(!criteria.matches(&excluded, &WindowInfo::default()));
+    }
+
+    #[test]
+    fn quoted_regex_preserves_pcre2_escapes() {
+        let criteria = Criteria::parse(
+            r#"[title="^say \"hi\" \w \d+$" app_id="^org\.example\.App$"]"#,
+            None,
+        )
+        .unwrap();
+        let matching = WindowInfo {
+            title: Some("say \"hi\" ä 3"),
+            app_id: Some("org.example.App"),
+            ..Default::default()
+        };
+        let digit_escape_must_not_become_literal_d = WindowInfo {
+            title: Some("say \"hi\" ä ddd"),
+            app_id: Some("org.example.App"),
+            ..Default::default()
+        };
+        let escaped_dot_must_not_become_wildcard = WindowInfo {
+            title: Some("say \"hi\" ä 3"),
+            app_id: Some("orgXexampleXApp"),
+            ..Default::default()
+        };
+
+        assert!(criteria.matches(&matching, &WindowInfo::default()));
+        assert!(!criteria.matches(
+            &digit_escape_must_not_become_literal_d,
+            &WindowInfo::default()
+        ));
+        assert!(!criteria.matches(
+            &escaped_dot_must_not_become_wildcard,
+            &WindowInfo::default()
+        ));
     }
 
     #[test]
