@@ -103,6 +103,7 @@ pub enum Command {
 pub struct ParsedCommand {
     pub command: Command,
     pub criteria: Option<String>,
+    criteria_start: bool,
 }
 
 pub fn parse(input: &str) -> Vec<Result<ParsedCommand, CommandOutcome>> {
@@ -117,6 +118,7 @@ pub fn parse(input: &str) -> Vec<Result<ParsedCommand, CommandOutcome>> {
             continue;
         }
 
+        let mut criteria_start = false;
         if criteria.is_none() && text.starts_with('[') {
             match criteria_end(text) {
                 Some(end) => {
@@ -126,6 +128,7 @@ pub fn parse(input: &str) -> Vec<Result<ParsedCommand, CommandOutcome>> {
                         break;
                     }
                     criteria = Some(raw);
+                    criteria_start = true;
                     text = text[end + 1..].trim_start();
                 }
                 None => {
@@ -139,6 +142,7 @@ pub fn parse(input: &str) -> Vec<Result<ParsedCommand, CommandOutcome>> {
             Ok(command) => results.push(Ok(ParsedCommand {
                 command,
                 criteria: criteria.clone(),
+                criteria_start,
             })),
             Err(error) => {
                 results.push(Err(parse_error(error)));
@@ -563,22 +567,35 @@ pub fn execute(state: &mut State, input: &str) -> Vec<CommandOutcome> {
             }
         }
     }
+    let mut retained_targets = None;
     parsed
         .into_iter()
         .map(|parsed| match parsed {
-            Ok(parsed) => execute_one(state, parsed),
+            Ok(parsed) => {
+                if parsed.criteria_start {
+                    retained_targets = None;
+                }
+                let outcome = execute_one(state, parsed, &mut retained_targets);
+                outcome
+            }
             Err(error) => error,
         })
         .collect()
 }
 
-fn execute_one(state: &mut State, parsed: ParsedCommand) -> CommandOutcome {
+fn execute_one(
+    state: &mut State,
+    parsed: ParsedCommand,
+    retained_targets: &mut Option<Vec<crate::window::mapped::MappedId>>,
+) -> CommandOutcome {
     let targets = match parsed.criteria.as_deref() {
         Some(raw) => match crate::criteria::Criteria::parse(
             raw,
             focused_id(state).map(|id| crate::ipc::tree::window_id(id) as u64),
         ) {
-            Ok(criteria) => matching_ids(state, &criteria),
+            Ok(criteria) => retained_targets
+                .get_or_insert_with(|| matching_ids(state, &criteria))
+                .clone(),
             Err(error) => return failure(error),
         },
         None => Vec::new(),
@@ -606,7 +623,9 @@ fn execute_one(state: &mut State, parsed: ParsedCommand) -> CommandOutcome {
                     ParsedCommand {
                         command: parsed.command.clone(),
                         criteria: None,
+                        criteria_start: false,
                     },
+                    &mut None,
                 );
                 if !outcome.success {
                     return outcome;

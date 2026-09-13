@@ -775,6 +775,32 @@ fn workspace_commands_create_sparse_global_identities() {
 }
 
 #[test]
+fn comma_chain_keeps_the_original_criteria_targets() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    assert!(crate::command::execute(f.niri_state(), "mark original")[0].success);
+    let outcomes = crate::command::execute(
+        f.niri_state(),
+        "[con_mark=original] unmark original, mark retained",
+    );
+    assert!(outcomes.iter().all(|outcome| outcome.success));
+    assert_eq!(
+        f.swayward().marks_by_window.values().next().unwrap(),
+        &["retained"]
+    );
+}
+
+#[test]
 fn workspace_criteria_uses_sparse_and_named_sway_identities() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));
