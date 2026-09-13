@@ -575,8 +575,7 @@ pub fn execute(state: &mut State, input: &str) -> Vec<CommandOutcome> {
                 if parsed.criteria_start {
                     retained_targets = None;
                 }
-                let outcome = execute_one(state, parsed, &mut retained_targets);
-                outcome
+                execute_one(state, parsed, &mut retained_targets)
             }
             Err(error) => error,
         })
