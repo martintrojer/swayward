@@ -88,6 +88,15 @@ sub cmd_nosync {
     my ($command) = @_;
     return [_control({ action => 'open' })] if $command eq 'open';
     my $reply = _request(0, $command);
+    # Upstream tests ignore command replies, so a command swayward REJECTS looks
+    # identical to one that ran and did nothing. That once hid a parser gap
+    # behind an apparent focus bug. Warn loudly instead: the reply is still
+    # returned, and no upstream assertion is affected.
+    for my $outcome (@{ $reply // [] }) {
+        next if ref($outcome) ne 'HASH' || $outcome->{success};
+        my $error = $outcome->{error} // 'no error text';
+        $tester->diag("swayward rejected `$command`: $error");
+    }
     _control({ action => 'reap_closed' });
     $reply;
 }
