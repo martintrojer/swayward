@@ -73,6 +73,24 @@ substitution test ordinary window behavior, not empty-container behavior.
 Tests whose result depends on a real i3 empty container remain permanently
 excluded from the passing manifest.
 
+### Floating container wrappers
+
+The i3 tree wraps each floating window in a `floating_con`. The wrapper is in
+the workspace's `floating_nodes`, and the window is in the wrapper's `nodes`
+(`i3/src/floating.c:280-351` and `i3/src/ipc.c:619-633`).
+
+Sway stores each floating container directly in the workspace's floating list
+and serializes that container into `floating_nodes`
+(`sway/sway/ipc-json.c:532-540`). A floating leaf therefore has no child in its
+`nodes` array because the recursive serializer only emits actual container
+children (`sway/sway/ipc-json.c:854-893`). Swayward follows sway's hierarchy.
+
+The final assertion in i3's `141-resize.t` searches only the children of each
+floating node. It cannot find either direct floating leaf, so it does not test
+the targeted resize result against sway or swayward. The preceding assertion
+confirms that the untargeted floating window is unchanged. This assertion is
+excluded as an i3-only tree-shape check.
+
 ### Output content nodes
 
 The i3 `GET_TREE` hierarchy places a container named `content` between each

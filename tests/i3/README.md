@@ -52,7 +52,7 @@ without fabricating a tree that real sway clients do not see. See
 | `122-split.t` | 31 | 31 pass; remainder skip: i3-only tree structure | Singleton stacked assertions 28 and 30 pass. The remainder starts by inspecting i3's `content` node at line 157, which sway does not have (`sway/sway/ipc-json.c:869-874`). |
 | `126-regress-close.t` | 1 | pass | `does_i3_live` after closing a floating container. |
 | `130-close-empty-split.t` | 8 | pass | Container splits retain leaf focus and collapse after their children close or move, matching `sway/tree/container.c:1590-1616`. |
-| `141-resize.t` | 84 | fail (83 pass) | New siblings receive equal shares and all direct tiled and floating resize assertions pass. Assertion 84 still fails because its helper expects i3's nested floating wrapper, while swayward exposes the floating window directly. |
+| `141-resize.t` | 84 | finished: 83 pass; 1 skip | Assertion 84 traverses the child of i3's floating wrapper. Sway serializes floating leaves directly, with no child (`sway/sway/ipc-json.c:532-540,854-893`), so the helper cannot find its target. All direct tiled and floating resize assertions pass. See [Floating container wrappers](../../docs/KNOWN_DEVIATIONS.md#floating-container-wrappers). |
 | `144-regress-floating-resize.t` | 1 | pass | Closing a floating child does not corrupt the tiled siblings' combined width. |
 | `152-regress-level-up.t` | 1 | pass | `does_i3_live` after focusing above the workspace tree. |
 | `178-regress-workspace-open.t` | 1 | pass | An inactive named workspace is removed after its final window closes. |
