@@ -138,7 +138,16 @@ fn execute_one(
             None
         }
         Command::MoveToOutput(target) => {
-            let output = match output_target(state, &target, None) {
+            let focused = state
+                .swayward
+                .layout
+                .focus_with_output()
+                .map(|(window, output)| (window.window.clone(), output.clone()));
+            let reference = focused
+                .as_ref()
+                .and_then(|(window, _)| state.swayward.layout.window_center(window));
+            let reference_output = focused.as_ref().map(|(_, output)| output);
+            let output = match output_target(state, &target, reference_output, reference) {
                 Ok(output) => output,
                 Err(error) => return failure(error),
             };
@@ -152,7 +161,7 @@ fn execute_one(
             None
         }
         Command::MoveWorkspaceToOutput(target) => {
-            let output = match output_target(state, &target, None) {
+            let output = match output_target(state, &target, None, None) {
                 Ok(output) => output,
                 Err(error) => return failure(error),
             };
@@ -490,14 +499,46 @@ fn output_target(
     state: &State,
     target: &OutputTarget,
     reference: Option<&smithay::output::Output>,
+    reference_point: Option<smithay::utils::Point<i32, smithay::utils::Logical>>,
 ) -> Result<smithay::output::Output, String> {
     let output = match target {
+        OutputTarget::Name(name) if name.eq_ignore_ascii_case("current") => {
+            state.swayward.layout.active_output().cloned()
+        }
         OutputTarget::Name(name) => state.swayward.output_by_name_match(name).cloned(),
         OutputTarget::Direction(direction) => match (direction, reference) {
-            (Direction::Left, Some(output)) => state.swayward.output_left_of(output),
-            (Direction::Right, Some(output)) => state.swayward.output_right_of(output),
-            (Direction::Up, Some(output)) => state.swayward.output_up_of(output),
-            (Direction::Down, Some(output)) => state.swayward.output_down_of(output),
+            (Direction::Left, Some(output)) => state.swayward.output_left_of_point(
+                output,
+                reference_point.unwrap_or_else(|| {
+                    crate::utils::center(
+                        state.swayward.global_space.output_geometry(output).unwrap(),
+                    )
+                }),
+            ),
+            (Direction::Right, Some(output)) => state.swayward.output_right_of_point(
+                output,
+                reference_point.unwrap_or_else(|| {
+                    crate::utils::center(
+                        state.swayward.global_space.output_geometry(output).unwrap(),
+                    )
+                }),
+            ),
+            (Direction::Up, Some(output)) => state.swayward.output_up_of_point(
+                output,
+                reference_point.unwrap_or_else(|| {
+                    crate::utils::center(
+                        state.swayward.global_space.output_geometry(output).unwrap(),
+                    )
+                }),
+            ),
+            (Direction::Down, Some(output)) => state.swayward.output_down_of_point(
+                output,
+                reference_point.unwrap_or_else(|| {
+                    crate::utils::center(
+                        state.swayward.global_space.output_geometry(output).unwrap(),
+                    )
+                }),
+            ),
             (Direction::Left, None) => state.swayward.output_left(),
             (Direction::Right, None) => state.swayward.output_right(),
             (Direction::Up, None) => state.swayward.output_up(),
@@ -557,7 +598,9 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
             let Some((reference, window)) = window else {
                 return failure("No matching node.");
             };
-            let output = match output_target(state, output_target_name, reference) {
+            let reference_point = state.swayward.layout.window_center(&window);
+            let output = match output_target(state, output_target_name, reference, reference_point)
+            {
                 Ok(output) => output,
                 Err(error) => return failure(error),
             };

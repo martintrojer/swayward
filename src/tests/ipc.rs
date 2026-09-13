@@ -1685,7 +1685,47 @@ fn resize_rejects_hidden_scratchpad_window_without_panicking() {
 }
 
 #[test]
-fn move_output_accepts_direction_name_and_workspace_forms() {
+fn move_output_direction_uses_the_windows_output_and_wraps_geometrically() {
+    let mut f = Fixture::new();
+    f.add_named_output_at("right".into(), (100, 100), Some((200, 100)));
+    f.add_named_output_at("middle".into(), (100, 100), Some((100, 0)));
+    f.add_named_output_at("left".into(), (100, 100), Some((0, 100)));
+    let client = f.add_client();
+
+    assert!(crate::command::execute(f.niri_state(), "focus output right")[0].success);
+    let window = f.client(client).create_window();
+    window.xdg_toplevel.set_app_id("moveme".into());
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+    let window_id = f.swayward().layout.focus().unwrap().id();
+
+    assert!(crate::command::execute(f.niri_state(), "focus output left")[0].success);
+    for expected in ["middle", "left", "right"] {
+        assert!(
+            crate::command::execute(f.niri_state(), r#"[app_id="moveme"] move output left"#)[0]
+                .success
+        );
+        assert_eq!(
+            f.swayward()
+                .layout
+                .windows()
+                .find(|(_, mapped)| mapped.id() == window_id)
+                .unwrap()
+                .0
+                .unwrap()
+                .output_name(),
+            expected
+        );
+    }
+}
+
+#[test]
+fn move_output_accepts_direction_name_current_and_workspace_forms() {
     let mut f = Fixture::new();
     f.add_output(1, (1280, 720));
     f.add_output(2, (1280, 720));
@@ -1700,6 +1740,7 @@ fn move_output_accepts_direction_name_and_workspace_forms() {
     window.ack_last_and_commit();
     f.double_roundtrip(client);
 
+    assert!(crate::command::execute(f.niri_state(), "move output current")[0].success);
     assert!(crate::command::execute(f.niri_state(), "move output right")[0].success);
     let focused = f.swayward().layout.focus().unwrap().id();
     assert_eq!(

@@ -3604,67 +3604,119 @@ impl Swayward {
     }
 
     pub fn output_left_of(&self, current: &Output) -> Option<Output> {
-        let current_geo = self.global_space.output_geometry(current)?;
-        let extended_geo = Rectangle::new(
-            Point::from((i32::MIN / 2, current_geo.loc.y)),
-            Size::from((i32::MAX, current_geo.size.h)),
-        );
+        self.output_left_of_point(current, center(self.global_space.output_geometry(current)?))
+    }
 
-        self.global_space
-            .outputs()
-            .map(|output| (output, self.global_space.output_geometry(output).unwrap()))
-            .filter(|(_, geo)| center(*geo).x < center(current_geo).x && geo.overlaps(extended_geo))
-            .min_by_key(|(_, geo)| center(current_geo).x - center(*geo).x)
-            .map(|(output, _)| output)
-            .cloned()
+    pub fn output_left_of_point(
+        &self,
+        current: &Output,
+        reference: Point<i32, Logical>,
+    ) -> Option<Output> {
+        self.output_in_direction(current, reference, true, false)
     }
 
     pub fn output_right_of(&self, current: &Output) -> Option<Output> {
-        let current_geo = self.global_space.output_geometry(current)?;
-        let extended_geo = Rectangle::new(
-            Point::from((i32::MIN / 2, current_geo.loc.y)),
-            Size::from((i32::MAX, current_geo.size.h)),
-        );
+        self.output_right_of_point(current, center(self.global_space.output_geometry(current)?))
+    }
 
-        self.global_space
-            .outputs()
-            .map(|output| (output, self.global_space.output_geometry(output).unwrap()))
-            .filter(|(_, geo)| center(*geo).x > center(current_geo).x && geo.overlaps(extended_geo))
-            .min_by_key(|(_, geo)| center(*geo).x - center(current_geo).x)
-            .map(|(output, _)| output)
-            .cloned()
+    pub fn output_right_of_point(
+        &self,
+        current: &Output,
+        reference: Point<i32, Logical>,
+    ) -> Option<Output> {
+        self.output_in_direction(current, reference, true, true)
     }
 
     pub fn output_up_of(&self, current: &Output) -> Option<Output> {
-        let current_geo = self.global_space.output_geometry(current)?;
-        let extended_geo = Rectangle::new(
-            Point::from((current_geo.loc.x, i32::MIN / 2)),
-            Size::from((current_geo.size.w, i32::MAX)),
-        );
+        self.output_up_of_point(current, center(self.global_space.output_geometry(current)?))
+    }
 
-        self.global_space
-            .outputs()
-            .map(|output| (output, self.global_space.output_geometry(output).unwrap()))
-            .filter(|(_, geo)| center(*geo).y < center(current_geo).y && geo.overlaps(extended_geo))
-            .min_by_key(|(_, geo)| center(current_geo).y - center(*geo).y)
-            .map(|(output, _)| output)
-            .cloned()
+    pub fn output_up_of_point(
+        &self,
+        current: &Output,
+        reference: Point<i32, Logical>,
+    ) -> Option<Output> {
+        self.output_in_direction(current, reference, false, false)
     }
 
     pub fn output_down_of(&self, current: &Output) -> Option<Output> {
-        let current_geo = self.global_space.output_geometry(current)?;
-        let extended_geo = Rectangle::new(
-            Point::from((current_geo.loc.x, i32::MIN / 2)),
-            Size::from((current_geo.size.w, i32::MAX)),
-        );
+        self.output_down_of_point(current, center(self.global_space.output_geometry(current)?))
+    }
 
-        self.global_space
-            .outputs()
-            .map(|output| (output, self.global_space.output_geometry(output).unwrap()))
-            .filter(|(_, geo)| center(*geo).y > center(current_geo).y && geo.overlaps(extended_geo))
-            .min_by_key(|(_, geo)| center(*geo).y - center(current_geo).y)
-            .map(|(output, _)| output)
-            .cloned()
+    pub fn output_down_of_point(
+        &self,
+        current: &Output,
+        reference: Point<i32, Logical>,
+    ) -> Option<Output> {
+        self.output_in_direction(current, reference, false, true)
+    }
+
+    fn output_in_direction(
+        &self,
+        current: &Output,
+        reference: Point<i32, Logical>,
+        horizontal: bool,
+        positive: bool,
+    ) -> Option<Output> {
+        let current_geo = self.global_space.output_geometry(current)?;
+        let candidates = || {
+            self.global_space
+                .outputs()
+                .filter(|output| *output != current)
+                .filter_map(|output| {
+                    self.global_space
+                        .output_geometry(output)
+                        .map(|geometry| (output, geometry))
+                })
+        };
+        let in_direction = |geometry: Rectangle<i32, Logical>| {
+            if horizontal {
+                if positive {
+                    geometry.loc.x >= current_geo.loc.x + current_geo.size.w
+                } else {
+                    geometry.loc.x + geometry.size.w <= current_geo.loc.x
+                }
+            } else if positive {
+                geometry.loc.y >= current_geo.loc.y + current_geo.size.h
+            } else {
+                geometry.loc.y + geometry.size.h <= current_geo.loc.y
+            }
+        };
+        let distance = |geometry: Rectangle<i32, Logical>| {
+            let closest = Point::from((
+                reference
+                    .x
+                    .clamp(geometry.loc.x, geometry.loc.x + geometry.size.w),
+                reference
+                    .y
+                    .clamp(geometry.loc.y, geometry.loc.y + geometry.size.h),
+            ));
+            let delta = closest - reference;
+            i64::from(delta.x) * i64::from(delta.x) + i64::from(delta.y) * i64::from(delta.y)
+        };
+
+        candidates()
+            .filter(|(_, geometry)| in_direction(*geometry))
+            .min_by_key(|(_, geometry)| distance(*geometry))
+            .or_else(|| {
+                candidates()
+                    .filter(|(_, geometry)| {
+                        let positive = !positive;
+                        if horizontal {
+                            if positive {
+                                geometry.loc.x >= current_geo.loc.x + current_geo.size.w
+                            } else {
+                                geometry.loc.x + geometry.size.w <= current_geo.loc.x
+                            }
+                        } else if positive {
+                            geometry.loc.y >= current_geo.loc.y + current_geo.size.h
+                        } else {
+                            geometry.loc.y + geometry.size.h <= current_geo.loc.y
+                        }
+                    })
+                    .max_by_key(|(_, geometry)| distance(*geometry))
+            })
+            .map(|(output, _)| output.clone())
     }
 
     pub fn output_previous_of(&self, current: &Output) -> Option<Output> {
