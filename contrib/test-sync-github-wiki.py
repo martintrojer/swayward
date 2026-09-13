@@ -27,7 +27,27 @@ class WikiSyncTests(unittest.TestCase):
         publication = self.sync.publication(ROOT)
         publication.pop("IPC_ORACLE_COVERAGE.md")
         errors = self.sync.audit_links(publication)
-        self.assertTrue(any("IPC_ORACLE_COVERAGE.md" in error for error in errors), errors)
+        # Page links are published without the `.md` extension, so the reported
+        # target is the wiki page name rather than the tracked file name.
+        self.assertTrue(any("IPC_ORACLE_COVERAGE" in error for error in errors), errors)
+
+    def test_page_links_drop_the_md_extension(self):
+        """`/wiki/Page.md` 302-redirects to raw markdown, so publish `Page`."""
+        pages = {"Home.md", "Configuration:-Layout.md", "img/shot.png"}
+        rewritten = self.sync.wiki_links(
+            b"[a](Configuration:-Layout.md)\n"
+            b"[b](./Configuration:-Layout.md#tab-indicator)\n"
+            b"[c](img/shot.png)\n"
+            b"[d](https://example.com/x.md)\n",
+            pages,
+        ).decode()
+        # Colon-bearing names must be rewritten: urlsplit misreads
+        # "Configuration:" as a URL scheme, which once skipped them silently.
+        self.assertIn("[a](Configuration:-Layout)", rewritten)
+        self.assertIn("[b](Configuration:-Layout#tab-indicator)", rewritten)
+        # Assets keep their extension, and external links are untouched.
+        self.assertIn("[c](img/shot.png)", rewritten)
+        self.assertIn("[d](https://example.com/x.md)", rewritten)
 
     def test_link_audit_checks_links_split_across_lines(self):
         publication = {"Home.md": b"[missing\npage](Missing.md)\n"}
