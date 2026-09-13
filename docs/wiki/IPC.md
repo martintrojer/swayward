@@ -27,35 +27,22 @@ well-formed failure object instead of hanging or returning a private schema:
 {"success":false,"error":"not implemented"}
 ```
 
-Command requests return sway's array form:
+Command requests return sway's array form. For example, an unknown command
+returns:
 
 ```json
-[{"success":false,"error":"command not implemented"}]
+[{"success":false,"error":"Unknown/invalid command 'frobnicate'","parse_error":true}]
 ```
 
-The current server implements `GET_VERSION` and `GET_TREE`. Other registered
-sway message types return explicit errors while their implementations are being
-completed. `GET_BAR_CONFIG` returns an empty array because swaybar configuration
-is outside the current scope.
+The server implements `RUN_COMMAND`, `GET_WORKSPACES`, `SUBSCRIBE`,
+`GET_OUTPUTS`, `GET_TREE`, `GET_MARKS`, and `GET_VERSION`. Subscriptions support
+workspace, window, and mode event families. Binding modes do not exist yet, so
+normal operation does not produce mode changes.
 
-## Message types
+`GET_BAR_CONFIG` returns an empty array because swayward has no `bar {}` block.
+Other decoded requests without handlers return the explicit failure above.
 
-The protocol recognises these sway request types:
-
-- `RUN_COMMAND`
-- `GET_WORKSPACES`
-- `SUBSCRIBE`
-- `GET_OUTPUTS`
-- `GET_TREE`
-- `GET_MARKS`
-- `GET_BAR_CONFIG`
-- `GET_VERSION`
-- `GET_BINDING_MODES`
-- `GET_CONFIG`
-- `SEND_TICK`
-- `GET_BINDING_STATE`
-- `GET_INPUTS`
-- `GET_SEATS`
-
-Support for a message type means that swayward can decode it. Until its handler
-is implemented, the request receives the explicit failure described above.
+See the [compatibility matrix](https://github.com/martintrojer/swayward/blob/main/docs/SWAY_COMPATIBILITY.md)
+for request, command, and event details. The
+[IPC oracle coverage](https://github.com/martintrojer/swayward/blob/main/docs/IPC_ORACLE_COVERAGE.md)
+records what the automated comparisons check and what they can still miss.

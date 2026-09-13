@@ -274,9 +274,16 @@ The refusals define the project as much as the features. These are settled.
 
 ## Design documents
 
+- [Sway compatibility](docs/SWAY_COMPATIBILITY.md) — implemented IPC requests,
+  commands, events, and verified clients.
+- [Migrate a sway config](docs/SWAY_CONFIG_MIGRATION.md) — translator usage and
+  the items that require manual review.
+- [Known deviations](docs/KNOWN_DEVIATIONS.md) — user-visible differences from
+  sway.
+- [IPC oracle coverage](docs/IPC_ORACLE_COVERAGE.md) — measured test coverage and
+  blind spots.
 - [Foundation and compatibility contract](docs/specs/2026-09-12-swayward-foundation.md)
-  — the full design: architecture, all twenty key decisions with rationale,
-  testing strategy, milestones.
+  — architecture, design decisions, testing strategy, and milestones.
 
 ## Credits
 
