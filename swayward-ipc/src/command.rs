@@ -82,6 +82,7 @@ pub enum WorkspaceTarget {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     FocusDirection(Direction),
+    FocusOutput(String),
     Focus,
     FocusParent,
     FocusChild,
@@ -389,6 +390,12 @@ fn parse_toggle(value: &str) -> Result<Toggle, String> {
 fn parse_focus(args: &[&str]) -> Result<Command, String> {
     if args.is_empty() {
         return Ok(Command::Focus);
+    }
+    if args[0].eq_ignore_ascii_case("output") {
+        return match &args[1..] {
+            [] => Err("Expected 'focus output <direction|name>'.".into()),
+            output => Ok(Command::FocusOutput(join_words(output))),
+        };
     }
     let arg = one(
         args,

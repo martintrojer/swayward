@@ -2432,3 +2432,36 @@ fn live_ipc_percent_matches_sway_parent_shares() {
     );
     assert_percent_matches_fixture(&expected, &actual, "$tree");
 }
+
+#[test]
+fn focus_output_prefers_a_name_over_a_direction_and_resolves_directions() {
+    let mut f = Fixture::new();
+    f.add_named_output_at("origin".into(), (1280, 720), Some((0, 0)));
+    f.add_named_output_at("left".into(), (1280, 720), Some((1280, 0)));
+
+    assert!(crate::command::execute(f.niri_state(), "focus output left")[0].success);
+    assert_eq!(f.swayward().layout.active_output().unwrap().name(), "left");
+    assert!(crate::command::execute(f.niri_state(), "focus output origin")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "focus output right")[0].success);
+    assert_eq!(f.swayward().layout.active_output().unwrap().name(), "left");
+}
+
+#[test]
+fn focus_output_reports_sway_errors() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1280, 720));
+    assert_eq!(
+        crate::command::execute(f.niri_state(), "focus output missing")[0]
+            .error
+            .as_deref(),
+        Some("There is no output with that name.")
+    );
+
+    let mut f = Fixture::new();
+    assert_eq!(
+        crate::command::execute(f.niri_state(), "focus output right")[0]
+            .error
+            .as_deref(),
+        Some("No focused workspace to base directions off of.")
+    );
+}

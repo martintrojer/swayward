@@ -240,6 +240,8 @@ sub get_unused_workspace {
 }
 
 sub fresh_workspace {
+    my %args = @_;
+    cmd("focus output fake-$args{output}") if exists($args{output});
     my $name = get_unused_workspace();
     cmd("workspace $name");
     $name;

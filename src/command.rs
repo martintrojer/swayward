@@ -88,6 +88,17 @@ fn execute_one(
         Command::FocusDirection(Direction::Right) => Some(Action::FocusColumnRight),
         Command::FocusDirection(Direction::Up) => Some(Action::FocusWindowUp),
         Command::FocusDirection(Direction::Down) => Some(Action::FocusWindowDown),
+        Command::FocusOutput(identifier) => {
+            let output = match output_target_by_name_or_direction(state, &identifier) {
+                Ok(output) => output,
+                Err(error) => return failure(error),
+            };
+            if let Some(output) = output {
+                state.swayward.layout.focus_output(&output);
+                state.swayward.queue_redraw_all();
+            }
+            None
+        }
         Command::FocusParent => {
             state.swayward.layout.focus_parent();
             state.swayward.queue_redraw_all();
@@ -442,6 +453,37 @@ fn execute_one(
     }
     state.ipc_refresh_layout();
     success()
+}
+
+fn parse_output_direction(value: &str) -> Option<Direction> {
+    match value.to_ascii_lowercase().as_str() {
+        "left" => Some(Direction::Left),
+        "right" => Some(Direction::Right),
+        "up" => Some(Direction::Up),
+        "down" => Some(Direction::Down),
+        _ => None,
+    }
+}
+
+fn output_target_by_name_or_direction(
+    state: &State,
+    identifier: &str,
+) -> Result<Option<smithay::output::Output>, String> {
+    if let Some(output) = state.swayward.output_by_name_match(identifier) {
+        return Ok(Some(output.clone()));
+    }
+    let Some(direction) = parse_output_direction(identifier) else {
+        return Err("There is no output with that name.".into());
+    };
+    let Some(reference) = state.swayward.layout.active_output() else {
+        return Err("No focused workspace to base directions off of.".into());
+    };
+    Ok(match direction {
+        Direction::Left => state.swayward.output_left_of(reference),
+        Direction::Right => state.swayward.output_right_of(reference),
+        Direction::Up => state.swayward.output_up_of(reference),
+        Direction::Down => state.swayward.output_down_of(reference),
+    })
 }
 
 fn output_target(
@@ -985,6 +1027,25 @@ mod tests {
                 old: None,
                 new_name: "mail".into(),
             }
+        );
+    }
+
+    #[test]
+    fn parses_focus_output_with_multi_word_name() {
+        assert_eq!(
+            parse("focus output left monitor")[0]
+                .as_ref()
+                .unwrap()
+                .command,
+            Command::FocusOutput("left monitor".into())
+        );
+        assert_eq!(
+            parse("focus output")[0]
+                .as_ref()
+                .unwrap_err()
+                .error
+                .as_deref(),
+            Some("Expected 'focus output <direction|name>'.")
         );
     }
 
