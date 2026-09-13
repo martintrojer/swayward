@@ -65,6 +65,7 @@ pub enum WorkspaceTarget {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     FocusDirection(Direction),
+    Focus,
     FocusParent,
     FocusChild,
     FocusNext,
@@ -359,6 +360,9 @@ fn parse_toggle(value: &str) -> Result<Toggle, String> {
 }
 
 fn parse_focus(args: &[&str]) -> Result<Command, String> {
+    if args.is_empty() {
+        return Ok(Command::Focus);
+    }
     let arg = one(args, "focus <left|right|up|down|parent|child|next|prev>")?;
     if let Some(direction) = parse_direction(arg) {
         return Ok(Command::FocusDirection(direction));

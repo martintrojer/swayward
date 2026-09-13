@@ -962,6 +962,16 @@ impl<W: LayoutElement> Workspace<W> {
         !self.floating_is_active.get() && self.tiling.focus_child()
     }
 
+    pub fn focus_tiling_node(&mut self, id: crate::layout::tiling_tree::NodeId) -> bool {
+        if self.tiling.contains(id) {
+            self.floating_is_active = FloatingActive::No;
+            self.tiling.set_focus(id);
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn focused_tiling_node(&self) -> Option<crate::layout::tiling_tree::NodeId> {
         (!self.floating_is_active.get())
             .then(|| self.tiling.focus())

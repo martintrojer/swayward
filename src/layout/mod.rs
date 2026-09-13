@@ -2047,6 +2047,20 @@ impl<W: LayoutElement> Layout<W> {
         self.active_workspace()?.focused_tiling_node()
     }
 
+    pub fn focus_tiling_node(
+        &mut self,
+        workspace_id: workspace::WorkspaceId,
+        id: tiling_tree::NodeId,
+    ) -> bool {
+        let Some(workspace) = self
+            .workspaces_mut()
+            .find(|workspace| workspace.id() == workspace_id)
+        else {
+            return false;
+        };
+        workspace.focus_tiling_node(id)
+    }
+
     pub fn set_tiling_node_layout(&mut self, id: tiling_tree::NodeId, layout: tiling_tree::Layout) {
         if let Some(workspace) = self
             .workspaces_mut()

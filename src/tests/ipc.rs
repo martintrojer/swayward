@@ -1645,6 +1645,32 @@ fn relative_move_includes_empty_active_workspace_and_uses_direction() {
 }
 
 #[test]
+fn targeted_focus_selects_the_requested_unfocused_window() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+
+    for app_id in ["first", "middle", "last"] {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+
+    assert!(crate::command::execute(f.niri_state(), r#"[app_id="middle"] focus"#)[0].success);
+
+    let focused_app_id = f.swayward().layout.focus().map(|window| {
+        crate::utils::with_toplevel_role(window.toplevel(), |role| role.app_id.clone())
+    });
+    assert_eq!(focused_app_id, Some(Some("middle".into())));
+}
+
+#[test]
 fn move_workspace_back_and_forth_targets_the_previous_workspace() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));

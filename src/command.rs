@@ -83,6 +83,7 @@ fn execute_one(
     }
 
     let action = match parsed.command {
+        Command::Focus => None,
         Command::FocusDirection(Direction::Left) => Some(Action::FocusColumnLeft),
         Command::FocusDirection(Direction::Right) => Some(Action::FocusColumnRight),
         Command::FocusDirection(Direction::Up) => Some(Action::FocusWindowUp),
@@ -430,6 +431,23 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
             };
             state.do_action(Action::CloseWindowById(target.get()), false);
         }
+        Command::Focus => match target {
+            CommandTarget::Window(target) => {
+                let window =
+                    state.swayward.layout.windows().find_map(|(_, mapped)| {
+                        (mapped.id() == target).then(|| mapped.window.clone())
+                    });
+                let Some(window) = window else {
+                    return failure("No matching node.");
+                };
+                state.swayward.layout.activate_window(&window);
+            }
+            CommandTarget::Container(workspace, node) => {
+                if !state.swayward.layout.focus_tiling_node(workspace, node) {
+                    return failure("No matching node.");
+                }
+            }
+        },
         Command::FocusDirection(direction) => {
             let CommandTarget::Window(target) = target else {
                 return failure("directional focus requires a window target");
@@ -698,6 +716,7 @@ mod tests {
 
     #[test]
     fn parses_every_supported_command_family() {
+        assert_eq!(command("focus"), Command::Focus);
         assert_eq!(
             command("focus left"),
             Command::FocusDirection(Direction::Left)
