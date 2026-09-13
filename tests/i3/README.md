@@ -47,7 +47,7 @@ without fabricating a tree that real sway clients do not see. See
 | `130-close-empty-split.t` | 8 | fail | Executable conformance finding. |
 | `144-regress-floating-resize.t` | 1 | pass | Closing a floating child does not corrupt the tiled siblings' combined width. |
 | `152-regress-level-up.t` | 1 | pass | `does_i3_live` after focusing above the workspace tree. |
-| `178-regress-workspace-open.t` | 1 | fail | An inactive named workspace survives after its final window is killed. Sway destroys an empty inactive workspace in `sway/tree/workspace.c:314-331`; this is a swayward bug. |
+| `178-regress-workspace-open.t` | 1 | pass | An inactive named workspace is removed after its final window closes. |
 | `179-regress-multiple-ws.t` | 6 | pass | Relative `move workspace prev` resolves against sway's global workspace order before moving. |
 | `192-layout.t` | 34 | fail | Executable conformance finding. |
 | `197-regression-move-vanish.t` | 2 | pass | Moving a child from a split preserves both windows. |

@@ -128,6 +128,16 @@ impl EventStreamStatePart for WorkspacesState {
             Event::WorkspacesChanged { workspaces } => {
                 self.workspaces = workspaces.into_iter().map(|ws| (ws.id, ws)).collect();
             }
+            Event::WorkspaceEmptied { current } => {
+                self.workspaces.retain(|_, workspace| {
+                    workspace.name.as_deref() != current.name.as_deref()
+                        || !matches!(
+                            &current.properties,
+                            crate::NodeProperties::Workspace(properties)
+                                if workspace.output.as_ref() == Some(&properties.output)
+                        )
+                });
+            }
             Event::WorkspaceUrgencyChanged { id, urgent } => {
                 for ws in self.workspaces.values_mut() {
                     if ws.id == id {

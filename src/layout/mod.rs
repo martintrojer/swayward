@@ -1249,11 +1249,12 @@ impl<W: LayoutElement> Layout<W> {
                             let removed = ws.remove_tile(window, transaction);
 
                             // Clean up empty workspaces that are not active and not last.
-                            if !ws.has_windows_or_name()
+                            if !ws.has_windows()
+                                && !ws.is_persistent()
                                 && idx != mon.active_workspace_idx
                                 && idx != mon.workspaces.len() - 1
-                                && mon.workspace_switch.is_none()
                             {
+                                mon.workspace_switch = None;
                                 mon.workspaces.remove(idx);
 
                                 if idx < mon.active_workspace_idx {

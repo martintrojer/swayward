@@ -10,6 +10,8 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use swayward_ipc::MessageType;
+use wayland_client::Proxy as _;
+use wayland_server::Resource as _;
 
 use super::*;
 use crate::ipc::tree::{describe_outputs, describe_tree, describe_workspaces};
@@ -1456,6 +1458,117 @@ fn workspace_next_and_prev_cross_outputs() {
     assert_eq!(
         f.swayward().layout.active_output().unwrap().name(),
         second_output
+    );
+}
+
+#[test]
+fn closing_last_window_removes_inactive_named_workspace_from_ipc() {
+    let mut config = swayward_config::Config::default();
+    config.animations.off = true;
+    let mut f = Fixture::with_config(config);
+    let handle = f.swayward().event_loop.clone();
+    let ipc_server =
+        crate::ipc::server::IpcServer::start(&handle, Some(OsStr::new("cleanup"))).unwrap();
+    let socket = ipc_server.socket_path.clone().unwrap();
+    f.swayward().ipc_server = Some(ipc_server);
+    f.niri_state().ipc_keyboard_layouts_changed();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+
+    assert!(crate::command::execute(f.niri_state(), "workspace 7")[0].success);
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+    let mapped = f
+        .swayward()
+        .layout
+        .windows()
+        .find_map(|(_, mapped)| {
+            (mapped.toplevel().wl_surface().id().protocol_id() == surface.id().protocol_id())
+                .then(|| mapped.window.clone())
+        })
+        .unwrap();
+
+    assert!(crate::command::execute(f.niri_state(), "workspace active")[0].success);
+    let mut subscriber = UnixStream::connect(&socket).unwrap();
+    subscriber
+        .write_all(&crate::ipc::wire::encode(
+            MessageType::Subscribe,
+            r#"["workspace"]"#,
+        ))
+        .unwrap();
+    let (_, reply) = read_ipc_reply(&mut f, &mut subscriber);
+    assert_eq!(reply, r#"{"success": true}"#);
+    f.swayward()
+        .layout
+        .remove_window(&mapped, crate::utils::transaction::Transaction::new());
+    f.niri_state().ipc_refresh_layout();
+
+    let mut stream = UnixStream::connect(socket).unwrap();
+    let workspaces = query_ipc(&mut f, &mut stream, MessageType::GetWorkspaces);
+    let names = workspaces
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|workspace| workspace["name"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(names, ["active"]);
+    let tree = query_ipc(&mut f, &mut stream, MessageType::GetTree);
+    assert!(tree.to_string().contains("active"));
+    assert!(!tree.to_string().contains(r#"\"name\":\"7\""#));
+
+    let (event_type, payload) = read_ipc_reply(&mut f, &mut subscriber);
+    assert_eq!(event_type, 1 << 31);
+    let actual = serde_json::from_str::<Value>(&payload).unwrap();
+    let expected = serde_json::from_str::<Value>(include_str!(
+        "../../tests/fixtures/sway/events/workspace.empty.json"
+    ))
+    .unwrap();
+    assert_eq!(
+        actual.as_object().unwrap().keys().collect::<BTreeSet<_>>(),
+        expected
+            .as_object()
+            .unwrap()
+            .keys()
+            .collect::<BTreeSet<_>>()
+    );
+    assert_same_shape(
+        &expected["current"],
+        &actual["current"],
+        "$workspace.current",
+    );
+    assert_eq!(actual["change"], "empty");
+    assert_eq!(actual["current"]["name"], "7");
+    assert_eq!(actual["current"]["focused"], false);
+    assert_eq!(actual["current"]["nodes"], serde_json::json!([]));
+
+    assert!(crate::command::execute(f.niri_state(), "workspace prev")[0].success);
+    let after_prev = query_ipc(&mut f, &mut stream, MessageType::GetWorkspaces);
+    assert_eq!(
+        after_prev
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|workspace| workspace["focused"] == true)
+            .unwrap()["name"],
+        "active"
+    );
+
+    assert!(crate::command::execute(f.niri_state(), "workspace 7")[0].success);
+    let recreated = query_ipc(&mut f, &mut stream, MessageType::GetWorkspaces);
+    assert_eq!(
+        recreated
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|workspace| workspace["num"] == 7)
+            .count(),
+        1
     );
 }
 

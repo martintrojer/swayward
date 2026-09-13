@@ -659,7 +659,10 @@ impl<W: LayoutElement> Monitor<W> {
         assert!(self.workspace_switch.is_none());
         let active_workspace_id = self.workspaces[self.active_workspace_idx].id();
         for workspace in &mut self.workspaces {
-            if workspace.id() != active_workspace_id && !workspace.has_windows_or_name() {
+            if workspace.id() != active_workspace_id
+                && !workspace.has_windows()
+                && !workspace.is_persistent()
+            {
                 workspace.unname();
             }
         }

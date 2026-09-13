@@ -377,6 +377,26 @@ fn find_node<'a>(
     })
 }
 
+fn find_workspace_node<'a>(
+    node: &'a swayward_ipc::Node,
+    workspace: &Workspace,
+) -> Option<&'a swayward_ipc::Node> {
+    if node.node_type == swayward_ipc::NodeType::Workspace
+        && node.name.as_deref() == workspace.name.as_deref()
+        && matches!(
+            &node.properties,
+            swayward_ipc::NodeProperties::Workspace(properties)
+                if workspace.output.as_ref() == Some(&properties.output)
+        )
+    {
+        return Some(node);
+    }
+    node.nodes
+        .iter()
+        .chain(&node.floating_nodes)
+        .find_map(|child| find_workspace_node(child, workspace))
+}
+
 fn refresh_query_state(
     layout: &crate::layout::Layout<Mapped>,
     global_space: &smithay::desktop::Space<smithay::desktop::Window>,
@@ -465,6 +485,10 @@ async fn handle_event_stream_client(client: EventStreamClient) -> anyhow::Result
             StreamInput::Event(event) => event,
         };
         let (msg_type, payload) = match event {
+            Event::WorkspaceEmptied { current } if subscriptions.contains("workspace") => (
+                1 << 31,
+                serde_json::json!({"change":"empty","old":null,"current":current}),
+            ),
             Event::WorkspacesChanged { .. }
             | Event::WorkspaceActivated { .. }
             | Event::WorkspaceActiveWindowChanged { .. }
@@ -591,6 +615,7 @@ impl State {
     }
 
     pub fn ipc_refresh_layout(&mut self) {
+        self.ipc_refresh_workspaces();
         if let Some(server) = &self.swayward.ipc_server {
             refresh_query_state(
                 &self.swayward.layout,
@@ -600,7 +625,6 @@ impl State {
                 &mut server.query_state.borrow_mut(),
             );
         }
-        self.ipc_refresh_workspaces();
         self.ipc_refresh_windows();
         self.ipc_refresh_overview();
     }
@@ -612,6 +636,8 @@ impl State {
 
         let _span = tracy_client::span!("State::ipc_refresh_workspaces");
 
+        let previous_tree =
+            serde_json::from_str::<swayward_ipc::Node>(&server.query_state.borrow().tree).ok();
         let mut state = server.event_stream_state.borrow_mut();
         let state = &mut state.workspaces;
 
@@ -635,7 +661,7 @@ impl State {
             // Check for any changes that we can't signal as individual events.
             let output_name = mon.map(|mon| mon.output_name());
             if ipc_ws.idx != u8::try_from(ws_idx + 1).unwrap_or(u8::MAX)
-                || ipc_ws.name.as_ref() != ws.name()
+                || ipc_ws.name != ws.sway_name()
                 || ipc_ws.output.as_ref() != output_name
             {
                 need_workspaces_changed = true;
@@ -671,11 +697,37 @@ impl State {
         }
 
         // Check if any workspaces were removed.
-        if !need_workspaces_changed && state.workspaces.keys().any(|id| !seen.contains(id)) {
+        for workspace in state
+            .workspaces
+            .values()
+            .filter(|workspace| !seen.contains(&workspace.id))
+        {
+            if let Some(mut current) = previous_tree
+                .as_ref()
+                .and_then(|tree| find_workspace_node(tree, workspace))
+                .cloned()
+            {
+                current.nodes.clear();
+                current.floating_nodes.clear();
+                current.focus.clear();
+                if let swayward_ipc::NodeProperties::Workspace(properties) = &mut current.properties
+                {
+                    properties.representation = None;
+                }
+                current.focused = false;
+                events.push(Event::WorkspaceEmptied {
+                    current: Box::new(current),
+                });
+            }
             need_workspaces_changed = true;
         }
 
         if need_workspaces_changed {
+            let empty_events = events
+                .iter()
+                .filter(|event| matches!(event, Event::WorkspaceEmptied { .. }))
+                .cloned()
+                .collect::<Vec<_>>();
             events.clear();
 
             let workspaces = layout
@@ -685,7 +737,7 @@ impl State {
                     Workspace {
                         id,
                         idx: u8::try_from(ws_idx + 1).unwrap_or(u8::MAX),
-                        name: ws.name().cloned(),
+                        name: ws.sway_name(),
                         output: mon.map(|mon| mon.output_name().clone()),
                         is_urgent: ws.is_urgent(),
                         is_active: mon.is_some_and(|mon| mon.active_workspace_idx() == ws_idx),
@@ -695,7 +747,12 @@ impl State {
                 })
                 .collect();
 
-            events.push(Event::WorkspacesChanged { workspaces });
+            if empty_events.is_empty() {
+                events.push(Event::WorkspacesChanged { workspaces });
+            } else {
+                state.apply(Event::WorkspacesChanged { workspaces });
+                events.extend(empty_events);
+            }
         }
 
         for event in events {

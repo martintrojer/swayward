@@ -1608,6 +1608,11 @@ pub enum Event {
         /// workspaces are missing from here, then they were deleted.
         workspaces: Vec<Workspace>,
     },
+    /// A workspace became empty and was removed.
+    WorkspaceEmptied {
+        /// The removed workspace's last IPC tree representation.
+        current: Box<crate::Node>,
+    },
     /// The workspace urgency changed.
     WorkspaceUrgencyChanged {
         /// Id of the workspace.

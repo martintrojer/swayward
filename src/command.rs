@@ -411,6 +411,12 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
             }
             state.swayward.queue_redraw_all();
         }
+        Command::Kill => {
+            let CommandTarget::Window(target) = target else {
+                return failure("command requires a window target");
+            };
+            state.do_action(Action::CloseWindowById(target.get()), false);
+        }
         Command::FocusDirection(direction) => {
             let CommandTarget::Window(target) = target else {
                 return failure("directional focus requires a window target");

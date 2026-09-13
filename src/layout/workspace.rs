@@ -392,6 +392,10 @@ impl<W: LayoutElement> Workspace<W> {
         self.name.is_some() || self.number.is_some()
     }
 
+    pub fn is_persistent(&self) -> bool {
+        self.persistent
+    }
+
     pub fn has_windows_or_name(&self) -> bool {
         self.has_windows() || self.persistent
     }
