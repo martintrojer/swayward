@@ -254,6 +254,36 @@ fn struts_reduce_new_window_bounds() {
 }
 
 #[test]
+fn restoring_a_removed_windows_focus_rank_preserves_close_order() {
+    let mut t = tree((1200., 800.), 0.);
+    for id in 1..=5 {
+        t.add_tile(tile(id, t.view_size()), InsertTarget::Focused);
+    }
+    assert_eq!(
+        t.focus_history,
+        vec![NodeId(5), NodeId(4), NodeId(3), NodeId(2), NodeId(1)]
+    );
+
+    let rank = t.focus_rank_for_window(&4).unwrap();
+    let removed = t.remove_tile(&4, Transaction::new()).unwrap();
+    t.add_tile_with_activation(removed, InsertTarget::Focused, false);
+    t.restore_focus_rank(&4, rank);
+
+    assert_eq!(
+        t.focus_history
+            .iter()
+            .filter_map(|node| t.tile(*node).map(|tile| *tile.window().id()))
+            .collect::<Vec<_>>(),
+        [5, 4, 3, 2, 1]
+    );
+    for expected in [4, 3, 2, 1] {
+        let focused = t.active_window().unwrap().id().to_owned();
+        t.remove_tile(&focused, Transaction::new()).unwrap();
+        assert_eq!(t.active_window().unwrap().id(), &expected);
+    }
+}
+
+#[test]
 fn empty_tree_has_no_focus() {
     let t = tree((1920., 1080.), 0.);
     assert!(t.is_empty());

@@ -435,6 +435,22 @@ impl<W: LayoutElement> TilingTree<W> {
         self.focus
     }
 
+    pub fn focus_rank_for_window(&self, window: &W::Id) -> Option<usize> {
+        let node = self.node_for_window(window)?;
+        self.focus_history
+            .iter()
+            .position(|candidate| *candidate == node)
+    }
+
+    pub fn restore_focus_rank(&mut self, window: &W::Id, rank: usize) {
+        let Some(node) = self.node_for_window(window) else {
+            return;
+        };
+        self.focus_history.retain(|candidate| *candidate != node);
+        self.focus_history
+            .insert(rank.min(self.focus_history.len()), node);
+    }
+
     pub fn root_is_focused(&self) -> bool {
         self.focus == Some(self.root)
     }

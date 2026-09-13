@@ -1526,16 +1526,22 @@ impl<W: LayoutElement> Workspace<W> {
             let removed = self.floating.remove_tile(&id);
             // FIXME: compute closest pos?
             let _ = (removed.width, removed.is_full_width);
+            let rank = removed.tile.tiling_focus_rank;
             self.tiling.add_tile_with_activation(
                 removed.tile,
                 InsertTarget::Focused,
                 target_is_active,
             );
+            if let Some(rank) = rank {
+                self.tiling.restore_focus_rank(&id, rank);
+            }
             if target_is_active {
                 self.floating_is_active = FloatingActive::No;
             }
         } else {
+            let rank = self.tiling.focus_rank_for_window(&id);
             let mut tile = self.tiling.remove_tile(&id, Transaction::new()).unwrap();
+            tile.tiling_focus_rank = rank;
             tile.stop_move_animations();
 
             // Come up with a default floating position close to the tile position.
