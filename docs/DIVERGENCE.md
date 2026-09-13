@@ -17,6 +17,7 @@ src/layout/mod.rs, src/layout/monitor.rs, src/layout/workspace.rs — give works
 src/layout/mod.rs — resolve relative move-to-workspace targets with sway's global numbered and per-output workspace ordering.
 src/ipc/server.rs — include the Wayland socket name in IPC socket paths so parallel headless tests do not collide.
 src/tests/mod.rs — run vendored i3 Perl assertions against the existing headless compositor and real sway IPC socket.
+contrib/sway-to-kdl — translate sway workspace output preferences to named-workspace initial output configuration.
 swayward-ipc/src/message.rs — omit absent optional command-result fields to match sway's RUN_COMMAND reply schema.
 .github/FUNDING.yml — remove inherited niri sponsorship attribution because swayward is not soliciting sponsorship.
 .github/ISSUE_TEMPLATE/bug_report.md, .github/ISSUE_TEMPLATE/config.yml — point issue reporting and support at swayward rather than niri.

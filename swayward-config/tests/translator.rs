@@ -91,6 +91,48 @@ fn sway_titlebar_settings_translate_without_silently_dropping_colors() {
 }
 
 #[test]
+fn sway_workspace_output_uses_first_preference() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_owned();
+    let fixture = std::env::temp_dir().join(format!(
+        "swayward-workspace-output-{}-{}.conf",
+        std::process::id(),
+        std::thread::current().name().unwrap_or("test")
+    ));
+    std::fs::write(
+        &fixture,
+        "workspace 7:web output missing HDMI-A-1\nworkspace chat room output DP-2\n",
+    )
+    .unwrap();
+    let output = Command::new("python3")
+        .arg(root.join("contrib/sway-to-kdl"))
+        .arg(&fixture)
+        .output()
+        .unwrap();
+    std::fs::remove_file(fixture).unwrap();
+
+    assert!(output.status.success());
+    let translated = String::from_utf8(output.stdout).unwrap();
+    // sway checks configured outputs in order and falls back normally when none exist.
+    assert!(
+        translated.contains("workspace \"7:web\" {\n    open-on-output \"missing\"\n}"),
+        "{translated}"
+    );
+    assert!(!translated.contains("open-on-output \"HDMI-A-1\""));
+    assert!(
+        translated.contains("workspace \"chat room\" {\n    open-on-output \"DP-2\"\n}"),
+        "{translated}"
+    );
+    assert_eq!(
+        String::from_utf8(output.stderr).unwrap(),
+        "manual attention: none\n"
+    );
+    Config::parse_mem(&translated).unwrap();
+}
+
+#[test]
 fn upstream_sway_and_swayfx_defaults_translate_to_valid_config() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()

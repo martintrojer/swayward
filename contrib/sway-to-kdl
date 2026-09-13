@@ -104,6 +104,12 @@ class Translator:
                 self.translate_for_window(path, line_no, match.group(1), match.group(2))
             elif match := re.match(r"assign\s+(\[[^]]+\])\s+(?:→|->)?\s*(.+)", text):
                 self.translate_assign(path, line_no, match.group(1), match.group(2))
+            elif match := re.fullmatch(r"workspace\s+(.+?)\s+output\s+(\S+)(?:\s+.*)?", text):
+                self.sections += [
+                    f"workspace {self.quote(match.group(1).strip(chr(34)))} {{",
+                    f"    open-on-output {self.quote(match.group(2).strip(chr(34)))}",
+                    "}",
+                ]
             elif match := re.fullmatch(r"font\s+(?:pango:)?(.+)", text):
                 self.titlebar_font = match.group(1)
             elif match := re.fullmatch(
