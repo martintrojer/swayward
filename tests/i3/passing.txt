@@ -3,6 +3,7 @@
 # Add a file here as soon as a conformance slice makes it green, and never
 # remove one to make a change pass. Files with known failures stay out of this
 # list and run via SWAYWARD_I3_TEST, so the findings remain executable.
+101-focus.t
 126-regress-close.t
 140-focus-lost.t
 152-regress-level-up.t

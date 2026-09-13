@@ -54,7 +54,7 @@ report for assertion-level results.
 
 | File | Assertions | Result | Notes |
 | --- | ---: | --- | --- |
-| `101-focus.t` | 8 | fail (3 pass) | Directional focus does not move through vertical siblings. Sway implements sibling traversal and wrapping in `sway/commands/focus.c:158-220`. |
+| `101-focus.t` | 8 | pass | Directional focus follows sway's sibling traversal, ancestor escalation, and wrapping rules (`sway/commands/focus.c:158-220`). |
 | `104-focus-stack.t` | 2 | fail (1 pass) | Closing the focused floating window does not restore the prior tiling focus. Sway maintains inactive focus when selecting and closing views (`sway/tree/view.c:848-870`). |
 | `129-focus-after-close.t` | 15 | fail (5 pass) | Parent focus, close-time focus restoration, workspace kill, and floating membership differ. Sway focuses parent nodes (`sway/commands/focus.c:355-377`) and closes all workspace descendants (`sway/commands/kill.c:20-28`). |
 | `140-focus-lost.t` | 3 | pass | Focus survives a layout change. |

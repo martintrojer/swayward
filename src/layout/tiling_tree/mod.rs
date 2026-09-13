@@ -498,45 +498,51 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub fn focus_direction(&mut self, dir: Direction) -> bool {
-        let Some(current) = self.focus else {
+        let Some(mut current) = self.focus else {
             return false;
         };
-        let geometries = self.compute_geometry();
-        let Some(from) = geometries.nodes.get(&current) else {
-            return false;
+        let direction_layout = match dir {
+            Direction::Left | Direction::Right => Layout::SplitH,
+            Direction::Up | Direction::Down => Layout::SplitV,
         };
-        let from_center = (from.loc.x + from.size.w / 2., from.loc.y + from.size.h / 2.);
-        let next = geometries
-            .nodes
-            .iter()
-            .filter(|(id, _)| **id != current)
-            .filter_map(|(id, rect)| {
-                let center = (rect.loc.x + rect.size.w / 2., rect.loc.y + rect.size.h / 2.);
-                let (primary, secondary) = match dir {
-                    Direction::Left if center.0 < from_center.0 => {
-                        (from_center.0 - center.0, (from_center.1 - center.1).abs())
-                    }
-                    Direction::Right if center.0 > from_center.0 => {
-                        (center.0 - from_center.0, (from_center.1 - center.1).abs())
-                    }
-                    Direction::Up if center.1 < from_center.1 => {
-                        (from_center.1 - center.1, (from_center.0 - center.0).abs())
-                    }
-                    Direction::Down if center.1 > from_center.1 => {
-                        (center.1 - from_center.1, (from_center.0 - center.0).abs())
-                    }
-                    _ => return None,
+        let backwards = matches!(dir, Direction::Left | Direction::Up);
+        let mut wrap = None;
+
+        while let Some(parent) = self.nodes.get(&current).and_then(|node| node.parent) {
+            let TreeNode::Split {
+                layout, children, ..
+            } = &self.nodes[&parent].value
+            else {
+                return false;
+            };
+            if Self::layouts_parallel(*layout, direction_layout) {
+                let Some(index) = children.iter().position(|child| *child == current) else {
+                    return false;
                 };
-                Some((*id, primary + secondary * 2.))
-            })
-            .min_by(|a, b| a.1.total_cmp(&b.1))
-            .map(|(id, _)| id);
-        if let Some(next) = next {
-            self.set_focus_id(Some(next));
-            true
-        } else {
-            false
+                let desired = if backwards {
+                    index.checked_sub(1)
+                } else {
+                    children.get(index + 1).map(|_| index + 1)
+                };
+                if let Some(desired) = desired {
+                    let next = self.focused_leaf_in(children[desired]);
+                    self.set_focus_id(next);
+                    return next.is_some();
+                }
+                if wrap.is_none() && children.len() > 1 {
+                    wrap = if backwards {
+                        children.last().copied()
+                    } else {
+                        children.first().copied()
+                    };
+                }
+            }
+            current = parent;
         }
+
+        let next = wrap.and_then(|id| self.focused_leaf_in(id));
+        self.set_focus_id(next.or(self.focus));
+        next.is_some()
     }
 
     pub fn split(&mut self, id: NodeId, layout: Layout) {
@@ -2828,6 +2834,14 @@ impl<W: LayoutElement> TilingTree<W> {
                 children.iter().find_map(|child| self.first_leaf_in(*child))
             }
         }
+    }
+
+    fn focused_leaf_in(&self, id: NodeId) -> Option<NodeId> {
+        self.focus_history
+            .iter()
+            .copied()
+            .find(|candidate| self.tile(*candidate).is_some() && self.is_descendant(*candidate, id))
+            .or_else(|| self.first_leaf_in(id))
     }
 
     fn collect_depth_first(&self, id: NodeId, ids: &mut Vec<NodeId>) {

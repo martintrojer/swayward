@@ -436,6 +436,50 @@ fn removing_a_sibling_collapses_the_implicit_container() {
 }
 
 #[test]
+fn directional_focus_follows_parent_axis_and_wraps() {
+    for (layout, backward, forward) in [
+        (Layout::SplitH, Direction::Left, Direction::Right),
+        (Layout::Tabbed, Direction::Left, Direction::Right),
+        (Layout::SplitV, Direction::Up, Direction::Down),
+        (Layout::Stacked, Direction::Up, Direction::Down),
+    ] {
+        let mut t = tree((1200., 800.), 0.);
+        let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+        let middle = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+        let last = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+        t.set_layout(t.root, layout);
+
+        assert!(t.focus_direction(backward));
+        assert_eq!(t.focus(), Some(middle));
+        assert!(t.focus_direction(backward));
+        assert_eq!(t.focus(), Some(first));
+        assert!(t.focus_direction(backward));
+        assert_eq!(t.focus(), Some(last));
+        assert!(t.focus_direction(forward));
+        assert_eq!(t.focus(), Some(first));
+        t.check_invariants();
+    }
+}
+
+#[test]
+fn directional_focus_escalates_to_an_ancestor_and_descends_by_focus_history() {
+    let mut t = tree((1200., 800.), 0.);
+    let left = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let top_right = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.split(top_right, Layout::SplitV);
+    let bottom_right = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+
+    assert!(t.focus_left());
+    assert_eq!(t.focus(), Some(left));
+    assert!(t.focus_right());
+    assert_eq!(t.focus(), Some(bottom_right));
+    t.set_focus(top_right);
+    assert!(t.focus_down());
+    assert_eq!(t.focus(), Some(bottom_right));
+    t.check_invariants();
+}
+
+#[test]
 fn parent_and_child_focus_walk_the_tree_and_layout_the_selected_parent() {
     let mut t = tree((1200., 800.), 0.);
     let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);

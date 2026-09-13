@@ -410,6 +410,8 @@ fn moving_to_floating_doesnt_cancel_resize() {
     f.double_roundtrip(id);
     f.client(id).window(&first_surface).ack_last_and_commit();
     f.roundtrip(id);
+    // Exercise directional focus without relying on the old no-wrap behavior at the right edge.
+    f.swayward().layout.focus_left();
     f.swayward().layout.focus_right();
     let window_id = f
         .swayward()

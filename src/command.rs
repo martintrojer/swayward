@@ -399,6 +399,29 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
             }
             state.swayward.queue_redraw_all();
         }
+        Command::FocusDirection(direction) => {
+            let CommandTarget::Window(target) = target else {
+                return failure("directional focus requires a window target");
+            };
+            let window = state
+                .swayward
+                .layout
+                .windows()
+                .find_map(|(_, mapped)| (mapped.id() == target).then(|| mapped.window.clone()));
+            let Some(window) = window else {
+                return failure("No matching node.");
+            };
+            state.swayward.layout.activate_window(&window);
+            state.do_action(
+                match direction {
+                    Direction::Left => Action::FocusColumnLeft,
+                    Direction::Right => Action::FocusColumnRight,
+                    Direction::Up => Action::FocusWindowUp,
+                    Direction::Down => Action::FocusWindowDown,
+                },
+                false,
+            );
+        }
         Command::Layout(layout) => {
             let node = match target {
                 CommandTarget::Container(_, node) => node,
@@ -521,6 +544,7 @@ fn snapshot_info<'a>(state: &'a State, snapshot: &'a WindowSnapshot) -> criteria
             .map(Vec::as_slice)
             .unwrap_or(&[]),
         con_id: crate::ipc::tree::window_id(snapshot.0) as u64,
+        id: Some(crate::ipc::tree::window_id(snapshot.0) as u64),
         floating: snapshot.4,
         urgent: snapshot.5,
         workspace: snapshot.3.as_deref(),
