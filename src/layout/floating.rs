@@ -878,11 +878,19 @@ impl<W: LayoutElement> FloatingSpace<W> {
         let active_idx = self.idx_of(active_id).unwrap();
         let center = self.data[active_idx].center();
 
-        let result = zip(&self.tiles, &self.data)
-            .filter(|(tile, _)| tile.window().id() != active_id)
-            .map(|(tile, data)| (tile, distance(center, data.center())))
+        let candidates = || {
+            zip(&self.tiles, &self.data)
+                .filter(|(tile, _)| tile.window().id() != active_id)
+                .map(|(tile, data)| (tile, distance(center, data.center())))
+        };
+        let result = candidates()
             .filter(|(_, dist)| *dist > 0.)
-            .min_by(|(_, dist_a), (_, dist_b)| f64::total_cmp(dist_a, dist_b));
+            .min_by(|(_, dist_a), (_, dist_b)| f64::total_cmp(dist_a, dist_b))
+            .or_else(|| {
+                candidates()
+                    .filter(|(_, dist)| *dist <= 0.)
+                    .min_by(|(_, dist_a), (_, dist_b)| f64::total_cmp(dist_a, dist_b))
+            });
         if let Some((tile, _)) = result {
             let id = tile.window().id().clone();
             self.activate_window(&id);

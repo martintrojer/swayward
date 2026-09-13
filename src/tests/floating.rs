@@ -1456,6 +1456,39 @@ fn repeated_size_request() {
     );
 }
 
+#[test]
+fn floating_directional_focus_uses_nearest_center_and_wraps() {
+    let (mut f, client, _) = set_up();
+    let mut windows = Vec::new();
+    for x in [100., 200., 300.] {
+        f.swayward().layout.toggle_window_floating(None);
+        f.swayward().layout.move_floating_window(
+            None,
+            swayward_ipc::PositionChange::SetFixed(x),
+            swayward_ipc::PositionChange::SetFixed(100.),
+            false,
+        );
+        windows.push(f.swayward().layout.focus().unwrap().id());
+        if x < 300. {
+            let window = f.client(client).create_window();
+            let surface = window.surface.clone();
+            window.commit();
+            f.roundtrip(client);
+            let window = f.client(client).window(&surface);
+            window.attach_new_buffer();
+            window.ack_last_and_commit();
+            f.double_roundtrip(client);
+        }
+    }
+
+    f.swayward().layout.focus_left();
+    assert_eq!(f.swayward().layout.focus().unwrap().id(), windows[1]);
+    f.swayward().layout.focus_left();
+    assert_eq!(f.swayward().layout.focus().unwrap().id(), windows[0]);
+    f.swayward().layout.focus_left();
+    assert_eq!(f.swayward().layout.focus().unwrap().id(), windows[2]);
+}
+
 /// Two mapped windows must tile side by side through the real compositor, and a
 /// directional focus move must land on the other one. This is the headless
 /// equivalent of the manual two-terminal check: it drives real Wayland clients
