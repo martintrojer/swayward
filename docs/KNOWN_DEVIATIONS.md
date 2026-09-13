@@ -54,6 +54,25 @@ Swayward has no scrollable-tiling mode. It uses an i3-style nested container tre
 Niri's horizontal viewport and overview animations were retired because their
 layout no longer exists.
 
+### The i3 `open` command and empty containers
+
+i3's `open` command creates and focuses an empty container
+(`i3/src/commands.c:1726-1740`). Sway does not implement this command. It is
+absent from sway's complete general, configuration-only, and runtime-only
+command tables (`sway/sway/commands.c:44-144`) and from the runtime command
+reference (`sway/sway/sway.5.scd:102-415`).
+
+Swayward follows sway. The command parser returns a well-formed failure for
+`open`, as required by the IPC compatibility decisions Q1, Q8, and Q11. It does
+not create i3 empty containers.
+
+The i3 test adapter cannot preserve this behavior. Its `cmd 'open'` and
+`open_empty_con` paths create a real Wayland window through the test control
+socket (`tests/i3/lib/i3test.pm:97-114`). Assertions that pass after this
+substitution test ordinary window behavior, not empty-container behavior.
+Tests whose result depends on a real i3 empty container remain permanently
+excluded from the passing manifest.
+
 ### Output content nodes
 
 The i3 `GET_TREE` hierarchy places a container named `content` between each

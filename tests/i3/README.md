@@ -68,7 +68,7 @@ without fabricating a tree that real sway clients do not see. See
 | --- | ---: | --- | --- |
 | `101-focus.t` | 8 | pass | Directional focus follows sway's sibling traversal, ancestor escalation, and wrapping rules (`sway/commands/focus.c:158-220`). |
 | `104-focus-stack.t` | 2 | pass | Closing the focused floating window restores the prior tiling focus, matching sway's focus-stack restoration (`sway/input/seat.c:260-315`). |
-| `129-focus-after-close.t` | 15 | fail (13 pass) | Workspace kill closes tiled and floating descendants while retaining the active workspace, and workspace focus spans both tiled and floating child arrays, matching `sway/commands/kill.c:15-32` and `sway/ipc-json.c:519-541,781-835`. The remaining two assertions require i3's unsupported `open` command and empty containers. |
+| `129-focus-after-close.t` | 15 | finished: 13 pass; 2 skip | Assertions 5 and 6 require i3's `open` command and empty containers. Sway has no `open` entry in its command tables (`sway/sway/commands.c:44-144`), so swayward correctly rejects it. The adapter substitutes a real Wayland window for `open_empty_con`; passing assertions that use this helper do not prove empty-container behavior. See [The i3 `open` command and empty containers](../../docs/KNOWN_DEVIATIONS.md#the-i3-open-command-and-empty-containers). |
 | `140-focus-lost.t` | 3 | pass | Focus survives a layout change. |
 
 The initial X11-protocol exclusions are `113-urgent.t`,
