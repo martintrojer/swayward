@@ -385,6 +385,14 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub fn remove_tile_node(&mut self, id: NodeId) -> Option<Tile<W>> {
+        self.remove_tile_node_inner(id, true)
+    }
+
+    fn remove_tile_node_preserving_parent(&mut self, id: NodeId) -> Option<Tile<W>> {
+        self.remove_tile_node_inner(id, false)
+    }
+
+    fn remove_tile_node_inner(&mut self, id: NodeId, collapse: bool) -> Option<Tile<W>> {
         let old_geometries = self.compute_geometry();
         if !matches!(
             self.nodes.get(&id).map(|node| &node.value),
@@ -405,8 +413,10 @@ impl<W: LayoutElement> TilingTree<W> {
         }
         if let Some(parent) = node.parent {
             self.remove_child(parent, id);
-            self.collapse_from(parent);
-            self.compact_tree();
+            if collapse {
+                self.collapse_from(parent);
+                self.compact_tree();
+            }
         }
         if self.focus == Some(id) || self.windows().next().is_none() {
             self.set_focus_id(self.focused_leaf_in(self.root));
@@ -440,6 +450,14 @@ impl<W: LayoutElement> TilingTree<W> {
         self.focus_history
             .iter()
             .position(|candidate| *candidate == node)
+    }
+
+    pub fn non_root_parent_for_window(&self, window: &W::Id) -> Option<NodeId> {
+        let node = self.node_for_window(window)?;
+        self.nodes
+            .get(&node)?
+            .parent
+            .filter(|parent| *parent != self.root && self.split_len(*parent).is_some_and(|n| n > 1))
     }
 
     pub fn restore_focus_rank(&mut self, window: &W::Id, rank: usize) {
@@ -1376,6 +1394,37 @@ impl<W: LayoutElement> TilingTree<W> {
         let tile = self.remove_tile_node(id)?;
         self.request_window_sizes_with(Some(transaction), true);
         Some(tile)
+    }
+
+    pub fn remove_tile_preserving_parent(&mut self, window: &W::Id) -> Option<Tile<W>> {
+        let id = self.node_for_window(window)?;
+        let tile = self.remove_tile_node_preserving_parent(id)?;
+        self.request_window_sizes();
+        Some(tile)
+    }
+
+    pub fn add_tile_to_existing_parent(
+        &mut self,
+        mut tile: Tile<W>,
+        parent: NodeId,
+        activate: bool,
+    ) -> NodeId {
+        self.interactive_resize = None;
+        tile.update_config(self.view_size, self.scale, self.options.clone());
+        let old_geometries = self.compute_geometry();
+        let id = self.alloc(Node {
+            parent: Some(parent),
+            value: TreeNode::Leaf {
+                tile: Box::new(tile),
+            },
+        });
+        self.insert_child(parent, id, None);
+        if activate {
+            self.set_focus_id(Some(id));
+        }
+        self.animate_geometry_changes(old_geometries, Some(id));
+        self.request_window_sizes();
+        id
     }
 
     pub fn set_fullscreen(&mut self, window: &W::Id, fullscreen: bool) -> bool {

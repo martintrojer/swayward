@@ -1536,11 +1536,17 @@ impl<W: LayoutElement> Workspace<W> {
             // FIXME: compute closest pos?
             let _ = (removed.width, removed.is_full_width);
             let rank = removed.tile.tiling_focus_rank;
-            self.tiling.add_tile_with_activation(
-                removed.tile,
-                InsertTarget::Focused,
-                target_is_active,
-            );
+            let parent = removed.tile.tiling_parent;
+            if let Some(parent) = parent.filter(|parent| self.tiling.contains(*parent)) {
+                self.tiling
+                    .add_tile_to_existing_parent(removed.tile, parent, target_is_active);
+            } else {
+                self.tiling.add_tile_with_activation(
+                    removed.tile,
+                    InsertTarget::Focused,
+                    target_is_active,
+                );
+            }
             if let Some(rank) = rank {
                 self.tiling.restore_focus_rank(&id, rank);
             }
@@ -1549,8 +1555,14 @@ impl<W: LayoutElement> Workspace<W> {
             }
         } else {
             let rank = self.tiling.focus_rank_for_window(&id);
-            let mut tile = self.tiling.remove_tile(&id, Transaction::new()).unwrap();
+            let parent = self.tiling.non_root_parent_for_window(&id);
+            let mut tile = if parent.is_some() {
+                self.tiling.remove_tile_preserving_parent(&id).unwrap()
+            } else {
+                self.tiling.remove_tile(&id, Transaction::new()).unwrap()
+            };
             tile.tiling_focus_rank = rank;
+            tile.tiling_parent = parent;
             tile.stop_move_animations();
 
             // Come up with a default floating position close to the tile position.

@@ -83,7 +83,10 @@ Sway stores each floating container directly in the workspace's floating list
 and serializes that container into `floating_nodes`
 (`sway/sway/ipc-json.c:532-540`). A floating leaf therefore has no child in its
 `nodes` array because the recursive serializer only emits actual container
-children (`sway/sway/ipc-json.c:854-893`). Swayward follows sway's hierarchy.
+children (`sway/sway/ipc-json.c:854-893`). Sway also appends a newly floating
+container to the end of this list (`sway/sway/tree/workspace.c:961-971`), while
+i3 inserts a new floating wrapper at the front (`i3/src/floating.c:280-295`).
+Swayward follows sway's hierarchy and list order.
 
 The final assertion in i3's `141-resize.t` searches only the children of each
 floating node. It cannot find either direct floating leaf, so it does not test

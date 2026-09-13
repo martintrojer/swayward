@@ -479,6 +479,33 @@ fn split_on_a_nonempty_workspace_wraps_children_and_focuses_the_wrapper() {
 }
 
 #[test]
+fn removing_a_tile_for_floating_preserves_its_parent_for_reinsertion() {
+    let mut t = tree((1200., 800.), 0.);
+    t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let second = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.split(second, Layout::SplitV);
+    let third = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+    let parent = t.nodes[&third].parent.unwrap();
+
+    assert_eq!(t.non_root_parent_for_window(&2), Some(parent));
+    let removed = t.remove_tile_preserving_parent(&2).unwrap();
+    assert!(t.contains(parent));
+    let restored = t.add_tile_to_existing_parent(removed, parent, false);
+
+    assert_eq!(t.nodes[&restored].parent, Some(parent));
+    assert_eq!(t.nodes[&third].parent, Some(parent));
+    t.check_invariants();
+
+    t.set_focus(restored);
+    let parent = t.non_root_parent_for_window(&2).unwrap();
+    let removed = t.remove_tile_preserving_parent(&2).unwrap();
+    let restored = t.add_tile_to_existing_parent(removed, parent, true);
+    assert_eq!(t.focus(), Some(restored));
+    assert_eq!(t.nodes[&restored].parent, Some(parent));
+    t.check_invariants();
+}
+
+#[test]
 fn stacked_layout_wraps_a_single_workspace_leaf() {
     for layout in [Layout::Stacked, Layout::Tabbed] {
         let mut t = tree((1200., 800.), 0.);
