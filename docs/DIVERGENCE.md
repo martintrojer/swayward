@@ -31,3 +31,4 @@ src/layout/mod.rs, src/handlers/mod.rs, src/protocols/foreign_toplevel.rs — st
 
 src/layout/workspace.rs — retire niri's horizontal viewport offset and its gesture state; the i3 tree always occupies the workspace view.
 docs/wiki/, docs/mkdocs.yaml — retire scroll-layout documentation and rebrand retained niri subsystem guides for swayward.
+src/layout/mod.rs, src/layout/workspace.rs, src/layout/tiling_tree/mod.rs — expose stable focused-node identity and targeted container layout mutation for sway command contexts.

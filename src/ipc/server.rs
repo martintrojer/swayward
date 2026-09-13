@@ -185,6 +185,7 @@ fn on_new_ipc_client(state: &mut State, stream: UnixStream) {
         &state.swayward.layout,
         &state.swayward.global_space,
         &state.swayward.marks_by_window,
+        &state.swayward.marks_by_container,
         &mut server.query_state.borrow_mut(),
     );
     let ctx = ClientCtx {
@@ -357,10 +358,18 @@ fn refresh_query_state(
     layout: &crate::layout::Layout<Mapped>,
     global_space: &smithay::desktop::Space<smithay::desktop::Window>,
     marks: &std::collections::HashMap<crate::window::mapped::MappedId, Vec<String>>,
+    container_marks: &std::collections::HashMap<
+        (
+            crate::layout::workspace::WorkspaceId,
+            crate::layout::tiling_tree::NodeId,
+        ),
+        Vec<String>,
+    >,
     state: &mut QueryState,
 ) {
-    state.tree = serde_json::to_string(&describe_tree(layout, global_space, marks))
-        .unwrap_or_else(|_| r#"{"success":false,"error":"serialization failed"}"#.into());
+    state.tree =
+        serde_json::to_string(&describe_tree(layout, global_space, marks, container_marks))
+            .unwrap_or_else(|_| r#"{"success":false,"error":"serialization failed"}"#.into());
     state.workspaces = serde_json::to_string(&describe_workspaces(layout, global_space))
         .unwrap_or_else(|_| r#"{"success":false,"error":"serialization failed"}"#.into());
     state.outputs = serde_json::to_string(&describe_outputs(layout, global_space))
@@ -553,6 +562,7 @@ impl State {
                 &self.swayward.layout,
                 &self.swayward.global_space,
                 &self.swayward.marks_by_window,
+                &self.swayward.marks_by_container,
                 &mut server.query_state.borrow_mut(),
             );
         }

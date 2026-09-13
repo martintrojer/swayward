@@ -6,6 +6,7 @@ use swayward_ipc::{
 };
 
 use crate::layout::tiling_tree::{IpcNode, Layout as TreeLayout, NodeId};
+use crate::layout::workspace::WorkspaceId;
 use crate::layout::{Layout, LayoutElement as _};
 use crate::utils::with_toplevel_role;
 use crate::window::mapped::MappedId;
@@ -24,6 +25,7 @@ pub fn describe_tree(
     layout: &Layout<Mapped>,
     global_space: &Space<Window>,
     marks: &std::collections::HashMap<MappedId, Vec<String>>,
+    container_marks: &std::collections::HashMap<(WorkspaceId, NodeId), Vec<String>>,
 ) -> Node {
     let outputs: Vec<_> = layout.monitors().collect();
     let root_rect = outputs
@@ -33,11 +35,9 @@ pub fn describe_tree(
         .map(rect_from_rectangle)
         .unwrap_or_default();
     let mut nodes = vec![scratch_output(layout, root_rect, marks)];
-    nodes.extend(
-        outputs
-            .iter()
-            .map(|monitor| describe_output_node(layout, global_space, monitor, marks)),
-    );
+    nodes.extend(outputs.iter().map(|monitor| {
+        describe_output_node(layout, global_space, monitor, marks, container_marks)
+    }));
     let focus = outputs
         .iter()
         .find(|monitor| monitor.active_workspace_ref().active_window().is_some())
@@ -89,6 +89,8 @@ pub fn describe_workspaces(
                 &|window| workspace.windows().find(|mapped| mapped.window == *window),
                 rect,
                 &Default::default(),
+                &Default::default(),
+                workspace.id(),
             );
             let (layout, orientation, representation) =
                 tiling.map_or((NodeLayout::SplitV, "vertical".into(), None), |node| {
@@ -228,6 +230,7 @@ fn describe_output_node(
     global_space: &Space<Window>,
     monitor: &crate::layout::monitor::Monitor<Mapped>,
     marks: &std::collections::HashMap<MappedId, Vec<String>>,
+    container_marks: &std::collections::HashMap<(WorkspaceId, NodeId), Vec<String>>,
 ) -> Node {
     let rect = output_rect(global_space, monitor.output());
     let workspaces = layout
@@ -238,7 +241,15 @@ fn describe_output_node(
                 && candidate.is_some_and(|candidate| candidate.output() == monitor.output())
         })
         .map(|(_, index, workspace)| {
-            describe_workspace_node(layout, workspace, monitor.output_name(), index, rect, marks)
+            describe_workspace_node(
+                layout,
+                workspace,
+                monitor.output_name(),
+                index,
+                rect,
+                marks,
+                container_marks,
+            )
         })
         .collect::<Vec<_>>();
     let active_workspace_id = workspace_id(monitor.active_workspace_ref().id().get());
@@ -294,12 +305,15 @@ fn describe_workspace_node(
     index: usize,
     rect: Rect,
     marks: &std::collections::HashMap<MappedId, Vec<String>>,
+    container_marks: &std::collections::HashMap<(WorkspaceId, NodeId), Vec<String>>,
 ) -> Node {
     let mut tiled = describe_tiling(
         workspace.ipc_tiling_tree(),
         &|window| workspace.windows().find(|mapped| mapped.window == *window),
         rect,
         marks,
+        container_marks,
+        workspace.id(),
     )
     .unwrap_or_else(|| empty_tiling_node(rect));
     let Node {
@@ -380,6 +394,8 @@ pub(crate) fn describe_tiling<'a, I>(
     find_window: &impl Fn(&I) -> Option<&'a Mapped>,
     workspace_rect: Rect,
     marks: &std::collections::HashMap<MappedId, Vec<String>>,
+    container_marks: &std::collections::HashMap<(WorkspaceId, NodeId), Vec<String>>,
+    workspace_id: WorkspaceId,
 ) -> Option<Node> {
     match node {
         IpcNode::Split {
@@ -396,8 +412,15 @@ pub(crate) fn describe_tiling<'a, I>(
                     let id = match &child {
                         IpcNode::Split { id, .. } | IpcNode::Leaf { id, .. } => *id,
                     };
-                    describe_tiling(child, find_window, workspace_rect, marks)
-                        .map(|node| (id, node))
+                    describe_tiling(
+                        child,
+                        find_window,
+                        workspace_rect,
+                        marks,
+                        container_marks,
+                        workspace_id,
+                    )
+                    .map(|node| (id, node))
                 })
                 .collect::<Vec<_>>();
             let focus = focus
@@ -423,6 +446,10 @@ pub(crate) fn describe_tiling<'a, I>(
                 NodeProperties::None {},
             );
             node.percent = percent;
+            node.marks = container_marks
+                .get(&(workspace_id, id))
+                .cloned()
+                .unwrap_or_default();
             Some(node)
         }
         IpcNode::Leaf {
@@ -673,7 +700,7 @@ fn output_id(name: &str) -> i64 {
 fn workspace_id(id: u64) -> i64 {
     WORKSPACE_ID_BASE + i64::try_from(id % ID_NAMESPACE_SIZE as u64).unwrap_or_default()
 }
-fn container_id(id: NodeId) -> i64 {
+pub(crate) fn container_id(id: NodeId) -> i64 {
     CONTAINER_ID_BASE + i64::try_from(id.0 % ID_NAMESPACE_SIZE as u64).unwrap_or_default()
 }
 pub(crate) fn window_id(id: MappedId) -> i64 {

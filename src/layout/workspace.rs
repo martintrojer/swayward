@@ -958,6 +958,20 @@ impl<W: LayoutElement> Workspace<W> {
         !self.floating_is_active.get() && self.tiling.focus_child()
     }
 
+    pub fn focused_tiling_node(&self) -> Option<crate::layout::tiling_tree::NodeId> {
+        (!self.floating_is_active.get())
+            .then(|| self.tiling.focus())
+            .flatten()
+    }
+
+    pub fn set_tiling_node_layout(
+        &mut self,
+        id: crate::layout::tiling_tree::NodeId,
+        layout: crate::layout::tiling_tree::Layout,
+    ) {
+        self.tiling.set_layout(id, layout);
+    }
+
     pub fn focus_left(&mut self) -> bool {
         if self.floating_is_active.get() {
             self.floating.focus_left()
@@ -1659,6 +1673,10 @@ impl<W: LayoutElement> Workspace<W> {
         let scrolling = self.tiling.tiles_with_render_positions_mut(round);
         let floating = self.floating.tiles_with_render_positions_mut(round);
         floating.chain(scrolling)
+    }
+
+    pub fn contains_tiling_node(&self, id: crate::layout::tiling_tree::NodeId) -> bool {
+        self.tiling.contains(id)
     }
 
     pub fn ipc_tiling_tree(&self) -> super::tiling_tree::IpcNode<W::Id> {

@@ -553,15 +553,21 @@ fn join_words(words: &[&str]) -> String {
     unquote(&words.join(" ")).to_owned()
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CommandTarget {
+    Window(crate::window::mapped::MappedId),
+    Container(
+        crate::layout::workspace::WorkspaceId,
+        crate::layout::tiling_tree::NodeId,
+    ),
+}
+
 pub fn execute(state: &mut State, input: &str) -> Vec<CommandOutcome> {
     let mut parsed = parse(input);
     for item in &mut parsed {
         if let Ok(command) = item {
             if let Some(raw) = &command.criteria {
-                if let Err(error) = crate::criteria::Criteria::parse(
-                    raw,
-                    focused_id(state).map(|id| crate::ipc::tree::window_id(id) as u64),
-                ) {
+                if let Err(error) = crate::criteria::Criteria::parse(raw, focused_con_id(state)) {
                     *item = Err(parse_error(error));
                 }
             }
@@ -585,15 +591,12 @@ pub fn execute(state: &mut State, input: &str) -> Vec<CommandOutcome> {
 fn execute_one(
     state: &mut State,
     parsed: ParsedCommand,
-    retained_targets: &mut Option<Vec<crate::window::mapped::MappedId>>,
+    retained_targets: &mut Option<Vec<CommandTarget>>,
 ) -> CommandOutcome {
     let targets = match parsed.criteria.as_deref() {
-        Some(raw) => match crate::criteria::Criteria::parse(
-            raw,
-            focused_id(state).map(|id| crate::ipc::tree::window_id(id) as u64),
-        ) {
+        Some(raw) => match crate::criteria::Criteria::parse(raw, focused_con_id(state)) {
             Ok(criteria) => retained_targets
-                .get_or_insert_with(|| matching_ids(state, &criteria))
+                .get_or_insert_with(|| matching_targets(state, &criteria))
                 .clone(),
             Err(error) => return failure(error),
         },
@@ -605,7 +608,7 @@ fn execute_one(
         }
         if let Command::Unmark(identifier) = &parsed.command {
             for target in targets {
-                state.swayward.unmark(Some(target), identifier.as_deref());
+                unmark_target(state, target, identifier.as_deref());
             }
             return success();
         }
@@ -615,6 +618,10 @@ fn execute_one(
                 return outcome;
             }
         }
+        return success();
+    }
+
+    if matches!(parsed.command, Command::Mark { .. }) && focused_target(state).is_none() {
         return success();
     }
 
@@ -812,20 +819,15 @@ fn execute_one(
             toggle,
             identifier,
         } => {
-            let targets = if targets.is_empty() {
-                focused_id(state).into_iter().collect()
-            } else {
-                targets
-            };
-            for id in targets {
-                state.swayward.set_mark(id, &identifier, add, toggle);
+            if let Some(target) = focused_target(state) {
+                mark_target(state, target, &identifier, add, toggle);
             }
             None
         }
         Command::Unmark(identifier) => {
             if parsed.criteria.is_some() {
-                for id in targets {
-                    state.swayward.unmark(Some(id), identifier.as_deref());
+                for target in targets {
+                    unmark_target(state, target, identifier.as_deref());
                 }
             } else {
                 state.swayward.unmark(None, identifier.as_deref());
@@ -833,10 +835,7 @@ fn execute_one(
             None
         }
         Command::ForWindow { criteria, command } => {
-            let parsed = match crate::criteria::Criteria::parse(
-                &criteria,
-                focused_id(state).map(|id| crate::ipc::tree::window_id(id) as u64),
-            ) {
+            let parsed = match crate::criteria::Criteria::parse(&criteria, focused_con_id(state)) {
                 Ok(criteria) => criteria,
                 Err(error) => return failure(error),
             };
@@ -859,22 +858,21 @@ fn execute_one(
     success()
 }
 
-fn execute_targeted(
-    state: &mut State,
-    command: &Command,
-    target: crate::window::mapped::MappedId,
-) -> CommandOutcome {
+fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget) -> CommandOutcome {
     match command {
         Command::Mark {
             add,
             toggle,
             identifier,
-        } => state.swayward.set_mark(target, identifier, *add, *toggle),
-        Command::Unmark(identifier) => state.swayward.unmark(Some(target), identifier.as_deref()),
+        } => mark_target(state, target, identifier, *add, *toggle),
+        Command::Unmark(identifier) => unmark_target(state, target, identifier.as_deref()),
         Command::Fullscreen {
             mode,
             global: false,
         } => {
+            let CommandTarget::Window(target) = target else {
+                return failure("command requires a window target");
+            };
             let window = state
                 .swayward
                 .layout
@@ -891,6 +889,9 @@ fn execute_targeted(
             state.swayward.queue_redraw_all();
         }
         Command::Floating(mode) => {
+            let CommandTarget::Window(target) = target else {
+                return failure("command requires a window target");
+            };
             let window = state
                 .swayward
                 .layout
@@ -912,6 +913,22 @@ fn execute_targeted(
             }
             state.swayward.queue_redraw_all();
         }
+        Command::Layout(layout) => {
+            let CommandTarget::Container(_, node) = target else {
+                return failure("command requires a container target");
+            };
+            let layout = match layout {
+                Layout::SplitH => crate::layout::tiling_tree::Layout::SplitH,
+                Layout::SplitV => crate::layout::tiling_tree::Layout::SplitV,
+                Layout::Tabbed => crate::layout::tiling_tree::Layout::Tabbed,
+                Layout::Stacked => crate::layout::tiling_tree::Layout::Stacked,
+                Layout::ToggleSplit => {
+                    return failure("targeted toggle split is not implemented yet")
+                }
+            };
+            state.swayward.layout.set_tiling_node_layout(node, layout);
+            state.swayward.queue_redraw_all();
+        }
         Command::Nop => {}
         _ => return failure("criteria targets are not implemented for this command yet"),
     }
@@ -919,8 +936,69 @@ fn execute_targeted(
     success()
 }
 
+fn focused_target(state: &State) -> Option<CommandTarget> {
+    if let Some(window) = focused_id(state) {
+        return Some(CommandTarget::Window(window));
+    }
+    let workspace = state.swayward.layout.active_workspace()?;
+    workspace
+        .focused_tiling_node()
+        .map(|node| CommandTarget::Container(workspace.id(), node))
+}
+
+fn mark_target(state: &mut State, target: CommandTarget, mark: &str, add: bool, toggle: bool) {
+    match target {
+        CommandTarget::Window(window) => state.swayward.set_mark(window, mark, add, toggle),
+        CommandTarget::Container(workspace, node) => {
+            let marks = state
+                .swayward
+                .marks_by_container
+                .entry((workspace, node))
+                .or_default();
+            if !add {
+                marks.clear();
+            }
+            if let Some(index) = marks.iter().position(|existing| existing == mark) {
+                if toggle {
+                    marks.remove(index);
+                }
+            } else {
+                marks.push(mark.to_owned());
+            }
+        }
+    }
+}
+
+fn unmark_target(state: &mut State, target: CommandTarget, mark: Option<&str>) {
+    match target {
+        CommandTarget::Window(window) => state.swayward.unmark(Some(window), mark),
+        CommandTarget::Container(workspace, node) => {
+            if let Some(mark) = mark {
+                if let Some(marks) = state
+                    .swayward
+                    .marks_by_container
+                    .get_mut(&(workspace, node))
+                {
+                    marks.retain(|existing| existing != mark);
+                }
+            } else {
+                state.swayward.marks_by_container.remove(&(workspace, node));
+            }
+        }
+    }
+}
+
 fn focused_id(state: &State) -> Option<crate::window::mapped::MappedId> {
     state.swayward.layout.focus().map(|mapped| mapped.id())
+}
+
+fn focused_con_id(state: &State) -> Option<u64> {
+    state
+        .swayward
+        .layout
+        .focused_tiling_node()
+        .map(|id| crate::ipc::tree::container_id(id) as u64)
+        .or_else(|| focused_id(state).map(|id| crate::ipc::tree::window_id(id) as u64))
 }
 
 type WindowSnapshot = (
@@ -956,10 +1034,7 @@ fn snapshot_info<'a>(
     }
 }
 
-fn matching_ids(
-    state: &State,
-    criteria: &crate::criteria::Criteria,
-) -> Vec<crate::window::mapped::MappedId> {
+fn matching_targets(state: &State, criteria: &crate::criteria::Criteria) -> Vec<CommandTarget> {
     use crate::utils::with_toplevel_role;
 
     let focused_id = focused_id(state);
@@ -994,10 +1069,39 @@ fn matching_ids(
     let focused_info = focused
         .map(|snapshot| snapshot_info(state, snapshot))
         .unwrap_or_default();
-    snapshots
+    let mut targets = snapshots
         .iter()
         .filter(|snapshot| criteria.matches(&snapshot_info(state, snapshot), &focused_info))
-        .map(|snapshot| snapshot.0)
+        .map(|snapshot| CommandTarget::Window(snapshot.0))
+        .collect::<Vec<_>>();
+    for (_, _, workspace) in state.swayward.layout.workspaces() {
+        for (node, value) in workspace.ipc_tiling_tree().nodes() {
+            if matches!(value, crate::layout::tiling_tree::IpcNodeKind::Split) {
+                let marks = state
+                    .swayward
+                    .marks_by_container
+                    .get(&(workspace.id(), node))
+                    .map(Vec::as_slice)
+                    .unwrap_or(&[]);
+                if criteria.matches_container(crate::ipc::tree::container_id(node) as u64, marks) {
+                    targets.push(CommandTarget::Container(workspace.id(), node));
+                }
+            }
+        }
+    }
+    targets
+}
+
+fn matching_ids(
+    state: &State,
+    criteria: &crate::criteria::Criteria,
+) -> Vec<crate::window::mapped::MappedId> {
+    matching_targets(state, criteria)
+        .into_iter()
+        .filter_map(|target| match target {
+            CommandTarget::Window(id) => Some(id),
+            CommandTarget::Container(_, _) => None,
+        })
         .collect()
 }
 

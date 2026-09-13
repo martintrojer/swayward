@@ -232,6 +232,13 @@ pub struct Swayward {
 
     pub marks: HashMap<String, MappedId>,
     pub marks_by_window: HashMap<MappedId, Vec<String>>,
+    pub marks_by_container: HashMap<
+        (
+            crate::layout::workspace::WorkspaceId,
+            crate::layout::tiling_tree::NodeId,
+        ),
+        Vec<String>,
+    >,
     pub for_window: Vec<(String, String, crate::criteria::Criteria)>,
 
     // This space does not actually contain any windows, but all outputs are mapped into it
@@ -2570,6 +2577,7 @@ impl Swayward {
             layout,
             marks: HashMap::new(),
             marks_by_window: HashMap::new(),
+            marks_by_container: HashMap::new(),
             for_window: Vec::new(),
             global_space: Space::default(),
             sorted_outputs: Vec::default(),

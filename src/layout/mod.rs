@@ -2036,6 +2036,19 @@ impl<W: LayoutElement> Layout<W> {
         }
     }
 
+    pub fn focused_tiling_node(&self) -> Option<tiling_tree::NodeId> {
+        self.active_workspace()?.focused_tiling_node()
+    }
+
+    pub fn set_tiling_node_layout(&mut self, id: tiling_tree::NodeId, layout: tiling_tree::Layout) {
+        if let Some(workspace) = self
+            .workspaces_mut()
+            .find(|workspace| workspace.contains_tiling_node(id))
+        {
+            workspace.set_tiling_node_layout(id, layout);
+        }
+    }
+
     pub fn focus_left(&mut self) {
         let Some(workspace) = self.active_workspace_mut() else {
             return;

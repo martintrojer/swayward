@@ -194,6 +194,21 @@ fn assert_node_schema_appears_in_fixtures(actual: &Value, fixtures: &[Value], pa
     }
 }
 
+fn find_json_node_with_mark<'a>(value: &'a Value, mark: &str) -> Option<&'a Value> {
+    if value["marks"]
+        .as_array()
+        .is_some_and(|marks| marks.iter().any(|value| value == mark))
+    {
+        return Some(value);
+    }
+    ["nodes", "floating_nodes"].into_iter().find_map(|key| {
+        value[key]
+            .as_array()?
+            .iter()
+            .find_map(|child| find_json_node_with_mark(child, mark))
+    })
+}
+
 fn find_json_node<'a>(value: &'a Value, node_type: &str, focused: bool) -> Option<&'a Value> {
     if value["type"] == node_type && (!focused || value["focused"] == true) {
         return Some(value);
@@ -237,6 +252,7 @@ fn nested_live_tree() -> Value {
     serde_json::to_value(describe_tree(
         &swayward.layout,
         &swayward.global_space,
+        &Default::default(),
         &Default::default(),
     ))
     .unwrap()
@@ -413,6 +429,7 @@ fn marks_round_trip_through_commands_get_marks_and_tree() {
         &swayward.layout,
         &swayward.global_space,
         &swayward.marks_by_window,
+        &swayward.marks_by_container,
     ))
     .unwrap();
     let marked = find_json_node(&tree, "con", true).unwrap();
@@ -492,6 +509,7 @@ fn for_window_applies_matching_command_when_window_maps() {
         &swayward.layout,
         &swayward.global_space,
         &swayward.marks_by_window,
+        &swayward.marks_by_container,
     ))
     .unwrap();
     assert_eq!(
@@ -521,6 +539,7 @@ fn live_ipc_descriptions_match_sway_schema() {
     let ours = serde_json::to_value(describe_tree(
         layout,
         &swayward.global_space,
+        &Default::default(),
         &Default::default(),
     ))
     .unwrap();
@@ -630,6 +649,7 @@ fn focus_parent_then_layout_targets_the_whole_subtree() {
         &swayward.layout,
         &swayward.global_space,
         &Default::default(),
+        &Default::default(),
     ))
     .unwrap();
     let workspace = &tree["nodes"][1]["nodes"][0];
@@ -646,6 +666,56 @@ fn focus_parent_then_layout_targets_the_whole_subtree() {
         .unwrap()
         .iter()
         .all(|node| node["focused"] == false));
+}
+
+#[test]
+fn focused_container_can_be_marked_and_targeted_by_con_id() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    for _ in 0..3 {
+        let window = f.client(client).create_window();
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+
+    f.swayward().layout.consume_or_expel_window_left(None);
+    assert!(crate::command::execute(f.niri_state(), "focus parent")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "mark parent")[0].success);
+    let swayward = f.swayward();
+    assert!(!swayward.marks_by_container.is_empty());
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &swayward.marks_by_window,
+        &swayward.marks_by_container,
+    ))
+    .unwrap();
+    let parent = find_json_node_with_mark(&tree, "parent").unwrap();
+    let parent_id = parent["id"].as_i64().unwrap();
+
+    let outcome = crate::command::execute(
+        f.niri_state(),
+        &format!("[con_id={parent_id}] layout tabbed"),
+    );
+    assert!(outcome[0].success);
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &swayward.marks_by_window,
+        &swayward.marks_by_container,
+    ))
+    .unwrap();
+    assert_eq!(
+        find_json_node(&tree, "con", true).unwrap()["layout"],
+        "tabbed"
+    );
 }
 
 #[test]
@@ -673,6 +743,7 @@ fn scratchpad_hides_focused_window_and_show_cycles_windows() {
         &swayward.layout,
         &swayward.global_space,
         &swayward.marks_by_window,
+        &swayward.marks_by_container,
     );
     assert_eq!(tree.nodes[0].nodes[0].floating_nodes.len(), 2);
     assert!(tree.nodes[0].nodes[0]
@@ -740,6 +811,7 @@ fn empty_scratch_workspace_is_always_serialized() {
         &swayward.layout,
         &swayward.global_space,
         &swayward.marks_by_window,
+        &swayward.marks_by_container,
     );
     assert_eq!(tree.nodes[0].nodes[0].name.as_deref(), Some("__i3_scratch"));
     assert!(tree.nodes[0].nodes[0].floating_nodes.is_empty());
@@ -1000,6 +1072,7 @@ fn ipc_output_rects_use_global_positions() {
         &swayward.layout,
         &swayward.global_space,
         &Default::default(),
+        &Default::default(),
     );
     assert_eq!(root.rect.width, 3200);
     assert_eq!(root.rect.height, 1080);
@@ -1018,7 +1091,9 @@ fn stale_tree_leaf_is_omitted_without_panicking() {
         tree,
         &|_| None,
         Default::default(),
-        &Default::default()
+        &Default::default(),
+        &Default::default(),
+        crate::layout::workspace::WorkspaceId::specific(1)
     )
     .is_none());
 
@@ -1036,9 +1111,15 @@ fn stale_tree_leaf_is_omitted_without_panicking() {
             rect: Default::default(),
         }],
     };
-    let node =
-        crate::ipc::tree::describe_tiling(tree, &|_| None, Default::default(), &Default::default())
-            .unwrap();
+    let node = crate::ipc::tree::describe_tiling(
+        tree,
+        &|_| None,
+        Default::default(),
+        &Default::default(),
+        &Default::default(),
+        crate::layout::workspace::WorkspaceId::specific(1),
+    )
+    .unwrap();
     assert!(node.nodes.is_empty());
 }
 

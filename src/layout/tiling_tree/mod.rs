@@ -41,6 +41,12 @@ pub enum InsertTarget {
     Node(NodeId),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IpcNodeKind {
+    Split,
+    Leaf,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum IpcNode<I> {
     Split {
@@ -58,6 +64,25 @@ pub enum IpcNode<I> {
         focused: bool,
         rect: Rectangle<f64, Logical>,
     },
+}
+
+impl<I> IpcNode<I> {
+    pub fn nodes(&self) -> Vec<(NodeId, IpcNodeKind)> {
+        fn collect<I>(node: &IpcNode<I>, nodes: &mut Vec<(NodeId, IpcNodeKind)>) {
+            match node {
+                IpcNode::Split { id, children, .. } => {
+                    nodes.push((*id, IpcNodeKind::Split));
+                    for child in children {
+                        collect(child, nodes);
+                    }
+                }
+                IpcNode::Leaf { id, .. } => nodes.push((*id, IpcNodeKind::Leaf)),
+            }
+        }
+        let mut nodes = Vec::new();
+        collect(self, &mut nodes);
+        nodes
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -420,6 +445,10 @@ impl<W: LayoutElement> TilingTree<W> {
         if self.nodes.contains_key(&id) {
             self.set_focus_id(Some(id));
         }
+    }
+
+    pub fn contains(&self, id: NodeId) -> bool {
+        self.nodes.contains_key(&id)
     }
 
     pub fn focus_parent(&mut self) -> bool {

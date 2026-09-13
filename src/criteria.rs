@@ -83,6 +83,31 @@ pub struct WindowInfo<'a> {
 }
 
 impl Criteria {
+    pub fn matches_container(&self, con_id: u64, marks: &[String]) -> bool {
+        self.title.is_none()
+            && self.shell.is_none()
+            && self.app_id.is_none()
+            && self.id.is_none()
+            && self.class.is_none()
+            && self.instance.is_none()
+            && self.window_role.is_none()
+            && self.window_type.is_none()
+            && self.urgent.is_none()
+            && self.workspace.is_none()
+            && !self.floating
+            && !self.tiling
+            && self.pid.is_none()
+            && self.sandbox_engine.is_none()
+            && self.sandbox_app_id.is_none()
+            && self.sandbox_instance_id.is_none()
+            && self.tag.is_none()
+            && self
+                .con_mark
+                .as_ref()
+                .is_none_or(|pattern| marks.iter().any(|mark| pattern.matches(Some(mark), None)))
+            && self.con_id.is_none_or(|id| id == con_id)
+    }
+
     pub fn parse(raw: &str, focused_con_id: Option<u64>) -> Result<Self, String> {
         let body = raw
             .strip_prefix('[')
