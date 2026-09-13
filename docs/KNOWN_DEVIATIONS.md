@@ -22,15 +22,6 @@ binds {
 Swayward also retains typed niri actions for features outside the current sway
 command subset.
 
-## Binding modes
-
-Swayward has no binding modes. This affects common configurations because sway's
-own default config defines a `resize` mode. The translator reports both the mode
-block and bindings that enter it for manual attention.
-
-`GET_BINDING_MODES` returns a well-formed not-implemented error. Mode event
-subscriptions are accepted, but normal operation cannot produce a mode change.
-
 ## Bars
 
 Swayward has no `bar {}` configuration block and does not launch swaybar.
@@ -51,7 +42,7 @@ accent, not a sway titlebar.
 
 ## IPC requests and commands
 
-`GET_BINDING_MODES`, `GET_CONFIG`, `GET_INPUTS`, and `GET_SEATS` return:
+`GET_CONFIG`, `GET_INPUTS`, and `GET_SEATS` return:
 
 ```json
 {"success":false,"error":"not implemented"}

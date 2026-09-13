@@ -265,6 +265,27 @@ fn execute_one(
             watcher.load_config(None);
             None
         }
+        Command::Mode(mode) => {
+            if mode != "default"
+                && !state
+                    .swayward
+                    .config
+                    .borrow()
+                    .binding_modes
+                    .iter()
+                    .any(|binding_mode| binding_mode.name == mode)
+            {
+                return failure(format!("Unknown binding mode '{mode}'"));
+            }
+            state.swayward.binding_mode = mode.clone();
+            if let Some(server) = &state.swayward.ipc_server {
+                server.send_event(swayward_ipc::legacy::Event::BindingModeChanged {
+                    mode,
+                    pango_markup: false,
+                });
+            }
+            None
+        }
         Command::Nop => None,
         Command::Exec(command) => {
             let (token, _) = state.swayward.activation_state.create_external_token(None);

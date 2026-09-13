@@ -716,6 +716,69 @@ impl smithay::backend::input::InputBackend for TestInput {
 }
 
 #[test]
+fn binding_modes_switch_binds_emit_events_and_list_over_ipc() {
+    let config = swayward_config::Config::parse_mem(
+        r#"binds { Super+R { command "mode resize"; }; }
+        mode "resize" {
+            code:10 { command "workspace 7"; };
+            Escape { command "mode default"; };
+        }"#,
+    )
+    .unwrap();
+    let (mut fixture, socket) = ipc_fixture();
+    *fixture.swayward().config.borrow_mut() = config;
+    fixture.add_output(1, (1920, 1080));
+    let mut subscriber = UnixStream::connect(&socket).unwrap();
+    subscriber
+        .write_all(&crate::ipc::wire::encode(
+            MessageType::Subscribe,
+            r#"["mode"]"#,
+        ))
+        .unwrap();
+    let (_, reply) = read_ipc_reply(&mut fixture, &mut subscriber);
+    assert_eq!(reply, r#"{"success": true}"#);
+
+    assert!(crate::command::execute(fixture.niri_state(), "mode resize")[0].success);
+    let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
+    assert_eq!(event_type, (1 << 31) | 2);
+    let expected: Value = serde_json::from_str(include_str!(
+        "../../tests/fixtures/sway/events/mode.resize.json"
+    ))
+    .unwrap();
+    assert_event_shape(&expected, &serde_json::from_str(&payload).unwrap(), "$mode");
+
+    fixture.niri_state().process_input_event::<TestInput>(
+        smithay::backend::input::InputEvent::Keyboard {
+            event: TestKeyEvent { key: 2, count: 1 },
+        },
+    );
+    let swayward = fixture.swayward();
+    assert_eq!(
+        describe_workspaces(&swayward.layout, &swayward.global_space)[0].num,
+        7
+    );
+
+    assert!(crate::command::execute(fixture.niri_state(), "mode default")[0].success);
+    let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
+    assert_eq!(event_type, (1 << 31) | 2);
+    let expected: Value = serde_json::from_str(include_str!(
+        "../../tests/fixtures/sway/events/mode.default.json"
+    ))
+    .unwrap();
+    assert_event_shape(&expected, &serde_json::from_str(&payload).unwrap(), "$mode");
+
+    let mut query = UnixStream::connect(socket).unwrap();
+    query
+        .write_all(&crate::ipc::wire::encode(MessageType::GetBindingModes, ""))
+        .unwrap();
+    let (_, payload) = read_ipc_reply(&mut fixture, &mut query);
+    assert_eq!(
+        serde_json::from_str::<Value>(&payload).unwrap(),
+        serde_json::json!(["default", "resize"])
+    );
+}
+
+#[test]
 fn command_bind_executes_the_sway_command_path() {
     let config = swayward_config::Config::parse_mem(
         "binds { Super+1 repeat=false { command \"workspace 7\"; }; }",

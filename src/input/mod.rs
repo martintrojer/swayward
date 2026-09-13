@@ -564,8 +564,12 @@ impl State {
 
                 let res = {
                     let config = this.swayward.config.borrow();
-                    let bindings =
-                        make_binds_iter(&config, &mut this.swayward.window_mru_ui, modifiers);
+                    let bindings = make_binds_iter(
+                        &config,
+                        &this.swayward.binding_mode,
+                        &mut this.swayward.window_mru_ui,
+                        modifiers,
+                    );
 
                     should_intercept_key(
                         &mut this.swayward.suppressed_keys,
@@ -2990,8 +2994,12 @@ impl State {
                 }
                 .and_then(|trigger| {
                     let config = self.swayward.config.borrow();
-                    let bindings =
-                        make_binds_iter(&config, &mut self.swayward.window_mru_ui, modifiers);
+                    let bindings = make_binds_iter(
+                        &config,
+                        &self.swayward.binding_mode,
+                        &mut self.swayward.window_mru_ui,
+                        modifiers,
+                    );
                     find_configured_bind(bindings, mod_key, trigger, mods)
                 })
                 .filter(|bind| {
@@ -3323,60 +3331,63 @@ impl State {
                     .horizontal_wheel_tracker
                     .accumulate(horizontal);
                 if ticks != 0 {
-                    let (bind_left, bind_right) = if should_handle_in_overview
-                        && modifiers.is_empty()
-                    {
-                        let bind_left = Some(Bind {
-                            key: Key {
-                                trigger: Trigger::WheelScrollLeft,
-                                modifiers: Modifiers::empty(),
-                            },
-                            action: Action::FocusColumnLeftUnderMouse,
-                            repeat: true,
-                            cooldown: None,
-                            allow_when_locked: false,
-                            allow_inhibiting: false,
-                            hotkey_overlay_title: None,
-                        });
-                        let bind_right = Some(Bind {
-                            key: Key {
-                                trigger: Trigger::WheelScrollRight,
-                                modifiers: Modifiers::empty(),
-                            },
-                            action: Action::FocusColumnRightUnderMouse,
-                            repeat: true,
-                            cooldown: None,
-                            allow_when_locked: false,
-                            allow_inhibiting: false,
-                            hotkey_overlay_title: None,
-                        });
-                        (bind_left, bind_right)
-                    } else {
-                        let config = self.swayward.config.borrow();
-                        let bindings =
-                            make_binds_iter(&config, &mut self.swayward.window_mru_ui, modifiers);
-                        let bind_left = find_configured_bind(
-                            bindings.clone(),
-                            mod_key,
-                            Trigger::WheelScrollLeft,
-                            mods,
-                        )
-                        .filter(|bind| {
-                            !self.swayward.screenshot_ui.is_open()
-                                || allowed_during_screenshot(&bind.action)
-                        });
-                        let bind_right = find_configured_bind(
-                            bindings,
-                            mod_key,
-                            Trigger::WheelScrollRight,
-                            mods,
-                        )
-                        .filter(|bind| {
-                            !self.swayward.screenshot_ui.is_open()
-                                || allowed_during_screenshot(&bind.action)
-                        });
-                        (bind_left, bind_right)
-                    };
+                    let (bind_left, bind_right) =
+                        if should_handle_in_overview && modifiers.is_empty() {
+                            let bind_left = Some(Bind {
+                                key: Key {
+                                    trigger: Trigger::WheelScrollLeft,
+                                    modifiers: Modifiers::empty(),
+                                },
+                                action: Action::FocusColumnLeftUnderMouse,
+                                repeat: true,
+                                cooldown: None,
+                                allow_when_locked: false,
+                                allow_inhibiting: false,
+                                hotkey_overlay_title: None,
+                            });
+                            let bind_right = Some(Bind {
+                                key: Key {
+                                    trigger: Trigger::WheelScrollRight,
+                                    modifiers: Modifiers::empty(),
+                                },
+                                action: Action::FocusColumnRightUnderMouse,
+                                repeat: true,
+                                cooldown: None,
+                                allow_when_locked: false,
+                                allow_inhibiting: false,
+                                hotkey_overlay_title: None,
+                            });
+                            (bind_left, bind_right)
+                        } else {
+                            let config = self.swayward.config.borrow();
+                            let bindings = make_binds_iter(
+                                &config,
+                                &self.swayward.binding_mode,
+                                &mut self.swayward.window_mru_ui,
+                                modifiers,
+                            );
+                            let bind_left = find_configured_bind(
+                                bindings.clone(),
+                                mod_key,
+                                Trigger::WheelScrollLeft,
+                                mods,
+                            )
+                            .filter(|bind| {
+                                !self.swayward.screenshot_ui.is_open()
+                                    || allowed_during_screenshot(&bind.action)
+                            });
+                            let bind_right = find_configured_bind(
+                                bindings,
+                                mod_key,
+                                Trigger::WheelScrollRight,
+                                mods,
+                            )
+                            .filter(|bind| {
+                                !self.swayward.screenshot_ui.is_open()
+                                    || allowed_during_screenshot(&bind.action)
+                            });
+                            (bind_left, bind_right)
+                        };
 
                     if let Some(right) = bind_right {
                         for _ in 0..ticks {
@@ -3448,8 +3459,12 @@ impl State {
                         (bind_up, bind_down)
                     } else {
                         let config = self.swayward.config.borrow();
-                        let bindings =
-                            make_binds_iter(&config, &mut self.swayward.window_mru_ui, modifiers);
+                        let bindings = make_binds_iter(
+                            &config,
+                            &self.swayward.binding_mode,
+                            &mut self.swayward.window_mru_ui,
+                            modifiers,
+                        );
                         let bind_up = find_configured_bind(
                             bindings.clone(),
                             mod_key,
@@ -3606,8 +3621,12 @@ impl State {
                     .accumulate(horizontal);
                 if ticks != 0 {
                     let config = self.swayward.config.borrow();
-                    let bindings =
-                        make_binds_iter(&config, &mut self.swayward.window_mru_ui, modifiers);
+                    let bindings = make_binds_iter(
+                        &config,
+                        &self.swayward.binding_mode,
+                        &mut self.swayward.window_mru_ui,
+                        modifiers,
+                    );
                     let bind_left = find_configured_bind(
                         bindings.clone(),
                         mod_key,
@@ -3644,8 +3663,12 @@ impl State {
                     .accumulate(vertical);
                 if ticks != 0 {
                     let config = self.swayward.config.borrow();
-                    let bindings =
-                        make_binds_iter(&config, &mut self.swayward.window_mru_ui, modifiers);
+                    let bindings = make_binds_iter(
+                        &config,
+                        &self.swayward.binding_mode,
+                        &mut self.swayward.window_mru_ui,
+                        modifiers,
+                    );
                     let bind_up = find_configured_bind(
                         bindings.clone(),
                         mod_key,
@@ -5483,10 +5506,17 @@ fn grab_allows_hot_corner(grab: &(dyn PointerGrab<State> + 'static)) -> bool {
 /// Includes dynamically populated bindings like the MRU UI.
 fn make_binds_iter<'a>(
     config: &'a Config,
+    binding_mode: &str,
     mru: &'a mut WindowMruUi,
     mods: Modifiers,
 ) -> impl Iterator<Item = &'a Bind> + Clone {
-    // Figure out the binds to use depending on whether the MRU is enabled and/or open.
+    // Figure out the binds to use depending on the active mode and whether the MRU is open.
+    let mode_binds = config
+        .binding_modes
+        .iter()
+        .find(|mode| mode.name == binding_mode)
+        .into_iter()
+        .flat_map(|mode| mode.binds.0.iter());
     let general_binds = (!mru.is_open()).then_some(config.binds.0.iter());
     let general_binds = general_binds.into_iter().flatten();
 
@@ -5498,7 +5528,10 @@ fn make_binds_iter<'a>(
     let mru_open_binds = mru_open_binds.into_iter().flatten();
 
     // General binds take precedence over the MRU binds.
-    general_binds.chain(mru_binds).chain(mru_open_binds)
+    mode_binds
+        .chain(general_binds)
+        .chain(mru_binds)
+        .chain(mru_open_binds)
 }
 
 #[cfg(test)]

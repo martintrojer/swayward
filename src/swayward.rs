@@ -240,6 +240,7 @@ pub struct Swayward {
         Vec<String>,
     >,
     pub for_window: Vec<(String, String, crate::criteria::Criteria)>,
+    pub binding_mode: String,
 
     // This space does not actually contain any windows, but all outputs are mapped into it
     // according to their global position.
@@ -2579,6 +2580,7 @@ impl Swayward {
             marks_by_window: HashMap::new(),
             marks_by_container: HashMap::new(),
             for_window: Vec::new(),
+            binding_mode: "default".into(),
             global_space: Space::default(),
             sorted_outputs: Vec::default(),
             output_state: HashMap::new(),

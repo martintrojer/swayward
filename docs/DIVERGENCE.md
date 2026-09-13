@@ -35,3 +35,4 @@ src/layout/mod.rs, src/layout/workspace.rs, src/layout/tiling_tree/mod.rs — ex
 src/ipc/server.rs — emit sway-shaped workspace, window, and binding-mode subscription payloads for waybar-compatible event streams.
 swayward-config/src/binds.rs, src/input/mod.rs — add validated sway command-string binds while retaining inherited typed actions for unsupported compositor features.
 swayward-config/src/binds.rs, src/input/mod.rs, src/ui/hotkey_overlay.rs — accept numeric bindcode triggers so translated sway bindcode directives remain functional.
+swayward-ipc/src/command.rs, swayward-config/src/lib.rs, swayward-config/src/binds.rs, src/swayward.rs, src/input/mod.rs, src/command.rs, src/ipc/server.rs — support named binding modes, mode commands and events, and GET_BINDING_MODES.

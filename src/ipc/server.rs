@@ -49,6 +49,7 @@ struct QueryState {
     workspaces: String,
     outputs: String,
     marks: String,
+    binding_modes: String,
 }
 
 struct EventStreamClient {
@@ -181,6 +182,7 @@ fn on_new_ipc_client(state: &mut State, stream: UnixStream) {
     let Some(server) = &state.swayward.ipc_server else {
         return;
     };
+    server.query_state.borrow_mut().binding_modes = binding_modes(&state.swayward.config.borrow());
     refresh_query_state(
         &state.swayward.layout,
         &state.swayward.global_space,
@@ -297,6 +299,7 @@ async fn dispatch(ctx: &ClientCtx, msg_type: MessageType, payload: &[u8]) -> Str
         MessageType::GetWorkspaces => ctx.query_state.borrow().workspaces.clone(),
         MessageType::GetOutputs => ctx.query_state.borrow().outputs.clone(),
         MessageType::GetMarks => ctx.query_state.borrow().marks.clone(),
+        MessageType::GetBindingModes => ctx.query_state.borrow().binding_modes.clone(),
         MessageType::RunCommand => {
             let input = match String::from_utf8(payload.to_vec()) {
                 Ok(input) => input,
@@ -328,6 +331,13 @@ async fn dispatch(ctx: &ClientCtx, msg_type: MessageType, payload: &[u8]) -> Str
         MessageType::GetBarConfig => "[]".into(),
         _ => r#"{"success":false,"error":"not implemented"}"#.into(),
     }
+}
+
+fn binding_modes(config: &swayward_config::Config) -> String {
+    let modes = std::iter::once("default")
+        .chain(config.binding_modes.iter().map(|mode| mode.name.as_str()))
+        .collect::<Vec<_>>();
+    serde_json::to_string(&modes).unwrap_or_else(|_| "[]".into())
 }
 
 fn serialize_outcomes(outcomes: &[CommandOutcome]) -> String {

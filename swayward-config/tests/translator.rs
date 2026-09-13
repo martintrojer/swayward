@@ -27,6 +27,12 @@ fn upstream_sway_and_swayfx_defaults_translate_to_valid_config() {
             summary.starts_with("manual attention:"),
             "{fixture}: {summary}"
         );
+        if fixture == "sway-1.11-default.conf" {
+            assert!(
+                summary.starts_with("manual attention: 5 directive(s)"),
+                "{fixture}: {summary}"
+            );
+        }
         for item in summary.lines().skip(1) {
             assert!(
                 translated.contains(item.trim()),

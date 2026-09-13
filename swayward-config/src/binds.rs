@@ -19,6 +19,44 @@ use crate::utils::{expect_only_children, MergeWith};
 #[derive(Debug, Default, PartialEq)]
 pub struct Binds(pub Vec<Bind>);
 
+#[derive(Debug, PartialEq)]
+pub struct BindingMode {
+    pub name: String,
+    pub binds: Binds,
+}
+
+impl<S> knuffel::Decode<S> for BindingMode
+where
+    S: knuffel::traits::ErrorSpan,
+{
+    fn decode_node(
+        node: &knuffel::ast::SpannedNode<S>,
+        ctx: &mut knuffel::decode::Context<S>,
+    ) -> Result<Self, DecodeError<S>> {
+        let name = match &node.arguments[..] {
+            [argument] => knuffel::traits::DecodeScalar::decode(argument, ctx)?,
+            _ => {
+                return Err(DecodeError::unexpected(
+                    node,
+                    "mode",
+                    "expected mode \"<name>\" { ... }",
+                ));
+            }
+        };
+        for property in &node.properties {
+            ctx.emit_error(DecodeError::unexpected(
+                property.0,
+                "property",
+                "no properties expected for mode",
+            ));
+        }
+        Ok(Self {
+            name,
+            binds: Binds::decode_children(node, ctx),
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Bind {
     pub key: Key,
@@ -800,6 +838,43 @@ impl<S: knuffel::traits::ErrorSpan> knuffel::DecodeScalar<S> for WorkspaceRefere
     }
 }
 
+impl Binds {
+    fn decode_children<S: knuffel::traits::ErrorSpan>(
+        node: &knuffel::ast::SpannedNode<S>,
+        ctx: &mut knuffel::decode::Context<S>,
+    ) -> Self {
+        let mut seen_keys: HashMap<Key, &knuffel::ast::SpannedNode<S>> = HashMap::new();
+        let mut binds = Vec::new();
+
+        for child in node.children() {
+            match <Bind as knuffel::Decode<S>>::decode_node(child, ctx) {
+                Err(e) => ctx.emit_error(e),
+                Ok(bind) => match seen_keys.entry(bind.key) {
+                    Entry::Occupied(entry) => {
+                        // Even though it's technically incorrect, we use
+                        // `DecodeError::Missing` here because it labels the bind with
+                        // "node starts here", which is the least bad option
+                        ctx.emit_error(DecodeError::missing(
+                            entry.get(),
+                            "keybind first defined here",
+                        ));
+                        ctx.emit_error(DecodeError::unexpected(
+                            &child.node_name,
+                            "keybind",
+                            "duplicate keybind later defined here",
+                        ));
+                    }
+                    Entry::Vacant(entry) => {
+                        entry.insert(child);
+                        binds.push(bind);
+                    }
+                },
+            }
+        }
+        Self(binds)
+    }
+}
+
 impl<S> knuffel::Decode<S> for Binds
 where
     S: knuffel::traits::ErrorSpan,
@@ -809,43 +884,7 @@ where
         ctx: &mut knuffel::decode::Context<S>,
     ) -> Result<Self, DecodeError<S>> {
         expect_only_children(node, ctx);
-
-        let mut seen_keys: HashMap<Key, &knuffel::ast::SpannedNode<S>> = HashMap::new();
-
-        let mut binds = Vec::new();
-
-        for child in node.children() {
-            match Bind::decode_node(child, ctx) {
-                Err(e) => {
-                    ctx.emit_error(e);
-                }
-                Ok(bind) => {
-                    match seen_keys.entry(bind.key) {
-                        Entry::Occupied(entry) => {
-                            // Even though it's technically incorrect, we use
-                            // `DecodeError::Missing` here because it labels the bind with
-                            // "node starts here", which is the least bad option
-                            ctx.emit_error(DecodeError::missing(
-                                entry.get(),
-                                "keybind first defined here",
-                            ));
-
-                            ctx.emit_error(DecodeError::unexpected(
-                                &child.node_name,
-                                "keybind",
-                                "duplicate keybind later defined here",
-                            ));
-                        }
-                        Entry::Vacant(entry) => {
-                            entry.insert(child);
-                            binds.push(bind);
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(Self(binds))
+        Ok(Self::decode_children(node, ctx))
     }
 }
 

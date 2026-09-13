@@ -35,9 +35,8 @@ returns:
 ```
 
 The server implements `RUN_COMMAND`, `GET_WORKSPACES`, `SUBSCRIBE`,
-`GET_OUTPUTS`, `GET_TREE`, `GET_MARKS`, and `GET_VERSION`. Subscriptions support
-workspace, window, and mode event families. Binding modes do not exist yet, so
-normal operation does not produce mode changes.
+`GET_OUTPUTS`, `GET_TREE`, `GET_MARKS`, `GET_BINDING_MODES`, and `GET_VERSION`.
+Subscriptions support workspace, window, and mode event families.
 
 `GET_BAR_CONFIG` returns an empty array because swayward has no `bar {}` block.
 Other decoded requests without handlers return the explicit failure above.

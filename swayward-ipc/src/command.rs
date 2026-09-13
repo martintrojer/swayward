@@ -80,6 +80,7 @@ pub enum Command {
         unit: ResizeUnit,
     },
     Reload,
+    Mode(String),
     Nop,
     Exec(String),
     Mark {
@@ -293,6 +294,7 @@ fn parse_one(input: &str) -> Result<Command, String> {
         "kill" => no_args(rest, "kill").map(|()| Command::Kill),
         "resize" => parse_resize(rest),
         "reload" => no_args(rest, "reload").map(|()| Command::Reload),
+        "mode" => one(rest, "mode <name>").map(|name| Command::Mode(join_words(&[name]))),
         "nop" => Ok(Command::Nop),
         "exec" | "exec_always" => parse_exec(input, name),
         "mark" => parse_mark(rest),

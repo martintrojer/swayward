@@ -88,6 +88,7 @@ pub struct Config {
     pub window_rules: Vec<WindowRule>,
     pub layer_rules: Vec<LayerRule>,
     pub binds: Binds,
+    pub binding_modes: Vec<BindingMode>,
     pub switch_events: SwitchBinds,
     pub debug: Debug,
     pub workspaces: Vec<Workspace>,
@@ -165,6 +166,7 @@ where
                     | "window-rule"
                     | "layer-rule"
                     | "workspace"
+                    | "mode"
                     | "include"
             ) && !seen.insert(name)
             {
@@ -214,6 +216,7 @@ where
                 "window-rule" => m_push!(window_rules),
                 "layer-rule" => m_push!(layer_rules),
                 "workspace" => m_push!(workspaces),
+                "mode" => m_push!(binding_modes),
 
                 // Single-part sections.
                 "binds" => {
@@ -642,6 +645,25 @@ mod tests {
     }
 
     #[test]
+    fn binding_mode_parses_command_binds() {
+        let config = Config::parse_mem(
+            r#"mode "resize" {
+                Left { command "resize shrink width 10 px"; }
+                Escape { command "mode default"; }
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(config.binding_modes.len(), 1);
+        assert_eq!(config.binding_modes[0].name, "resize");
+        assert_eq!(config.binding_modes[0].binds.0.len(), 2);
+        assert_eq!(
+            config.binding_modes[0].binds.0[1].action,
+            Action::SwayCommand("mode default".into())
+        );
+    }
+
+    #[test]
     fn sway_command_bind_parses_and_invalid_command_fails_at_load_time() {
         let config = Config::parse_mem(
             "binds { Mod+H repeat=false cooldown-ms=150 allow-when-locked=true hotkey-overlay-title=\"Left\" { command \"focus left\"; }; }",
@@ -662,7 +684,7 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(labels
             .iter()
-            .any(|label| label.offset() == 16 && label.len() > 0));
+            .any(|label| label.offset() == 16 && !label.is_empty()));
     }
 
     #[test]
@@ -2275,6 +2297,7 @@ mod tests {
                     },
                 ],
             ),
+            binding_modes: [],
             switch_events: SwitchBinds {
                 lid_open: None,
                 lid_close: None,

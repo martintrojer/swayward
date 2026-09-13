@@ -15,6 +15,7 @@ class Translator:
     def __init__(self) -> None:
         self.variables: dict[str, str] = {}
         self.binds: dict[str, str] = {}
+        self.binding_modes: list[tuple[str, list[str]]] = []
         self.inputs: dict[str, list[str]] = {}
         self.sections: list[str] = []
         self.blur_settings: dict[str, str] = {}
@@ -82,14 +83,9 @@ class Translator:
                     " | ".join(block),
                     "bar blocks are unsupported; use waybar",
                 )
-            elif re.match(r"mode\s+.+\{", text):
+            elif match := re.match(r'mode\s+("[^"]+"|\S+)\s*\{', text):
                 block, index = self.block(lines, index, text)
-                self.warn(
-                    path,
-                    line_no,
-                    " | ".join(block),
-                    "binding modes are not supported",
-                )
+                self.translate_mode(path, line_no, match.group(1).strip('"'), block[1:-1])
             elif match := re.match(r"(input|output)\s+(.+?)\s*\{", text):
                 block, index = self.block(lines, index, text)
                 self.translate_device_block(
@@ -126,6 +122,23 @@ class Translator:
             depth += line.count("{") - line.count("}")
             index += 1
         return block, index
+
+    def translate_mode(
+        self, source: Path, line: int, name: str, body: list[str]
+    ) -> None:
+        mode_binds: dict[str, str] = {}
+        previous = self.binds
+        self.binds = mode_binds
+        for offset, text in enumerate(body, 1):
+            text = self.expand(text.strip())
+            if not text or text.startswith("#"):
+                continue
+            if match := re.match(r"(bindsym|bindcode)\s+(.+)", text):
+                self.translate_bind(source, line + offset, match.group(1), match.group(2))
+            else:
+                self.warn(source, line + offset, text, f"unhandled directive in mode {name}")
+        self.binds = previous
+        self.binding_modes.append((name, list(mode_binds.values())))
 
     def translate_bind(self, source: Path, line: int, kind: str, rest: str) -> None:
         properties: list[str] = []
@@ -190,7 +203,7 @@ class Translator:
             r"\1 \2 px",
             command,
         )
-        if command.startswith("mode ") or command == "focus mode_toggle":
+        if command == "focus mode_toggle":
             return None
         return command
 
@@ -443,6 +456,8 @@ class Translator:
         ]
         if self.binds:
             output += ["", "binds {", *self.binds.values(), "}"]
+        for name, binds in self.binding_modes:
+            output += ["", f"mode {self.quote(name)} {{", *binds, "}"]
         if self.inputs:
             output += ["", "input {"]
             for target, settings in self.inputs.items():

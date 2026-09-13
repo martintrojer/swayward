@@ -19,8 +19,8 @@ Cargo is not required.
 Do not discard the translator's standard error. For example:
 
 ```text
-manual attention: 7 directive(s)
-  /home/user/.config/sway/config:179: binding modes are not supported: mode "resize" { ... }
+manual attention: 5 directive(s)
+  /home/user/.config/sway/config:24: unhandled output directive: bg /path/to/wallpaper fill
 ```
 
 The generated file contains the same item as a `// sway-to-kdl:` comment. Search
@@ -32,7 +32,7 @@ rg 'sway-to-kdl:' config.kdl
 
 The repository tests translate pinned copies of the sway 1.11 and SwayFX default
 configs, check that reported directives remain in the output, and parse the
-resulting KDL. The sway 1.11 default currently produces seven manual-attention
+resulting KDL. The sway 1.11 default currently produces five manual-attention
 items. The project has also translated and validated the upstream sway and
 SwayFX default files once by hand. These checks do not prove that the translator
 covers a personal configuration.
@@ -54,10 +54,8 @@ binds {
 `bindcode` becomes a `code:N` binding. Variables are expanded in source order.
 The same command parser handles key bindings and `swaymsg` requests.
 
-Swayward does not support binding modes. Sway's default config uses a `resize`
-mode, so an otherwise standard migration loses those resize bindings until you
-replace them with top-level bindings. The translator reports the mode block and
-each command that enters it. Do not treat those reports as optional cleanup.
+Sway binding modes become KDL `mode "name" { ... }` blocks. Bindings can enter
+and leave modes with commands such as `mode "resize"` and `mode "default"`.
 
 Commands outside swayward's current subset are also reported. Check the
 [compatibility matrix](SWAY_COMPATIBILITY.md#runtime-commands) before replacing

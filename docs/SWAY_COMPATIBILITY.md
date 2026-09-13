@@ -14,13 +14,13 @@ user-visible differences outside the request matrix.
 |---|---|---|
 | `RUN_COMMAND` | Partial | Executes the command families listed below. Unsupported syntax returns a sway-shaped failure array. |
 | `GET_WORKSPACES` | Implemented | Returns live global workspace identities. Fixture and focused tests cover the top-level shape and selected values. |
-| `SUBSCRIBE` | Partial | Accepts only `workspace`, `window`, and `mode`. Swayward emits workspace and window events. Binding modes do not exist yet, so normal operation does not produce mode changes. |
+| `SUBSCRIBE` | Partial | Accepts only `workspace`, `window`, and `mode`. Swayward emits events for all three families. |
 | `GET_OUTPUTS` | Implemented | Returns live outputs. Fixture and focused tests cover the top-level shape and selected values. |
 | `GET_TREE` | Implemented | Returns the live nested container tree. Fourteen sway 1.11 fixtures cover its schema and selected semantics. |
 | `GET_MARKS` | Implemented | Returns marks created and removed through commands. |
 | `GET_BAR_CONFIG` | Stubbed | Returns `[]`. Swayward has no `bar {}` block and does not launch swaybar. |
 | `GET_VERSION` | Implemented | Returns sway's response fields with `variant` set to `swayward`. Most field values do not have a sway fixture comparison. |
-| `GET_BINDING_MODES` | Unsupported | Returns `{"success":false,"error":"not implemented"}`. |
+| `GET_BINDING_MODES` | Implemented | Returns `default` followed by configured mode names. |
 | `GET_CONFIG` | Unsupported | Returns `{"success":false,"error":"not implemented"}`. |
 | `SEND_TICK` | Unsupported | Returns `{"success":false,"error":"not implemented"}`. |
 | `GET_BINDING_STATE` | Unsupported | Returns `{"success":false,"error":"not implemented"}`. |
@@ -29,8 +29,7 @@ user-visible differences outside the request matrix.
 
 Unknown message numbers are rejected by the wire decoder. The automated suite
 does not enumerate every unsupported request. In particular, it does not assert
-the current error response for `GET_BINDING_MODES`, `GET_CONFIG`, `GET_INPUTS`,
-or `GET_SEATS`.
+the current error response for `GET_CONFIG`, `GET_INPUTS`, or `GET_SEATS`.
 
 ## Runtime commands
 
@@ -53,7 +52,7 @@ The parser and executor support these command families:
 | Window state | Local `fullscreen enable|disable|toggle` and `floating enable|disable|toggle`. Global fullscreen returns a failure. |
 | Scratchpad | `move scratchpad` and `scratchpad show` |
 | Resize | Grow or shrink width or height in pixels or percentage points. |
-| Process and session | `exec`, `exec_always`, `kill`, `reload`, and `nop` |
+| Process and session | `exec`, `exec_always`, `kill`, `reload`, `mode <name>`, and `nop` |
 | Marks and rules | `mark`, `unmark`, and `for_window` |
 
 Criteria parsing supports sway-style selectors, including `app_id`, `title`,
@@ -73,7 +72,7 @@ Swayward supports subscriptions for these event families:
 |---|---|---|
 | Workspace | Emitted | A headless test compares a live `reload` event with a sway 1.11 fixture. Fixtures preserve all documented workspace change values, but most are not emitted one by one in tests. |
 | Window | Emitted | A headless test compares a live `focus` event with a sway 1.11 fixture. Fixtures preserve all documented window change values, but most are not emitted one by one in tests. |
-| Mode | Schema implemented | A headless subscriber reads a `default` event emitted through the server and compares it with a sway 1.11 fixture. The test injects the event because swayward has no binding modes, so users cannot trigger mode transitions yet. |
+| Mode | Emitted | A headless subscriber switches to a configured mode and compares the event with sway 1.11's `resize` fixture. |
 | Other sway event families | Unsupported | No event production or compatibility claim. |
 
 ## Verified clients
