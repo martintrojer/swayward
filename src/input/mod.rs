@@ -4721,7 +4721,7 @@ impl State {
 #[allow(clippy::too_many_arguments)]
 fn should_intercept_key<'a>(
     suppressed_keys: &mut HashSet<Keycode>,
-    bindings: impl IntoIterator<Item = &'a Bind>,
+    bindings: impl IntoIterator<Item = &'a Bind> + Clone,
     mod_key: ModKey,
     key_code: Keycode,
     modified: Keysym,
@@ -4744,6 +4744,7 @@ fn should_intercept_key<'a>(
         mod_key,
         modified,
         raw,
+        key_code,
         mods,
         disable_power_key_handling,
     );
@@ -4804,10 +4805,11 @@ fn should_intercept_key<'a>(
 }
 
 fn find_bind<'a>(
-    bindings: impl IntoIterator<Item = &'a Bind>,
+    bindings: impl IntoIterator<Item = &'a Bind> + Clone,
     mod_key: ModKey,
     modified: Keysym,
     raw: Option<Keysym>,
+    key_code: Keycode,
     mods: ModifiersState,
     disable_power_key_handling: bool,
 ) -> Option<Bind> {
@@ -4845,8 +4847,15 @@ fn find_bind<'a>(
         });
     }
 
-    let trigger = Trigger::Keysym(raw?);
-    find_configured_bind(bindings, mod_key, trigger, mods)
+    raw.and_then(|raw| find_configured_bind(bindings.clone(), mod_key, Trigger::Keysym(raw), mods))
+        .or_else(|| {
+            find_configured_bind(
+                bindings,
+                mod_key,
+                Trigger::Keycode(key_code.raw() + 8),
+                mods,
+            )
+        })
 }
 
 fn find_configured_bind<'a>(

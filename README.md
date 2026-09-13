@@ -89,7 +89,8 @@ sway is ~54k lines of C. Two choices collapse it before a line is written:
 - **We promise IPC compatibility, not config compatibility.** swayward is
   configured in KDL. sway's config parser, its config-only command handlers and
   much of its 77-file command directory simply aren't needed. Migrating users get
-  a translator script — a one-time cost instead of a permanent one.
+  [`contrib/sway-to-kdl`](docs/SWAY_CONFIG_MIGRATION.md) — a one-time cost instead
+  of a permanent one.
 - **GPL-3.0-or-later**, matching niri. This is what makes niri's code *liftable*
   rather than *re-implementable*. Under MIT we'd be retyping several thousand
   lines of fiddly protocol code for zero user-visible gain.

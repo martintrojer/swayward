@@ -34,3 +34,4 @@ docs/wiki/, docs/mkdocs.yaml — retire scroll-layout documentation and rebrand 
 src/layout/mod.rs, src/layout/workspace.rs, src/layout/tiling_tree/mod.rs — expose stable focused-node identity and targeted container layout mutation for sway command contexts.
 src/ipc/server.rs — emit sway-shaped workspace, window, and binding-mode subscription payloads for waybar-compatible event streams.
 swayward-config/src/binds.rs, src/input/mod.rs — add validated sway command-string binds while retaining inherited typed actions for unsupported compositor features.
+swayward-config/src/binds.rs, src/input/mod.rs, src/ui/hotkey_overlay.rs — accept numeric bindcode triggers so translated sway bindcode directives remain functional.

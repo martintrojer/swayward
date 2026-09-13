@@ -1,0 +1,488 @@
+#!/usr/bin/env python3
+"""Translate a sway or SwayFX config to loadable swayward KDL."""
+
+from __future__ import annotations
+
+import argparse
+import glob
+import json
+import re
+import sys
+from pathlib import Path
+
+
+class Translator:
+    def __init__(self) -> None:
+        self.variables: dict[str, str] = {}
+        self.binds: dict[str, str] = {}
+        self.inputs: dict[str, list[str]] = {}
+        self.sections: list[str] = []
+        self.blur_settings: dict[str, str] = {}
+        self.layout_settings: list[str] = []
+        self.manual: list[str] = []
+        self.visited: set[Path] = set()
+
+    @staticmethod
+    def quote(value: str) -> str:
+        return json.dumps(value)
+
+    def expand(self, text: str) -> str:
+        for name in sorted(self.variables, key=len, reverse=True):
+            text = text.replace(name, self.variables[name])
+        return text
+
+    def warn(self, source: Path, line: int, text: str, reason: str) -> None:
+        location = f"{source}:{line}" if line else str(source)
+        item = f"{location}: {reason}: {text.strip()}"
+        self.manual.append(item)
+        self.sections.append(f"// sway-to-kdl: {item}")
+
+    def parse(self, path: Path) -> None:
+        path = path.expanduser().resolve()
+        if path in self.visited:
+            self.warn(path, 0, "include", "include cycle")
+            return
+        self.visited.add(path)
+        try:
+            lines = path.read_text().splitlines()
+        except OSError as error:
+            self.warn(path, 0, "include", f"cannot read include: {error}")
+            return
+
+        index = 0
+        while index < len(lines):
+            line_no = index + 1
+            text = lines[index].strip()
+            index += 1
+            if not text or text.startswith("#"):
+                continue
+            while text.endswith("\\") and index < len(lines):
+                text = text[:-1] + " " + lines[index].strip()
+                index += 1
+
+            if match := re.fullmatch(r"set\s+(\$\w+)\s+(.+)", text):
+                value = self.expand(match.group(2).strip())
+                if "$" in value:
+                    self.warn(path, line_no, text, "variable value could not be fully expanded")
+                else:
+                    self.variables[match.group(1)] = value
+                continue
+            text = self.expand(text)
+            if "$" in text:
+                self.warn(path, line_no, text, "undefined variable")
+                continue
+
+            if text.startswith("include "):
+                self.translate_include(path, line_no, text)
+            elif re.match(r"bar\s*\{", text):
+                block, index = self.block(lines, index, text)
+                self.warn(
+                    path,
+                    line_no,
+                    " | ".join(block),
+                    "bar blocks are unsupported; use waybar",
+                )
+            elif re.match(r"mode\s+.+\{", text):
+                block, index = self.block(lines, index, text)
+                self.warn(
+                    path,
+                    line_no,
+                    " | ".join(block),
+                    "binding modes are not supported",
+                )
+            elif match := re.match(r"(input|output)\s+(.+?)\s*\{", text):
+                block, index = self.block(lines, index, text)
+                self.translate_device_block(
+                    path, line_no, match.group(1), match.group(2), block[1:-1]
+                )
+            elif match := re.match(r"output\s+(\S+)\s+(.+)", text):
+                self.translate_device_block(
+                    path, line_no, "output", match.group(1), [match.group(2)]
+                )
+            elif match := re.match(r"(bindsym|bindcode)\s+(.+)", text):
+                self.translate_bind(path, line_no, match.group(1), match.group(2))
+            elif match := re.match(r"for_window\s+(\[[^]]+\])\s+(.+)", text):
+                self.translate_for_window(path, line_no, match.group(1), match.group(2))
+            elif match := re.fullmatch(r"gaps\s+inner\s+(.+)", text):
+                self.layout_settings.append(f"    gaps {match.group(1)}")
+            elif not self.translate_swayfx(path, line_no, text):
+                self.warn(path, line_no, text, "unhandled")
+
+    def translate_include(self, source: Path, line: int, text: str) -> None:
+        pattern = text.removeprefix("include ").strip().strip('"\'')
+        matches = sorted(glob.glob(str(source.parent / pattern)))
+        if not matches:
+            self.warn(source, line, text, "include matched no files")
+        for included in matches:
+            self.parse(Path(included))
+
+    @staticmethod
+    def block(lines: list[str], index: int, first: str) -> tuple[list[str], int]:
+        block = [first]
+        depth = first.count("{") - first.count("}")
+        while depth > 0 and index < len(lines):
+            line = lines[index]
+            block.append(line.strip())
+            depth += line.count("{") - line.count("}")
+            index += 1
+        return block, index
+
+    def translate_bind(self, source: Path, line: int, kind: str, rest: str) -> None:
+        properties: list[str] = []
+        rest = rest.strip()
+        while rest.startswith("--"):
+            option, separator, rest = rest.partition(" ")
+            if not separator:
+                self.warn(source, line, rest, f"malformed {kind}")
+                return
+            rest = rest.lstrip()
+            if option == "--locked":
+                properties.append("allow-when-locked=true")
+            elif option == "--no-repeat":
+                properties.append("repeat=false")
+            else:
+                self.warn(source, line, rest, f"unsupported {kind} option {option}")
+                return
+
+        key, separator, command = rest.partition(" ")
+        if not separator or not command.strip():
+            self.warn(source, line, rest, f"malformed {kind}")
+            return
+        if kind == "bindcode":
+            if not key.isdecimal():
+                self.warn(source, line, rest, "bindcode key must be numeric")
+                return
+            key = f"code:{key}"
+
+        command = self.translate_command(command.strip())
+        if command is None:
+            self.warn(
+                source,
+                line,
+                rest,
+                "command is outside swayward's current command subset",
+            )
+            return
+        properties_text = " " + " ".join(properties) if properties else ""
+        key = self.translate_key(key)
+        if key in self.binds:
+            self.warn(source, line, rest, f"duplicate binding for {key}; kept the first")
+            return
+        self.binds[key] = (
+            f"    {key}{properties_text} {{ command {self.quote(command)}; }}"
+        )
+
+    @staticmethod
+    def translate_key(key: str) -> str:
+        aliases = {"Mod4": "Super", "Mod1": "Alt"}
+        return "+".join(aliases.get(part, part) for part in key.split("+"))
+
+    @staticmethod
+    def translate_command(command: str) -> str | None:
+        command = re.sub(
+            r"^move\s+container\s+to\s+workspace", "move to workspace", command
+        )
+        command = command.replace(r"\@", "@")
+        command = re.sub(r"^splith$", "split h", command)
+        command = re.sub(r"^splitv$", "split v", command)
+        command = re.sub(
+            r"^(resize\s+(?:grow|shrink)\s+(?:width|height))\s+(\d+)px$",
+            r"\1 \2 px",
+            command,
+        )
+        if command.startswith("mode ") or command == "focus mode_toggle":
+            return None
+        return command
+
+    def translate_for_window(
+        self, source: Path, line: int, criteria: str, command: str
+    ) -> None:
+        if not re.fullmatch(r'\[app_id="[^"]+"\]', criteria):
+            self.warn(
+                source,
+                line,
+                f"for_window {criteria} {command}",
+                "criteria need manual conversion to a window-rule match",
+            )
+            return
+        app_id = criteria.removeprefix('[app_id="').removesuffix('"]')
+        effects: list[str] = []
+        for directive in re.split(r"\s*,\s*|\s*;\s*", command):
+            words = directive.split()
+            if words == ["floating", "enable"]:
+                effects.append("    open-floating true")
+            elif words == ["floating", "disable"]:
+                effects.append("    open-floating false")
+            elif words[:1] == ["dim_inactive"] and len(words) == 2:
+                effects.append(f"    opacity {1.0 - float(words[1]):g}")
+            elif words[:1] == ["corner_radius"] and len(words) == 2:
+                effects += [
+                    f"    geometry-corner-radius {words[1]}",
+                    "    clip-to-geometry true",
+                ]
+            elif words[:1] == ["blur"] and len(words) == 2:
+                effects += [
+                    "    background-effect {",
+                    f"        blur {str(words[1] in {'enable', 'on'}).lower()}",
+                    "    }",
+                ]
+            elif words[:1] == ["shadows"] and len(words) == 2:
+                effects += [
+                    "    shadow {",
+                    f"        {'on' if words[1] in {'enable', 'on'} else 'off'}",
+                    "    }",
+                ]
+            else:
+                self.warn(
+                    source,
+                    line,
+                    f"for_window {criteria} {command}",
+                    "command needs manual conversion to window-rule properties",
+                )
+                return
+        self.sections += [
+            "window-rule {",
+            f"    match app-id={self.quote(app_id)}",
+            *effects,
+            "}",
+        ]
+
+    def translate_device_block(
+        self, source: Path, line: int, kind: str, selector: str, body: list[str]
+    ) -> None:
+        selector = selector.strip().strip('"\'')
+        if kind == "input":
+            self.translate_input_block(source, line, selector, body)
+        else:
+            self.translate_output_block(source, line, selector, body)
+
+    def translate_input_block(
+        self, source: Path, line: int, selector: str, body: list[str]
+    ) -> None:
+        target = {"type:touchpad": "touchpad", "type:keyboard": "keyboard"}.get(
+            selector
+        )
+        if target is None:
+            self.warn(
+                source,
+                line,
+                f"input {selector} {{ ... }}",
+                "device-specific input selectors require manual conversion",
+            )
+            return
+        mappings = {
+            "tap": "tap",
+            "dwt": "dwt",
+            "dwtp": "dwtp",
+            "natural_scroll": "natural-scroll",
+            "middle_emulation": "middle-emulation",
+            "left_handed": "left-handed",
+            "repeat_delay": "repeat-delay",
+            "repeat_rate": "repeat-rate",
+            "xkb_layout": "layout",
+            "xkb_model": "model",
+            "xkb_options": "options",
+            "xkb_rules": "rules",
+            "xkb_variant": "variant",
+        }
+        translated: list[str] = []
+        xkb: list[str] = []
+        for item in body:
+            if not item or item.startswith("#"):
+                continue
+            words = item.split(None, 1)
+            name = mappings.get(words[0])
+            if name is None:
+                comment = f"unhandled input directive: {item}"
+                translated.append(f"        // sway-to-kdl: {comment}")
+                self.manual.append(f"{source}:{line}: {comment}")
+                continue
+            value = words[1] if len(words) > 1 else "enabled"
+            if value in {"enabled", "disabled"}:
+                rendered = name if value == "enabled" else f"{name} false"
+            elif name in {"layout", "model", "options", "rules", "variant"}:
+                rendered = f"{name} {self.quote(value.strip(chr(34)))}"
+            else:
+                rendered = f"{name} {value}"
+            (xkb if words[0].startswith("xkb_") else translated).append(rendered)
+        if xkb:
+            translated += ["        xkb {"]
+            translated += [f"            {item}" for item in xkb]
+            translated += ["        }"]
+        self.inputs.setdefault(target, []).extend(translated)
+
+    def translate_output_block(
+        self, source: Path, line: int, selector: str, body: list[str]
+    ) -> None:
+        translated: list[str] = []
+        words = " ".join(
+            item for item in body if item and not item.startswith("#")
+        ).split()
+        index = 0
+        while index < len(words):
+            name = words[index]
+            if name in {"resolution", "mode"} and index + 1 < len(words):
+                translated.append(f"    mode {self.quote(words[index + 1])}")
+                index += 2
+            elif name == "position" and index + 1 < len(words) and "," in words[index + 1]:
+                x, y = words[index + 1].split(",", 1)
+                translated.append(f"    position x={x} y={y}")
+                index += 2
+            elif name == "scale" and index + 1 < len(words):
+                translated.append(f"    scale {words[index + 1]}")
+                index += 2
+            elif name in {"enable", "on"}:
+                index += 1
+            elif name in {"disable", "off"}:
+                translated.append("    off")
+                index += 1
+            else:
+                remainder = " ".join(words[index:])
+                comment = f"{source}:{line}: unhandled output directive: {remainder}"
+                translated.append(f"    // sway-to-kdl: {comment}")
+                self.manual.append(comment)
+                break
+        self.sections += [f"output {self.quote(selector)} {{", *translated, "}"]
+
+    def translate_swayfx(self, source: Path, line: int, text: str) -> bool:
+        words = text.split()
+        if not words:
+            return False
+        name = words[0]
+        if name == "blur":
+            state = "off" if len(words) > 1 and words[1] in {"disable", "off"} else "on"
+            self.blur_settings["state"] = f"    {state}"
+            self.sections += [
+                "// SwayFX blur -> swayward blur and window background-effect",
+                "window-rule {",
+                "    background-effect {",
+                f"        blur {str(state == 'on').lower()}",
+                "    }",
+                "}",
+            ]
+        elif name == "blur_xray" and len(words) == 2:
+            self.sections += [
+                "// SwayFX blur_xray -> window-rule background-effect xray",
+                "window-rule {",
+                "    background-effect {",
+                f"        xray {str(words[1] in {'enable', 'on'}).lower()}",
+                "    }",
+                "}",
+            ]
+        elif name == "blur_passes" and len(words) == 2:
+            self.blur_settings["passes"] = f"    passes {words[1]}"
+        elif name == "blur_radius" and len(words) == 2:
+            self.blur_settings["offset"] = f"    offset {words[1]}"
+        elif name == "corner_radius" and len(words) == 2:
+            self.sections += [
+                "// SwayFX corner_radius -> window-rule geometry-corner-radius",
+                "window-rule {",
+                f"    geometry-corner-radius {words[1]}",
+                "    clip-to-geometry true",
+                "}",
+            ]
+        elif name == "shadows":
+            state = "off" if len(words) > 1 and words[1] in {"disable", "off"} else "on"
+            self.layout_settings += [
+                "    // SwayFX shadows; tune remaining shadow controls as needed",
+                "    shadow {",
+                f"        {state}",
+                "    }",
+            ]
+        elif name == "shadows_on_csd" and len(words) == 2:
+            self.warn(
+                source,
+                line,
+                text,
+                "SwayFX shadows_on_csd has no exact swayward equivalent; tune layout shadow draw-behind-window",
+            )
+        elif name in {"dim_inactive", "default_dim_inactive"} and len(words) == 2:
+            opacity = 1.0 - float(words[1])
+            self.sections += [
+                "// SwayFX dim_inactive -> unfocused window opacity",
+                "window-rule {",
+                "    match is-focused=false",
+                f"    opacity {opacity:g}",
+                "}",
+            ]
+        elif name == "layer_effects":
+            self.translate_layer_effects(source, line, text)
+        else:
+            return False
+        return True
+
+    def translate_layer_effects(self, source: Path, line: int, text: str) -> None:
+        match = re.fullmatch(r'layer_effects\s+"?([^"\s]+)"?\s+(.+)', text)
+        if not match:
+            self.warn(source, line, text, "cannot parse SwayFX layer_effects")
+            return
+        namespace, effects = match.groups()
+        body = [f"// SwayFX layer_effects -> layer-rule for {namespace}", "layer-rule {", f"    match namespace={self.quote('^' + re.escape(namespace) + '$')}"]
+        for effect in re.split(r"\s*;\s*", effects.strip().strip("{} ")):
+            words = effect.split()
+            if words[:1] == ["blur"] and len(words) == 2:
+                body += ["    background-effect {", f"        blur {str(words[1] in {'enable', 'on'}).lower()}", "    }"]
+            elif words[:1] == ["blur_xray"] and len(words) == 2:
+                body += ["    background-effect {", f"        xray {str(words[1] in {'enable', 'on'}).lower()}", "    }"]
+            elif words[:1] == ["shadows"] and len(words) == 2:
+                body += ["    shadow {", f"        {'on' if words[1] in {'enable', 'on'} else 'off'}", "    }"]
+            elif words[:1] == ["corner_radius"] and len(words) == 2:
+                body.append(f"    geometry-corner-radius {words[1]}")
+            elif words:
+                comment = f"unhandled layer_effects directive: {effect}"
+                body.append(f"    // sway-to-kdl: {comment}")
+                self.manual.append(f"{source}:{line}: {comment}")
+        body.append("}")
+        self.sections += body
+
+    def render(self) -> str:
+        output = [
+            "// Generated by contrib/sway-to-kdl.",
+            "// swayward uses typed nested KDL so its inherited effects and animations",
+            "// keep their full option sets. Review every sway-to-kdl comment below.",
+        ]
+        if self.binds:
+            output += ["", "binds {", *self.binds.values(), "}"]
+        if self.inputs:
+            output += ["", "input {"]
+            for target, settings in self.inputs.items():
+                output += [f"    {target} {{"]
+                output += [
+                    f"        {item}" if not item.startswith("        ") else item
+                    for item in settings
+                ]
+                output += ["    }"]
+            output += ["}"]
+        if self.blur_settings:
+            output += [
+                "",
+                "// SwayFX blur settings; swayward keeps unmatched nested controls at their defaults.",
+                "blur {",
+                *self.blur_settings.values(),
+                "}",
+            ]
+        if self.layout_settings:
+            output += ["", "layout {", *self.layout_settings, "}"]
+        if self.sections:
+            output += ["", *self.sections]
+        return "\n".join(output) + "\n"
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("config", type=Path)
+    args = parser.parse_args()
+    translator = Translator()
+    translator.parse(args.config)
+    sys.stdout.write(translator.render())
+    if translator.manual:
+        print(f"manual attention: {len(translator.manual)} directive(s)", file=sys.stderr)
+        for item in translator.manual:
+            print(f"  {item}", file=sys.stderr)
+    else:
+        print("manual attention: none", file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

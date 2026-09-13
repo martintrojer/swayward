@@ -39,6 +39,7 @@ pub struct Key {
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum Trigger {
     Keysym(Keysym),
+    Keycode(u32),
     MouseLeft,
     MouseRight,
     MouseMiddle,
@@ -1057,7 +1058,13 @@ impl FromStr for Key {
             }
         }
 
-        let trigger = if key.eq_ignore_ascii_case("MouseLeft") {
+        let trigger = if let Some(keycode) = key.strip_prefix("code:") {
+            Trigger::Keycode(
+                keycode
+                    .parse()
+                    .map_err(|_| miette!("invalid keycode: {keycode}"))?,
+            )
+        } else if key.eq_ignore_ascii_case("MouseLeft") {
             Trigger::MouseLeft
         } else if key.eq_ignore_ascii_case("MouseRight") {
             Trigger::MouseRight
