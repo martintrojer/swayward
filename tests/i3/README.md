@@ -33,6 +33,17 @@ The adapter also preserves `open_window(dont_map => 1)`: it creates the
 `xdg_toplevel` without committing the surface, and the test's later `map` call
 performs the initial commit, configure acknowledgment, and buffer attachment.
 
+Sway sorts its stored workspace list when it creates or moves a workspace
+(`sway/sway/tree/workspace.c:255-259`; `sway/sway/tree/output.c:387-404`). The
+IPC serializer preserves that stored order. Swayward retains niri's trailing
+unnamed workspace as an internal creation target, so sorting the stored list on
+creation makes the placeholder visible through its index-derived fallback name
+and changes `workspace next` and `workspace prev`. The adapter therefore does
+not claim creation-order conformance. This is a compositor-model limitation,
+not an adapter substitution; fixing it requires separating sway workspaces from
+niri's internal placeholder slots. This limitation does not affect explicit
+workspace names or their `num` fields.
+
 The adapter cannot reproduce a compositor restart. Rebuilding `Fixture` destroys
 its Wayland clients and windows, while `State::reload_config` preserves them and
 is not a restart. Tests that depend on state surviving a restart remain
