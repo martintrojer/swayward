@@ -44,7 +44,7 @@ without fabricating a tree that real sway clients do not see. See
 | --- | ---: | --- | --- |
 | `122-split.t` | 31 | 31 pass; remainder skip: i3-only tree structure | Singleton stacked assertions 28 and 30 pass. The remainder starts by inspecting i3's `content` node at line 157, which sway does not have (`sway/sway/ipc-json.c:869-874`). |
 | `126-regress-close.t` | 1 | pass | `does_i3_live` after closing a floating container. |
-| `130-close-empty-split.t` | 8 | pass | Closing an empty split restores its children to the workspace. |
+| `130-close-empty-split.t` | 8 | fail (6 pass) | Closing an empty split restores its children to the workspace. Assertions 2 and 6 expect the focused leaf to stay focused after `split v`; swayward focuses the new wrapper instead. Sway re-focuses the child (`sway/tree/container.c:1611-1616`), unlike `workspace_split`, which does focus its wrapper (`sway/tree/workspace.c:1074`). Tracked by `m6_fix_container_split_focus`. |
 | `141-resize.t` | 84 | fail (29 pass) | 21 resize commands are rejected: directional axes, attached units such as `10px`, and `px or ppt` fallbacks. The remaining failures include exact i3 geometry and floating-resize behavior. Sway supports these forms in `sway/commands/resize.c:465-550`. |
 | `144-regress-floating-resize.t` | 1 | pass | Closing a floating child does not corrupt the tiled siblings' combined width. |
 | `152-regress-level-up.t` | 1 | pass | `does_i3_live` after focusing above the workspace tree. |

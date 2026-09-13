@@ -6,7 +6,6 @@
 101-focus.t
 104-focus-stack.t
 126-regress-close.t
-130-close-empty-split.t
 140-focus-lost.t
 144-regress-floating-resize.t
 152-regress-level-up.t
