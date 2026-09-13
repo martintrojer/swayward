@@ -1080,6 +1080,33 @@ fn interactive_resize_uses_the_adjacent_sibling_boundary() {
 }
 
 #[test]
+fn directional_resize_skips_an_unusable_same_axis_boundary() {
+    let mut t = tree((1000., 800.), 0.);
+    let left = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let upper_right = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.split(upper_right, Layout::SplitV);
+    let middle_right = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+    t.add_tile(tile(4, t.view_size()), InsertTarget::Focused);
+    assert!(t.focus_parent());
+    let right = t.focus().unwrap();
+    t.split(right, Layout::SplitH);
+    t.add_tile(tile(5, t.view_size()), InsertTarget::Focused);
+    t.set_focus(middle_right);
+
+    t.resize_window_edge(
+        Some(&3),
+        crate::utils::ResizeEdge::LEFT,
+        SizeChange::AdjustProportion(25.),
+    );
+
+    let right_branch = t.nodes[&right].parent.unwrap();
+    assert_eq!(t.nodes[&left].parent, Some(t.root));
+    assert_eq!(t.nodes[&right_branch].parent, Some(t.root));
+    assert_eq!(t.sibling_percents(left, right_branch), Some((0.25, 0.75)));
+    t.check_invariants();
+}
+
+#[test]
 fn interactive_resize_finds_an_adjacent_ancestor_sibling() {
     let mut t = tree((1000., 800.), 0.);
     let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);

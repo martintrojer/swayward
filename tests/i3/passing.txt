@@ -12,6 +12,7 @@
 152-regress-level-up.t
 178-regress-workspace-open.t
 179-regress-multiple-ws.t
+191-resize-levels.t
 192-layout.t
 197-regression-move-vanish.t
 198-regression-scratchpad-crash.t

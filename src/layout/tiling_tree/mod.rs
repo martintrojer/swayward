@@ -603,14 +603,44 @@ impl<W: LayoutElement> TilingTree<W> {
                 children[index] = wrapper;
                 self.nodes.get_mut(&id).unwrap().parent = Some(wrapper);
             }
-        } else if let Some(Node {
-            value: TreeNode::Split {
-                layout: current, ..
-            },
-            ..
-        }) = self.nodes.get_mut(&id)
-        {
-            *current = layout;
+        } else {
+            let parent = self.nodes[&id].parent.unwrap_or(self.root);
+            let siblings = self.split_len(parent).unwrap_or_default();
+            if id == self.root || siblings <= 1 {
+                if let Some(Node {
+                    value:
+                        TreeNode::Split {
+                            layout: current, ..
+                        },
+                    ..
+                }) = self.nodes.get_mut(&id)
+                {
+                    *current = layout;
+                }
+            } else {
+                let index = self.child_index(parent, id).unwrap();
+                let old_percent = match &self.nodes[&parent].value {
+                    TreeNode::Split { percents, .. } => percents[index],
+                    TreeNode::Leaf { .. } => unreachable!(),
+                };
+                let wrapper = self.alloc(Node {
+                    parent: Some(parent),
+                    value: TreeNode::Split {
+                        layout,
+                        children: vec![id],
+                        percents: vec![1.],
+                    },
+                });
+                let TreeNode::Split {
+                    children, percents, ..
+                } = &mut self.nodes.get_mut(&parent).unwrap().value
+                else {
+                    unreachable!();
+                };
+                children[index] = wrapper;
+                percents[index] = old_percent;
+                self.nodes.get_mut(&id).unwrap().parent = Some(wrapper);
+            }
             self.compact_tree();
             self.request_window_sizes();
         }
@@ -2827,7 +2857,7 @@ impl<W: LayoutElement> TilingTree<W> {
             else {
                 return;
             };
-            if *layout == wanted && children.len() > 1 {
+            if Self::layouts_parallel(*layout, wanted) && children.len() > 1 {
                 let extent = self
                     .node_geometry(parent_id)
                     .map(|rect| if width { rect.size.w } else { rect.size.h })
@@ -2990,7 +3020,7 @@ impl<W: LayoutElement> TilingTree<W> {
             else {
                 return None;
             };
-            if *parent_layout == layout {
+            if Self::layouts_parallel(*parent_layout, layout) {
                 let index = children.iter().position(|child| *child == branch)?;
                 let neighbor_index = if toward_before {
                     index.checked_sub(1)
