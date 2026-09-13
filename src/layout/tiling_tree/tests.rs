@@ -268,10 +268,7 @@ fn invariant_rejects_stale_and_duplicate_node_side_state() {
         let stale = NodeId(999);
         match collection {
             0 => t.focus_history.push(stale),
-            1 => {
-                t.pending_splits.insert(stale, Layout::SplitV);
-            }
-            2 => {
+            1 | 2 => {
                 t.previous_split_layouts.insert(stale, Layout::SplitV);
             }
             3 => {
@@ -304,7 +301,6 @@ fn invariant_rejects_stale_and_duplicate_node_side_state() {
 fn removing_a_node_clears_every_node_side_collection() {
     let mut t = tree((1920., 1080.), 0.);
     let leaf = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
-    t.pending_splits.insert(leaf, Layout::SplitV);
     t.previous_split_layouts.insert(leaf, Layout::SplitH);
     t.pending_modes.insert(
         leaf,
@@ -505,6 +501,43 @@ fn split_retargets_a_singleton_split_parent() {
         ));
         t.check_invariants();
     }
+}
+
+#[test]
+fn splitting_a_container_preserves_focus() {
+    let mut t = tree((1200., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let second = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.set_layout(t.root, Layout::Tabbed);
+    t.set_focus(first);
+
+    t.split(first, Layout::SplitV);
+
+    assert_eq!(t.focus(), Some(first));
+    let wrapper = t.nodes[&first].parent.unwrap();
+    assert_ne!(wrapper, t.root);
+    assert!(matches!(
+        t.nodes[&wrapper].value,
+        TreeNode::Split {
+            layout: Layout::SplitV,
+            ..
+        }
+    ));
+    assert_eq!(t.nodes[&second].parent, Some(t.root));
+    t.check_invariants();
+}
+
+#[test]
+fn splitting_an_unfocused_container_does_not_steal_focus() {
+    let mut t = tree((1200., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let second = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.set_layout(t.root, Layout::Tabbed);
+
+    t.split(first, Layout::SplitV);
+
+    assert_eq!(t.focus(), Some(second));
+    t.check_invariants();
 }
 
 #[test]

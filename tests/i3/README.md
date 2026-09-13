@@ -44,7 +44,7 @@ without fabricating a tree that real sway clients do not see. See
 | --- | ---: | --- | --- |
 | `122-split.t` | 31 | 31 pass; remainder skip: i3-only tree structure | Singleton stacked assertions 28 and 30 pass. The remainder starts by inspecting i3's `content` node at line 157, which sway does not have (`sway/sway/ipc-json.c:869-874`). |
 | `126-regress-close.t` | 1 | pass | `does_i3_live` after closing a floating container. |
-| `130-close-empty-split.t` | 8 | fail (6 pass) | Closing an empty split restores its children to the workspace. Assertions 2 and 6 expect the focused leaf to stay focused after `split v`; swayward focuses the new wrapper instead. Sway re-focuses the child (`sway/tree/container.c:1611-1616`), unlike `workspace_split`, which does focus its wrapper (`sway/tree/workspace.c:1074`). Tracked by `m6_fix_container_split_focus`. |
+| `130-close-empty-split.t` | 8 | pass | Container splits retain leaf focus and collapse after their children close or move, matching `sway/tree/container.c:1590-1616`. |
 | `141-resize.t` | 84 | fail (45 pass) | All resize forms parse (0 rejected, down from 21): directional axes, attached units such as `10px`, and `px or ppt` fallbacks match `sway/commands/resize.c:465-550`. Remaining failures expose stacked-layout tree reporting, multi-sibling resize distribution, output geometry differences, and inherited floating resize/configure behavior. |
 | `144-regress-floating-resize.t` | 1 | pass | Closing a floating child does not corrupt the tiled siblings' combined width. |
 | `152-regress-level-up.t` | 1 | pass | `does_i3_live` after focusing above the workspace tree. |
@@ -67,7 +67,7 @@ without fabricating a tree that real sway clients do not see. See
 | --- | ---: | --- | --- |
 | `101-focus.t` | 8 | pass | Directional focus follows sway's sibling traversal, ancestor escalation, and wrapping rules (`sway/commands/focus.c:158-220`). |
 | `104-focus-stack.t` | 2 | pass | Closing the focused floating window restores the prior tiling focus, matching sway's focus-stack restoration (`sway/input/seat.c:260-315`). |
-| `129-focus-after-close.t` | 15 | fail (8 pass) | Targeted `focus` now restores focus after closing an unfocused window. Remaining failures cover empty-container creation (`m6_fix_empty_containers`), workspace kill (`m6_fix_workspace_kill`), and floating focus membership (`m6_fix_workspace_focus_membership`). |
+| `129-focus-after-close.t` | 15 | fail (10 pass) | Container split focus and targeted `focus` now pass. Remaining failures cover empty-container lifecycle (`m6_fix_empty_containers`), workspace kill (`m6_fix_workspace_kill`), and floating focus membership (`m6_fix_workspace_focus_membership`). |
 | `140-focus-lost.t` | 3 | pass | Focus survives a layout change. |
 
 The initial X11-protocol exclusions are `113-urgent.t`,

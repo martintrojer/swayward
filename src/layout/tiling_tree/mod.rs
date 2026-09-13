@@ -132,7 +132,6 @@ pub struct TilingTree<W: LayoutElement> {
     next_id: u64,
     focus: Option<NodeId>,
     focus_history: Vec<NodeId>,
-    pending_splits: HashMap<NodeId, Layout>,
     previous_split_layouts: HashMap<NodeId, Layout>,
     pending_modes: HashMap<NodeId, PendingMode>,
     interactive_resize: Option<InteractiveResize<W::Id>>,
@@ -175,7 +174,6 @@ impl<W: LayoutElement> TilingTree<W> {
             next_id: 1,
             focus: None,
             focus_history: Vec::new(),
-            pending_splits: HashMap::new(),
             previous_split_layouts: HashMap::new(),
             pending_modes: HashMap::new(),
             interactive_resize: None,
@@ -351,49 +349,21 @@ impl<W: LayoutElement> TilingTree<W> {
             InsertTarget::Focused => self.focus,
             InsertTarget::Node(id) => Some(id),
         };
-        if let Some(target) = target.filter(|target| self.pending_splits.contains_key(target)) {
-            let layout = self.pending_splits.remove(&target).unwrap();
-            let parent = self
-                .nodes
-                .get(&target)
-                .and_then(|node| node.parent)
-                .unwrap_or(self.root);
-            let wrapper = self.alloc(Node {
-                parent: Some(parent),
-                value: TreeNode::Split {
-                    layout,
-                    children: vec![target, id],
-                    percents: vec![0.5, 0.5],
-                },
-            });
-            if let Some(Node {
-                value: TreeNode::Split { children, .. },
-                ..
-            }) = self.nodes.get_mut(&parent)
-            {
-                if let Some(index) = children.iter().position(|child| *child == target) {
-                    children[index] = wrapper;
-                }
-            }
-            self.nodes.get_mut(&target).unwrap().parent = Some(wrapper);
-            self.nodes.get_mut(&id).unwrap().parent = Some(wrapper);
-        } else {
-            let parent = target
-                .and_then(|id| {
-                    self.nodes.get(&id).and_then(|node| match &node.value {
-                        TreeNode::Split { .. } => Some(id),
-                        TreeNode::Leaf { .. } => node.parent,
-                    })
+        let parent = target
+            .and_then(|id| {
+                self.nodes.get(&id).and_then(|node| match &node.value {
+                    TreeNode::Split { .. } => Some(id),
+                    TreeNode::Leaf { .. } => node.parent,
                 })
-                .unwrap_or(self.root);
-            let after = target.filter(|target| {
-                matches!(
-                    self.nodes.get(target).map(|node| &node.value),
-                    Some(TreeNode::Leaf { .. })
-                ) && self.nodes.get(target).and_then(|node| node.parent) == Some(parent)
-            });
-            self.insert_child(parent, id, after);
-        }
+            })
+            .unwrap_or(self.root);
+        let after = target.filter(|target| {
+            matches!(
+                self.nodes.get(target).map(|node| &node.value),
+                Some(TreeNode::Leaf { .. })
+            ) && self.nodes.get(target).and_then(|node| node.parent) == Some(parent)
+        });
+        self.insert_child(parent, id, after);
         self.set_focus_id(if activate {
             Some(id)
         } else {
@@ -447,7 +417,6 @@ impl<W: LayoutElement> TilingTree<W> {
 
     fn remove_node(&mut self, id: NodeId) -> Option<Node<W>> {
         let node = self.nodes.remove(&id)?;
-        self.pending_splits.remove(&id);
         self.previous_split_layouts.remove(&id);
         self.pending_modes.remove(&id);
         self.focus_history.retain(|candidate| *candidate != id);
@@ -607,9 +576,24 @@ impl<W: LayoutElement> TilingTree<W> {
                 {
                     *current = layout;
                 }
-                self.pending_splits.remove(&id);
             } else {
-                self.pending_splits.insert(id, layout);
+                let parent = self.nodes[&id].parent.unwrap_or(self.root);
+                let index = self.child_index(parent, id).unwrap();
+                let wrapper = self.alloc(Node {
+                    parent: Some(parent),
+                    value: TreeNode::Split {
+                        layout,
+                        children: vec![id],
+                        percents: vec![1.],
+                    },
+                });
+                let TreeNode::Split { children, .. } =
+                    &mut self.nodes.get_mut(&parent).unwrap().value
+                else {
+                    unreachable!();
+                };
+                children[index] = wrapper;
+                self.nodes.get_mut(&id).unwrap().parent = Some(wrapper);
             }
         } else if let Some(Node {
             value: TreeNode::Split {
@@ -2013,7 +1997,6 @@ impl<W: LayoutElement> TilingTree<W> {
             .focus_history
             .iter()
             .map(|id| ("focus_history", id))
-            .chain(self.pending_splits.keys().map(|id| ("pending_splits", id)))
             .chain(
                 self.previous_split_layouts
                     .keys()
@@ -3080,16 +3063,12 @@ impl<W: LayoutElement> TilingTree<W> {
         assert!(seen.insert(id), "cycle or duplicate child at {id:?}");
         let node = self.nodes.get(&id).expect("child missing from arena");
         if let TreeNode::Split {
-            layout,
-            children,
-            percents,
+            children, percents, ..
         } = &node.value
         {
             assert!(
-                id == self.root
-                    || children.len() >= 2
-                    || children.len() == 1 && matches!(layout, Layout::Tabbed | Layout::Stacked),
-                "non-root H/V split must have at least two children"
+                id == self.root || !children.is_empty(),
+                "non-root split must have at least one child"
             );
             assert!(
                 id != self.root || !children.is_empty() || self.focus.is_none(),
