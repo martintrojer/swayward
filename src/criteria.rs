@@ -1,10 +1,10 @@
 use std::str::FromStr;
 
-use swayward_config::utils::RegexEq;
+use pcre2::bytes::{Regex, RegexBuilder};
 
 #[derive(Debug, Clone)]
 pub enum Pattern {
-    Regex(RegexEq),
+    Regex(Regex),
     Focused,
 }
 
@@ -13,7 +13,9 @@ impl Pattern {
         if value == "__focused__" {
             Ok(Self::Focused)
         } else {
-            RegexEq::from_str(value)
+            RegexBuilder::new()
+                .ucp(true)
+                .build(value)
                 .map(Self::Regex)
                 .map_err(|error| format!("Regex compilation for '{value}' failed: {error}"))
         }
@@ -22,7 +24,7 @@ impl Pattern {
     fn matches(&self, value: Option<&str>, focused: Option<&str>) -> bool {
         let value = value.unwrap_or("");
         match self {
-            Self::Regex(regex) => regex.0.is_match(value),
+            Self::Regex(regex) => regex.is_match(value.as_bytes()).unwrap_or(false),
             Self::Focused => focused.is_some_and(|focused| value.eq_ignore_ascii_case(focused)),
         }
     }
@@ -282,6 +284,22 @@ fn parse_pairs(input: &str) -> Result<Vec<(String, Option<String>)>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pcre2_lookaround_pattern_matches() {
+        let criteria = Criteria::parse(r#"[title="^(?!Firefox).*$"]"#, None).unwrap();
+        let matching = WindowInfo {
+            title: Some("Alacritty"),
+            ..Default::default()
+        };
+        let excluded = WindowInfo {
+            title: Some("Firefox"),
+            ..Default::default()
+        };
+
+        assert!(criteria.matches(&matching, &WindowInfo::default()));
+        assert!(!criteria.matches(&excluded, &WindowInfo::default()));
+    }
 
     #[test]
     fn regex_and_focused_patterns_match() {

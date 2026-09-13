@@ -79,6 +79,7 @@ swayward-config = { version = "26.4.0", path = "swayward-config" }
 swayward-ipc = { version = "26.4.0", path = "swayward-ipc", features = ["clap"] }
 ordered-float = "5"
 pango = { version = "0.21.5", features = ["v1_44"] }
+pcre2 = "0.2.11"
 pangocairo = "0.21.5"
 pipewire = { version = "0.10", optional = true, features = ["v0_3_33"] }
 png = "0.18.1"
