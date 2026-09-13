@@ -561,42 +561,18 @@ impl<W: LayoutElement> TilingTree<W> {
     pub fn split(&mut self, id: NodeId, layout: Layout) {
         self.interactive_resize = None;
         if id == self.root && self.split_len(id).is_some_and(|len| len > 0) {
-            let old = std::mem::replace(
-                &mut self.nodes.get_mut(&id).unwrap().value,
-                TreeNode::Split {
-                    layout,
-                    children: Vec::new(),
-                    percents: Vec::new(),
-                },
-            );
-            let TreeNode::Split {
-                layout: old_layout,
-                children,
-                percents,
-            } = old
-            else {
-                unreachable!();
-            };
-            let wrapper = self.alloc(Node {
-                parent: Some(id),
-                value: TreeNode::Split {
-                    layout: old_layout,
-                    children,
-                    percents,
-                },
-            });
-            let children = match &self.nodes[&wrapper].value {
-                TreeNode::Split { children, .. } => children.clone(),
+            let old_layout = match self.nodes[&id].value {
+                TreeNode::Split { layout, .. } => layout,
                 TreeNode::Leaf { .. } => unreachable!(),
             };
-            for child in children {
-                self.nodes.get_mut(&child).unwrap().parent = Some(wrapper);
+            let wrapper = self.wrap_root_children(old_layout);
+            if let TreeNode::Split {
+                layout: root_layout,
+                ..
+            } = &mut self.nodes.get_mut(&id).unwrap().value
+            {
+                *root_layout = layout;
             }
-            self.nodes.get_mut(&id).unwrap().value = TreeNode::Split {
-                layout,
-                children: vec![wrapper],
-                percents: vec![1.],
-            };
             self.set_focus_id(Some(wrapper));
             self.request_window_sizes();
             return;
@@ -1119,10 +1095,19 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub fn set_focused_layout(&mut self, layout: Layout) {
+        let focus = self.focus;
         let Some(target) = self.focused_layout_target() else {
             return;
         };
-        self.set_layout_for_command(target, layout);
+        if target == self.root
+            && focus.is_some_and(|focus| self.tile(focus).is_some())
+            && matches!(layout, Layout::Tabbed | Layout::Stacked)
+        {
+            self.wrap_root_children(layout);
+            self.request_window_sizes();
+        } else {
+            self.set_layout_for_command(target, layout);
+        }
     }
 
     pub fn split_focused(&mut self, layout: Layout) {
@@ -2185,6 +2170,54 @@ impl<W: LayoutElement> TilingTree<W> {
         };
     }
 
+    fn wrap_root_children(&mut self, layout: Layout) -> NodeId {
+        let TreeNode::Split {
+            layout: root_layout,
+            children,
+            percents,
+        } = std::mem::replace(
+            &mut self.nodes.get_mut(&self.root).unwrap().value,
+            TreeNode::Split {
+                layout: Layout::SplitH,
+                children: Vec::new(),
+                percents: Vec::new(),
+            },
+        )
+        else {
+            unreachable!();
+        };
+        let wrapper = self.alloc(Node {
+            parent: Some(self.root),
+            value: TreeNode::Split {
+                layout,
+                children,
+                percents,
+            },
+        });
+        if matches!(root_layout, Layout::SplitH | Layout::SplitV) {
+            self.previous_split_layouts.insert(wrapper, root_layout);
+        }
+        let children = match &self.nodes[&wrapper].value {
+            TreeNode::Split { children, .. } => children.clone(),
+            TreeNode::Leaf { .. } => unreachable!(),
+        };
+        for child in children {
+            self.nodes.get_mut(&child).unwrap().parent = Some(wrapper);
+        }
+        let TreeNode::Split {
+            layout: layout_slot,
+            children,
+            percents,
+        } = &mut self.nodes.get_mut(&self.root).unwrap().value
+        else {
+            unreachable!();
+        };
+        *layout_slot = root_layout;
+        *children = vec![wrapper];
+        *percents = vec![1.];
+        wrapper
+    }
+
     fn remove_child(&mut self, parent: NodeId, child: NodeId) {
         let Some(Node {
             value: TreeNode::Split {
@@ -2946,12 +2979,16 @@ impl<W: LayoutElement> TilingTree<W> {
         assert!(seen.insert(id), "cycle or duplicate child at {id:?}");
         let node = self.nodes.get(&id).expect("child missing from arena");
         if let TreeNode::Split {
-            children, percents, ..
+            layout,
+            children,
+            percents,
         } = &node.value
         {
             assert!(
-                id == self.root || children.len() >= 2,
-                "non-root split must have at least two children"
+                id == self.root
+                    || children.len() >= 2
+                    || children.len() == 1 && matches!(layout, Layout::Tabbed | Layout::Stacked),
+                "non-root H/V split must have at least two children"
             );
             assert!(
                 id != self.root || !children.is_empty() || self.focus.is_none(),

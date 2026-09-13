@@ -453,6 +453,37 @@ fn split_on_a_nonempty_workspace_wraps_children_and_focuses_the_wrapper() {
 }
 
 #[test]
+fn stacked_layout_wraps_a_single_workspace_leaf() {
+    for layout in [Layout::Stacked, Layout::Tabbed] {
+        let mut t = tree((1200., 800.), 0.);
+        let leaf = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+
+        t.set_focused_layout(layout);
+
+        let TreeNode::Split {
+            layout: root_layout,
+            children,
+            ..
+        } = &t.nodes[&t.root].value
+        else {
+            panic!("root must be a split");
+        };
+        assert_eq!(*root_layout, Layout::SplitH);
+        let [wrapper] = children.as_slice() else {
+            panic!("workspace must contain one wrapper");
+        };
+        assert!(matches!(
+            &t.nodes[wrapper].value,
+            TreeNode::Split { layout: actual, children, .. }
+                if *actual == layout && children == &[leaf]
+        ));
+        assert_eq!(t.nodes[&leaf].parent, Some(*wrapper));
+        assert_eq!(t.focus(), Some(leaf));
+        t.check_invariants();
+    }
+}
+
+#[test]
 fn split_retargets_a_singleton_split_parent() {
     for (parent_layout, requested_layout) in [
         (Layout::SplitH, Layout::SplitH),
@@ -636,8 +667,9 @@ fn layout_toggle_restores_the_previous_split_axis() {
 
         t.toggle_focused_layout_split();
 
+        let wrapper = t.nodes[&t.focus().unwrap()].parent.unwrap();
         assert!(matches!(
-            t.nodes[&t.root].value,
+            t.nodes[&wrapper].value,
             TreeNode::Split { layout, .. } if layout == previous
         ));
         t.check_invariants();

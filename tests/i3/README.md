@@ -42,7 +42,7 @@ without fabricating a tree that real sway clients do not see. See
 
 | File | Assertions | Status | Reason |
 | --- | ---: | --- | --- |
-| `122-split.t` | 31 | fail; remainder skip: i3-only tree structure | Assertions 28 and 30 expose a separate singleton-stacked bug. Assertion 31 passes. The remainder starts by inspecting i3's `content` node at line 157, which sway does not have (`sway/sway/ipc-json.c:869-874`). |
+| `122-split.t` | 31 | 31 pass; remainder skip: i3-only tree structure | Singleton stacked assertions 28 and 30 pass. The remainder starts by inspecting i3's `content` node at line 157, which sway does not have (`sway/sway/ipc-json.c:869-874`). |
 | `126-regress-close.t` | 1 | pass | `does_i3_live` after closing a floating container. |
 | `130-close-empty-split.t` | 8 | fail | Executable conformance finding. |
 | `152-regress-level-up.t` | 1 | pass | `does_i3_live` after focusing above the workspace tree. |

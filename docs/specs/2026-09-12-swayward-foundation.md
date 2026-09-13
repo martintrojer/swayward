@@ -232,7 +232,8 @@ value proposition in executable form.
 **I2 — The tree is always well-formed.**
 No empty containers survive an operation. The focus target is always a live
 node (a container or leaf), or absent on an empty workspace. Sibling percentages
-sum to 1. Containers that should collapse, collapse.
+sum to 1. Horizontal and vertical singleton containers collapse. Tabbed and
+stacked singletons may remain because sway uses them to preserve layout intent.
 *Verified by:* proptest over randomized op sequences, via the `Op` enum.
 *Why:* this is where sway itself still ships bugs, and the tree is our thesis.
 
