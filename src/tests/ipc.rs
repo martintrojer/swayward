@@ -35,7 +35,10 @@ fn assert_same_shape(expected: &Value, actual: &Value, path: &str) {
             }
         }
         (Value::Array(expected), Value::Array(actual)) => {
-            if path.ends_with(".nodes") || path.ends_with(".floating_nodes") {
+            if path.ends_with(".nodes")
+                || path.ends_with(".floating_nodes")
+                || matches!(path, "$workspaces" | "$outputs")
+            {
                 assert_eq!(expected.len(), actual.len(), "array length at {path}");
                 for (index, (expected, actual)) in expected.iter().zip(actual).enumerate() {
                     assert_same_shape(expected, actual, &format!("{path}[{index}]"));
@@ -274,6 +277,15 @@ fn read_ipc_reply(fixture: &mut Fixture, stream: &mut UnixStream) -> (u32, Strin
     }
 }
 
+fn query_ipc(fixture: &mut Fixture, stream: &mut UnixStream, message_type: MessageType) -> Value {
+    stream
+        .write_all(&crate::ipc::wire::encode(message_type, ""))
+        .unwrap();
+    let (reply_type, payload) = read_ipc_reply(fixture, stream);
+    assert_eq!(reply_type, message_type as u32);
+    serde_json::from_str(&payload).unwrap()
+}
+
 fn ipc_fixture() -> (Fixture, std::path::PathBuf) {
     static NEXT_SOCKET: AtomicU64 = AtomicU64::new(0);
 
@@ -475,7 +487,7 @@ fn for_window_applies_matching_command_when_window_maps() {
 
 #[test]
 fn live_ipc_descriptions_match_sway_schema() {
-    let mut f = Fixture::new();
+    let (mut f, socket) = ipc_fixture();
     f.add_output(1, (1920, 1080));
     let id = f.add_client();
     let window = f.client(id).create_window();
@@ -548,6 +560,32 @@ fn live_ipc_descriptions_match_sway_schema() {
     ))
     .unwrap();
     assert_same_shape(&fixture, &ours, "$outputs");
+
+    let output_name = f.niri_output(1).name();
+    let mut stream = UnixStream::connect(socket).unwrap();
+    let workspaces = query_ipc(&mut f, &mut stream, MessageType::GetWorkspaces);
+    assert_eq!(workspaces.as_array().unwrap().len(), 1);
+    assert_eq!(workspaces[0]["num"], 1);
+    assert_eq!(workspaces[0]["name"], "1");
+    assert_eq!(workspaces[0]["output"], output_name);
+
+    let outputs = query_ipc(&mut f, &mut stream, MessageType::GetOutputs);
+    assert_eq!(outputs.as_array().unwrap().len(), 1);
+    assert_eq!(outputs[0]["name"], output_name);
+
+    stream
+        .write_all(&crate::ipc::wire::encode(
+            MessageType::RunCommand,
+            "mark fixture-mark",
+        ))
+        .unwrap();
+    let (_, outcome) = read_ipc_reply(&mut f, &mut stream);
+    assert_eq!(
+        serde_json::from_str::<Value>(&outcome).unwrap(),
+        serde_json::json!([{"success": true}])
+    );
+    let marks = query_ipc(&mut f, &mut stream, MessageType::GetMarks);
+    assert_eq!(marks, serde_json::json!(["fixture-mark"]));
 }
 
 #[test]
