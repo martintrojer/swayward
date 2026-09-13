@@ -2634,7 +2634,7 @@ impl<W: LayoutElement> Layout<W> {
         self.scratchpad.push_back(removed);
     }
 
-    pub fn show_scratchpad(&mut self, window: Option<&W::Id>) {
+    pub fn show_scratchpad(&mut self, window: Option<&W::Id>) -> Option<W::Id> {
         let shown = self
             .scratchpad_windows
             .iter()
@@ -2645,7 +2645,7 @@ impl<W: LayoutElement> Layout<W> {
                     .any(|removed| removed.tile.window().id() == *id)
             })
             .cloned();
-        let target_index = window.and_then(|window| {
+        let mut target_index = window.and_then(|window| {
             self.scratchpad
                 .iter()
                 .position(|removed| removed.tile.window().id() == window)
@@ -2654,23 +2654,25 @@ impl<W: LayoutElement> Layout<W> {
             if let Some(shown) = shown {
                 if self.focus().is_some_and(|focused| focused.id() == &shown) {
                     self.move_to_scratchpad(Some(&shown));
-                } else {
-                    self.activate_window(&shown);
+                    return None;
                 }
-                return;
+                self.move_to_scratchpad(Some(&shown));
+                target_index = self
+                    .scratchpad
+                    .iter()
+                    .position(|removed| removed.tile.window().id() == &shown);
             }
         } else if let Some(shown) = shown {
             self.move_to_scratchpad(Some(&shown));
         }
 
         let index = target_index.unwrap_or(0);
-        let Some(mut removed) = self.scratchpad.remove(index) else {
-            return;
-        };
+        let mut removed = self.scratchpad.remove(index)?;
         removed.is_floating = true;
+        let shown = removed.tile.window().id().clone();
         let Some(workspace) = self.active_workspace_mut() else {
             self.scratchpad.push_front(removed);
-            return;
+            return None;
         };
         workspace.add_tile(
             removed.tile,
@@ -2681,6 +2683,7 @@ impl<W: LayoutElement> Layout<W> {
             true,
             None,
         );
+        Some(shown)
     }
 
     pub fn scratchpad_windows(&self) -> impl Iterator<Item = &W> {

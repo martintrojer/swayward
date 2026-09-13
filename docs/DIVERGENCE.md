@@ -5,7 +5,7 @@ Invariant I5: prefer new modules; when an inherited file must be edited, add a l
 ## Edits to inherited files
 
 (workspace-wide) — mechanical niri→swayward rename, with no behavioural change. See the rename commit.
-swayward-ipc/src/lib.rs — retain inherited config vocabulary in `legacy` beside the sway schema until milestone 4 moves binds to sway command strings.
+swayward-ipc/src/lib.rs, swayward-ipc/src/legacy.rs — retain inherited config vocabulary in `legacy` beside the sway schema until milestone 4 moves binds to sway command strings, and carry internal window-move events for sway IPC translation.
 src/ipc/client.rs, src/ipc/server.rs — import colliding inherited IPC types from `legacy` while the new sway schema keeps the bare names.
 src/ipc/server.rs, src/ipc/wire.rs — replace niri's line-delimited request dispatch with tested sway binary framing and honest unsupported-message replies.
 src/ipc/client.rs — remove niri's client because swaymsg is swayward's supported IPC client.

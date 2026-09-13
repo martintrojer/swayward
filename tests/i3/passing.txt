@@ -16,4 +16,5 @@
 224-regress-resize-branch.t
 273-regress-focus-toggle.t
 292-regress-layout-toggle.t
+299-regress-scratchpad-focus.t
 303-regress-move-floating.t

@@ -345,6 +345,19 @@ fn serialize_outcomes(outcomes: &[CommandOutcome]) -> String {
         .unwrap_or_else(|_| r#"[{"success":false,"error":"serialization failed"}]"#.into())
 }
 
+fn find_node_by_id(value: &serde_json::Value, id: i64) -> Option<&serde_json::Value> {
+    if value.get("id").and_then(serde_json::Value::as_i64) == Some(id) {
+        return Some(value);
+    }
+    ["nodes", "floating_nodes"].into_iter().find_map(|key| {
+        value
+            .get(key)?
+            .as_array()?
+            .iter()
+            .find_map(|child| find_node_by_id(child, id))
+    })
+}
+
 fn find_node<'a>(
     value: &'a serde_json::Value,
     node_type: &str,
@@ -467,6 +480,16 @@ async fn handle_event_stream_client(client: EventStreamClient) -> anyhow::Result
                 (1 << 31) | 2,
                 serde_json::json!({"change":mode,"pango_markup":pango_markup}),
             ),
+            Event::WindowMoved { id } if subscriptions.contains("window") => {
+                let container =
+                    serde_json::from_str::<serde_json::Value>(&query_state.borrow().tree)
+                        .ok()
+                        .and_then(|tree| find_node_by_id(&tree, id).cloned());
+                (
+                    (1 << 31) | 3,
+                    serde_json::json!({"change":"move","container":container}),
+                )
+            }
             Event::WindowsChanged { .. }
             | Event::WindowOpenedOrChanged { .. }
             | Event::WindowClosed { .. }

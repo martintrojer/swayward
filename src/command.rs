@@ -128,7 +128,19 @@ fn execute_one(
             None
         }
         Command::ScratchpadShow => {
-            state.swayward.layout.show_scratchpad(None);
+            let shown = state.swayward.layout.show_scratchpad(None);
+            if let Some(shown) = shown {
+                let id = state
+                    .swayward
+                    .layout
+                    .windows()
+                    .find_map(|(_, mapped)| (mapped.window == shown).then(|| mapped.id()));
+                if let (Some(server), Some(id)) = (&state.swayward.ipc_server, id) {
+                    server.send_event(swayward_ipc::legacy::Event::WindowMoved {
+                        id: crate::ipc::tree::window_id(id),
+                    });
+                }
+            }
             state.swayward.queue_redraw_all();
             None
         }
@@ -684,6 +696,7 @@ mod tests {
             Command::MoveToWorkspace(WorkspaceTarget::Number("3:web".into()))
         );
         assert_eq!(command("move scratchpad"), Command::MoveScratchpad);
+        assert_eq!(command("move to scratchpad"), Command::MoveScratchpad);
         assert_eq!(command("scratchpad show"), Command::ScratchpadShow);
         assert_eq!(command("layout stacked"), Command::Layout(Layout::Stacked));
         assert_eq!(

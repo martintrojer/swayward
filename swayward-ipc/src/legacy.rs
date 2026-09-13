@@ -1650,6 +1650,11 @@ pub enum Event {
         /// If the window is focused, all other windows are no longer focused.
         window: Window,
     },
+    /// A window moved to another workspace.
+    WindowMoved {
+        /// Id of the moved window.
+        id: i64,
+    },
     /// A toplevel window was closed.
     WindowClosed {
         /// Id of the removed window.

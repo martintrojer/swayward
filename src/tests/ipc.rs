@@ -1173,6 +1173,66 @@ fn scratchpad_hides_focused_window_and_show_cycles_windows() {
 }
 
 #[test]
+fn scratchpad_show_moves_visible_window_to_current_workspace_and_focuses_it() {
+    let (mut f, socket) = ipc_fixture();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let scratchpad = f.client(client).create_window();
+    scratchpad.xdg_toplevel.set_app_id("event-one".into());
+    scratchpad.set_title("event-one");
+    scratchpad.commit();
+    let scratchpad_surface = scratchpad.surface.clone();
+    f.roundtrip(client);
+    let scratchpad = f.client(client).window(&scratchpad_surface);
+    scratchpad.attach_new_buffer();
+    scratchpad.ack_last_and_commit();
+    f.double_roundtrip(client);
+    let scratchpad_id = f.swayward().layout.focus().unwrap().id();
+
+    assert!(crate::command::execute(f.niri_state(), "move to scratchpad")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "scratchpad show")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "workspace target")[0].success);
+
+    let tiled = f.client(client).create_window();
+    tiled.commit();
+    let tiled_surface = tiled.surface.clone();
+    f.roundtrip(client);
+    let tiled = f.client(client).window(&tiled_surface);
+    tiled.attach_new_buffer();
+    tiled.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    let mut subscriber = UnixStream::connect(socket).unwrap();
+    subscriber
+        .write_all(&crate::ipc::wire::encode(
+            MessageType::Subscribe,
+            r#"["window"]"#,
+        ))
+        .unwrap();
+    let _ = read_ipc_reply(&mut f, &mut subscriber);
+
+    assert!(crate::command::execute(f.niri_state(), "scratchpad show")[0].success);
+    let focused = f.swayward().layout.focus().unwrap();
+    assert_eq!(focused.id(), scratchpad_id);
+    let focused_window = focused.window.clone();
+    let workspace = f.swayward().layout.active_workspace().unwrap();
+    assert_eq!(workspace.sway_name().as_deref(), Some("target"));
+    assert!(workspace.has_window(&focused_window));
+    let mut changes = Vec::new();
+    for _ in 0..2 {
+        let (event_type, payload) = read_ipc_reply(&mut f, &mut subscriber);
+        assert_eq!(event_type, (1 << 31) | 3);
+        changes.push(
+            serde_json::from_str::<Value>(&payload).unwrap()["change"]
+                .as_str()
+                .unwrap()
+                .to_owned(),
+        );
+    }
+    assert_eq!(changes, ["move", "focus"]);
+}
+
+#[test]
 fn scratchpad_show_toggles_the_only_window() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));

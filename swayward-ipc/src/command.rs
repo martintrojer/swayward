@@ -358,7 +358,10 @@ fn parse_focus(args: &[&str]) -> Result<Command, String> {
 }
 
 fn parse_move(args: &[&str]) -> Result<Command, String> {
-    if matches!(args, [scratchpad] if scratchpad.eq_ignore_ascii_case("scratchpad")) {
+    if matches!(args, [scratchpad] if scratchpad.eq_ignore_ascii_case("scratchpad"))
+        || matches!(args, [to, scratchpad]
+            if to.eq_ignore_ascii_case("to") && scratchpad.eq_ignore_ascii_case("scratchpad"))
+    {
         return Ok(Command::MoveScratchpad);
     }
     if let Some(direction) = args.first().and_then(|arg| parse_direction(arg)) {

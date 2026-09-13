@@ -56,7 +56,7 @@ without fabricating a tree that real sway clients do not see. See
 | `224-regress-resize-branch.t` | 1 | pass | `does_i3_live` after resizing a split container. |
 | `273-regress-focus-toggle.t` | 1 | pass | `does_i3_live` after `focus mode_toggle` on an empty workspace; sway implements this command in `sway/commands/focus.c:422`. |
 | `292-regress-layout-toggle.t` | 1 | pass | `does_i3_live` after invalid `layout toggle` parameters; sway validates the accepted syntax in `sway/commands/layout.c:25-27`. |
-| `299-regress-scratchpad-focus.t` | 1 | fail | Showing a scratchpad window from another workspace does not focus it. Sway calls `seat_set_focus` after moving it to the active workspace (`sway/tree/root.c:157-200`). |
+| `299-regress-scratchpad-focus.t` | 1 | pass | Showing a scratchpad window from another workspace moves and focuses it, matching `sway/tree/root.c:157-200`. |
 | `303-regress-move-floating.t` | 3 | pass | Moving a nested floating container leaves two tiled nodes and no floating node. |
 
 ## Coverage
