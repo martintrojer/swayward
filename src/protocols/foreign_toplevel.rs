@@ -207,6 +207,9 @@ pub fn on_output_bound(state: &mut State, output: &Output, wl_output: &WlOutput)
     }
 }
 
+// Inherited signature, now carrying the scratchpad-minimized flag as well. Each
+// argument is an independent piece of protocol state with no natural grouping.
+#[allow(clippy::too_many_arguments)]
 fn refresh_toplevel(
     protocol_state: &mut ForeignToplevelManagerState,
     wl_surface: &WlSurface,

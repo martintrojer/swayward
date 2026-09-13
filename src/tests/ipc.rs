@@ -583,11 +583,11 @@ fn scratchpad_hides_focused_window_and_show_cycles_windows() {
         .all(|node| node.scratchpad_state.as_deref() == Some("fresh")));
 
     assert!(crate::command::execute(f.niri_state(), "scratchpad show")[0].success);
-    let first = f.swayward().layout.focus().unwrap().id().clone();
+    let first = f.swayward().layout.focus().unwrap().id();
     assert!(crate::command::execute(f.niri_state(), "scratchpad show")[0].success);
     assert!(f.swayward().layout.focus().is_none());
     assert!(crate::command::execute(f.niri_state(), "scratchpad show")[0].success);
-    let second = f.swayward().layout.focus().unwrap().id().clone();
+    let second = f.swayward().layout.focus().unwrap().id();
     assert_ne!(first, second);
     assert_eq!(f.swayward().layout.scratchpad_windows().count(), 1);
 

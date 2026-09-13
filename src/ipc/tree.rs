@@ -463,6 +463,11 @@ fn empty_tiling_node(rect: Rect) -> Node {
     )
 }
 
+// Serialising a sway tree node genuinely needs this much context: the window, its
+// rect, its node type, its floating string, its parent rect for percent, the marks
+// table, and whether it is hidden in the scratchpad. Bundling them into a struct
+// would only move the argument list.
+#[allow(clippy::too_many_arguments)]
 fn describe_window(
     mapped: &Mapped,
     rect: Rect,
