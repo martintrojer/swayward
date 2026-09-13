@@ -1417,6 +1417,61 @@ fn named_workspace_has_no_number_and_active_empty_workspace_remains_visible() {
 }
 
 #[test]
+fn relative_move_includes_empty_active_workspace_and_uses_direction() {
+    for (source, direction) in [(1, "next"), (3, "prev")] {
+        let mut f = Fixture::new();
+        for output in 1..=3 {
+            f.add_output(output, (1920, 1080));
+        }
+        let outputs = [
+            f.niri_output(1).name(),
+            f.niri_output(2).name(),
+            f.niri_output(3).name(),
+        ];
+        let client = f.add_client();
+
+        assert!(crate::command::execute(f.niri_state(), &format!("workspace {source}"))[0].success);
+        let window = f.client(client).create_window();
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+
+        for workspace in 1..=3 {
+            assert!(
+                crate::command::execute(f.niri_state(), &format!("workspace {workspace}"))[0]
+                    .success
+            );
+            assert!(
+                crate::command::execute(
+                    f.niri_state(),
+                    &format!("workspace {workspace} output {}", outputs[workspace - 1])
+                )[0]
+                .success
+            );
+        }
+
+        assert!(crate::command::execute(
+            f.niri_state(),
+            &format!("workspace {source}, move workspace {direction}")
+        )
+        .iter()
+        .all(|outcome| outcome.success));
+
+        let swayward = f.swayward();
+        let workspaces = describe_workspaces(&swayward.layout, &swayward.global_space);
+        let window_counts = workspaces
+            .iter()
+            .map(|workspace| (workspace.num, workspace.focus.len()))
+            .collect::<Vec<_>>();
+        assert_eq!(window_counts, [(1, 0), (2, 1), (3, 0)]);
+    }
+}
+
+#[test]
 fn move_to_workspace_creates_the_target_and_moves_the_window() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));

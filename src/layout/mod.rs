@@ -2420,9 +2420,14 @@ impl<W: LayoutElement> Layout<W> {
     fn relative_sway_workspace_position(&self, next: bool) -> Option<(Option<Output>, usize)> {
         let active = self.active_workspace()?;
         let current_number = active.number();
+        let active_id = active.id();
         let positions = self
             .workspaces()
-            .filter(|(_, _, workspace)| workspace.has_windows_or_name())
+            .filter(|(_, _, workspace)| {
+                workspace.has_windows_or_name()
+                    || workspace.has_sway_identity()
+                    || workspace.id() == active_id
+            })
             .map(|(monitor, index, workspace)| {
                 (
                     monitor.map(|monitor| monitor.output().clone()),
@@ -2513,7 +2518,11 @@ impl<W: LayoutElement> Layout<W> {
             .workspaces
             .iter()
             .enumerate()
-            .filter(|(_, workspace)| workspace.has_windows_or_name())
+            .filter(|(index, workspace)| {
+                workspace.has_windows_or_name()
+                    || workspace.has_sway_identity()
+                    || *index == current
+            })
             .map(|(index, _)| index)
             .collect::<Vec<_>>();
         let current = positions.iter().position(|index| *index == current)?;
