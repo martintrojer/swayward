@@ -9,10 +9,30 @@ use Test::Builder;
 
 our @ISA = qw(Exporter);
 our @EXPORT = qw(
-    $x cmd cmd_nosync diag does_i3_live done_testing fresh_workspace get_focused
-    get_socket_path get_unused_workspace get_ws get_ws_content i3 is is_deeply
-    is_num_children isnt ok open_empty_con open_floating_window open_window sync_with_i3
+    $x
+    cmd
+    cmd_nosync
+    diag
+    does_i3_live
+    done_testing
+    fresh_workspace
+    get_focused
+    get_socket_path
+    get_unused_workspace
+    get_ws
+    get_ws_content
+    i3
+    is
+    is_deeply
+    is_num_children
+    isnt
+    ok
+    open_empty_con
+    open_floating_window
+    open_window
+    sync_with_i3
     wait_for_unmap
+    workspace_exists
 );
 
 my $tester = Test::Builder->new;
@@ -110,6 +130,8 @@ sub fresh_workspace {
     cmd("workspace $name");
     $name;
 }
+
+sub workspace_exists { defined(get_ws($_[0])) }
 
 sub get_ws {
     my ($name) = @_;

@@ -45,7 +45,9 @@ without fabricating a tree that real sway clients do not see. See
 | `122-split.t` | 31 | 31 pass; remainder skip: i3-only tree structure | Singleton stacked assertions 28 and 30 pass. The remainder starts by inspecting i3's `content` node at line 157, which sway does not have (`sway/sway/ipc-json.c:869-874`). |
 | `126-regress-close.t` | 1 | pass | `does_i3_live` after closing a floating container. |
 | `130-close-empty-split.t` | 8 | fail | Executable conformance finding. |
+| `144-regress-floating-resize.t` | 1 | pass | Closing a floating child does not corrupt the tiled siblings' combined width. |
 | `152-regress-level-up.t` | 1 | pass | `does_i3_live` after focusing above the workspace tree. |
+| `178-regress-workspace-open.t` | 1 | fail | An inactive named workspace survives after its final window is killed. Sway destroys an empty inactive workspace in `sway/tree/workspace.c:314-331`; this is a swayward bug. |
 | `179-regress-multiple-ws.t` | 6 | pass | Relative `move workspace prev` resolves against sway's global workspace order before moving. |
 | `192-layout.t` | 34 | fail | Executable conformance finding. |
 | `197-regression-move-vanish.t` | 2 | pass | Moving a child from a split preserves both windows. |
@@ -54,6 +56,7 @@ without fabricating a tree that real sway clients do not see. See
 | `224-regress-resize-branch.t` | 1 | pass | `does_i3_live` after resizing a split container. |
 | `273-regress-focus-toggle.t` | 1 | pass | `does_i3_live` after `focus mode_toggle` on an empty workspace; sway implements this command in `sway/commands/focus.c:422`. |
 | `292-regress-layout-toggle.t` | 1 | pass | `does_i3_live` after invalid `layout toggle` parameters; sway validates the accepted syntax in `sway/commands/layout.c:25-27`. |
+| `299-regress-scratchpad-focus.t` | 1 | fail | Showing a scratchpad window from another workspace does not focus it. Sway calls `seat_set_focus` after moving it to the active workspace (`sway/tree/root.c:157-200`). |
 | `303-regress-move-floating.t` | 3 | pass | Moving a nested floating container leaves two tiled nodes and no floating node. |
 
 ## Coverage

@@ -7,6 +7,7 @@
 104-focus-stack.t
 126-regress-close.t
 140-focus-lost.t
+144-regress-floating-resize.t
 152-regress-level-up.t
 179-regress-multiple-ws.t
 197-regression-move-vanish.t
