@@ -155,3 +155,23 @@ command loop and its targeted clear operation
 
 X11 applications run through `xwayland-satellite`. Swayward does not include
 sway's in-process Xwayland window manager.
+
+## Workspace ordering and implicit workspaces
+
+Sway sorts each output's workspace list when a workspace is created
+(`sway/sway/tree/workspace.c:255-259` calls `output_sort_workspaces` immediately
+after `output_add_workspace`), and navigation observes that stored order.
+Swayward inherits niri's trailing unnamed workspace as an internal creation
+target and does not sort on creation, so `workspace next` and `workspace prev`
+can visit workspaces in a different order than sway.
+
+No placeholder workspace is ever reported to clients: `GET_WORKSPACES` and
+`GET_TREE` show only workspaces you created. Workspace numbers and names match
+sway, including `num = -1` for names without a leading digit
+(`sway/sway/ipc-json.c:503-517`).
+
+Aligning the order needs a workspace identity and lifecycle representation
+distinct from niri's name and persistence state, because "sway-visible" differs
+between IPC, relative navigation, and cleanup. The analysis, including the two
+reverted attempts and the exact conformance cost, is recorded in
+`tests/i3/README.md`.
