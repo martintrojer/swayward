@@ -94,9 +94,10 @@ impl IpcServer {
             })
             .map_err(|error| anyhow::anyhow!(error.error))?;
 
-        let socket_path = if wayland_socket_name.is_some() {
+        let socket_path = if let Some(wayland_socket_name) = wayland_socket_name {
             let socket_name = format!(
-                "swayward-ipc.{}.{}.sock",
+                "swayward-ipc.{}.{}.{}.sock",
+                wayland_socket_name.to_string_lossy(),
                 process::id(),
                 IPC_SOCKET_ID.fetch_add(1, Ordering::Relaxed)
             );

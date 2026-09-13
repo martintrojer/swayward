@@ -106,6 +106,12 @@ pub struct Workspace<W: LayoutElement> {
     /// Optional name of this workspace.
     pub(super) name: Option<String>,
 
+    /// Stable sway workspace number. Named workspaces have no number.
+    pub(super) number: Option<i32>,
+
+    /// Whether this workspace came from persistent configuration.
+    persistent: bool,
+
     /// Layout config overrides for this workspace.
     layout_config: Option<swayward_config::LayoutPart>,
 
@@ -268,7 +274,9 @@ impl<W: LayoutElement> Workspace<W> {
             clock,
             base_options,
             options,
+            persistent: config.is_some(),
             name: config.map(|c| c.name.0),
+            number: None,
             layout_config,
             id: WorkspaceId::next(),
         }
@@ -332,7 +340,9 @@ impl<W: LayoutElement> Workspace<W> {
             clock,
             base_options,
             options,
+            persistent: config.is_some(),
             name: config.map(|c| c.name.0),
+            number: None,
             layout_config,
             id: WorkspaceId::next(),
         }
@@ -350,12 +360,40 @@ impl<W: LayoutElement> Workspace<W> {
         self.name.as_ref()
     }
 
+    pub fn sway_name(&self) -> Option<String> {
+        self.name
+            .clone()
+            .or_else(|| self.number.map(|number| number.to_string()))
+    }
+
+    pub fn number(&self) -> Option<i32> {
+        self.number
+    }
+
+    pub fn set_sway_identity(&mut self, name: Option<String>, number: Option<i32>) {
+        self.name = name;
+        self.number = number;
+        self.persistent = false;
+    }
+
+    pub fn set_persistent_name(&mut self, name: String) {
+        self.name = Some(name);
+        self.number = None;
+        self.persistent = true;
+    }
+
     pub fn unname(&mut self) {
         self.name = None;
+        self.number = None;
+        self.persistent = false;
+    }
+
+    pub fn has_sway_identity(&self) -> bool {
+        self.name.is_some() || self.number.is_some()
     }
 
     pub fn has_windows_or_name(&self) -> bool {
-        self.has_windows() || self.name.is_some()
+        self.has_windows() || self.persistent
     }
 
     pub fn scale(&self) -> smithay::output::Scale {

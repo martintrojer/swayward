@@ -419,7 +419,20 @@ impl<W: LayoutElement> Monitor<W> {
             self.clock.clone(),
             self.options.clone(),
         );
+        self.insert_new_workspace_at(idx, ws);
+    }
 
+    pub fn add_sway_workspace_at(&mut self, idx: usize, name: Option<String>, number: Option<i32>) {
+        let mut ws = Workspace::new(
+            self.output.clone(),
+            self.clock.clone(),
+            self.options.clone(),
+        );
+        ws.set_sway_identity(name, number);
+        self.insert_new_workspace_at(idx, ws);
+    }
+
+    fn insert_new_workspace_at(&mut self, idx: usize, ws: Workspace<W>) {
         self.workspaces.insert(idx, ws);
         if idx <= self.active_workspace_idx {
             self.active_workspace_idx += 1;
@@ -644,6 +657,12 @@ impl<W: LayoutElement> Monitor<W> {
 
     pub fn clean_up_workspaces(&mut self) {
         assert!(self.workspace_switch.is_none());
+        let active_workspace_id = self.workspaces[self.active_workspace_idx].id();
+        for workspace in &mut self.workspaces {
+            if workspace.id() != active_workspace_id && !workspace.has_windows_or_name() {
+                workspace.unname();
+            }
+        }
 
         let range_start = if self.options.layout.empty_workspace_above_first {
             1

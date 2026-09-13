@@ -69,13 +69,13 @@ pub fn describe_workspaces(
         .filter_map(|(monitor, index, workspace)| {
             let monitor = monitor?;
             if !workspace.has_windows_or_name()
+                && !workspace.has_sway_identity()
                 && monitor.active_workspace_ref().id() != workspace.id()
             {
                 return None;
             }
             let name = workspace
-                .name()
-                .cloned()
+                .sway_name()
                 .unwrap_or_else(|| (index + 1).to_string());
             let rect = output_rect(global_space, monitor.output());
             let focused = monitor.active_workspace_idx() == index;
@@ -111,7 +111,21 @@ pub fn describe_workspaces(
                 marks: vec![],
                 name,
                 nodes: vec![],
-                num: i32::try_from(index + 1).unwrap_or(-1),
+                num: workspace.number().unwrap_or_else(|| {
+                    workspace
+                        .name()
+                        .and_then(|name| {
+                            name.split_once(':')
+                                .map_or(name.as_str(), |(prefix, _)| prefix)
+                                .parse()
+                                .ok()
+                        })
+                        .unwrap_or_else(|| {
+                            workspace
+                                .name()
+                                .map_or_else(|| i32::try_from(index + 1).unwrap_or(-1), |_| -1)
+                        })
+                }),
                 orientation,
                 output: monitor.output_name().clone(),
                 percent: None,
@@ -158,8 +172,7 @@ pub fn describe_outputs(layout: &Layout<Mapped>, global_space: &Space<Window>) -
                 current_workspace: Some(
                     monitor
                         .active_workspace_ref()
-                        .name()
-                        .cloned()
+                        .sway_name()
                         .unwrap_or_else(|| (monitor.active_workspace_idx() + 1).to_string()),
                 ),
                 deco_rect: Rect::default(),
@@ -324,17 +337,32 @@ fn describe_workspace_node(
         NodeType::Workspace,
         layout,
         &orientation,
-        workspace
-            .name()
-            .map(String::as_str)
-            .or(Some(&(index + 1).to_string())),
+        Some(
+            &workspace
+                .sway_name()
+                .unwrap_or_else(|| (index + 1).to_string()),
+        ),
         rect,
         nodes,
         floating_nodes,
         focus,
         focused,
         NodeProperties::Workspace(swayward_ipc::WorkspaceProperties {
-            num: i32::try_from(index + 1).unwrap_or(-1),
+            num: workspace.number().unwrap_or_else(|| {
+                workspace
+                    .name()
+                    .and_then(|name| {
+                        name.split_once(':')
+                            .map_or(name.as_str(), |(prefix, _)| prefix)
+                            .parse()
+                            .ok()
+                    })
+                    .unwrap_or_else(|| {
+                        workspace
+                            .name()
+                            .map_or_else(|| i32::try_from(index + 1).unwrap_or(-1), |_| -1)
+                    })
+            }),
             output: output.into(),
             representation,
         }),

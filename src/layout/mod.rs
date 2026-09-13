@@ -714,6 +714,49 @@ impl RenderLayer {
     }
 }
 
+fn parse_workspace_num(name: &str) -> Option<i32> {
+    let prefix = name.split_once(':').map_or(name, |(prefix, _)| prefix);
+    prefix.parse::<i32>().ok().filter(|number| *number >= 0)
+}
+
+fn workspace_matches_target<W: LayoutElement>(
+    workspace: &Workspace<W>,
+    target: &crate::command::WorkspaceTarget,
+) -> bool {
+    match target {
+        crate::command::WorkspaceTarget::Number(value) => {
+            workspace.number() == parse_workspace_num(value)
+        }
+        crate::command::WorkspaceTarget::Name(value) => {
+            workspace
+                .sway_name()
+                .is_some_and(|name| name.eq_ignore_ascii_case(value))
+                || workspace.number() == parse_workspace_num(value)
+        }
+        _ => false,
+    }
+}
+
+fn sway_workspace_identity(
+    target: crate::command::WorkspaceTarget,
+) -> Result<(Option<String>, Option<i32>), String> {
+    match target {
+        crate::command::WorkspaceTarget::Number(name) => {
+            let number = parse_workspace_num(&name)
+                .ok_or_else(|| format!("invalid workspace number '{name}'"))?;
+            Ok(((name != number.to_string()).then_some(name), Some(number)))
+        }
+        crate::command::WorkspaceTarget::Name(name) => {
+            let number = parse_workspace_num(&name);
+            Ok((
+                (number.is_none() || name != number.unwrap().to_string()).then_some(name),
+                number,
+            ))
+        }
+        _ => Err("relative workspace target cannot be created".into()),
+    }
+}
+
 impl<W: LayoutElement> Layout<W> {
     pub fn new(clock: Clock, config: &Config) -> Self {
         Self::with_options_and_workspaces(clock, config, Options::from_config(config))
@@ -2233,6 +2276,169 @@ impl<W: LayoutElement> Layout<W> {
             return;
         };
         monitor.switch_workspace_previous();
+    }
+
+    pub fn activate_sway_workspace(
+        &mut self,
+        target: crate::command::WorkspaceTarget,
+    ) -> Result<(), String> {
+        use crate::command::WorkspaceTarget;
+
+        match target {
+            WorkspaceTarget::NextOnOutput => {
+                self.switch_workspace_down();
+                return Ok(());
+            }
+            WorkspaceTarget::PrevOnOutput => {
+                self.switch_workspace_up();
+                return Ok(());
+            }
+            WorkspaceTarget::Next | WorkspaceTarget::Prev => {
+                return self.activate_relative_sway_workspace(target == WorkspaceTarget::Next);
+            }
+            _ => {}
+        }
+
+        let existing = self.workspaces().find_map(|(monitor, index, workspace)| {
+            let matches = match &target {
+                WorkspaceTarget::Number(value) => workspace.number() == parse_workspace_num(value),
+                WorkspaceTarget::Name(value) => workspace
+                    .sway_name()
+                    .is_some_and(|name| name.eq_ignore_ascii_case(value)),
+                _ => false,
+            };
+            matches.then(|| (monitor.map(|monitor| monitor.output().clone()), index))
+        });
+
+        if let Some((output, index)) = existing {
+            if let Some(output) = output {
+                self.focus_output(&output);
+            }
+            self.switch_workspace(index);
+            return Ok(());
+        }
+
+        let (name, number) = sway_workspace_identity(target)?;
+        let MonitorSet::Normal {
+            monitors,
+            active_monitor_idx,
+            ..
+        } = &mut self.monitor_set
+        else {
+            return Err("cannot create a workspace without an output".into());
+        };
+        let monitor = &mut monitors[*active_monitor_idx];
+        let index = monitor.workspaces.len().saturating_sub(1);
+        monitor.add_sway_workspace_at(index, name, number);
+        monitor.activate_workspace(index);
+        Ok(())
+    }
+
+    fn activate_relative_sway_workspace(&mut self, next: bool) -> Result<(), String> {
+        let MonitorSet::Normal {
+            monitors,
+            active_monitor_idx,
+            ..
+        } = &mut self.monitor_set
+        else {
+            return Err("cannot switch workspaces without an output".into());
+        };
+        let current_monitor = *active_monitor_idx;
+        let current_workspace = monitors[current_monitor].active_workspace_idx;
+        let positions = monitors
+            .iter()
+            .enumerate()
+            .flat_map(|(monitor, value)| {
+                value
+                    .workspaces
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, workspace)| workspace.has_windows_or_name())
+                    .map(move |(workspace, _)| (monitor, workspace))
+            })
+            .collect::<Vec<_>>();
+        let current = positions
+            .iter()
+            .position(|position| *position == (current_monitor, current_workspace))
+            .unwrap_or(0);
+        let target = if next {
+            positions.get(current + 1).or_else(|| positions.first())
+        } else {
+            current
+                .checked_sub(1)
+                .and_then(|index| positions.get(index))
+                .or_else(|| positions.last())
+        };
+        if let Some(&(monitor, workspace)) = target {
+            *active_monitor_idx = monitor;
+            monitors[monitor].activate_workspace(workspace);
+        }
+        Ok(())
+    }
+
+    pub fn move_to_sway_workspace(
+        &mut self,
+        target: crate::command::WorkspaceTarget,
+    ) -> Result<(), String> {
+        if matches!(
+            target,
+            crate::command::WorkspaceTarget::Next
+                | crate::command::WorkspaceTarget::Prev
+                | crate::command::WorkspaceTarget::NextOnOutput
+                | crate::command::WorkspaceTarget::PrevOnOutput
+        ) {
+            return Err("relative move-to-workspace targets are not implemented yet".into());
+        }
+        let target_position = self.workspaces().find_map(|(monitor, index, workspace)| {
+            workspace_matches_target(workspace, &target)
+                .then(|| (monitor.map(|monitor| monitor.output().clone()), index))
+        });
+        let (target_output, target_index) = if let Some(position) = target_position {
+            position
+        } else {
+            let (name, number) = sway_workspace_identity(target)?;
+            let MonitorSet::Normal {
+                monitors,
+                active_monitor_idx,
+                ..
+            } = &mut self.monitor_set
+            else {
+                return Err("cannot create a workspace without an output".into());
+            };
+            let monitor = &mut monitors[*active_monitor_idx];
+            let index = monitor.workspaces.len().saturating_sub(1);
+            monitor.add_sway_workspace_at(index, name, number);
+            (Some(monitor.output().clone()), index)
+        };
+
+        let source_output = self.active_output().cloned();
+        if target_output != source_output {
+            let output =
+                target_output.ok_or_else(|| "target workspace has no output".to_owned())?;
+            self.move_to_output(None, &output, Some(target_index), ActivateWindow::No);
+        } else {
+            self.move_to_workspace(None, target_index, ActivateWindow::No);
+        }
+        Ok(())
+    }
+
+    pub fn assign_sway_workspace(
+        &mut self,
+        target: crate::command::WorkspaceTarget,
+        output_name: &str,
+    ) -> Result<(), String> {
+        let output = self
+            .outputs()
+            .find(|output| output_matches_name(output, output_name))
+            .cloned()
+            .ok_or_else(|| format!("unknown output '{output_name}'"))?;
+        let (old_monitor, old_index, _) = self
+            .workspaces()
+            .find(|(_, _, workspace)| workspace_matches_target(workspace, &target))
+            .ok_or_else(|| "workspace does not exist".to_owned())?;
+        let old_output = old_monitor.map(|monitor| monitor.output().clone());
+        self.move_workspace_to_output_by_id(old_index, old_output, &output);
+        Ok(())
     }
 
     pub fn consume_into_column(&mut self) {
@@ -4573,7 +4779,7 @@ impl<W: LayoutElement> Layout<W> {
             return;
         };
 
-        ws.name.replace(name);
+        ws.set_persistent_name(name);
 
         let wsid = ws.id();
 

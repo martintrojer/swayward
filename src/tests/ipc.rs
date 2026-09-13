@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 use std::ffi::OsStr;
 use std::io::{Read as _, Write as _};
 use std::os::unix::net::UnixStream;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
@@ -274,10 +275,13 @@ fn read_ipc_reply(fixture: &mut Fixture, stream: &mut UnixStream) -> (u32, Strin
 }
 
 fn ipc_fixture() -> (Fixture, std::path::PathBuf) {
+    static NEXT_SOCKET: AtomicU64 = AtomicU64::new(0);
+
     let mut fixture = Fixture::new();
     let handle = fixture.swayward().event_loop.clone();
+    let socket_name = format!("test-{}", NEXT_SOCKET.fetch_add(1, Ordering::Relaxed));
     let ipc_server =
-        crate::ipc::server::IpcServer::start(&handle, Some(OsStr::new("test"))).unwrap();
+        crate::ipc::server::IpcServer::start(&handle, Some(OsStr::new(&socket_name))).unwrap();
     let socket = ipc_server.socket_path.clone().unwrap();
     fixture.swayward().ipc_server = Some(ipc_server);
     fixture.niri_state().ipc_keyboard_layouts_changed();
@@ -544,6 +548,137 @@ fn live_ipc_descriptions_match_sway_schema() {
     ))
     .unwrap();
     assert_same_shape(&fixture, &ours, "$outputs");
+}
+
+#[test]
+fn workspace_commands_create_sparse_global_identities() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+
+    let client = f.add_client();
+    for command in ["workspace 1", "workspace 3", "workspace 7"] {
+        assert!(crate::command::execute(f.niri_state(), command)[0].success);
+        let window = f.client(client).create_window();
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+
+    let swayward = f.swayward();
+    let workspaces = describe_workspaces(&swayward.layout, &swayward.global_space);
+    assert_eq!(
+        workspaces
+            .iter()
+            .map(|workspace| (workspace.num, workspace.name.as_str(), workspace.focused))
+            .collect::<Vec<_>>(),
+        [(1, "1", false), (3, "3", false), (7, "7", true)]
+    );
+}
+
+#[test]
+fn workspace_next_and_prev_cross_outputs() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1280, 720));
+    f.add_output(2, (1920, 1080));
+    let first_output = f.niri_output(1).name();
+    let second_output = f.niri_output(2).name();
+    let client = f.add_client();
+    for (workspace, output) in [("1", &first_output), ("2", &second_output)] {
+        assert!(
+            crate::command::execute(f.niri_state(), &format!("workspace {workspace}"))[0].success
+        );
+        let window = f.client(client).create_window();
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+        assert!(
+            crate::command::execute(
+                f.niri_state(),
+                &format!("workspace {workspace} output {output}")
+            )[0]
+            .success
+        );
+    }
+    assert!(crate::command::execute(f.niri_state(), "workspace prev")[0].success);
+    assert_eq!(
+        f.swayward().layout.active_output().unwrap().name(),
+        first_output
+    );
+    assert!(crate::command::execute(f.niri_state(), "workspace next")[0].success);
+    assert_eq!(
+        f.swayward().layout.active_output().unwrap().name(),
+        second_output
+    );
+}
+
+#[test]
+fn named_workspace_has_no_number_and_active_empty_workspace_remains_visible() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+
+    assert!(crate::command::execute(f.niri_state(), "workspace mail")[0].success);
+    f.niri_state().ipc_refresh_layout();
+
+    let swayward = f.swayward();
+    let workspaces = describe_workspaces(&swayward.layout, &swayward.global_space);
+    assert_eq!(workspaces.len(), 1);
+    assert_eq!(workspaces[0].name, "mail");
+    assert_eq!(workspaces[0].num, -1);
+    assert!(workspaces[0].visible);
+    assert!(workspaces[0].focused);
+}
+
+#[test]
+fn move_to_workspace_creates_the_target_and_moves_the_window() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    assert!(crate::command::execute(f.niri_state(), "move to workspace 7")[0].success);
+
+    let swayward = f.swayward();
+    let workspaces = describe_workspaces(&swayward.layout, &swayward.global_space);
+    let workspace = workspaces
+        .iter()
+        .find(|workspace| workspace.num == 7)
+        .unwrap();
+    assert_eq!(workspace.focus.len(), 1);
+    assert!(!workspace.focused);
+}
+
+#[test]
+fn workspace_output_assignment_moves_the_workspace() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1280, 720));
+    f.add_output(2, (1920, 1080));
+    let target_output = f.niri_output(2).name();
+
+    assert!(crate::command::execute(f.niri_state(), "workspace 7")[0].success);
+    let command = format!("workspace 7 output {target_output}");
+    assert!(crate::command::execute(f.niri_state(), &command)[0].success);
+
+    let swayward = f.swayward();
+    let workspace = describe_workspaces(&swayward.layout, &swayward.global_space)
+        .into_iter()
+        .find(|workspace| workspace.num == 7)
+        .unwrap();
+    assert_eq!(workspace.output, target_output);
 }
 
 #[test]

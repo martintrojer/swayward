@@ -71,6 +71,10 @@ pub enum Command {
     },
     Floating(Toggle),
     Workspace(WorkspaceTarget),
+    AssignWorkspace {
+        target: WorkspaceTarget,
+        output: String,
+    },
     Kill,
     Resize {
         grow: bool,
@@ -267,7 +271,7 @@ fn parse_one(input: &str) -> Result<Command, String> {
         "floating" => one(rest, "floating <enable|disable|toggle>")
             .and_then(parse_toggle)
             .map(Command::Floating),
-        "workspace" => parse_workspace(rest).map(Command::Workspace),
+        "workspace" => parse_workspace_command(rest),
         "kill" => no_args(rest, "kill").map(|()| Command::Kill),
         "resize" => parse_resize(rest),
         "reload" => no_args(rest, "reload").map(|()| Command::Reload),
@@ -397,6 +401,22 @@ fn parse_fullscreen(args: &[&str]) -> Result<Command, String> {
         _ => return Err(syntax.into()),
     };
     Ok(Command::Fullscreen { mode, global })
+}
+
+fn parse_workspace_command(args: &[&str]) -> Result<Command, String> {
+    if let Some(index) = args
+        .iter()
+        .position(|arg| arg.eq_ignore_ascii_case("output"))
+    {
+        if index == 0 || index + 1 == args.len() {
+            return Err("Expected 'workspace <name> output <output>'".into());
+        }
+        return Ok(Command::AssignWorkspace {
+            target: parse_workspace(&args[..index])?,
+            output: join_words(&args[index + 1..]),
+        });
+    }
+    parse_workspace(args).map(Command::Workspace)
 }
 
 fn parse_workspace(args: &[&str]) -> Result<WorkspaceTarget, String> {
@@ -610,8 +630,12 @@ fn execute_one(state: &mut State, parsed: ParsedCommand) -> CommandOutcome {
         Command::MoveDirection {
             pixels: Some(_), ..
         } => return failure("custom floating move distances are not implemented yet"),
-        Command::MoveToWorkspace(_) => {
-            return failure("global workspace movement is not implemented yet");
+        Command::MoveToWorkspace(target) => {
+            if let Err(error) = state.swayward.layout.move_to_sway_workspace(target) {
+                return failure(error);
+            }
+            state.swayward.queue_redraw_all();
+            None
         }
         Command::Layout(layout) => {
             match layout {
@@ -707,7 +731,20 @@ fn execute_one(state: &mut State, parsed: ParsedCommand) -> CommandOutcome {
             state.swayward.queue_redraw_all();
             None
         }
-        Command::Workspace(_) => return failure("global workspaces are not implemented yet"),
+        Command::Workspace(target) => {
+            if let Err(error) = state.swayward.layout.activate_sway_workspace(target) {
+                return failure(error);
+            }
+            state.swayward.queue_redraw_all();
+            None
+        }
+        Command::AssignWorkspace { target, output } => {
+            if let Err(error) = state.swayward.layout.assign_sway_workspace(target, &output) {
+                return failure(error);
+            }
+            state.swayward.queue_redraw_all();
+            None
+        }
         Command::Kill => Some(Action::CloseWindow),
         Command::Resize {
             grow,
@@ -787,6 +824,7 @@ fn execute_one(state: &mut State, parsed: ParsedCommand) -> CommandOutcome {
     if let Some(action) = action {
         state.do_action(action, false);
     }
+    state.ipc_refresh_layout();
     success()
 }
 

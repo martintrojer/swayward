@@ -263,9 +263,8 @@ fn parse_pairs(input: &str) -> Result<Vec<(String, Option<String>)>, String> {
                     escaped = false;
                 } else if ch == '\\' {
                     escaped = true;
-                } else if quoted && ch == '"' {
-                    break;
-                } else if !quoted && ch.is_whitespace() {
+                } else if (quoted && ch == '"') || (!quoted && ch.is_whitespace()) {
+                    // A quoted value ends at its closing quote; a bare value ends at whitespace.
                     break;
                 } else {
                     value.push(ch);
