@@ -403,6 +403,7 @@ impl<W: LayoutElement> TilingTree<W> {
                 },
             );
         }
+        self.compact_tree();
         self.animate_geometry_changes(old_geometries, Some(id));
         self.request_window_sizes();
         id
@@ -428,6 +429,7 @@ impl<W: LayoutElement> TilingTree<W> {
         if let Some(parent) = node.parent {
             self.remove_child(parent, id);
             self.collapse_from(parent);
+            self.compact_tree();
         }
         if self.focus == Some(id) || self.windows().next().is_none() {
             self.set_focus_id(self.first_leaf());
@@ -550,6 +552,7 @@ impl<W: LayoutElement> TilingTree<W> {
         }) = self.nodes.get_mut(&id)
         {
             *current = layout;
+            self.compact_tree();
             self.request_window_sizes();
         }
     }
@@ -564,6 +567,7 @@ impl<W: LayoutElement> TilingTree<W> {
         }) = self.nodes.get_mut(&id)
         {
             *current = layout;
+            self.compact_tree();
             self.request_window_sizes();
         } else {
             self.split(id, layout);
@@ -574,6 +578,7 @@ impl<W: LayoutElement> TilingTree<W> {
         let old = self.compute_geometry();
         let changed = self.move_direction_inner(id, direction);
         if changed {
+            self.compact_tree();
             self.animate_geometry_changes(old, None);
         }
         changed
@@ -1810,6 +1815,11 @@ impl<W: LayoutElement> TilingTree<W> {
             assert_eq!(self.node_for_window(&resize.window), Some(resize.target));
             assert!(self.sibling_percents(resize.first, resize.second).is_some());
         }
+        assert!(
+            self.iter_depth_first()
+                .all(|(id, _)| self.squashable_child(id).is_none()),
+            "tree contains a split pair sway would squash"
+        );
     }
 
     fn alloc(&mut self, node: Node<W>) -> NodeId {
@@ -1902,6 +1912,7 @@ impl<W: LayoutElement> TilingTree<W> {
         }
         self.nodes.get_mut(&sibling).unwrap().parent = Some(wrapper);
         self.nodes.get_mut(&id).unwrap().parent = Some(wrapper);
+        self.compact_tree();
         self.animate_geometry_changes(old, None);
         self.request_window_sizes();
         true
@@ -1922,6 +1933,7 @@ impl<W: LayoutElement> TilingTree<W> {
         let index = parent_index + usize::from(after);
         self.insert_existing_child(grandparent, id, index, parent);
         self.collapse_from(parent);
+        self.compact_tree();
         self.animate_geometry_changes(old, None);
         self.request_window_sizes();
         true
@@ -2107,6 +2119,116 @@ impl<W: LayoutElement> TilingTree<W> {
             self.focus_history.retain(|candidate| *candidate != id);
             id = parent;
         }
+    }
+
+    fn compact_tree(&mut self) {
+        loop {
+            let squashable = self
+                .iter_depth_first()
+                .find_map(|(id, _)| self.squashable_child(id).map(|_| id));
+            let Some(id) = squashable else { return };
+            self.squash(id);
+        }
+    }
+
+    fn squashable_child(&self, id: NodeId) -> Option<NodeId> {
+        let TreeNode::Split { children, .. } = &self.nodes.get(&id)?.value else {
+            return None;
+        };
+        let [child] = children.as_slice() else {
+            return None;
+        };
+        self.is_squashable(id, *child).then_some(*child)
+    }
+
+    fn is_squashable(&self, id: NodeId, child: NodeId) -> bool {
+        let Some(parent) = self.nodes.get(&id).and_then(|node| node.parent) else {
+            return false;
+        };
+        let Some(TreeNode::Split {
+            layout: parent_layout,
+            ..
+        }) = self.nodes.get(&parent).map(|node| &node.value)
+        else {
+            return false;
+        };
+        let Some(TreeNode::Split {
+            layout, children, ..
+        }) = self.nodes.get(&id).map(|node| &node.value)
+        else {
+            return false;
+        };
+        let Some(TreeNode::Split {
+            layout: child_layout,
+            ..
+        }) = self.nodes.get(&child).map(|node| &node.value)
+        else {
+            return false;
+        };
+        children.len() == 1
+            && matches!(layout, Layout::SplitH | Layout::SplitV)
+            && matches!(child_layout, Layout::SplitH | Layout::SplitV)
+            && !Self::layouts_parallel(*layout, *child_layout)
+            && Self::layouts_parallel(*parent_layout, *child_layout)
+    }
+
+    fn layouts_parallel(first: Layout, second: Layout) -> bool {
+        matches!(
+            (first, second),
+            (
+                Layout::SplitH | Layout::Tabbed,
+                Layout::SplitH | Layout::Tabbed
+            ) | (
+                Layout::SplitV | Layout::Stacked,
+                Layout::SplitV | Layout::Stacked
+            )
+        )
+    }
+
+    fn squash(&mut self, id: NodeId) {
+        let Some(parent) = self.nodes.get(&id).and_then(|node| node.parent) else {
+            return;
+        };
+        let Some(child) = self.squashable_child(id) else {
+            return;
+        };
+        let (grandchildren, child_percents) = match &self.nodes[&child].value {
+            TreeNode::Split {
+                children, percents, ..
+            } => (children.clone(), percents.clone()),
+            TreeNode::Leaf { .. } => return,
+        };
+        let Some(Node {
+            value: TreeNode::Split {
+                children, percents, ..
+            },
+            ..
+        }) = self.nodes.get_mut(&parent)
+        else {
+            return;
+        };
+        let Some(index) = children.iter().position(|candidate| *candidate == id) else {
+            return;
+        };
+        children.remove(index);
+        let percent = percents.remove(index);
+        for (offset, (grandchild, child_percent)) in
+            grandchildren.iter().zip(child_percents).enumerate()
+        {
+            children.insert(index + offset, *grandchild);
+            percents.insert(index + offset, percent * child_percent);
+        }
+        for grandchild in &grandchildren {
+            self.nodes.get_mut(grandchild).unwrap().parent = Some(parent);
+        }
+        let replacement = grandchildren.first().copied().unwrap_or(parent);
+        if self.focus == Some(id) || self.focus == Some(child) {
+            self.set_focus_id(Some(replacement));
+        }
+        self.focus_history
+            .retain(|candidate| *candidate != id && *candidate != child);
+        self.nodes.remove(&id);
+        self.nodes.remove(&child);
     }
 
     fn split_len(&self, id: NodeId) -> Option<usize> {
