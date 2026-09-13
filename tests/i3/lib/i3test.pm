@@ -27,6 +27,7 @@ our @EXPORT = qw(
     is
     is_deeply
     is_num_children
+    isa_ok
     isnt
     ok
     open_empty_con
@@ -87,6 +88,11 @@ sub cmp_float ($$;$) {
     $tester->cmp_ok(abs($a - $b), '<', 0.000001, $name);
 }
 sub is_deeply ($$;$) { $tester->is_deeply(@_) }
+sub isa_ok ($$;$) {
+    my ($value, $class, $name) = @_;
+    $name //= "The object isa $class";
+    $tester->ok(ref($value) && $value->isa($class), $name);
+}
 sub diag (@) { $tester->diag(@_) }
 sub done_testing (;$) { $tester->done_testing(@_) }
 
@@ -128,7 +134,7 @@ sub open_window {
     my %args = @_ == 1 ? %{$_[0]} : @_;
     my $name = $args{name} // 'Window ' . $window_count++;
     my $class = $args{wm_class} // $name;
-    return i3test::Window->new(_control({
+    return X11::XCB::Window->new(_control({
         action => 'open',
         name => $name,
         app_id => $class,
@@ -208,9 +214,29 @@ sub recv { $_[0]->{value} }
 package i3test::X;
 sub input_focus { i3test::_control({ action => 'focused' })->{id} }
 
-package i3test::Window;
+package i3test;
+sub _find_window {
+    my ($node, $id, $visible) = @_;
+    $visible = $node->{focused} if $node->{type} eq 'workspace';
+    return ($node, $visible)
+        if $node->{type} =~ /^(?:con|floating_con)$/
+        && (($node->{id} // -1) == $id || ($node->{window} // -1) == $id);
+    for my $child (@{$node->{nodes}}, @{$node->{floating_nodes}}) {
+        my @found = _find_window($child, $id, $visible);
+        return @found if @found;
+    }
+    return;
+}
+
+package X11::XCB::Window;
 sub new { bless $_[1], $_[0] }
 sub id { $_[0]->{id} }
+sub _node { (i3test::_find_window(i3test::_request(4), $_[0]->{id}, 0))[0] }
+sub rect {
+    my $node = $_[0]->_node;
+    return ($node->{rect}, $node->{geometry});
+}
+sub mapped { (i3test::_find_window(i3test::_request(4), $_[0]->{id}, 0))[1] }
 sub unmap { $_[0]->destroy }
 sub destroy { i3test::_control({ action => 'close', id => $_[0]->{id} }) }
 
