@@ -133,7 +133,7 @@ impl IpcServer {
         })
     }
 
-    fn send_event(&self, event: Event) {
+    pub(crate) fn send_event(&self, event: Event) {
         let mut streams = self.event_streams.borrow_mut();
         let mut to_remove = Vec::new();
         for (idx, stream) in streams.iter_mut().enumerate() {
@@ -448,14 +448,15 @@ async fn handle_event_stream_client(client: EventStreamClient) -> anyhow::Result
             | Event::WorkspaceUrgencyChanged { .. }
                 if subscriptions.contains("workspace") =>
             {
-                let current = serde_json::from_str::<serde_json::Value>(&query_state.borrow().tree)
-                    .ok()
-                    .and_then(|tree| find_node(&tree, "workspace", true).cloned());
                 (
                     1 << 31,
-                    serde_json::json!({"change":"reload","old":null,"current":current}),
+                    serde_json::json!({"change":"reload","old":null,"current":null}),
                 )
             }
+            Event::BindingModeChanged { mode, pango_markup } if subscriptions.contains("mode") => (
+                (1 << 31) | 2,
+                serde_json::json!({"change":mode,"pango_markup":pango_markup}),
+            ),
             Event::WindowsChanged { .. }
             | Event::WindowOpenedOrChanged { .. }
             | Event::WindowClosed { .. }

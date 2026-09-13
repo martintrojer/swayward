@@ -24,9 +24,9 @@ The array mutations below were run during the M3 oracle fix. The remaining mutat
 | `GET_CONFIG` | Return `{}` instead of the normal not-implemented error | Not caught: 24 passed | No request or schema assertion exists. |
 | `GET_INPUTS` | Return `{}` instead of the normal not-implemented error | Not caught: 24 passed | No request or schema assertion exists. |
 | `GET_SEATS` | Return `{}` instead of the normal not-implemented error | Not caught: 24 passed | No request or schema assertion exists. |
-| Workspace events | Change `change` from `reload` to `BROKEN` | Not caught: 24 passed | Subscription acknowledgement and concurrent queries are tested. No test reads a workspace event payload, and no event fixture exists. |
-| Window events | Replace the payload with `{"broken":true}` | Not caught: 24 passed | No test reads a window event payload, and no event fixture exists. |
-| Mode events | Add a malformed mode-event payload | Not caught: 24 passed | `mode` subscriptions are accepted, but the server does not currently emit sway mode events. No event fixture exists. |
+| Workspace events | Change `change` from `reload` to `BROKEN` | Caught: focused event test failed | The headless subscriber reads a real event and compares its keys, JSON types, and `change` value with sway 1.11's `workspace.reload.json`. Fixtures also preserve every documented workspace change for future semantic tests. |
+| Window events | Replace the payload with `{"broken":true}` | Caught: focused event test failed | The headless subscriber reads a real event and compares its keys, JSON types, and `change` value with sway 1.11's `window.focus.json`. Fixtures also preserve every documented window change for future semantic tests. |
+| Mode events | Replace the payload with `{"broken":true}` | Caught: focused event test failed | The headless subscriber reads a real mode event and compares its keys, JSON types, and `change` value with sway 1.11's `mode.default.json`. |
 | Rectangle roles | Set a window's `geometry` equal to its outer `rect` | Not caught: 24 passed | The oracle checks that `rect`, `window_rect`, `deco_rect`, and `geometry` have the expected object shape. It does not prove that they are four semantically distinct boxes. |
 | Rectangle roles | Set a window's `window_rect` equal to its outer `rect` | Not caught: 24 passed | Same gap. |
 | Rectangle roles | Set a window's `deco_rect` equal to its outer `rect` | Not caught: 24 passed | Same gap. Focused tests cover output positions and the root size only. |
@@ -42,6 +42,6 @@ Arrays below the top-level workspace/output replies remain length-checked only f
 
 Unsupported message types are not enumerated. The suite does not prove that every `MessageType` returns either a sway-compatible payload or a well-formed error.
 
-## Follow-up priority
+## Event fixture boundary
 
-Event fixtures are the highest-value missing oracle. Waybar consumes workspace, window, and mode events, but all three malformed-event mutations passed. Capture representative payloads from sway and add headless subscription tests that read and compare emitted events.
+`tests/fixtures/sway/events/` contains every documented workspace and window `change` value requested for the audit, plus `resize` and `default` mode payloads. The headless test exercises one deterministic event from each family. The remaining fixtures preserve real sway schemas but do not yet have one test per change value or semantic value checks beyond `change`.

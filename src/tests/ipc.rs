@@ -56,6 +56,37 @@ fn assert_same_shape(expected: &Value, actual: &Value, path: &str) {
     }
 }
 
+fn assert_event_shape(expected: &Value, actual: &Value, path: &str) {
+    assert_eq!(
+        json_type(expected),
+        json_type(actual),
+        "JSON type at {path}"
+    );
+    if path.ends_with(".change") {
+        assert_eq!(expected, actual, "event change at {path}");
+    }
+    match (expected, actual) {
+        (Value::Object(expected), Value::Object(actual)) => {
+            assert_eq!(
+                expected.keys().collect::<BTreeSet<_>>(),
+                actual.keys().collect::<BTreeSet<_>>(),
+                "keys at {path}"
+            );
+            for (key, value) in expected {
+                assert_event_shape(value, &actual[key], &format!("{path}.{key}"));
+            }
+        }
+        (Value::Array(expected), Value::Array(actual)) => {
+            if let Some(expected) = expected.first() {
+                for (index, actual) in actual.iter().enumerate() {
+                    assert_event_shape(expected, actual, &format!("{path}[{index}]"));
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
 fn assert_focus_matches_fixture(expected: &Value, actual: &Value, path: &str) {
     let expected_children = expected["nodes"]
         .as_array()
@@ -344,6 +375,88 @@ fn event_subscription_does_not_block_a_concurrent_query() {
         serde_json::from_str::<Value>(&payload).unwrap()["variant"],
         "swayward"
     );
+}
+
+#[test]
+fn workspace_window_and_mode_events_match_sway_shapes() {
+    let (mut fixture, socket) = ipc_fixture();
+    fixture.add_output(1, (1920, 1080));
+    let client = fixture.add_client();
+    let window = fixture.client(client).create_window();
+    window.xdg_toplevel.set_app_id("fixture-event".into());
+    window.set_title("fixture-event");
+    window.commit();
+    let surface = window.surface.clone();
+    fixture.roundtrip(client);
+    let window = fixture.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    fixture.double_roundtrip(client);
+
+    let mut subscriber = UnixStream::connect(socket).unwrap();
+    subscriber
+        .write_all(&crate::ipc::wire::encode(
+            MessageType::Subscribe,
+            r#"["workspace","window","mode"]"#,
+        ))
+        .unwrap();
+    let (_, reply) = read_ipc_reply(&mut fixture, &mut subscriber);
+    assert_eq!(reply, r#"{"success": true}"#);
+
+    fixture.swayward().ipc_server.as_ref().unwrap().send_event(
+        swayward_ipc::legacy::Event::WorkspaceActivated {
+            id: 1,
+            focused: true,
+        },
+    );
+    let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
+    assert_eq!(event_type, 1 << 31);
+    let expected: Value = serde_json::from_str(include_str!(
+        "../../tests/fixtures/sway/events/workspace.reload.json"
+    ))
+    .unwrap();
+    assert_event_shape(
+        &expected,
+        &serde_json::from_str(&payload).unwrap(),
+        "$workspace",
+    );
+
+    let focused_id = fixture
+        .swayward()
+        .layout
+        .focus()
+        .map(|window| window.id().get());
+    fixture
+        .swayward()
+        .ipc_server
+        .as_ref()
+        .unwrap()
+        .send_event(swayward_ipc::legacy::Event::WindowFocusChanged { id: focused_id });
+    let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
+    assert_eq!(event_type, (1 << 31) | 3);
+    let expected: Value = serde_json::from_str(include_str!(
+        "../../tests/fixtures/sway/events/window.focus.json"
+    ))
+    .unwrap();
+    assert_event_shape(
+        &expected,
+        &serde_json::from_str(&payload).unwrap(),
+        "$window",
+    );
+
+    fixture.swayward().ipc_server.as_ref().unwrap().send_event(
+        swayward_ipc::legacy::Event::BindingModeChanged {
+            mode: "default".into(),
+            pango_markup: false,
+        },
+    );
+    let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
+    assert_eq!(event_type, (1 << 31) | 2);
+    let expected: Value = serde_json::from_str(include_str!(
+        "../../tests/fixtures/sway/events/mode.default.json"
+    ))
+    .unwrap();
+    assert_event_shape(&expected, &serde_json::from_str(&payload).unwrap(), "$mode");
 }
 
 #[test]

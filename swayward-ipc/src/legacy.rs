@@ -1695,6 +1695,13 @@ pub enum Event {
         /// Index of the newly active layout.
         idx: u8,
     },
+    /// The sway-compatible binding mode changed.
+    BindingModeChanged {
+        /// Name of the newly active mode.
+        mode: String,
+        /// Whether clients should render the mode as Pango markup.
+        pango_markup: bool,
+    },
     /// The overview was opened or closed.
     OverviewOpenedOrClosed {
         /// The new state of the overview.
