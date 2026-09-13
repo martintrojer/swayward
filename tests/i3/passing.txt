@@ -8,6 +8,9 @@
 152-regress-level-up.t
 179-regress-multiple-ws.t
 197-regression-move-vanish.t
+198-regression-scratchpad-crash.t
+204-regress-scratchpad-move.t
 224-regress-resize-branch.t
 273-regress-focus-toggle.t
 292-regress-layout-toggle.t
+303-regress-move-floating.t

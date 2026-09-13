@@ -43,9 +43,12 @@ report for assertion-level results.
 | `179-regress-multiple-ws.t` | 6 | pass | Relative `move workspace prev` resolves against sway's global workspace order before moving. |
 | `192-layout.t` | 34 | fail | Executable conformance finding. |
 | `197-regression-move-vanish.t` | 2 | pass | Moving a child from a split preserves both windows. |
+| `198-regression-scratchpad-crash.t` | 1 | pass | Moving and immediately showing an invisible window does not crash. |
+| `204-regress-scratchpad-move.t` | 1 | pass | Moving the last window of an inactive workspace to scratchpad does not crash. |
 | `224-regress-resize-branch.t` | 1 | pass | `does_i3_live` after resizing a split container. |
 | `273-regress-focus-toggle.t` | 1 | pass | `does_i3_live` after `focus mode_toggle` on an empty workspace; sway implements this command in `sway/commands/focus.c:422`. |
 | `292-regress-layout-toggle.t` | 1 | pass | `does_i3_live` after invalid `layout toggle` parameters; sway validates the accepted syntax in `sway/commands/layout.c:25-27`. |
+| `303-regress-move-floating.t` | 3 | pass | Moving a nested floating container leaves two tiled nodes and no floating node. |
 
 ## Coverage
 
