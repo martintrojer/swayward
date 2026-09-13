@@ -67,6 +67,7 @@ not_in_nav: |
   _Sidebar.md
   README.md
 nav:
+  - Home: Home.md
   - Usage:
     - Getting started: Getting-Started.md
     - Example systemd setup: Example-systemd-Setup.md
