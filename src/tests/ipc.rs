@@ -158,6 +158,12 @@ fn assert_rectangle_roles_match_fixture(expected: &Value, actual: &Value, path: 
             );
         }
 
+        assert_eq!(
+            expected["deco_rect"]["height"].as_i64().unwrap() > 0,
+            actual["deco_rect"]["height"].as_i64().unwrap() > 0,
+            "titlebar presence at {path}"
+        );
+
         for dimension in ["width", "height"] {
             let expected_window = expected["window_rect"][dimension].as_i64().unwrap();
             let expected_outer = expected_rect[dimension].as_i64().unwrap();
@@ -312,7 +318,8 @@ fn collect_fixture_nodes(value: &Value, nodes: &mut Vec<Value>) {
 }
 
 fn nested_live_tree() -> Value {
-    let mut f = Fixture::new();
+    let config = swayward_config::Config::parse_mem("layout { border { on; }; }").unwrap();
+    let mut f = Fixture::with_config(config);
     f.add_output(1, (1920, 1080));
     let id = f.add_client();
     for title in ["fixture-1", "fixture-2", "fixture-3"] {
@@ -1437,6 +1444,7 @@ fn stale_tree_leaf_is_omitted_without_panicking() {
         percent: Some(1.),
         focused: false,
         rect: Default::default(),
+        deco_rect: None,
     };
     assert!(crate::ipc::tree::describe_tiling(
         tree,
@@ -1460,6 +1468,7 @@ fn stale_tree_leaf_is_omitted_without_panicking() {
             percent: Some(1.),
             focused: false,
             rect: Default::default(),
+            deco_rect: None,
         }],
     };
     let node = crate::ipc::tree::describe_tiling(

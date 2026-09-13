@@ -1,38 +1,83 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use smithay::utils::{Logical, Point, Rectangle, Size};
 
 use super::{Layout, Node, NodeId, TreeNode};
+use crate::layout::titlebar::Titlebar;
 use crate::layout::LayoutElement;
+
+pub(crate) struct Geometry<I> {
+    pub nodes: HashMap<NodeId, Rectangle<f64, Logical>>,
+    pub titlebars: HashMap<NodeId, Titlebar<I>>,
+}
 
 pub(crate) fn compute<W: LayoutElement>(
     nodes: &HashMap<NodeId, Node<W>>,
     root: NodeId,
     view_size: Size<f64, Logical>,
     gaps: f64,
-) -> HashMap<NodeId, Rectangle<f64, Logical>> {
-    let mut result = HashMap::new();
+    titlebar_height: f64,
+    fullscreen: &HashSet<NodeId>,
+) -> Geometry<W::Id> {
+    let mut result = Geometry {
+        nodes: HashMap::new(),
+        titlebars: HashMap::new(),
+    };
     let gaps = gaps.max(0.);
     let mut area = Rectangle::from_size(view_size);
     area.loc.x += gaps;
     area.loc.y += gaps;
     area.size.w = (area.size.w - gaps * 2.).max(0.);
     area.size.h = (area.size.h - gaps * 2.).max(0.);
-    assign(nodes, root, area, gaps, &mut result);
+    assign(
+        nodes,
+        root,
+        area,
+        gaps,
+        titlebar_height,
+        fullscreen,
+        false,
+        Point::default(),
+        &mut result,
+    );
     result
 }
 
+#[allow(clippy::too_many_arguments)]
 fn assign<W: LayoutElement>(
     nodes: &HashMap<NodeId, Node<W>>,
     id: NodeId,
-    rect: Rectangle<f64, Logical>,
+    mut rect: Rectangle<f64, Logical>,
     gaps: f64,
-    result: &mut HashMap<NodeId, Rectangle<f64, Logical>>,
+    titlebar_height: f64,
+    fullscreen: &HashSet<NodeId>,
+    decorated_by_parent: bool,
+    ipc_origin: Point<f64, Logical>,
+    result: &mut Geometry<W::Id>,
 ) {
     let Some(node) = nodes.get(&id) else { return };
     match &node.value {
-        TreeNode::Leaf { .. } => {
-            result.insert(id, rect);
+        TreeNode::Leaf { tile } => {
+            if !decorated_by_parent
+                && !fullscreen.contains(&id)
+                && tile.effective_border_width().is_some()
+            {
+                let titlebar = Rectangle::new(rect.loc, (rect.size.w, titlebar_height).into());
+                result.titlebars.insert(
+                    id,
+                    Titlebar {
+                        target: tile.window().id().clone(),
+                        rect: titlebar,
+                        ipc_rect: Rectangle::new(titlebar.loc - ipc_origin, titlebar.size),
+                        title: tile.window().title(),
+                        active: false,
+                        visible: true,
+                    },
+                );
+                rect.loc.y += titlebar_height;
+                rect.size.h = (rect.size.h - titlebar_height).max(0.);
+            }
+            result.nodes.insert(id, rect);
         }
         TreeNode::Split {
             layout,
@@ -63,15 +108,87 @@ fn assign<W: LayoutElement>(
                         ),
                         _ => unreachable!(),
                     };
-                    assign(nodes, *child, child_rect, gaps, result);
+                    assign(
+                        nodes,
+                        *child,
+                        child_rect,
+                        gaps,
+                        titlebar_height,
+                        fullscreen,
+                        false,
+                        rect.loc,
+                        result,
+                    );
                     cursor += extent + gaps;
                 }
             }
             Layout::Tabbed | Layout::Stacked => {
-                for child in children {
-                    assign(nodes, *child, rect, gaps, result);
+                let count = children.len();
+                let total_height = if !fullscreen.is_empty() {
+                    0.
+                } else if *layout == Layout::Stacked {
+                    titlebar_height * count as f64
+                } else {
+                    titlebar_height
+                };
+                let mut content = rect;
+                content.loc.y += total_height;
+                content.size.h = (content.size.h - total_height).max(0.);
+                for (index, child) in children.iter().enumerate() {
+                    if let Some((leaf, target, title)) = first_window(nodes, *child) {
+                        let title_rect = if *layout == Layout::Tabbed {
+                            let width = rect.size.w / count.max(1) as f64;
+                            Rectangle::new(
+                                Point::from((rect.loc.x + width * index as f64, rect.loc.y)),
+                                Size::from((width, titlebar_height)),
+                            )
+                        } else {
+                            Rectangle::new(
+                                Point::from((
+                                    rect.loc.x,
+                                    rect.loc.y + titlebar_height * index as f64,
+                                )),
+                                Size::from((rect.size.w, titlebar_height)),
+                            )
+                        };
+                        result.titlebars.insert(
+                            leaf,
+                            Titlebar {
+                                target,
+                                rect: title_rect,
+                                ipc_rect: Rectangle::new(
+                                    title_rect.loc - rect.loc,
+                                    title_rect.size,
+                                ),
+                                title,
+                                active: false,
+                                visible: fullscreen.is_empty(),
+                            },
+                        );
+                    }
+                    assign(
+                        nodes,
+                        *child,
+                        content,
+                        gaps,
+                        titlebar_height,
+                        fullscreen,
+                        true,
+                        rect.loc,
+                        result,
+                    );
                 }
             }
         },
+    }
+}
+
+fn first_window<W: LayoutElement>(
+    nodes: &HashMap<NodeId, Node<W>>,
+    id: NodeId,
+) -> Option<(NodeId, W::Id, String)> {
+    match &nodes.get(&id)?.value {
+        TreeNode::Leaf { tile } => Some((id, tile.window().id().clone(), tile.window().title())),
+        TreeNode::Split { children, .. } => first_window(nodes, *children.first()?),
     }
 }

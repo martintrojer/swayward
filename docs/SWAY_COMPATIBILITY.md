@@ -16,7 +16,7 @@ user-visible differences outside the request matrix.
 | `GET_WORKSPACES` | Implemented | Returns live global workspace identities. Fixture and focused tests cover the top-level shape and selected values. |
 | `SUBSCRIBE` | Partial | Accepts only `workspace`, `window`, and `mode`. Swayward emits events for all three families. |
 | `GET_OUTPUTS` | Implemented | Returns live outputs. Fixture and focused tests cover the top-level shape and selected values. |
-| `GET_TREE` | Implemented | Returns the live nested container tree. Fourteen sway 1.11 fixtures cover its schema and selected semantics. |
+| `GET_TREE` | Implemented | Returns the live nested container tree, including titlebar `deco_rect` values. Fourteen sway 1.11 fixtures cover its schema and selected semantics. |
 | `GET_MARKS` | Implemented | Returns marks created and removed through commands. |
 | `GET_BAR_CONFIG` | Stubbed | Returns `[]`. Swayward has no `bar {}` block and does not launch swaybar. |
 | `GET_VERSION` | Implemented | Returns sway's response fields with `variant` set to `swayward`. Most field values do not have a sway fixture comparison. |

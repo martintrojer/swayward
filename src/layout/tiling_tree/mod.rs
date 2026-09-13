@@ -63,6 +63,7 @@ pub enum IpcNode<I> {
         percent: Option<f64>,
         focused: bool,
         rect: Rectangle<f64, Logical>,
+        deco_rect: Option<Rectangle<f64, Logical>>,
     },
 }
 
@@ -117,6 +118,7 @@ swayward_render_elements! {
         Tile = TileRenderElement<R>,
         ClosingWindow = ClosingWindowRenderElement,
         TabIndicator = TabIndicatorRenderElement,
+        Titlebar = crate::render_helpers::primary_gpu_texture::PrimaryGpuTextureRenderElement,
     }
 }
 
@@ -131,11 +133,13 @@ pub struct TilingTree<W: LayoutElement> {
     pending_modes: HashMap<NodeId, PendingMode>,
     interactive_resize: Option<InteractiveResize<W::Id>>,
     tab_indicators: HashMap<NodeId, TabIndicator>,
+    titlebars: super::titlebar::TitlebarRenderer,
     tab_active: HashMap<NodeId, NodeId>,
     closing_windows: Vec<ClosingWindow>,
     view_size: Size<f64, Logical>,
     parent_area: Rectangle<f64, Logical>,
     scale: f64,
+    titlebar_height: f64,
     clock: Clock,
     options: Rc<Options>,
     gaps: f64,
@@ -171,11 +175,13 @@ impl<W: LayoutElement> TilingTree<W> {
             pending_modes: HashMap::new(),
             interactive_resize: None,
             tab_indicators: HashMap::new(),
+            titlebars: Default::default(),
             tab_active: HashMap::new(),
             closing_windows: Vec::new(),
             view_size,
             parent_area,
             scale,
+            titlebar_height: super::titlebar::height(scale),
             clock,
             gaps: options.layout.gaps,
             options,
@@ -202,6 +208,7 @@ impl<W: LayoutElement> TilingTree<W> {
         self.view_size = view_size;
         self.parent_area = parent_area;
         self.scale = scale;
+        self.titlebar_height = super::titlebar::height(scale);
         self.gaps = options.layout.gaps;
         self.options = options;
         self.request_window_sizes_with(None, false);
@@ -328,7 +335,7 @@ impl<W: LayoutElement> TilingTree<W> {
         tile.update_config(self.view_size, self.scale, self.options.clone());
         let pending_mode = tile.window().pending_sizing_mode();
         let previous_focus = self.focus;
-        let old_geometries = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
+        let old_geometries = self.compute_geometry();
         let id = self.alloc(Node {
             parent: None,
             value: TreeNode::Leaf {
@@ -402,7 +409,7 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub fn remove_tile_node(&mut self, id: NodeId) -> Option<Tile<W>> {
-        let old_geometries = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
+        let old_geometries = self.compute_geometry();
         let node = self.nodes.remove(&id)?;
         let TreeNode::Leaf { tile } = node.value else {
             self.nodes.insert(id, node);
@@ -490,12 +497,13 @@ impl<W: LayoutElement> TilingTree<W> {
         let Some(current) = self.focus else {
             return false;
         };
-        let geometries = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
-        let Some(from) = geometries.get(&current) else {
+        let geometries = self.compute_geometry();
+        let Some(from) = geometries.nodes.get(&current) else {
             return false;
         };
         let from_center = (from.loc.x + from.size.w / 2., from.loc.y + from.size.h / 2.);
         let next = geometries
+            .nodes
             .iter()
             .filter(|(id, _)| **id != current)
             .filter_map(|(id, rect)| {
@@ -563,7 +571,7 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub fn move_direction(&mut self, id: NodeId, direction: Direction) -> bool {
-        let old = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
+        let old = self.compute_geometry();
         let changed = self.move_direction_inner(id, direction);
         if changed {
             self.animate_geometry_changes(old, None);
@@ -680,7 +688,7 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub fn move_subtree_to_index(&mut self, id: NodeId, index: usize) -> bool {
-        let old = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
+        let old = self.compute_geometry();
         let changed = self.move_subtree_to_index_inner(id, index);
         if changed {
             self.animate_geometry_changes(old, None);
@@ -719,7 +727,7 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub fn resize_adjacent(&mut self, first: NodeId, second: NodeId, delta: f64) -> bool {
-        let old = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
+        let old = self.compute_geometry();
         let changed = self.resize_adjacent_inner(first, second, delta);
         if changed {
             self.animate_geometry_changes(old, None);
@@ -1237,7 +1245,7 @@ impl<W: LayoutElement> TilingTree<W> {
 
     pub fn update_render_elements(&mut self, is_active: bool, layer: RenderLayer) {
         let focus = self.focus;
-        let geometries = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
+        let geometries = self.compute_geometry();
         let visible = self.visible_leaves();
         for (id, node) in &mut self.nodes {
             let TreeNode::Leaf { tile } = &mut node.value else {
@@ -1248,27 +1256,27 @@ impl<W: LayoutElement> TilingTree<W> {
             {
                 continue;
             }
-            let Some(rect) = geometries.get(id) else {
+            let Some(rect) = geometries.nodes.get(id) else {
                 continue;
             };
             let mut view_rect = Rectangle::from_size(self.view_size);
             view_rect.loc -= rect.loc + tile.render_offset();
             tile.update_render_elements(is_active && Some(*id) == focus, view_rect);
         }
-        self.update_tab_indicators(is_active, &geometries);
+        self.update_tab_indicators(is_active, &geometries.nodes);
     }
 
     pub fn tiles_with_render_positions(
         &self,
     ) -> impl Iterator<Item = (&Tile<W>, Point<f64, Logical>, bool)> {
-        let geometries = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
+        let geometries = self.compute_geometry();
         let visible = self.visible_leaves();
         let scale = self.scale;
         self.iter_depth_first().filter_map(move |(id, node)| {
             let TreeNode::Leaf { tile } = node else {
                 return None;
             };
-            let rect = geometries.get(&id)?;
+            let rect = geometries.nodes.get(&id)?;
             let pos = (rect.loc + tile.render_offset())
                 .to_physical_precise_round(scale)
                 .to_logical(scale);
@@ -1280,13 +1288,13 @@ impl<W: LayoutElement> TilingTree<W> {
         &mut self,
         round: bool,
     ) -> impl Iterator<Item = (&mut Tile<W>, Point<f64, Logical>)> {
-        let geometries = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
+        let geometries = self.compute_geometry();
         let scale = self.scale;
         self.nodes.iter_mut().filter_map(move |(id, node)| {
             let TreeNode::Leaf { tile } = &mut node.value else {
                 return None;
             };
-            let mut pos = geometries.get(id)?.loc + tile.render_offset();
+            let mut pos = geometries.nodes.get(id)?.loc + tile.render_offset();
             if round {
                 pos = pos.to_physical_precise_round(scale).to_logical(scale);
             }
@@ -1295,21 +1303,36 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub fn tiles_with_ipc_layouts(&self) -> impl Iterator<Item = (&Tile<W>, WindowLayout)> {
-        let geometries = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
+        let geometries = self.compute_geometry();
         self.iter_depth_first().filter_map(move |(id, node)| {
             let TreeNode::Leaf { tile } = node else {
                 return None;
             };
             let mut layout = tile.ipc_layout_template();
-            layout.tile_pos_in_workspace_view = geometries.get(&id).map(|rect| rect.loc.into());
+            layout.tile_pos_in_workspace_view =
+                geometries.nodes.get(&id).map(|rect| rect.loc.into());
             Some((tile.as_ref(), layout))
         })
     }
 
     pub fn window_under(&self, pos: Point<f64, Logical>) -> Option<(&W, HitType)> {
-        let geometries = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
+        let geometries = self.compute_geometry();
+        if let Some(titlebar) = geometries
+            .titlebars
+            .values()
+            .find(|titlebar| titlebar.rect.contains(pos))
+        {
+            let id = self.node_for_window(&titlebar.target)?;
+            let tile = self.tile(id)?;
+            return Some((
+                tile.window(),
+                HitType::Activate {
+                    is_tab_indicator: true,
+                },
+            ));
+        }
         for (split, indicator) in &self.tab_indicators {
-            let Some((area, children)) = self.tab_area(*split, &geometries) else {
+            let Some((area, children)) = self.tab_area(*split, &geometries.nodes) else {
                 continue;
             };
             if let Some(index) = indicator.hit(area, children.len(), self.scale, pos) {
@@ -1397,8 +1420,21 @@ impl<W: LayoutElement> TilingTree<W> {
                 push(element.into())
             });
         }
-        let geometries = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
+        let geometries = self.compute_geometry();
         let visible = self.visible_leaves();
+        self.titlebars.retain(geometries.titlebars.keys().copied());
+        for (id, titlebar) in &geometries.titlebars {
+            let mut titlebar = titlebar.clone();
+            titlebar.active = self.focus == Some(*id);
+            if titlebar.visible {
+                if let Some(element) =
+                    self.titlebars
+                        .render(ctx.renderer, *id, &titlebar, self.scale)
+                {
+                    push(element.into());
+                }
+            }
+        }
         for (id, node) in self.iter_depth_first() {
             let TreeNode::Leaf { tile } = node else {
                 continue;
@@ -1408,7 +1444,7 @@ impl<W: LayoutElement> TilingTree<W> {
             {
                 continue;
             }
-            let Some(rect) = geometries.get(&id) else {
+            let Some(rect) = geometries.nodes.get(&id) else {
                 continue;
             };
             let tile_pos = (rect.loc + tile.render_offset())
@@ -1629,7 +1665,39 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub fn geometry(&self, id: NodeId) -> Option<Rectangle<f64, Logical>> {
-        geometry::compute(&self.nodes, self.root, self.view_size, self.gaps).remove(&id)
+        self.compute_geometry().nodes.remove(&id)
+    }
+
+    pub fn ipc_decoration_rect(&self, window: &W::Id) -> Option<Rectangle<f64, Logical>> {
+        let id = self.node_for_window(window)?;
+        self.compute_geometry()
+            .titlebars
+            .remove(&id)
+            .map(|bar| bar.ipc_rect)
+    }
+
+    pub fn titlebar_rects(&self) -> Vec<(W::Id, Rectangle<f64, Logical>)> {
+        self.compute_geometry()
+            .titlebars
+            .into_values()
+            .map(|bar| (bar.target, bar.rect))
+            .collect()
+    }
+
+    fn compute_geometry(&self) -> geometry::Geometry<W::Id> {
+        let fullscreen = self
+            .pending_modes
+            .iter()
+            .filter_map(|(id, mode)| mode.fullscreen.then_some(*id))
+            .collect();
+        geometry::compute(
+            &self.nodes,
+            self.root,
+            self.view_size,
+            self.gaps,
+            self.titlebar_height,
+            &fullscreen,
+        )
     }
 
     pub fn windows(&self) -> impl Iterator<Item = (NodeId, &W)> {
@@ -1644,7 +1712,7 @@ impl<W: LayoutElement> TilingTree<W> {
             tree: &TilingTree<W>,
             id: NodeId,
             percent: Option<f64>,
-            geometries: &HashMap<NodeId, Rectangle<f64, Logical>>,
+            geometries: &geometry::Geometry<W::Id>,
         ) -> IpcNode<W::Id> {
             match &tree.nodes[&id].value {
                 TreeNode::Split {
@@ -1683,12 +1751,13 @@ impl<W: LayoutElement> TilingTree<W> {
                     window: tile.window().id().clone(),
                     percent,
                     focused: tree.focus == Some(id),
-                    rect: geometries[&id],
+                    rect: geometries.nodes[&id],
+                    deco_rect: geometries.titlebars.get(&id).map(|bar| bar.ipc_rect),
                 },
             }
         }
 
-        let geometries = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
+        let geometries = self.compute_geometry();
         snapshot(self, self.root, None, &geometries)
     }
 
@@ -1773,7 +1842,7 @@ impl<W: LayoutElement> TilingTree<W> {
             return false;
         };
 
-        let old = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
+        let old = self.compute_geometry();
         if self.split_len(parent) == Some(2) {
             let TreeNode::Split {
                 layout, children, ..
@@ -1845,7 +1914,7 @@ impl<W: LayoutElement> TilingTree<W> {
         let Some(grandparent) = self.nodes.get(&parent).and_then(|node| node.parent) else {
             return false;
         };
-        let old = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
+        let old = self.compute_geometry();
         let Some(parent_index) = self.child_index(grandparent, parent) else {
             return false;
         };
@@ -2047,17 +2116,13 @@ impl<W: LayoutElement> TilingTree<W> {
         }
     }
 
-    fn animate_geometry_changes(
-        &mut self,
-        old: HashMap<NodeId, Rectangle<f64, Logical>>,
-        skip: Option<NodeId>,
-    ) {
-        let new = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
-        for (id, old_rect) in old {
+    fn animate_geometry_changes(&mut self, old: geometry::Geometry<W::Id>, skip: Option<NodeId>) {
+        let new = self.compute_geometry();
+        for (id, old_rect) in old.nodes {
             if skip == Some(id) {
                 continue;
             }
-            let Some(new_rect) = new.get(&id) else {
+            let Some(new_rect) = new.nodes.get(&id) else {
                 continue;
             };
             let offset = old_rect.loc - new_rect.loc;
@@ -2352,8 +2417,9 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     fn focus_extreme(&mut self, bottom: bool) {
-        let geometries = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
+        let geometries = self.compute_geometry();
         let focus = geometries
+            .nodes
             .iter()
             .min_by(|(_, a), (_, b)| {
                 let a = a.loc.y + if bottom { a.size.h } else { 0. };
@@ -2464,12 +2530,12 @@ impl<W: LayoutElement> TilingTree<W> {
         if id == self.root {
             return Some(Rectangle::from_size(self.view_size));
         }
-        let geometries = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
+        let geometries = self.compute_geometry();
         let mut leaves = Vec::new();
         self.collect_leaf_ids(id, &mut leaves);
-        let mut rect = *geometries.get(leaves.first()?)?;
+        let mut rect = *geometries.nodes.get(leaves.first()?)?;
         for leaf in &leaves[1..] {
-            let next = geometries.get(leaf)?;
+            let next = geometries.nodes.get(leaf)?;
             let right = (rect.loc.x + rect.size.w).max(next.loc.x + next.size.w);
             let bottom = (rect.loc.y + rect.size.h).max(next.loc.y + next.size.h);
             rect.loc.x = rect.loc.x.min(next.loc.x);
@@ -2569,11 +2635,11 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     fn request_window_sizes_with(&mut self, transaction: Option<Transaction>, animate: bool) {
-        let geometries = geometry::compute(&self.nodes, self.root, self.view_size, self.gaps);
+        let geometries = self.compute_geometry();
         for (id, node) in &mut self.nodes {
             if let TreeNode::Leaf { tile } = &mut node.value {
                 let transaction = transaction.clone();
-                if let Some(rect) = geometries.get(id) {
+                if let Some(rect) = geometries.nodes.get(id) {
                     let mode = self.pending_modes.get(id).copied().unwrap_or(PendingMode {
                         fullscreen: false,
                         maximized: false,

@@ -102,6 +102,7 @@ fn build_ui(app: &adw::Application) {
     );
 
     s.add(Layout::tiling_tree, "Layout - Tiling Tree");
+    s.add(Layout::tabbed_titles, "Layout - Tabbed Titles");
     s.add(Layout::open_in_between, "Layout - Open In-Between");
     s.add(
         Layout::open_multiple_quickly,

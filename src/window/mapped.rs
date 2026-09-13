@@ -630,6 +630,10 @@ impl LayoutElement for Mapped {
         self.blur_config = blur_config;
     }
 
+    fn title(&self) -> String {
+        with_toplevel_role(self.toplevel(), |role| role.title.clone()).unwrap_or_default()
+    }
+
     fn size(&self) -> Size<i32, Logical> {
         self.window.geometry().size
     }

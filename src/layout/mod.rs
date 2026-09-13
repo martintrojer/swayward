@@ -87,6 +87,7 @@ pub mod shadow;
 pub mod tab_indicator;
 pub mod tile;
 pub mod tiling_tree;
+mod titlebar;
 pub mod workspace;
 
 #[cfg(test)]
@@ -140,6 +141,11 @@ pub trait LayoutElement {
     /// Updates the config for the element.
     fn update_config(&mut self, blur_config: swayward_config::Blur) {
         let _ = blur_config;
+    }
+
+    /// Title displayed in server-side decorations.
+    fn title(&self) -> String {
+        String::new()
     }
 
     /// Visual size of the element.

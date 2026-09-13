@@ -457,6 +457,7 @@ pub(crate) fn describe_tiling<'a, I>(
             percent,
             focused,
             rect,
+            deco_rect,
             ..
         } => {
             let Some(mapped) = find_window(&window) else {
@@ -475,6 +476,8 @@ pub(crate) fn describe_tiling<'a, I>(
             );
             node.percent = percent;
             node.focused = focused;
+            node.deco_rect =
+                deco_rect.map_or_else(Rect::default, |rect| offset_rect(rect, workspace_rect));
             Some(node)
         }
     }

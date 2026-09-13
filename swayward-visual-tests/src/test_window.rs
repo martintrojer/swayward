@@ -32,6 +32,7 @@ struct TestWindowInner {
 #[derive(Debug, Clone)]
 pub struct TestWindow {
     id: usize,
+    title: String,
     inner: Rc<RefCell<TestWindowInner>>,
     rules: ResolvedWindowRules,
 }
@@ -45,6 +46,7 @@ impl TestWindow {
 
         Self {
             id,
+            title: format!("Window {id}"),
             inner: Rc::new(RefCell::new(TestWindowInner {
                 size,
                 requested_size: None,
@@ -57,6 +59,12 @@ impl TestWindow {
             })),
             rules: ResolvedWindowRules::default(),
         }
+    }
+
+    pub fn titled(id: usize, title: impl Into<String>) -> Self {
+        let mut window = Self::freeform(id);
+        window.title = title.into();
+        window
     }
 
     pub fn fixed_size(id: usize) -> Self {
@@ -135,6 +143,10 @@ impl LayoutElement for TestWindow {
 
     fn id(&self) -> &Self::Id {
         &self.id
+    }
+
+    fn title(&self) -> String {
+        self.title.clone()
     }
 
     fn size(&self) -> Size<i32, Logical> {

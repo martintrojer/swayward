@@ -93,6 +93,22 @@ impl Layout {
         rv
     }
 
+    pub fn tabbed_titles(args: Args) -> Self {
+        let mut rv = Self::new(args);
+        rv.add_window(TestWindow::titled(0, "Mail"), None);
+        rv.layout
+            .set_focused_layout(swayward::layout::tiling_tree::Layout::Tabbed);
+        rv.add_window(TestWindow::titled(1, "Terminal — build logs"), None);
+        rv.add_window(
+            TestWindow::titled(
+                2,
+                "A deliberately long browser title that must be ellipsized inside its tab",
+            ),
+            None,
+        );
+        rv
+    }
+
     pub fn open_in_between(args: Args) -> Self {
         let mut rv = Self::new(args);
 

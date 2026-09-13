@@ -76,9 +76,9 @@ Check these areas after bindings:
 - **Includes:** sway include globs are expanded during translation. Included sway
   directives are translated in place. Missing, repeated, or recursive files are
   reported.
-- **Titlebars:** swayward does not render server-side titlebars. Tabbed and stacked
-  containers therefore have no visible title labels, and IPC `deco_rect` values
-  are empty.
+- **Titlebars:** swayward renders fixed sway-like titlebars. There is no titlebar
+  font or color configuration yet. The inherited `tab-indicator` remains available
+  as a separate configurable accent.
 
 Read [Known deviations](KNOWN_DEVIATIONS.md) before switching sessions.
 

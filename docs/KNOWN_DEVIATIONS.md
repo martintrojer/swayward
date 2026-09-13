@@ -31,15 +31,6 @@ Use waybar as an external layer-shell client. Waybar 0.15.0 was tested manually
 with its `sway/workspaces`, `sway/window`, and `sway/mode` modules. The test used
 a nested compositor and is not part of the automated suite.
 
-## Titlebars and tabs
-
-Swayward does not render server-side titlebars. `deco_rect` is therefore empty,
-including on bordered windows. Sway reports the real titlebar rectangle there.
-
-Tabbed and stacked containers retain their layout and keyboard behavior, but they
-do not display window-title labels. The inherited `TabIndicator` is a configurable
-accent, not a sway titlebar.
-
 ## IPC requests and commands
 
 `GET_CONFIG`, `GET_INPUTS`, and `GET_SEATS` return:

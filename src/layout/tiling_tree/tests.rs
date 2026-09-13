@@ -11,7 +11,8 @@ use super::*;
 use crate::animation::Clock;
 use crate::layout::tile::Tile;
 use crate::layout::{
-    ConfigureIntent, InteractiveResizeData, LayoutElementRenderSnapshot, Options, SizingMode,
+    titlebar, ConfigureIntent, InteractiveResizeData, LayoutElementRenderSnapshot, Options,
+    SizingMode,
 };
 use crate::render_helpers::offscreen::OffscreenData;
 use crate::utils::transaction::Transaction;
@@ -50,6 +51,7 @@ impl TestWindow {
 fn tree(size: (f64, f64), gaps: f64) -> TilingTree<TestWindow> {
     let mut options = Options::default();
     options.layout.gaps = gaps;
+    options.layout.border.off = false;
     let size = Size::from(size);
     TilingTree::new(
         size,
@@ -76,6 +78,10 @@ impl LayoutElement for TestWindow {
     fn id(&self) -> &Self::Id {
         &self.0.id
     }
+    fn title(&self) -> String {
+        format!("window {}", self.0.id)
+    }
+
     fn size(&self) -> Size<i32, Logical> {
         self.0.size.get()
     }
@@ -166,13 +172,14 @@ fn empty_tree_has_no_focus() {
 }
 
 #[test]
-fn one_window_fills_the_view() {
+fn one_window_reserves_a_titlebar_above_its_content() {
     let mut t = tree((1920., 1080.), 0.);
     let id = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
-    assert_eq!(
-        t.geometry(id).unwrap(),
-        Rectangle::from_size(Size::from((1920., 1080.)))
-    );
+    let rect = t.geometry(id).unwrap();
+    assert_eq!(rect.loc.x, 0.);
+    assert!(rect.loc.y > 0.);
+    assert_eq!(rect.size.w, 1920.);
+    assert_eq!(rect.loc.y + rect.size.h, 1080.);
     assert_eq!(t.focus(), Some(id));
     t.check_invariants();
 }
@@ -498,6 +505,66 @@ fn tabbed_split_only_exposes_the_focused_branch() {
         .collect();
     assert_eq!(visible, vec![(1, true), (2, false)]);
     assert_eq!(t.geometry(first), t.geometry(second));
+    let titlebar_height = titlebar::height(1.);
+    assert!(t.geometry(first).unwrap().loc.y > 0.);
+    assert!(t.geometry(first).unwrap().size.h < 800.);
+    let first_bar = t.ipc_decoration_rect(&1).unwrap();
+    let second_bar = t.ipc_decoration_rect(&2).unwrap();
+    assert_eq!(first_bar.size, second_bar.size);
+    assert_eq!(first_bar.size.h, titlebar_height);
+    assert_eq!(first_bar.loc.y, 0.);
+    assert!(second_bar.loc.x > first_bar.loc.x);
+}
+
+#[test]
+fn stacked_split_reserves_one_titlebar_row_per_child() {
+    let mut t = tree((1000., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    t.split(first, Layout::Stacked);
+    t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+
+    let first_bar = t.ipc_decoration_rect(&1).unwrap();
+    let second_bar = t.ipc_decoration_rect(&2).unwrap();
+    assert_eq!(first_bar.size.w, 1000.);
+    assert_eq!(second_bar.loc.y, first_bar.loc.y + first_bar.size.h);
+    assert_eq!(t.geometry(first).unwrap().loc.y, first_bar.size.h * 2.);
+    let (window, hit) = t
+        .window_under(Point::from((100., first_bar.size.h + 1.)))
+        .unwrap();
+    assert_eq!(*window.id(), 2);
+    assert_eq!(
+        hit,
+        HitType::Activate {
+            is_tab_indicator: true
+        }
+    );
+}
+
+#[test]
+fn fullscreen_suppresses_titlebar() {
+    let mut t = tree((1000., 800.), 0.);
+    let id = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    assert!(t.ipc_decoration_rect(&1).is_some());
+    assert!(t.set_fullscreen(&1, true));
+    assert!(t.ipc_decoration_rect(&1).is_none());
+    assert_eq!(t.geometry(id).unwrap().loc.y, 0.);
+}
+
+#[test]
+fn titlebar_hit_targets_the_corresponding_tab() {
+    let mut t = tree((1000., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    t.split(first, Layout::Tabbed);
+    t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+
+    let (window, hit) = t.window_under(Point::from((100., 5.))).unwrap();
+    assert_eq!(*window.id(), 1);
+    assert_eq!(
+        hit,
+        HitType::Activate {
+            is_tab_indicator: true
+        }
+    );
 }
 
 #[test]
@@ -604,8 +671,9 @@ fn ipc_layout_contains_the_tree_position() {
         .tiles_with_ipc_layouts()
         .map(|(tile, layout)| (*tile.window().id(), layout.tile_pos_in_workspace_view))
         .collect();
-    assert_eq!(positions[0].1, Some((0., 0.)));
-    assert_eq!(positions[1].1, Some((500., 0.)));
+    let titlebar_height = titlebar::height(1.);
+    assert_eq!(positions[0].1, Some((0., titlebar_height)));
+    assert_eq!(positions[1].1, Some((500., titlebar_height)));
 }
 
 #[test]
@@ -629,7 +697,7 @@ fn removing_a_tile_resizes_survivors_in_one_transaction() {
     assert!(t.remove_tile(&2, Transaction::new()).is_some());
     assert_eq!(
         first_state.0.requested_size.get(),
-        Some(Size::from((1000, 800)))
+        Some(Size::from((992, 800 - titlebar::height(1.) as i32 - 8)))
     );
     assert!(first_state.0.received_transaction.get());
     t.check_invariants();

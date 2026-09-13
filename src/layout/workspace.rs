@@ -1683,6 +1683,10 @@ impl<W: LayoutElement> Workspace<W> {
         self.tiling.ipc_tree()
     }
 
+    pub fn ipc_decoration_rect(&self, window: &W::Id) -> Option<Rectangle<f64, Logical>> {
+        self.tiling.ipc_decoration_rect(window)
+    }
+
     pub fn tiles_with_ipc_layouts(&self) -> impl Iterator<Item = (&Tile<W>, WindowLayout)> {
         let scrolling = self.tiling.tiles_with_ipc_layouts();
         let floating = self.floating.tiles_with_ipc_layouts();
