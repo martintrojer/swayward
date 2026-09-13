@@ -91,6 +91,15 @@ the targeted resize result against sway or swayward. The preceding assertion
 confirms that the untargeted floating window is unchanged. This assertion is
 excluded as an i3-only tree-shape check.
 
+The same difference affects 13 assertions in `135-floating-focus.t`: assertions
+31, 32, 34, 35, 37, 40, 43, 46, 54, 62, 66, 73, and 74. Some traverse the i3
+floating wrapper. Others compare i3's X11 `window` field, which sway emits only
+for Xwayland views (`sway/sway/ipc-json.c:667-693`); the adapter creates Wayland
+clients, whose identity is the container `id`. Replacing only those lookups with
+the direct sway node `id` makes all 13 assertions pass. This check preserves the
+underlying assertions about floating stack order, layer membership, and nested
+position without fabricating nodes in swayward's IPC tree.
+
 ### Output content nodes
 
 The i3 `GET_TREE` hierarchy places a container named `content` between each
