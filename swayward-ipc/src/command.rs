@@ -42,12 +42,23 @@ pub enum LayoutToggleEntry {
 pub enum ResizeAxis {
     Width,
     Height,
+    Up,
+    Down,
+    Left,
+    Right,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResizeUnit {
+    Default,
     Pixels,
     PercentagePoints,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ResizeAmount {
+    pub amount: i32,
+    pub unit: ResizeUnit,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -94,8 +105,8 @@ pub enum Command {
     Resize {
         grow: bool,
         axis: ResizeAxis,
-        amount: i32,
-        unit: ResizeUnit,
+        first: ResizeAmount,
+        second: Option<ResizeAmount>,
     },
     Reload,
     Mode(String),
@@ -513,36 +524,95 @@ fn parse_workspace(args: &[&str]) -> Result<WorkspaceTarget, String> {
 }
 
 fn parse_resize(args: &[&str]) -> Result<Command, String> {
-    let [operation, axis, amount, unit @ ..] = args else {
-        return Err("Expected 'resize <grow|shrink> <width|height> <n> [px|ppt]'".into());
+    let [operation, axis, rest @ ..] = args else {
+        return Err(resize_usage());
     };
     let grow = if operation.eq_ignore_ascii_case("grow") {
         true
     } else if operation.eq_ignore_ascii_case("shrink") {
         false
     } else {
-        return Err("Expected 'resize <grow|shrink> <width|height> <n> [px|ppt]'".into());
+        return Err(resize_usage());
     };
-    let axis = if axis.eq_ignore_ascii_case("width") {
+    let axis = if axis.eq_ignore_ascii_case("width") || axis.eq_ignore_ascii_case("horizontal") {
         ResizeAxis::Width
-    } else if axis.eq_ignore_ascii_case("height") {
+    } else if axis.eq_ignore_ascii_case("height") || axis.eq_ignore_ascii_case("vertical") {
         ResizeAxis::Height
+    } else if axis.eq_ignore_ascii_case("up") {
+        ResizeAxis::Up
+    } else if axis.eq_ignore_ascii_case("down") {
+        ResizeAxis::Down
+    } else if axis.eq_ignore_ascii_case("left") {
+        ResizeAxis::Left
+    } else if axis.eq_ignore_ascii_case("right") {
+        ResizeAxis::Right
     } else {
-        return Err("Expected resize axis 'width' or 'height'".into());
+        return Err(resize_usage());
     };
-    let amount = parse_i32(amount, "resize amount")?;
-    let unit = match unit {
-        [] => ResizeUnit::Pixels,
-        [unit] if unit.eq_ignore_ascii_case("px") => ResizeUnit::Pixels,
-        [unit] if unit.eq_ignore_ascii_case("ppt") => ResizeUnit::PercentagePoints,
-        _ => return Err("Expected resize unit 'px' or 'ppt'".into()),
+
+    let (first, consumed) = if rest.is_empty() {
+        (
+            ResizeAmount {
+                amount: 10,
+                unit: ResizeUnit::Default,
+            },
+            0,
+        )
+    } else {
+        parse_resize_amount(rest)?
+    };
+    let rest = &rest[consumed..];
+    let second = if rest.is_empty() {
+        None
+    } else {
+        let Some(rest) = rest.strip_prefix(&["or"]) else {
+            return Err(resize_usage());
+        };
+        let (amount, consumed) = parse_resize_amount(rest)?;
+        if consumed != rest.len() {
+            return Err(resize_usage());
+        }
+        Some(amount)
     };
     Ok(Command::Resize {
         grow,
         axis,
-        amount,
-        unit,
+        first,
+        second,
     })
+}
+
+fn parse_resize_amount(args: &[&str]) -> Result<(ResizeAmount, usize), String> {
+    let value = args.first().ok_or_else(resize_usage)?;
+    let split = value
+        .find(|character: char| !character.is_ascii_digit() && character != '-')
+        .unwrap_or(value.len());
+    let amount = parse_i32(&value[..split], "resize amount")?;
+    let attached_unit = &value[split..];
+    let (unit, consumed) = if attached_unit.eq_ignore_ascii_case("px") {
+        (ResizeUnit::Pixels, 1)
+    } else if attached_unit.eq_ignore_ascii_case("ppt") {
+        (ResizeUnit::PercentagePoints, 1)
+    } else if !attached_unit.is_empty() {
+        return Err(resize_usage());
+    } else if args
+        .get(1)
+        .is_some_and(|unit| unit.eq_ignore_ascii_case("px"))
+    {
+        (ResizeUnit::Pixels, 2)
+    } else if args
+        .get(1)
+        .is_some_and(|unit| unit.eq_ignore_ascii_case("ppt"))
+    {
+        (ResizeUnit::PercentagePoints, 2)
+    } else {
+        (ResizeUnit::Default, 1)
+    };
+    Ok((ResizeAmount { amount, unit }, consumed))
+}
+
+fn resize_usage() -> String {
+    "Expected 'resize grow|shrink <direction> [<amount> px|ppt [or <amount> px|ppt]]'".into()
 }
 
 fn parse_i32(value: &str, name: &str) -> Result<i32, String> {

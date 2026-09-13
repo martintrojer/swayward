@@ -1271,6 +1271,34 @@ impl<W: LayoutElement> TilingTree<W> {
         }
     }
 
+    pub fn resize_window_edge(
+        &mut self,
+        window: Option<&W::Id>,
+        edge: ResizeEdge,
+        change: SizeChange,
+    ) {
+        let Some(id) = self.resolve_node(window) else {
+            return;
+        };
+        let horizontal = edge.intersects(ResizeEdge::LEFT_RIGHT);
+        let layout = if horizontal {
+            Layout::SplitH
+        } else {
+            Layout::SplitV
+        };
+        let before = edge.intersects(ResizeEdge::LEFT | ResizeEdge::TOP);
+        let Some((first, second, _, _, axis_size, _)) = self.resize_boundary(id, layout, before)
+        else {
+            return;
+        };
+        let delta = match change {
+            SizeChange::AdjustFixed(value) => f64::from(value) / axis_size.max(1.),
+            SizeChange::AdjustProportion(value) => value / 100.,
+            SizeChange::SetFixed(_) | SizeChange::SetProportion(_) => return,
+        };
+        self.resize_adjacent(first, second, delta);
+    }
+
     pub fn reset_window_height(&mut self, window: Option<&W::Id>) {
         let Some(id) = self.resolve_node(window) else {
             return;

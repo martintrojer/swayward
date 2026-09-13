@@ -1,8 +1,8 @@
 use swayward_config::Action;
 use swayward_ipc::command::parse_error;
 pub use swayward_ipc::command::{
-    parse, Command, Direction, Layout, LayoutToggle, LayoutToggleEntry, ParsedCommand, ResizeAxis,
-    ResizeUnit, Toggle, WorkspaceTarget,
+    parse, Command, Direction, Layout, LayoutToggle, LayoutToggleEntry, ParsedCommand,
+    ResizeAmount, ResizeAxis, ResizeUnit, Toggle, WorkspaceTarget,
 };
 use swayward_ipc::legacy::SizeChange;
 use swayward_ipc::{criteria, CommandOutcome};
@@ -278,19 +278,39 @@ fn execute_one(
         Command::Resize {
             grow,
             axis,
-            amount,
-            unit,
+            first,
+            second,
         } => {
+            let floating = state
+                .swayward
+                .layout
+                .focus()
+                .is_some_and(|mapped| mapped.is_floating());
+            let selected = select_resize_amount(first, second, floating);
             let sign = if grow { 1 } else { -1 };
-            let amount = amount.saturating_mul(sign);
-            let change = match unit {
+            let amount = selected.amount.saturating_mul(sign);
+            let change = match selected.unit {
+                ResizeUnit::Default if floating => SizeChange::AdjustFixed(amount),
                 ResizeUnit::Pixels => SizeChange::AdjustFixed(amount),
-                ResizeUnit::PercentagePoints => SizeChange::AdjustProportion(f64::from(amount)),
+                ResizeUnit::Default | ResizeUnit::PercentagePoints => {
+                    SizeChange::AdjustProportion(f64::from(amount))
+                }
             };
-            Some(match axis {
-                ResizeAxis::Width => Action::SetWindowWidth(change),
-                ResizeAxis::Height => Action::SetWindowHeight(change),
-            })
+            match axis {
+                ResizeAxis::Width => Some(Action::SetWindowWidth(change)),
+                ResizeAxis::Height => Some(Action::SetWindowHeight(change)),
+                direction => {
+                    let edge = match direction {
+                        ResizeAxis::Up => crate::utils::ResizeEdge::TOP,
+                        ResizeAxis::Down => crate::utils::ResizeEdge::BOTTOM,
+                        ResizeAxis::Left => crate::utils::ResizeEdge::LEFT,
+                        ResizeAxis::Right => crate::utils::ResizeEdge::RIGHT,
+                        ResizeAxis::Width | ResizeAxis::Height => unreachable!(),
+                    };
+                    state.swayward.layout.resize_window_edge(None, edge, change);
+                    None
+                }
+            }
         }
         Command::Reload => {
             let Some(watcher) = &state.swayward.config_file_watcher else {
@@ -370,6 +390,29 @@ fn execute_one(
     success()
 }
 
+fn select_resize_amount(
+    first: ResizeAmount,
+    second: Option<ResizeAmount>,
+    floating: bool,
+) -> ResizeAmount {
+    let preferred = if floating {
+        ResizeUnit::Pixels
+    } else {
+        ResizeUnit::PercentagePoints
+    };
+    [Some(first), second]
+        .into_iter()
+        .flatten()
+        .find(|amount| amount.unit == preferred)
+        .or_else(|| {
+            [Some(first), second]
+                .into_iter()
+                .flatten()
+                .find(|amount| amount.unit == ResizeUnit::Default)
+        })
+        .unwrap_or(first)
+}
+
 fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget) -> CommandOutcome {
     match command {
         Command::Mark {
@@ -430,6 +473,62 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
                 return failure("command requires a window target");
             };
             state.do_action(Action::CloseWindowById(target.get()), false);
+        }
+        Command::Resize {
+            grow,
+            axis,
+            first,
+            second,
+        } => {
+            let CommandTarget::Window(target) = target else {
+                return failure("command requires a window target");
+            };
+            let window = state
+                .swayward
+                .layout
+                .windows()
+                .find_map(|(_, mapped)| (mapped.id() == target).then(|| mapped.window.clone()));
+            let Some(window) = window else {
+                return failure("No matching node.");
+            };
+            let floating = state
+                .swayward
+                .layout
+                .windows()
+                .any(|(_, mapped)| mapped.id() == target && mapped.is_floating());
+            let selected = select_resize_amount(*first, *second, floating);
+            let sign = if *grow { 1 } else { -1 };
+            let amount = selected.amount.saturating_mul(sign);
+            let change = match selected.unit {
+                ResizeUnit::Default if floating => SizeChange::AdjustFixed(amount),
+                ResizeUnit::Pixels => SizeChange::AdjustFixed(amount),
+                ResizeUnit::Default | ResizeUnit::PercentagePoints => {
+                    SizeChange::AdjustProportion(f64::from(amount))
+                }
+            };
+            match axis {
+                ResizeAxis::Width => state
+                    .swayward
+                    .layout
+                    .set_window_width(Some(&window), change),
+                ResizeAxis::Height => state
+                    .swayward
+                    .layout
+                    .set_window_height(Some(&window), change),
+                direction => {
+                    let edge = match direction {
+                        ResizeAxis::Up => crate::utils::ResizeEdge::TOP,
+                        ResizeAxis::Down => crate::utils::ResizeEdge::BOTTOM,
+                        ResizeAxis::Left => crate::utils::ResizeEdge::LEFT,
+                        ResizeAxis::Right => crate::utils::ResizeEdge::RIGHT,
+                        ResizeAxis::Width | ResizeAxis::Height => unreachable!(),
+                    };
+                    state
+                        .swayward
+                        .layout
+                        .resize_window_edge(Some(&window), edge, change);
+                }
+            }
         }
         Command::Focus => match target {
             CommandTarget::Window(target) => {
@@ -792,8 +891,11 @@ mod tests {
             Command::Resize {
                 grow: false,
                 axis: ResizeAxis::Height,
-                amount: 10,
-                unit: ResizeUnit::PercentagePoints
+                first: ResizeAmount {
+                    amount: 10,
+                    unit: ResizeUnit::PercentagePoints,
+                },
+                second: None,
             }
         );
         assert_eq!(command("reload"), Command::Reload);
@@ -853,6 +955,64 @@ mod tests {
     }
 
     #[test]
+    fn parses_sway_resize_adjust_forms() {
+        assert_eq!(
+            command("resize grow up 10 px or 25 ppt"),
+            Command::Resize {
+                grow: true,
+                axis: ResizeAxis::Up,
+                first: ResizeAmount {
+                    amount: 10,
+                    unit: ResizeUnit::Pixels,
+                },
+                second: Some(ResizeAmount {
+                    amount: 25,
+                    unit: ResizeUnit::PercentagePoints,
+                }),
+            }
+        );
+        assert_eq!(
+            command("resize shrink left 10px"),
+            Command::Resize {
+                grow: false,
+                axis: ResizeAxis::Left,
+                first: ResizeAmount {
+                    amount: 10,
+                    unit: ResizeUnit::Pixels,
+                },
+                second: None,
+            }
+        );
+        assert_eq!(
+            command("resize grow right"),
+            Command::Resize {
+                grow: true,
+                axis: ResizeAxis::Right,
+                first: ResizeAmount {
+                    amount: 10,
+                    unit: ResizeUnit::Default,
+                },
+                second: None,
+            }
+        );
+        assert_eq!(
+            command("resize grow width 10px or 10ppt"),
+            Command::Resize {
+                grow: true,
+                axis: ResizeAxis::Width,
+                first: ResizeAmount {
+                    amount: 10,
+                    unit: ResizeUnit::Pixels,
+                },
+                second: Some(ResizeAmount {
+                    amount: 10,
+                    unit: ResizeUnit::PercentagePoints,
+                }),
+            }
+        );
+    }
+
+    #[test]
     fn parser_is_case_insensitive() {
         assert_eq!(
             command("FOCUS LEFT"),
@@ -863,8 +1023,11 @@ mod tests {
             Command::Resize {
                 grow: true,
                 axis: ResizeAxis::Width,
-                amount: 5,
-                unit: ResizeUnit::PercentagePoints,
+                first: ResizeAmount {
+                    amount: 5,
+                    unit: ResizeUnit::PercentagePoints,
+                },
+                second: None,
             }
         );
     }

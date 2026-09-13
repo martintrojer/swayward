@@ -45,12 +45,12 @@ without fabricating a tree that real sway clients do not see. See
 | `122-split.t` | 31 | 31 pass; remainder skip: i3-only tree structure | Singleton stacked assertions 28 and 30 pass. The remainder starts by inspecting i3's `content` node at line 157, which sway does not have (`sway/sway/ipc-json.c:869-874`). |
 | `126-regress-close.t` | 1 | pass | `does_i3_live` after closing a floating container. |
 | `130-close-empty-split.t` | 8 | fail (6 pass) | Closing an empty split restores its children to the workspace. Assertions 2 and 6 expect the focused leaf to stay focused after `split v`; swayward focuses the new wrapper instead. Sway re-focuses the child (`sway/tree/container.c:1611-1616`), unlike `workspace_split`, which does focus its wrapper (`sway/tree/workspace.c:1074`). Tracked by `m6_fix_container_split_focus`. |
-| `141-resize.t` | 84 | fail (29 pass) | 21 resize commands are rejected: directional axes, attached units such as `10px`, and `px or ppt` fallbacks. The remaining failures include exact i3 geometry and floating-resize behavior. Sway supports these forms in `sway/commands/resize.c:465-550`. |
+| `141-resize.t` | 84 | fail (45 pass) | All resize forms parse (0 rejected, down from 21): directional axes, attached units such as `10px`, and `px or ppt` fallbacks match `sway/commands/resize.c:465-550`. Remaining failures expose stacked-layout tree reporting, multi-sibling resize distribution, output geometry differences, and inherited floating resize/configure behavior. |
 | `144-regress-floating-resize.t` | 1 | pass | Closing a floating child does not corrupt the tiled siblings' combined width. |
 | `152-regress-level-up.t` | 1 | pass | `does_i3_live` after focusing above the workspace tree. |
 | `178-regress-workspace-open.t` | 1 | pass | An inactive named workspace is removed after its final window closes. |
 | `179-regress-multiple-ws.t` | 6 | pass | Relative `move workspace prev` resolves against sway's global workspace order before moving. |
-| `191-resize-levels.t` | 3 | fail (0 pass) | `[id=…] focus` and directional resize are rejected; sway supports bare criteria focus (`sway/commands/focus.c:397-415`) and ancestor-aware directional resize (`sway/commands/resize.c:45-72`). |
+| `191-resize-levels.t` | 3 | fail (1 pass) | Bare criteria focus and directional resize parse (0 rejected). The remaining nested ancestor resize geometry differs from sway's ancestor-aware behavior (`sway/commands/resize.c:45-72`). |
 | `192-layout.t` | 34 | pass | Supports default, `all`, and custom layout-toggle cycles; list forms skip unknown entries as sway does (`sway/commands/layout.c:47-95`). Sway rejects the i3 no-op `layout toggle stacked` (`layout.c:57-71`); see `docs/KNOWN_DEVIATIONS.md`. |
 | `197-regression-move-vanish.t` | 2 | pass | Moving a child from a split preserves both windows. |
 | `198-regression-scratchpad-crash.t` | 1 | pass | Moving and immediately showing an invisible window does not crash. |

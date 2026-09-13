@@ -1330,6 +1330,21 @@ impl<W: LayoutElement> Workspace<W> {
         }
     }
 
+    pub fn resize_window_edge(
+        &mut self,
+        window: Option<&W::Id>,
+        edge: ResizeEdge,
+        change: SizeChange,
+    ) {
+        if window.map_or(self.floating_is_active.get(), |id| {
+            self.floating.has_window(id)
+        }) {
+            self.floating.resize_window_edge(window, edge, change);
+        } else {
+            self.tiling.resize_window_edge(window, edge, change);
+        }
+    }
+
     pub fn reset_window_height(&mut self, window: Option<&W::Id>) {
         if window.map_or(self.floating_is_active.get(), |id| {
             self.floating.has_window(id)

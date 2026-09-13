@@ -798,6 +798,29 @@ impl<W: LayoutElement> FloatingSpace<W> {
         win.request_size_once(win_size, animate);
     }
 
+    pub fn resize_window_edge(&mut self, id: Option<&W::Id>, edge: ResizeEdge, change: SizeChange) {
+        let Some(id) = id.or(self.active_window_id.as_ref()).cloned() else {
+            return;
+        };
+        let idx = self.idx_of(&id).unwrap();
+        let old_size = self.data[idx].size;
+        if edge.intersects(ResizeEdge::LEFT_RIGHT) {
+            self.set_window_width(Some(&id), change, true);
+        } else {
+            self.set_window_height(Some(&id), change, true);
+        }
+        let new_size = self.tiles[idx].tile_expected_or_current_size();
+        let mut offset = Point::from((0., 0.));
+        if edge.contains(ResizeEdge::LEFT) {
+            offset.x = old_size.w - new_size.w;
+        }
+        if edge.contains(ResizeEdge::TOP) {
+            offset.y = old_size.h - new_size.h;
+        }
+        let pos = self.data[idx].logical_pos + offset;
+        self.data[idx].set_logical_pos(pos);
+    }
+
     pub fn set_window_height(&mut self, id: Option<&W::Id>, change: SizeChange, animate: bool) {
         let Some(id) = id.or(self.active_window_id.as_ref()) else {
             return;
