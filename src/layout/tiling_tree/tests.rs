@@ -262,6 +262,64 @@ fn empty_tree_has_no_focus() {
 }
 
 #[test]
+fn invariant_rejects_stale_and_duplicate_node_side_state() {
+    for collection in 0..4 {
+        let mut t = tree((1920., 1080.), 0.);
+        let stale = NodeId(999);
+        match collection {
+            0 => t.focus_history.push(stale),
+            1 => {
+                t.pending_splits.insert(stale, Layout::SplitV);
+            }
+            2 => {
+                t.previous_split_layouts.insert(stale, Layout::SplitV);
+            }
+            3 => {
+                t.pending_modes.insert(
+                    stale,
+                    PendingMode {
+                        fullscreen: true,
+                        maximized: false,
+                    },
+                );
+            }
+            _ => unreachable!(),
+        }
+        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            t.check_invariants();
+        }))
+        .is_err());
+    }
+
+    let mut t = tree((1920., 1080.), 0.);
+    let leaf = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    t.focus_history.push(leaf);
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        t.check_invariants();
+    }))
+    .is_err());
+}
+
+#[test]
+fn removing_a_node_clears_every_node_side_collection() {
+    let mut t = tree((1920., 1080.), 0.);
+    let leaf = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    t.pending_splits.insert(leaf, Layout::SplitV);
+    t.previous_split_layouts.insert(leaf, Layout::SplitH);
+    t.pending_modes.insert(
+        leaf,
+        PendingMode {
+            fullscreen: true,
+            maximized: false,
+        },
+    );
+
+    t.remove_tile_node(leaf);
+
+    t.check_invariants();
+}
+
+#[test]
 fn shipped_config_preserves_the_default_titlebar_geometry() {
     let config = swayward_config::Config::load_default();
     assert_eq!(config.layout.titlebar, swayward_config::Titlebar::default());

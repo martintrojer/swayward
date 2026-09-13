@@ -415,15 +415,16 @@ impl<W: LayoutElement> TilingTree<W> {
 
     pub fn remove_tile_node(&mut self, id: NodeId) -> Option<Tile<W>> {
         let old_geometries = self.compute_geometry();
-        let node = self.nodes.remove(&id)?;
-        let TreeNode::Leaf { tile } = node.value else {
-            self.nodes.insert(id, node);
+        if !matches!(
+            self.nodes.get(&id).map(|node| &node.value),
+            Some(TreeNode::Leaf { .. })
+        ) {
             return None;
+        }
+        let node = self.remove_node(id)?;
+        let TreeNode::Leaf { tile } = node.value else {
+            unreachable!();
         };
-        self.pending_splits.remove(&id);
-        self.previous_split_layouts.remove(&id);
-        self.pending_modes.remove(&id);
-        self.focus_history.retain(|candidate| *candidate != id);
         if self
             .interactive_resize
             .as_ref()
@@ -441,6 +442,15 @@ impl<W: LayoutElement> TilingTree<W> {
         }
         self.animate_geometry_changes(old_geometries, None);
         Some(*tile)
+    }
+
+    fn remove_node(&mut self, id: NodeId) -> Option<Node<W>> {
+        let node = self.nodes.remove(&id)?;
+        self.pending_splits.remove(&id);
+        self.previous_split_layouts.remove(&id);
+        self.pending_modes.remove(&id);
+        self.focus_history.retain(|candidate| *candidate != id);
+        Some(node)
     }
 
     fn set_focus_id(&mut self, focus: Option<NodeId>) {
@@ -1912,6 +1922,29 @@ impl<W: LayoutElement> TilingTree<W> {
         } else {
             assert!(self.windows().next().is_none());
         }
+        // Every NodeId-keyed side collection must join this check and be cleared in remove().
+        for (collection, id) in self
+            .focus_history
+            .iter()
+            .map(|id| ("focus_history", id))
+            .chain(self.pending_splits.keys().map(|id| ("pending_splits", id)))
+            .chain(
+                self.previous_split_layouts
+                    .keys()
+                    .map(|id| ("previous_split_layouts", id)),
+            )
+            .chain(self.pending_modes.keys().map(|id| ("pending_modes", id)))
+        {
+            assert!(
+                self.nodes.contains_key(id),
+                "{collection} contains stale node {id:?}"
+            );
+        }
+        assert_eq!(
+            self.focus_history.iter().collect::<HashSet<_>>().len(),
+            self.focus_history.len(),
+            "focus_history contains duplicate node ids"
+        );
         assert!(self.pending_modes.keys().all(|id| matches!(
             self.nodes.get(id).map(|node| &node.value),
             Some(TreeNode::Leaf { .. })
@@ -2191,8 +2224,7 @@ impl<W: LayoutElement> TilingTree<W> {
                 if self.focus == Some(id) {
                     self.set_focus_id(Some(parent));
                 }
-                self.nodes.remove(&id);
-                self.focus_history.retain(|candidate| *candidate != id);
+                self.remove_node(id);
                 self.remove_child(parent, id);
                 id = parent;
                 continue;
@@ -2215,8 +2247,7 @@ impl<W: LayoutElement> TilingTree<W> {
             if self.focus == Some(id) {
                 self.set_focus_id(Some(child));
             }
-            self.nodes.remove(&id);
-            self.focus_history.retain(|candidate| *candidate != id);
+            self.remove_node(id);
             id = parent;
         }
     }
@@ -2264,8 +2295,7 @@ impl<W: LayoutElement> TilingTree<W> {
         };
         children[0] = child;
         self.nodes.get_mut(&child)?.parent = Some(grandparent);
-        self.nodes.remove(&target);
-        self.focus_history.retain(|candidate| *candidate != target);
+        self.remove_node(target);
         Some(grandparent)
     }
 
@@ -2373,10 +2403,8 @@ impl<W: LayoutElement> TilingTree<W> {
         if self.focus == Some(id) || self.focus == Some(child) {
             self.set_focus_id(Some(replacement));
         }
-        self.focus_history
-            .retain(|candidate| *candidate != id && *candidate != child);
-        self.nodes.remove(&id);
-        self.nodes.remove(&child);
+        self.remove_node(id);
+        self.remove_node(child);
     }
 
     fn split_len(&self, id: NodeId) -> Option<usize> {
