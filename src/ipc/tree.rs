@@ -324,7 +324,7 @@ fn describe_workspace_node(
         focused,
         ..
     } = &mut tiled;
-    let (layout, orientation, nodes, focus, container_focused) = (
+    let (layout, orientation, nodes, mut focus, container_focused) = (
         *layout,
         orientation.clone(),
         std::mem::take(nodes),
@@ -350,7 +350,13 @@ fn describe_workspace_node(
                 true,
             )
         })
-        .collect();
+        .collect::<Vec<_>>();
+    let floating_focus = floating_nodes.iter().map(|node| node.id);
+    if workspace.floating_is_active() {
+        focus.splice(0..0, floating_focus);
+    } else {
+        focus.extend(floating_focus);
+    }
     let representation = (!nodes.is_empty()).then(|| tree_representation(layout, &nodes));
     common_node(
         workspace_id(workspace.id().get()),

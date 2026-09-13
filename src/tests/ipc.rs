@@ -355,6 +355,40 @@ fn nested_fixture_tree() -> Value {
     .unwrap()
 }
 
+fn mixed_live_tree() -> Value {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    for floating in [false, true] {
+        let window = f.client(client).create_window();
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+        if floating {
+            assert!(crate::command::execute(f.niri_state(), "floating enable")[0].success);
+        }
+    }
+    let swayward = f.swayward();
+    serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &Default::default(),
+        &Default::default(),
+    ))
+    .unwrap()
+}
+
+fn mixed_fixture_tree() -> Value {
+    serde_json::from_str(include_str!(
+        "../../tests/fixtures/sway/one_floating.tree.json"
+    ))
+    .unwrap()
+}
+
 fn read_ipc_reply(fixture: &mut Fixture, stream: &mut UnixStream) -> (u32, String) {
     stream.set_nonblocking(true).unwrap();
     let deadline = Instant::now() + Duration::from_secs(1);
@@ -1928,6 +1962,18 @@ fn stale_tree_leaf_is_omitted_without_panicking() {
 #[test]
 fn live_ipc_focus_matches_sway_mru_arrays() {
     assert_focus_matches_fixture(&nested_fixture_tree(), &nested_live_tree(), "$tree");
+}
+
+#[test]
+fn workspace_focus_spans_tiled_and_floating_children() {
+    let expected = mixed_fixture_tree();
+    let actual = mixed_live_tree();
+    assert_focus_matches_fixture(&expected, &actual, "$tree");
+
+    let workspace = &actual["nodes"][1]["nodes"][0];
+    assert_eq!(workspace["nodes"].as_array().unwrap().len(), 1);
+    assert_eq!(workspace["floating_nodes"].as_array().unwrap().len(), 1);
+    assert_eq!(workspace["focus"].as_array().unwrap().len(), 2);
 }
 
 #[test]
