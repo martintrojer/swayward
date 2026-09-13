@@ -1632,6 +1632,45 @@ fn criteria_targeted_scratchpad_commands_move_only_the_matching_window() {
 }
 
 #[test]
+fn move_output_accepts_direction_name_and_workspace_forms() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1280, 720));
+    f.add_output(2, (1280, 720));
+    let outputs = [f.niri_output(1).name(), f.niri_output(2).name()];
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    assert!(crate::command::execute(f.niri_state(), "move output right")[0].success);
+    let focused = f.swayward().layout.focus().unwrap().id();
+    assert_eq!(
+        f.swayward()
+            .layout
+            .windows()
+            .find(|(_, mapped)| mapped.id() == focused)
+            .unwrap()
+            .0
+            .unwrap()
+            .output_name(),
+        &outputs[1]
+    );
+    assert!(
+        crate::command::execute(
+            f.niri_state(),
+            &format!("move container to output {}", outputs[0])
+        )[0]
+        .success
+    );
+    assert!(crate::command::execute(f.niri_state(), "move workspace output right")[0].success);
+}
+
+#[test]
 fn workspace_criteria_uses_sparse_and_named_sway_identities() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));

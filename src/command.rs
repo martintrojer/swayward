@@ -1,8 +1,8 @@
 use swayward_config::Action;
 use swayward_ipc::command::parse_error;
 pub use swayward_ipc::command::{
-    parse, Command, Direction, Layout, LayoutToggle, LayoutToggleEntry, ParsedCommand,
-    ResizeAmount, ResizeAxis, ResizeUnit, Toggle, WorkspaceTarget,
+    parse, Command, Direction, Layout, LayoutToggle, LayoutToggleEntry, OutputTarget,
+    ParsedCommand, ResizeAmount, ResizeAxis, ResizeUnit, Toggle, WorkspaceTarget,
 };
 use swayward_ipc::legacy::SizeChange;
 use swayward_ipc::{criteria, CommandOutcome};
@@ -123,6 +123,29 @@ fn execute_one(
             if let Err(error) = state.swayward.layout.move_to_sway_workspace(target) {
                 return failure(error);
             }
+            state.swayward.queue_redraw_all();
+            None
+        }
+        Command::MoveToOutput(target) => {
+            let output = match output_target(state, &target, None) {
+                Ok(output) => output,
+                Err(error) => return failure(error),
+            };
+            state.swayward.layout.move_to_output(
+                None,
+                &output,
+                None,
+                crate::layout::ActivateWindow::Smart,
+            );
+            state.swayward.queue_redraw_all();
+            None
+        }
+        Command::MoveWorkspaceToOutput(target) => {
+            let output = match output_target(state, &target, None) {
+                Ok(output) => output,
+                Err(error) => return failure(error),
+            };
+            state.swayward.layout.move_workspace_to_output(&output);
             state.swayward.queue_redraw_all();
             None
         }
@@ -421,6 +444,27 @@ fn execute_one(
     success()
 }
 
+fn output_target(
+    state: &State,
+    target: &OutputTarget,
+    reference: Option<&smithay::output::Output>,
+) -> Result<smithay::output::Output, String> {
+    let output = match target {
+        OutputTarget::Name(name) => state.swayward.output_by_name_match(name).cloned(),
+        OutputTarget::Direction(direction) => match (direction, reference) {
+            (Direction::Left, Some(output)) => state.swayward.output_left_of(output),
+            (Direction::Right, Some(output)) => state.swayward.output_right_of(output),
+            (Direction::Up, Some(output)) => state.swayward.output_up_of(output),
+            (Direction::Down, Some(output)) => state.swayward.output_down_of(output),
+            (Direction::Left, None) => state.swayward.output_left(),
+            (Direction::Right, None) => state.swayward.output_right(),
+            (Direction::Up, None) => state.swayward.output_up(),
+            (Direction::Down, None) => state.swayward.output_down(),
+        },
+    };
+    output.ok_or_else(|| "Can't find output with name/direction".into())
+}
+
 fn select_resize_amount(
     first: ResizeAmount,
     second: Option<ResizeAmount>,
@@ -452,6 +496,37 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
             identifier,
         } => mark_target(state, target, identifier, *add, *toggle),
         Command::Unmark(identifier) => unmark_target(state, target, identifier.as_deref()),
+        Command::MoveToOutput(output_target_name) => {
+            let CommandTarget::Window(target) = target else {
+                return failure("command requires a window target");
+            };
+            let window = state
+                .swayward
+                .layout
+                .windows()
+                .find_map(|(monitor, mapped)| {
+                    (mapped.id() == target).then(|| {
+                        (
+                            monitor.map(|monitor| monitor.output()),
+                            mapped.window.clone(),
+                        )
+                    })
+                });
+            let Some((reference, window)) = window else {
+                return failure("No matching node.");
+            };
+            let output = match output_target(state, output_target_name, reference) {
+                Ok(output) => output,
+                Err(error) => return failure(error),
+            };
+            state.swayward.layout.move_to_output(
+                Some(&window),
+                &output,
+                None,
+                crate::layout::ActivateWindow::Smart,
+            );
+            state.swayward.queue_redraw_all();
+        }
         Command::MoveScratchpad => {
             let CommandTarget::Window(target) = target else {
                 return failure("command requires a window target");
@@ -935,6 +1010,22 @@ mod tests {
         assert_eq!(
             command("move to workspace number 3:web"),
             Command::MoveToWorkspace(WorkspaceTarget::Number("3:web".into()))
+        );
+        assert_eq!(
+            command("move window to output left"),
+            Command::MoveToOutput(OutputTarget::Direction(Direction::Left))
+        );
+        assert_eq!(
+            command("move container output HDMI-A-1"),
+            Command::MoveToOutput(OutputTarget::Name("HDMI-A-1".into()))
+        );
+        assert_eq!(
+            command("move workspace to output right"),
+            Command::MoveWorkspaceToOutput(OutputTarget::Direction(Direction::Right))
+        );
+        assert_eq!(
+            command("move workspace output DP-1"),
+            Command::MoveWorkspaceToOutput(OutputTarget::Name("DP-1".into()))
         );
         assert_eq!(command("move scratchpad"), Command::MoveScratchpad);
         assert_eq!(command("move to scratchpad"), Command::MoveScratchpad);

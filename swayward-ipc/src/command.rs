@@ -62,6 +62,12 @@ pub struct ResizeAmount {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OutputTarget {
+    Name(String),
+    Direction(Direction),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkspaceTarget {
     Name(String),
     Number(String),
@@ -89,6 +95,8 @@ pub enum Command {
         pixels: Option<i32>,
     },
     MoveToWorkspace(WorkspaceTarget),
+    MoveToOutput(OutputTarget),
+    MoveWorkspaceToOutput(OutputTarget),
     MoveScratchpad,
     ScratchpadShow,
     Layout(Layout),
@@ -405,6 +413,35 @@ fn parse_focus(args: &[&str]) -> Result<Command, String> {
 }
 
 fn parse_move(args: &[&str]) -> Result<Command, String> {
+    let args = match args {
+        [kind, rest @ ..]
+            if kind.eq_ignore_ascii_case("window") || kind.eq_ignore_ascii_case("container") =>
+        {
+            rest
+        }
+        args => args,
+    };
+    let args = match args {
+        [to, rest @ ..] if to.eq_ignore_ascii_case("to") => rest,
+        args => args,
+    };
+    if let [workspace, rest @ ..] = args {
+        if workspace.eq_ignore_ascii_case("workspace")
+            && matches!(rest.first(), Some(value) if value.eq_ignore_ascii_case("to") || value.eq_ignore_ascii_case("output"))
+        {
+            let target = rest
+                .iter()
+                .skip_while(|value| {
+                    value.eq_ignore_ascii_case("to") || value.eq_ignore_ascii_case("output")
+                })
+                .copied()
+                .collect::<Vec<_>>();
+            return parse_output(&target).map(Command::MoveWorkspaceToOutput);
+        }
+        if workspace.eq_ignore_ascii_case("output") {
+            return parse_output(rest).map(Command::MoveToOutput);
+        }
+    }
     if matches!(args, [scratchpad] if scratchpad.eq_ignore_ascii_case("scratchpad"))
         || matches!(args, [to, scratchpad]
             if to.eq_ignore_ascii_case("to") && scratchpad.eq_ignore_ascii_case("scratchpad"))
@@ -438,6 +475,17 @@ fn parse_move(args: &[&str]) -> Result<Command, String> {
         }
     };
     Ok(Command::MoveToWorkspace(target))
+}
+
+fn parse_output(args: &[&str]) -> Result<OutputTarget, String> {
+    let value = one(
+        args,
+        "move [window|container|workspace] [to] output <name|direction>",
+    )?;
+    Ok(parse_direction(value).map_or_else(
+        || OutputTarget::Name(value.to_owned()),
+        OutputTarget::Direction,
+    ))
 }
 
 fn parse_layout(args: &[&str]) -> Result<Command, String> {
