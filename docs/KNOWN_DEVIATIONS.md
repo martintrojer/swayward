@@ -50,5 +50,23 @@ Swayward has no scrollable-tiling mode. It uses an i3-style nested container tre
 Niri's horizontal viewport and overview animations were retired because their
 layout no longer exists.
 
+### Output content nodes
+
+The i3 `GET_TREE` hierarchy places a container named `content` between each
+output and its workspaces. The i3 IPC guide shows this hierarchy at
+`i3/docs/ipc:485-497`, and i3 creates the node in `i3/src/tree.c:38-55`.
+
+Sway has no equivalent node. Its node types are root, output, workspace, and
+container (`sway/include/sway/tree/node.h:18-23`). Its `GET_TREE` serializer
+adds workspaces directly to output nodes (`sway/sway/ipc-json.c:854-894`). None
+of the 14 trees captured from real sway in `tests/fixtures/sway/*.tree.json`
+contains a `content` node. Swayward therefore follows sway, as required by the
+IPC compatibility decisions Q1 and Q8.
+
+The i3 conformance adapter does not synthesize this node. Fabricating a node in
+the adapter would make an upstream assertion observe a tree that a real sway IPC
+client never receives. Tests that directly traverse or inspect i3's `content`
+node are excluded as i3-only tree-structure tests.
+
 X11 applications run through `xwayland-satellite`. Swayward does not include
 sway's in-process Xwayland window manager.

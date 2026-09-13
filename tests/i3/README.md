@@ -34,9 +34,15 @@ report for assertion-level results.
 
 ## Coverage
 
+The status `skip: i3-only tree structure` applies when a test requires the i3
+output-level `content` container. Sway places workspaces directly below outputs
+(`sway/sway/ipc-json.c:869-874`), so the adapter cannot expose that i3 node
+without fabricating a tree that real sway clients do not see. See
+[Known deviations from sway](../../docs/KNOWN_DEVIATIONS.md#output-content-nodes).
+
 | File | Assertions | Status | Reason |
 | --- | ---: | --- | --- |
-| `122-split.t` | 31 | fail | Executable conformance finding. |
+| `122-split.t` | 31 | fail; remainder skip: i3-only tree structure | Assertions 28 and 30 expose a separate singleton-stacked bug. Assertion 31 passes. The remainder starts by inspecting i3's `content` node at line 157, which sway does not have (`sway/sway/ipc-json.c:869-874`). |
 | `126-regress-close.t` | 1 | pass | `does_i3_live` after closing a floating container. |
 | `130-close-empty-split.t` | 8 | fail | Executable conformance finding. |
 | `152-regress-level-up.t` | 1 | pass | `does_i3_live` after focusing above the workspace tree. |
@@ -56,7 +62,7 @@ report for assertion-level results.
 | --- | ---: | --- | --- |
 | `101-focus.t` | 8 | pass | Directional focus follows sway's sibling traversal, ancestor escalation, and wrapping rules (`sway/commands/focus.c:158-220`). |
 | `104-focus-stack.t` | 2 | pass | Closing the focused floating window restores the prior tiling focus, matching sway's focus-stack restoration (`sway/input/seat.c:260-315`). |
-| `129-focus-after-close.t` | 15 | fail (7 pass) | Focus-stack restoration now passes; remaining failures cover i3 content-container structure, unfocused close handling, workspace kill, and floating membership. Sway focuses parent nodes (`sway/commands/focus.c:355-377`) and closes all workspace descendants (`sway/commands/kill.c:20-28`). |
+| `129-focus-after-close.t` | 15 | fail (7 pass) | Focus-stack restoration now passes. The remaining failures concern empty-container creation, unfocused close handling, workspace kill, and floating membership; they do not inspect i3's output-level `content` node. |
 | `140-focus-lost.t` | 3 | pass | Focus survives a layout change. |
 
 The initial X11-protocol exclusions are `113-urgent.t`,
