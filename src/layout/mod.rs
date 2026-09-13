@@ -5623,18 +5623,15 @@ impl<W: LayoutElement> Layout<W> {
     pub fn window_center(&self, window: &W::Id) -> Option<Point<i32, Logical>> {
         self.monitors().find_map(|monitor| {
             let output_origin = monitor.output().current_location();
-            monitor
-                .workspaces_with_render_geo()
-                .find_map(|(workspace, workspace_rect)| {
-                    workspace
-                        .tiles_with_render_positions()
-                        .find(|(tile, _, _)| tile.window().id() == window)
-                        .map(|(tile, tile_pos, _)| {
-                            let tile_rect =
-                                Rectangle::new(workspace_rect.loc + tile_pos, tile.tile_size());
-                            output_origin + crate::utils::center_f64(tile_rect).to_i32_round()
-                        })
-                })
+            monitor.workspaces.iter().find_map(|workspace| {
+                workspace
+                    .tiles_with_render_positions()
+                    .find(|(tile, _, _)| tile.window().id() == window)
+                    .map(|(tile, tile_pos, _)| {
+                        let tile_rect = Rectangle::new(tile_pos, tile.tile_size());
+                        output_origin + crate::utils::center_f64(tile_rect).to_i32_round()
+                    })
+            })
         })
     }
 

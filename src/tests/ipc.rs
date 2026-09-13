@@ -1685,6 +1685,65 @@ fn resize_rejects_hidden_scratchpad_window_without_panicking() {
 }
 
 #[test]
+fn criteria_move_output_right_uses_each_windows_position_in_a_grid() {
+    let mut f = Fixture::new();
+    for (name, position) in [
+        ("top-left", (0, 0)),
+        ("top-right", (800, 0)),
+        ("bottom-left", (0, 600)),
+        ("bottom-right", (800, 600)),
+    ] {
+        f.add_named_output_at(name.into(), (800, 600), Some(position));
+    }
+    for (output, workspace) in [
+        ("top-left", "top-left-workspace"),
+        ("top-right", "top-right-workspace"),
+        ("bottom-left", "bottom-left-workspace"),
+        ("bottom-right", "bottom-right-workspace"),
+    ] {
+        assert!(crate::command::execute(
+            f.niri_state(),
+            &format!("focus output {output}, workspace {workspace}")
+        )
+        .iter()
+        .all(|outcome| outcome.success));
+    }
+
+    let client = f.add_client();
+    for workspace in ["top-left-workspace", "bottom-left-workspace"] {
+        assert!(
+            crate::command::execute(f.niri_state(), &format!("workspace {workspace}"))[0].success
+        );
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id("moveme".into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+
+    assert!(
+        crate::command::execute(f.niri_state(), r#"[app_id="moveme"] move output right"#)[0]
+            .success
+    );
+    let workspace_counts = f
+        .swayward()
+        .layout
+        .workspaces()
+        .filter_map(|(_, _, workspace)| {
+            workspace
+                .name()
+                .map(|name| (name.to_owned(), workspace.windows().count()))
+        })
+        .collect::<std::collections::HashMap<_, _>>();
+    assert_eq!(workspace_counts["top-right-workspace"], 1);
+    assert_eq!(workspace_counts["bottom-right-workspace"], 1);
+}
+
+#[test]
 fn move_output_direction_uses_the_windows_output_and_wraps_geometrically() {
     let mut f = Fixture::new();
     f.add_named_output_at("right".into(), (100, 100), Some((200, 100)));
