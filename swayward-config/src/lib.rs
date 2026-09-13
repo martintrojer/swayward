@@ -645,6 +645,45 @@ mod tests {
     }
 
     #[test]
+    fn default_config_exposes_core_tree_commands() {
+        let config = Config::load_default();
+        let command_for = |key: &str| {
+            let key = key.parse::<Key>().unwrap();
+            config.binds.0.iter().find_map(|bind| {
+                (bind.key == key).then_some(match &bind.action {
+                    Action::SwayCommand(command) => command.as_str(),
+                    _ => "<typed action>",
+                })
+            })
+        };
+
+        for (key, command) in [
+            ("Mod+H", "focus left"),
+            ("Mod+Left", "focus left"),
+            ("Mod+Shift+H", "move left"),
+            ("Mod+Shift+Left", "move left"),
+            ("Mod+B", "split h"),
+            ("Mod+V", "split v"),
+            ("Mod+W", "layout tabbed"),
+            ("Mod+S", "layout stacking"),
+            ("Mod+E", "layout toggle split"),
+            ("Mod+A", "focus parent"),
+            ("Mod+Ctrl+A", "focus child"),
+            ("Mod+F", "fullscreen"),
+            ("Mod+Shift+Space", "floating toggle"),
+            ("Mod+Shift+Minus", "move scratchpad"),
+            ("Mod+Minus", "scratchpad show"),
+            ("Mod+R", "mode resize"),
+        ] {
+            assert_eq!(command_for(key), Some(command), "default bind {key}");
+        }
+        assert!(config
+            .binding_modes
+            .iter()
+            .any(|mode| mode.name == "resize"));
+    }
+
+    #[test]
     fn binding_mode_parses_command_binds() {
         let config = Config::parse_mem(
             r#"mode "resize" {
@@ -2513,10 +2552,11 @@ mod tests {
         let mut default_config = Config::load_default();
         let empty_config = Config::parse_mem("").unwrap();
 
-        // Some notable omissions: the default config has some window rules, and an empty config
-        // will not have any binds. Clear them out so they don't spam the diff.
+        // Some notable omissions: the default config has some window rules and binding modes,
+        // and an empty config will not have any binds. Clear them out so they don't spam the diff.
         default_config.window_rules.clear();
         default_config.binds.0.clear();
+        default_config.binding_modes.clear();
 
         assert_snapshot!(
             diff_lines(

@@ -37,3 +37,4 @@ src/ipc/server.rs — emit sway-shaped workspace, window, and binding-mode subsc
 swayward-config/src/binds.rs, src/input/mod.rs — add validated sway command-string binds while retaining inherited typed actions for unsupported compositor features.
 swayward-config/src/binds.rs, src/input/mod.rs, src/ui/hotkey_overlay.rs — accept numeric bindcode triggers so translated sway bindcode directives remain functional.
 swayward-ipc/src/command.rs, swayward-config/src/lib.rs, swayward-config/src/binds.rs, src/swayward.rs, src/input/mod.rs, src/command.rs, src/ipc/server.rs — support named binding modes, mode commands and events, and GET_BINDING_MODES.
+resources/default-config.kdl — replace scroll-layout and column-oriented default binds with sway's tree-oriented defaults; inherited typed actions remain available to existing configs.
