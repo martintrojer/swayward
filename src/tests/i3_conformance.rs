@@ -126,10 +126,34 @@ fn run_i3_test(test: &str) {
     }
 }
 
+/// Upstream i3 files that pass in full, one per line, comments with `#`.
+///
+/// A conformance slice adds a file here the moment it goes green. Keeping the
+/// list in its own file rather than in this runner lets slices land in
+/// parallel without editing the same Rust source.
+const PASSING: &str = include_str!("../../tests/i3/passing.txt");
+
+fn passing_tests() -> impl Iterator<Item = &'static str> {
+    PASSING
+        .lines()
+        .map(|line| line.split('#').next().unwrap_or_default().trim())
+        .filter(|line| !line.is_empty())
+}
+
 #[test]
 fn i3_conformance_runner() {
-    run_i3_test(
-        &std::env::var("SWAYWARD_I3_TEST")
-            .unwrap_or_else(|_| "197-regression-move-vanish.t".to_owned()),
-    );
+    // `SWAYWARD_I3_TEST` selects a single file, including one with known
+    // failures, so conformance findings stay executable without turning the
+    // default gate red.
+    if let Ok(selected) = std::env::var("SWAYWARD_I3_TEST") {
+        run_i3_test(&selected);
+        return;
+    }
+
+    let mut count = 0;
+    for test in passing_tests() {
+        run_i3_test(test);
+        count += 1;
+    }
+    assert!(count > 0, "tests/i3/passing.txt lists no conformance files");
 }

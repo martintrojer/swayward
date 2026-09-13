@@ -1,0 +1,6 @@
+# Upstream i3 conformance files that pass in full against swayward.
+#
+# Add a file here as soon as a conformance slice makes it green, and never
+# remove one to make a change pass. Files with known failures stay out of this
+# list and run via SWAYWARD_I3_TEST, so the findings remain executable.
+197-regression-move-vanish.t

@@ -15,7 +15,12 @@ The runner requires Perl with `Test::More` and `JSON::PP`. On Fedora install
 `perl libtest-simple-perl libjson-pp-perl`. `contrib/dev-container.sh` installs
 the Fedora packages.
 
-Run the default smoke test with `cargo test -p swayward i3_conformance_runner`.
+`tests/i3/passing.txt` lists the files that pass in full, and the default gate
+runs every one of them. A conformance slice adds its file to that list the
+moment it goes green, which keeps coverage from silently rotting and lets
+slices land in parallel without editing the same Rust source.
+
+Run the full passing set with `cargo test -p swayward i3_conformance_runner`.
 Select another vendored file with, for example:
 
 ```sh
