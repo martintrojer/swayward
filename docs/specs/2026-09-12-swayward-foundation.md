@@ -347,7 +347,7 @@ plumbing; replace only the payload types.
 | Q9 | inherit `xwayland-satellite` | free; no global X11 WM needed for this user |
 | Q10 | first slice: `swaymsg -t get_tree` returns a valid i3 tree | forces tree model + IPC + schema into existence together |
 | Q11 | ~83 runtime commands; real subset implemented, honest `{"success":false}` for the rest | a well-formed failure keeps clients alive |
-| Q12 | golden fixtures captured from real sway **plus** proptest invariants | sway has no test suite; it cannot be our oracle |
+| Q12 | golden fixtures captured from real sway **plus** proptest invariants **plus the i3 testsuite** | sway has no test suite, but i3 has 285 tests and swayward is an i3-compatible tree. See [Q12 in detail](#q12-in-detail-the-oracle-problem) |
 | Q13 | fresh KDL for `layout`/`binds`; inherit `input`/`output`/`animations`/rules | minimises diff where niri has no i3 opinion |
 | Q14 | no `bar {}` / `get_bar_config`; stub it | waybar never calls it; swaybar support is future work |
 | Q15 | rename crates to `swayward*` in one mechanical commit, first | renaming later poisons every merge |
@@ -356,6 +356,39 @@ plumbing; replace only the payload types.
 | Q18 | marks and full criteria | cheap, and heavily used in real configs |
 | Q19 | niri's existing effect config blocks, names unchanged | zero diff for zero lost function; KDL's nested blocks already express them, and sway's flat syntax could not |
 | Q20 | **rebuild sway's global named/numbered workspace model** | bars key off `num`; this is the difference between sway-compatible and sway-flavoured |
+
+### Q12 in detail: the oracle problem
+
+Sway ships no tests. `find ../sway -iname '*test*'` returns nothing, so the
+reference implementation cannot tell us whether we match it. That gap is the
+reason this project captures golden fixtures from a running sway and asserts
+tree invariants under proptest.
+
+Both of those oracles share a weakness: they describe what swayward *does*.
+Fixtures pin the shapes we thought to capture, and invariants pin the properties
+we thought to state. Six layout defects were found in one session — split not
+being idempotent, three missing tree-compaction mechanisms, `layout` targeting
+the wrong container, and `layout` accepting a floating window — and not one was
+caught by the 284 tests passing at the time. Each was found by using the
+compositor or by reading sway's C.
+
+**i3's testsuite closes that gap.** `../i3/testcases/t` holds 285 test files,
+112 of them covering split, layout, move, focus and float behaviour, and 246 of
+the 285 drive the window manager entirely through `cmd '...'` plus `get_tree`
+assertions. Swayward is an i3-compatible container tree serving i3-compatible
+IPC, so those assertions apply directly. `t/122-split.t:113` asserts "not more
+windows after splitting again", which is the exact defect swayward shipped.
+
+This is an *external* oracle, and that is the point: it cannot be satisfied by
+writing down what our code happens to do.
+
+Two rules keep it trustworthy. i3's expected values are ported unchanged,
+because an expectation adjusted to match swayward stops being an oracle and
+becomes a snapshot. And where i3 and sway genuinely differ, swayward follows
+sway — workspaces (Q20), bars (Q14), scratchpad (Q17), marks and criteria (Q18),
+tabbed and stacked — so a failing i3 test raises one question first: does sway
+pass it? Intentional divergences are recorded in `docs/KNOWN_DEVIATIONS.md` with
+a citation.
 
 ### Q1 in detail: why KDL earns the incompatibility
 
@@ -427,6 +460,11 @@ No new test infrastructure. Extend niri's, wholesale:
 - **Golden IPC fixtures** — a script drives `swaymsg` against real sway across
   ~20 scenarios, capturing `get_tree`, `get_workspaces`, `get_outputs`. Committed
   as fixtures and replayed as insta snapshots against swayward.
+- **The i3 testsuite as an external oracle** — `../i3/testcases/t` holds 285
+  tests that drive a window manager over i3 IPC and assert on `get_tree`. They
+  encode behaviour swayward promises but did not write, so unlike the fixtures
+  and invariants they cannot be satisfied by describing what swayward already
+  does. See [Q12 in detail](#q12-in-detail-the-oracle-problem).
 - **Visual tests** — `swayward-visual-tests`, the forked GTK4 app, runs real
   layout and render code against mock windows. This is how corners, shadows,
   blur and animations get iterated without launching a session.
