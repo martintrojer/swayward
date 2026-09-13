@@ -1,3 +1,6 @@
+//! IPC conformance tests. The empirical coverage boundary and known gaps are
+//! recorded in `docs/IPC_ORACLE_COVERAGE.md`.
+
 use std::collections::BTreeSet;
 use std::ffi::OsStr;
 use std::io::{Read as _, Write as _};
