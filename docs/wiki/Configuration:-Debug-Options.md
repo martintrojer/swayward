@@ -222,10 +222,9 @@ debug {
 
 Disable transactions (resize and close).
 
-By default, windows which must resize together, do resize together.
-For example, all windows in a column must resize at the same time to maintain the combined column height equal to the screen height, and to maintain the same window width.
+By default, windows that share a container resize together so the tree remains aligned.
 
-Transactions make swayward wait until all windows finish resizing before showing them all on screen in one, synchronized frame.
+Transactions make swayward wait until all windows finish resizing before showing them on screen in one synchronized frame.
 For them to work properly, resize throttling shouldn't be disabled (with the previous debug flag).
 
 ```kdl

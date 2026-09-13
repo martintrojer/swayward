@@ -238,10 +238,7 @@ window-rule {
 <sup>Since: 0.1.6</sup>
 
 Can be `true` or `false`.
-Matches the window that is the "active" window in its column.
-
-Contrary to `is-active`, there is always one `is-active-in-column` window in each column.
-It is the window that was last focused in the column, i.e. the one that will gain focus if this column is focused.
+This inherited matcher is `true` for the focused leaf in the container tree. It is kept for config compatibility; the name still refers to niri's removed column layout.
 
 <sup>Since: 25.01</sup> This rule will match `true` during the initial window opening.
 
@@ -346,9 +343,7 @@ To be precise, they apply at the point when swayward sends the initial configure
 
 #### `default-column-width`
 
-Set the default width for the new window.
-
-This works for floating windows too, despite the word "column" in the name.
+This inherited setting is accepted for config compatibility. It affects the initial size of floating windows but does not constrain tiled nodes.
 
 ```kdl
 // Give Blender and GIMP some guaranteed width on opening.
@@ -426,7 +421,7 @@ window-rule {
 
 #### `open-maximized`
 
-Make the window open as a maximized column.
+Make the window open maximized.
 
 ```kdl
 // Maximize Firefox by default.
@@ -671,17 +666,10 @@ window-rule {
 
 <sup>Since: 25.02</sup>
 
-Set the default display mode for columns created from this window.
-Can be `normal` or `tabbed`.
-
-This is used any time a window goes into its own column.
-For example:
-- Opening a new window.
-- Expelling a window into its own column.
-- Moving a window from the floating layout to the tiling layout.
+This inherited setting is accepted for config compatibility but does not affect the container tree. Valid values are `normal` and `tabbed`.
 
 ```kdl
-// Make Evince windows open as tabbed columns.
+// This compatibility setting currently has no effect.
 window-rule {
     match app-id="^evince$"
 

@@ -290,45 +290,22 @@ output "SomeCompany VerticalMonitor 1234" {
 
     // Layout config overrides just for this output.
     layout {
-        default-column-width { proportion 1.0; }
+        gaps 8
 
         // ...any other setting.
     }
 }
 
 output "SomeCompany UltrawideMonitor 1234" {
-    // Narrower proportions and more presets for an ultrawide.
     layout {
-        default-column-width { proportion 0.25; }
-
-        preset-column-widths {
-            proportion 0.2
-            proportion 0.25
-            proportion 0.5
-            proportion 0.75
-            proportion 0.8
-        }
+        gaps 24
     }
 }
 ```
 
 It accepts all the same options as [the top-level `layout {}` block](./Configuration:-Layout.md).
 
-In order to unset a flag, write it with `false`, e.g.:
-
-```kdl
-layout {
-    // Enabled globally.
-    always-center-single-column
-}
-
-output "eDP-1" {
-    layout {
-        // Unset on this output.
-        always-center-single-column false
-    }
-}
-```
+Boolean flags in output overrides accept explicit `true` and `false` values.
 
 ---
 

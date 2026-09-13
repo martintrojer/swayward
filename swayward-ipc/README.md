@@ -4,7 +4,7 @@ Types and helpers for interfacing with the swayward Wayland compositor, forked f
 
 ## Backwards compatibility
 
-This crate follows the niri version.
+This crate follows the swayward version.
 It is **not** API-stable in terms of the Rust semver.
 In particular, expect new struct fields and enum variants to be added in patch version bumps.
 

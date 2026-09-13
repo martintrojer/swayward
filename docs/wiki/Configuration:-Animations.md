@@ -146,7 +146,7 @@ Now let's go into more detail on the animations that you can configure.
 
 #### `workspace-switch`
 
-Animation when switching workspaces up and down, including after the vertical touchpad gesture (a spring is recommended).
+Animation when switching workspaces (a spring is recommended).
 
 ```kdl
 animations {
@@ -277,14 +277,7 @@ animations {
 
 Movement of individual windows within a workspace.
 
-Includes:
-
-- Moving window columns with `move-column-left` and `move-column-right`.
-- Moving windows inside a column with `move-window-up` and `move-window-down`.
-- Moving windows out of the way upon window opening and closing.
-- Window movement between columns when consuming/expelling.
-
-This animation *does not* include the camera view movement, such as scrolling the workspace left and right.
+This includes tree mutations, window opening and closing, and moves between containers.
 
 ```kdl
 animations {
@@ -300,8 +293,7 @@ animations {
 
 Window resize animation.
 
-Only manual window resizes are animated, i.e. when you resize the window with `switch-preset-column-width` or `maximize-column`.
-Also, very small resizes (up to 10 pixels) are not animated.
+Manual window resizes are animated. Very small resizes (up to 10 pixels) are not animated.
 
 ```kdl
 animations {

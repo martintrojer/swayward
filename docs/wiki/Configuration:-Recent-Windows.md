@@ -181,10 +181,12 @@ When the switcher is open, some hardcoded binds are available:
 
 Additionally, certain regular binds will automatically work in the switcher:
 
-- focus column left/right and their variants: will move the selection left/right inside the switcher.
-- focus column first/last: will move the selection to the first or last window.
-- close window: will close the window currently focused in the switcher.
-- screenshot: will open the screenshot UI.
+- Inherited typed focus-left and focus-right actions move backward and forward through MRU order.
+- Inherited typed focus-first and focus-last actions move to the first or last window.
+- The close-window action closes the window currently focused in the switcher.
+- The screenshot action opens the screenshot UI.
+
+Sway command-string binds do not generate these aliases. The arrow, Home, and End keys remain available through the hardcoded binds above.
 
 The way this works is by finding all regular binds corresponding to these actions and taking just the trigger key without modifiers.
 For example, if you have <kbd>Mod</kbd><kbd>Shift</kbd><kbd>C</kbd> bound to `close-window`, in the window switcher pressing <kbd>C</kbd> on its own will close the window.
