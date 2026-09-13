@@ -23,6 +23,7 @@ use crate::cases::gradient_srgb::GradientSrgb;
 use crate::cases::gradient_srgb_alpha::GradientSrgbAlpha;
 use crate::cases::gradient_srgblinear::GradientSrgbLinear;
 use crate::cases::gradient_srgblinear_alpha::GradientSrgbLinearAlpha;
+use crate::cases::hotkey_overlay::Hotkeys;
 use crate::cases::layout::Layout;
 use crate::cases::tile::Tile;
 use crate::cases::window::Window;
@@ -80,6 +81,8 @@ fn build_ui(app: &adw::Application) {
         stack: stack.clone(),
         anim_adjustment: anim_adjustment.clone(),
     };
+
+    s.add(Hotkeys::new, "Important Hotkeys");
 
     s.add(Window::freeform, "Freeform Window");
     s.add(Window::fixed_size, "Fixed Size Window");

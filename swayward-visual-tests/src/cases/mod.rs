@@ -18,6 +18,7 @@ pub mod gradient_srgb;
 pub mod gradient_srgb_alpha;
 pub mod gradient_srgblinear;
 pub mod gradient_srgblinear_alpha;
+pub mod hotkey_overlay;
 pub mod layout;
 pub mod tile;
 pub mod window;
