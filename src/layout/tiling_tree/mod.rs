@@ -2111,19 +2111,17 @@ impl<W: LayoutElement> TilingTree<W> {
             return true;
         }
 
-        let combined_percent = if let Some(Node {
-            value: TreeNode::Split {
+        self.remove_child(parent, id);
+        let sibling_percent = match &self.nodes[&parent].value {
+            TreeNode::Split {
                 children, percents, ..
-            },
-            ..
-        }) = self.nodes.get_mut(&parent)
-        {
-            let removed = percents.remove(index);
-            children.remove(index);
-            let sibling_index = children.iter().position(|child| *child == sibling).unwrap();
-            percents[sibling_index] += removed;
-            percents[sibling_index]
-        } else {
+            } => children
+                .iter()
+                .position(|child| *child == sibling)
+                .map(|index| percents[index]),
+            TreeNode::Leaf { .. } => None,
+        };
+        let Some(sibling_percent) = sibling_percent else {
             return false;
         };
         let wrapper = self.alloc(Node {
@@ -2147,7 +2145,7 @@ impl<W: LayoutElement> TilingTree<W> {
         {
             if let Some(index) = children.iter().position(|child| *child == sibling) {
                 children[index] = wrapper;
-                percents[index] = combined_percent;
+                percents[index] = sibling_percent;
             }
         }
         self.nodes.get_mut(&sibling).unwrap().parent = Some(wrapper);
@@ -2191,16 +2189,10 @@ impl<W: LayoutElement> TilingTree<W> {
         };
         let after_index = after.and_then(|id| children.iter().position(|child| *child == id));
         let index = after_index.map_or(children.len(), |index| index + 1);
-        let percent = if let Some(index) = after_index {
-            percents[index] /= 2.;
-            percents[index]
-        } else if children.is_empty() {
-            1.
-        } else {
-            let percent = percents.last().copied().unwrap_or(1.) / 2.;
-            *percents.last_mut().unwrap() -= percent;
-            percent
-        };
+        let percent = 1. / (children.len() + 1) as f64;
+        for existing in percents.iter_mut() {
+            *existing *= 1. - percent;
+        }
         children.insert(index, child);
         percents.insert(index, percent);
         self.nodes.get_mut(&child).unwrap().parent = Some(parent);

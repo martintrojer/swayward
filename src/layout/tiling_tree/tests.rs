@@ -382,15 +382,15 @@ fn two_windows_split_h_halve_the_view() {
 }
 
 #[test]
-fn inserting_a_sibling_subdivides_the_target_share() {
+fn inserting_a_sibling_scales_existing_shares_for_an_equal_new_share() {
     let mut t = tree((1200., 800.), 0.);
     let a = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
     let b = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
     let c = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
 
-    assert_eq!(t.geometry(a).unwrap().size.w, 600.);
-    assert_eq!(t.geometry(b).unwrap().size.w, 300.);
-    assert_eq!(t.geometry(c).unwrap().size.w, 300.);
+    for id in [a, b, c] {
+        assert!((t.geometry(id).unwrap().size.w - 400.).abs() < 1e-9);
+    }
     t.check_invariants();
 }
 
@@ -966,10 +966,11 @@ fn reordering_a_subtree_preserves_its_share() {
     let b = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
     let c = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
 
+    assert!(t.resize_adjacent(a, b, 0.1));
     assert!(t.move_subtree_to_first(c));
-    assert_eq!(t.geometry(c).unwrap().size.w, 300.);
-    assert_eq!(t.geometry(a).unwrap().loc.x, 300.);
-    assert_eq!(t.geometry(b).unwrap().loc.x, 900.);
+    assert_eq!(t.geometry(c).unwrap().size.w, 400.);
+    assert_eq!(t.geometry(a).unwrap().loc.x, 400.);
+    assert_eq!(t.geometry(b).unwrap().loc.x, 920.);
     t.check_invariants();
 }
 
@@ -1002,9 +1003,9 @@ fn resizing_adjacent_siblings_changes_only_that_boundary() {
     let c = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
 
     assert!(t.resize_adjacent(a, b, 0.1));
-    assert_eq!(t.geometry(a).unwrap().size.w, 600.);
-    assert_eq!(t.geometry(b).unwrap().size.w, 150.);
-    assert_eq!(t.geometry(c).unwrap().size.w, 250.);
+    assert!((t.geometry(a).unwrap().size.w - 1000. * (1. / 3. + 0.1)).abs() < 1e-9);
+    assert!((t.geometry(b).unwrap().size.w - 1000. * (1. / 3. - 0.1)).abs() < 1e-9);
+    assert!((t.geometry(c).unwrap().size.w - 1000. / 3.).abs() < 1e-9);
     assert!(!t.resize_adjacent(a, b, 0.6));
     t.check_invariants();
 }
