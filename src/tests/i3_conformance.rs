@@ -43,6 +43,7 @@ fn open_window(fixture: &mut Fixture, client: super::client::ClientId, request: 
 }
 
 fn reap_closed_windows(fixture: &mut Fixture, client: super::client::ClientId) {
+    fixture.double_roundtrip(client);
     let windows = &mut fixture.client(client).state.windows;
     let mut index = 0;
     while index < windows.len() {
@@ -66,6 +67,13 @@ fn handle_control(fixture: &mut Fixture, client: super::client::ClientId, stream
     let request: Value = serde_json::from_str(&request).unwrap();
     let reply = match request["action"].as_str().unwrap() {
         "open" => json!({ "id": open_window(fixture, client, &request) }),
+        "focused" => json!({
+            "id": fixture
+                .swayward()
+                .layout
+                .focus()
+                .map(|mapped| crate::ipc::tree::window_id(mapped.id()))
+        }),
         "reap_closed" => {
             reap_closed_windows(fixture, client);
             json!({ "success": true })

@@ -47,6 +47,15 @@ report for assertion-level results.
 | `273-regress-focus-toggle.t` | 1 | pass | `does_i3_live` after `focus mode_toggle` on an empty workspace; sway implements this command in `sway/commands/focus.c:422`. |
 | `292-regress-layout-toggle.t` | 1 | pass | `does_i3_live` after invalid `layout toggle` parameters; sway validates the accepted syntax in `sway/commands/layout.c:25-27`. |
 
+## Coverage
+
+| File | Assertions | Result | Notes |
+| --- | ---: | --- | --- |
+| `101-focus.t` | 8 | fail (3 pass) | Directional focus does not move through vertical siblings. Sway implements sibling traversal and wrapping in `sway/commands/focus.c:158-220`. |
+| `104-focus-stack.t` | 2 | fail (1 pass) | Closing the focused floating window does not restore the prior tiling focus. Sway maintains inactive focus when selecting and closing views (`sway/tree/view.c:848-870`). |
+| `129-focus-after-close.t` | 15 | fail (5 pass) | Parent focus, close-time focus restoration, workspace kill, and floating membership differ. Sway focuses parent nodes (`sway/commands/focus.c:355-377`) and closes all workspace descendants (`sway/commands/kill.c:20-28`). |
+| `140-focus-lost.t` | 3 | pass | Focus survives a layout change. |
+
 The initial X11-protocol exclusions are `113-urgent.t`,
 `162-regress-dock-urgent.t`, `196-randr-output-names.t`,
 `209-ewmh-net-workarea.t`, `234-ewmh-desktop-names.t`,

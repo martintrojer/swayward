@@ -4,6 +4,7 @@
 # remove one to make a change pass. Files with known failures stay out of this
 # list and run via SWAYWARD_I3_TEST, so the findings remain executable.
 126-regress-close.t
+140-focus-lost.t
 152-regress-level-up.t
 197-regression-move-vanish.t
 224-regress-resize-branch.t

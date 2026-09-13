@@ -9,13 +9,15 @@ use Test::Builder;
 
 our @ISA = qw(Exporter);
 our @EXPORT = qw(
-    cmd cmd_nosync does_i3_live done_testing fresh_workspace get_focused get_socket_path
-    get_unused_workspace get_ws get_ws_content i3 is isnt is_num_children ok open_empty_con
-    open_window
+    $x cmd cmd_nosync diag does_i3_live done_testing fresh_workspace get_focused
+    get_socket_path get_unused_workspace get_ws get_ws_content i3 is is_deeply
+    is_num_children isnt ok open_empty_con open_floating_window open_window sync_with_i3
+    wait_for_unmap
 );
 
 my $tester = Test::Builder->new;
 my $window_count = 0;
+our $x = bless {}, 'i3test::X';
 
 sub import {
     my ($class, %args) = @_;
@@ -57,6 +59,8 @@ sub _control {
 sub ok ($;$) { $tester->ok(@_) }
 sub is ($$;$) { $tester->is_eq(@_) }
 sub isnt ($$;$) { $tester->isnt_eq(@_) }
+sub is_deeply ($$;$) { $tester->is_deeply(@_) }
+sub diag (@) { $tester->diag(@_) }
 sub done_testing (;$) { $tester->done_testing(@_) }
 
 sub get_socket_path { $ENV{I3SOCK} // die 'I3SOCK is not set' }
@@ -72,6 +76,11 @@ sub does_i3_live { $tester->ok(defined(_request(4)), 'i3 lives') }
 
 sub i3 { bless {}, 'i3test::IPC' }
 sub open_empty_con { _control({ action => 'open' })->{id} }
+sub open_floating_window {
+    my $window = open_window(@_);
+    cmd('[con_id=' . $window->id . '] floating enable');
+    $window;
+}
 sub open_window {
     my %args = @_ == 1 ? %{$_[0]} : @_;
     my $name = $args{name} // 'Window ' . $window_count++;
@@ -139,17 +148,28 @@ sub is_num_children {
     $tester->is_num(scalar @{$node->{nodes}}, $expected, $name);
 }
 
+sub sync_with_i3 { _control({ action => 'reap_closed' }) }
+sub wait_for_unmap { sync_with_i3() }
+
 package i3test::IPC;
 sub command { i3test::Future->new(i3test::_request(0, $_[1])) }
+sub get_workspaces { i3test::Future->new(i3test::_request(1)) }
 sub get_tree { i3test::Future->new(i3test::_request(4)) }
 
 package i3test::Future;
 sub new { bless { value => $_[1] }, $_[0] }
 sub recv { $_[0]->{value} }
 
+package i3test::X;
+sub input_focus { i3test::_control({ action => 'focused' })->{id} }
+
 package i3test::Window;
 sub new { bless $_[1], $_[0] }
 sub id { $_[0]->{id} }
-sub unmap { i3test::_control({ action => 'close', id => $_[0]->{id} }) }
+sub unmap { $_[0]->destroy }
+sub destroy {
+    i3test::cmd('[con_id=' . $_[0]->{id} . '] kill');
+    i3test::_control({ action => 'reap_closed' });
+}
 
 1;
