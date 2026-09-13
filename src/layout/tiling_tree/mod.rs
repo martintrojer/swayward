@@ -547,6 +547,47 @@ impl<W: LayoutElement> TilingTree<W> {
 
     pub fn split(&mut self, id: NodeId, layout: Layout) {
         self.interactive_resize = None;
+        if id == self.root && self.split_len(id).is_some_and(|len| len > 0) {
+            let old = std::mem::replace(
+                &mut self.nodes.get_mut(&id).unwrap().value,
+                TreeNode::Split {
+                    layout,
+                    children: Vec::new(),
+                    percents: Vec::new(),
+                },
+            );
+            let TreeNode::Split {
+                layout: old_layout,
+                children,
+                percents,
+            } = old
+            else {
+                unreachable!();
+            };
+            let wrapper = self.alloc(Node {
+                parent: Some(id),
+                value: TreeNode::Split {
+                    layout: old_layout,
+                    children,
+                    percents,
+                },
+            });
+            let children = match &self.nodes[&wrapper].value {
+                TreeNode::Split { children, .. } => children.clone(),
+                TreeNode::Leaf { .. } => unreachable!(),
+            };
+            for child in children {
+                self.nodes.get_mut(&child).unwrap().parent = Some(wrapper);
+            }
+            self.nodes.get_mut(&id).unwrap().value = TreeNode::Split {
+                layout,
+                children: vec![wrapper],
+                percents: vec![1.],
+            };
+            self.set_focus_id(Some(wrapper));
+            self.request_window_sizes();
+            return;
+        }
         if matches!(
             self.nodes.get(&id).map(|node| &node.value),
             Some(TreeNode::Leaf { .. })

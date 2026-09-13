@@ -357,6 +357,44 @@ fn split_on_an_empty_tree_sets_the_root_layout() {
 }
 
 #[test]
+fn split_on_a_nonempty_workspace_wraps_children_and_focuses_the_wrapper() {
+    let mut t = tree((1200., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let second = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.set_layout(t.root, Layout::SplitH);
+    t.set_focus(t.root);
+
+    t.split_focused(Layout::SplitV);
+
+    let TreeNode::Split {
+        layout,
+        children,
+        percents,
+    } = &t.nodes[&t.root].value
+    else {
+        panic!("root must be a split");
+    };
+    assert_eq!(*layout, Layout::SplitV);
+    assert_eq!(percents, &[1.]);
+    let [wrapper] = children.as_slice() else {
+        panic!("workspace must contain one wrapper");
+    };
+    assert_eq!(t.focus(), Some(*wrapper));
+    assert!(matches!(
+        &t.nodes[wrapper].value,
+        TreeNode::Split {
+            layout: Layout::SplitH,
+            children,
+            percents,
+        } if children == &[first, second] && percents == &[0.5, 0.5]
+    ));
+    assert_eq!(t.nodes[&first].parent, Some(*wrapper));
+    assert_eq!(t.nodes[&second].parent, Some(*wrapper));
+    assert_eq!(t.ipc_tree().nodes().len(), 4);
+    t.check_invariants();
+}
+
+#[test]
 fn split_retargets_a_singleton_split_parent() {
     for (parent_layout, requested_layout) in [
         (Layout::SplitH, Layout::SplitH),
