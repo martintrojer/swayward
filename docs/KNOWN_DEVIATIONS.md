@@ -194,6 +194,18 @@ the adapter would make an upstream assertion observe a tree that a real sway IPC
 client never receives. Tests that directly traverse or inspect i3's `content`
 node are excluded as i3-only tree-structure tests.
 
+### Urgency for assigned windows
+
+When i3 assigns a new window to an invisible workspace, it marks the window
+urgent (`i3/src/manage.c:288-316`). Sway selects the assigned workspace before
+mapping and declines to focus a view whose target workspace is not active
+(`sway/sway/tree/view.c:628-665,696-732`), but its map path does not call
+`view_set_urgent` (`sway/sway/tree/view.c:930-969`).
+
+Swayward follows sway. Assignment to an invisible workspace does not make the
+window or workspace urgent. Assignment to a visible workspace, including one
+visible on another output, also leaves urgency clear.
+
 ### Marks applied to several matching containers
 
 The i3 command `[criteria] mark name` fails when the criteria match more than
