@@ -808,6 +808,31 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
             }
             state.swayward.queue_redraw_all();
         }
+        Command::MoveToWorkspace(workspace_target) => {
+            let result = match target {
+                CommandTarget::Window(target) => {
+                    let window = state.swayward.layout.windows().find_map(|(_, mapped)| {
+                        (mapped.id() == target).then(|| mapped.window.clone())
+                    });
+                    let Some(window) = window else {
+                        return failure("No matching node.");
+                    };
+                    state
+                        .swayward
+                        .layout
+                        .move_window_to_sway_workspace(&window, workspace_target.clone())
+                }
+                CommandTarget::Container(_, _) => {
+                    return failure(
+                        "moving container subtrees between workspaces is not implemented",
+                    )
+                }
+            };
+            if let Err(error) = result {
+                return failure(error);
+            }
+            state.swayward.queue_redraw_all();
+        }
         Command::MoveToOutput(output_target_name) => {
             let CommandTarget::Window(target) = target else {
                 return failure("command requires a window target");

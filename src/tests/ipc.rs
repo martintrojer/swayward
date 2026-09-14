@@ -1644,6 +1644,50 @@ fn rename_workspace_updates_name_number_and_rejects_collisions() {
 }
 
 #[test]
+fn criteria_targeted_move_workspace_moves_all_matches_without_changing_focus() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    for app_id in ["special", "special", "ordinary"] {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+
+    assert!(crate::command::execute(f.niri_state(), r#"[app_id="ordinary"] focus"#)[0].success);
+    let outcome = crate::command::execute(
+        f.niri_state(),
+        r#"[app_id="special"] move workspace target"#,
+    );
+    assert!(outcome[0].success, "{outcome:?}");
+    let workspaces = f.swayward().layout.workspaces().collect::<Vec<_>>();
+    let source = workspaces
+        .iter()
+        .find(|(_, _, workspace)| workspace.sway_name().as_deref() != Some("target"))
+        .unwrap()
+        .2;
+    let target = workspaces
+        .iter()
+        .find(|(_, _, workspace)| workspace.sway_name().as_deref() == Some("target"))
+        .unwrap()
+        .2;
+    assert_eq!(source.windows().count(), 1);
+    assert_eq!(
+        source.active_window().and_then(|window| {
+            crate::utils::with_toplevel_role(window.toplevel(), |role| role.app_id.clone())
+        }),
+        Some("ordinary".into())
+    );
+    assert_eq!(target.windows().count(), 2);
+}
+
+#[test]
 fn criteria_targeted_scratchpad_commands_move_only_the_matching_window() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));

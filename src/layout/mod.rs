@@ -2669,8 +2669,24 @@ impl<W: LayoutElement> Layout<W> {
         Some((Some(output), monitor.previous_workspace_idx()?))
     }
 
+    pub fn move_window_to_sway_workspace(
+        &mut self,
+        window: &W::Id,
+        target: crate::command::WorkspaceTarget,
+    ) -> Result<(), String> {
+        self.move_to_sway_workspace_inner(Some(window), target)
+    }
+
     pub fn move_to_sway_workspace(
         &mut self,
+        target: crate::command::WorkspaceTarget,
+    ) -> Result<(), String> {
+        self.move_to_sway_workspace_inner(None, target)
+    }
+
+    fn move_to_sway_workspace_inner(
+        &mut self,
+        window: Option<&W::Id>,
         target: crate::command::WorkspaceTarget,
     ) -> Result<(), String> {
         use crate::command::WorkspaceTarget;
@@ -2709,13 +2725,19 @@ impl<W: LayoutElement> Layout<W> {
             (Some(monitor.output().clone()), index)
         };
 
-        let source_output = self.active_output().cloned();
+        let source_output = window
+            .and_then(|window| {
+                self.workspaces()
+                    .find(|(_, _, workspace)| workspace.has_window(window))
+                    .and_then(|(monitor, _, _)| monitor.map(|monitor| monitor.output().clone()))
+            })
+            .or_else(|| self.active_output().cloned());
         if target_output != source_output {
             let output =
                 target_output.ok_or_else(|| "target workspace has no output".to_owned())?;
-            self.move_to_output(None, &output, Some(target_index), ActivateWindow::No);
+            self.move_to_output(window, &output, Some(target_index), ActivateWindow::No);
         } else {
-            self.move_to_workspace(None, target_index, ActivateWindow::No);
+            self.move_to_workspace(window, target_index, ActivateWindow::No);
         }
         Ok(())
     }
