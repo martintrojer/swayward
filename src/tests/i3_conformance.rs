@@ -43,6 +43,16 @@ const ALLOWED_REJECTIONS: &[AllowedRejection] = &[
         reason: "test asserts that an unknown mark leaves focus unchanged",
     },
     AllowedRejection {
+        test: "120-multiple-cmds.t",
+        command: "move gibberish",
+        reason: "the regression intentionally sends this invalid command eleven times",
+    },
+    AllowedRejection {
+        test: "120-multiple-cmds.t",
+        command: "bullshit-command-which-we-never-implement meh",
+        reason: "the test asserts that this invalid command returns an error",
+    },
+    AllowedRejection {
         test: "134-invalid-command.t",
         command: "blargh!",
         reason: "the regression intentionally sends an invalid command",
@@ -99,12 +109,26 @@ fn allowed_rejections(test: &str) -> Vec<&'static AllowedRejection> {
         .collect()
 }
 
+fn expected_rejections(test: &str) -> Vec<&'static AllowedRejection> {
+    allowed_rejections(test)
+        .into_iter()
+        .flat_map(|allowed| {
+            let count = if test == "120-multiple-cmds.t" && allowed.command == "move gibberish" {
+                11
+            } else {
+                1
+            };
+            std::iter::repeat_n(allowed, count)
+        })
+        .collect()
+}
+
 fn rejections_match(test: &str, rejected: &[&str]) -> bool {
-    let allowed = allowed_rejections(test);
-    rejected.len() == allowed.len()
+    let expected = expected_rejections(test);
+    rejected.len() == expected.len()
         && rejected
             .iter()
-            .zip(allowed)
+            .zip(expected)
             .all(|(command, allowed)| allowed.matches(test, command))
 }
 
@@ -215,6 +239,19 @@ fn reap_closed_windows(fixture: &mut Fixture, client: super::client::ClientId) {
         .map(|window| window.surface.id().protocol_id())
         .collect::<Vec<_>>();
     for surface_id in closed {
+        remove_window_for_surface(fixture, client, surface_id);
+    }
+}
+
+fn remove_all_windows(fixture: &mut Fixture, client: super::client::ClientId) {
+    let surfaces = fixture
+        .client(client)
+        .state
+        .windows
+        .iter()
+        .map(|window| window.surface.id().protocol_id())
+        .collect::<Vec<_>>();
+    for surface_id in surfaces {
         remove_window_for_surface(fixture, client, surface_id);
     }
 }
@@ -353,6 +390,10 @@ fn handle_control(fixture: &mut Fixture, client: super::client::ClientId, stream
             reap_closed_windows(fixture, client);
             json!({ "success": true })
         }
+        "remove_all_windows" => {
+            remove_all_windows(fixture, client);
+            json!({ "success": true })
+        }
         action => panic!("unknown i3 test control action: {action}"),
     };
     writeln!(&stream, "{reply}").unwrap();
@@ -385,6 +426,7 @@ fn run_i3_test(test: &str) {
         .arg(root.join("tests/i3/t").join(test))
         .env("I3SOCK", &ipc_socket)
         .env("SWAYWARD_TEST_CONTROL", &control_path)
+        .env("SWAYWARD_I3_TEST", test)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -401,12 +443,13 @@ fn run_i3_test(test: &str) {
         if let Some(status) = child.try_wait().unwrap() {
             let output = child.wait_with_output().unwrap();
             let stdout = String::from_utf8_lossy(&output.stdout);
+            eprint!("{stdout}");
             let stderr = String::from_utf8_lossy(&output.stderr);
             if !stderr.is_empty() {
                 eprint!("{stderr}");
             }
             let rejected = rejected_commands(&stderr).collect::<Vec<_>>();
-            let expected = allowed_rejections(test)
+            let expected = expected_rejections(test)
                 .iter()
                 .map(|item| item.command)
                 .collect::<Vec<_>>();
