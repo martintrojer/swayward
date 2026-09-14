@@ -42,3 +42,4 @@
 # remove one to make a change pass. Files with known failures stay out of this
 # Upstream i3 conformance files that pass in full against swayward.
 146-floating-reinsert.t
+145-flattening.t

@@ -729,6 +729,7 @@ impl<W: LayoutElement> TilingTree<W> {
         let old = self.compute_geometry();
         let changed = self.move_direction_inner(id, direction);
         if changed {
+            self.compact_tree();
             self.animate_geometry_changes(old, None);
         }
         changed
@@ -2449,21 +2450,15 @@ impl<W: LayoutElement> TilingTree<W> {
                 percents: Vec::new(),
             },
         );
-        let old = match old_value {
-            TreeNode::Split { children, .. } if children.len() == 1 => children[0],
-            old_value => {
-                let old = self.alloc(Node {
-                    parent: Some(self.root),
-                    value: old_value,
-                });
-                if let TreeNode::Split { children, .. } = &self.nodes.get(&old).unwrap().value {
-                    for child in children.clone() {
-                        self.nodes.get_mut(&child).unwrap().parent = Some(old);
-                    }
-                }
-                old
+        let old = self.alloc(Node {
+            parent: Some(self.root),
+            value: old_value,
+        });
+        if let TreeNode::Split { children, .. } = &self.nodes.get(&old).unwrap().value {
+            for child in children.clone() {
+                self.nodes.get_mut(&child).unwrap().parent = Some(old);
             }
-        };
+        }
         self.nodes.get_mut(&old).unwrap().parent = Some(self.root);
         let moving_first = matches!(direction, Direction::Left | Direction::Up);
         let (children, percents) = if moving_first {
