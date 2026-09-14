@@ -1,16 +1,23 @@
-### Overview
+# Floating windows
 
-<sup>Since: 25.01</sup>
+Floating windows appear above the tiled container tree. Each workspace has its
+own floating layer.
 
-Floating windows in niri always show on top of the tiled windows.
-The floating layout does not scroll.
-Each workspace/monitor has its own floating layout, just like each workspace/monitor has its own tiling layout.
+Dialogs and fixed-size windows float automatically. Use `open-floating` in a
+window rule to override that decision:
 
-New windows will automatically float if they have a parent (e.g. dialogs) or if they are fixed size (e.g. splash screens).
-To change a window between floating and tiling, you can use the `toggle-window-floating` bind or right click while dragging/moving the window.
-You can also use the `open-floating true/false` window rule to either force a window to open as floating, or to disable the automatic floating logic.
+```kdl
+window-rule {
+    match app-id="firefox$" title="^Picture-in-Picture$"
+    open-floating true
+}
+```
 
-Use `switch-focus-between-floating-and-tiling` to switch the focus between the two layouts.
-When focused on the floating layout, binds (like `focus-column-right`) will operate on the floating window.
+The `toggle-window-floating` action moves the focused window between the tree
+and the floating layer. `switch-focus-between-floating-and-tiling` changes
+which layer has focus. While a floating window has focus, directional move and
+resize operations act on that window.
 
-You can precisely position a floating window with a command like `swayward msg action move-floating-window -x 100 -y 200`.
+Set `default-floating-position` in a [window
+rule](./Configuration:-Window-Rules.md#default-floating-position) to choose an
+initial position.

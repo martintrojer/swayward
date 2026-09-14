@@ -2,7 +2,7 @@
 
 swayward is a fork of niri, based on upstream main at commit 9e72e4917ca31baf4010496bf7f4aaf78d34d236 (2026-09-11).
 
-Upstream: https://github.com/niri-wm/niri.git (remote name `upstream`)
+Upstream source: the Git remote named `upstream`.
 
 The original v26.04 base predated a smithay Dispatch2 migration and 93 commits of churn in the layout files swayward replaces. Starting there would have forced the first upstream merge to absorb that refactor through an already-rewritten `workspace.rs`.
 

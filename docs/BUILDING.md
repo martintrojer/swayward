@@ -10,7 +10,7 @@ Run the setup script from the repository root:
 ./contrib/dev-container.sh
 ```
 
-The script creates `swayward-dev` from `registry.fedoraproject.org/fedora-toolbox:44` and installs the build dependencies. You can run it again to update an existing container.
+The script creates `swayward-dev` from `registry.fedoraproject.org/fedora-toolbox:44` and installs the build dependencies. You can run it again to update an existing container. The test dependencies include Perl, `Test::More`, and `JSON::PP`; the i3 conformance runner executes upstream Perl test files against swayward's headless compositor and IPC socket.
 
 ## Build and test
 
@@ -21,7 +21,7 @@ distrobox enter swayward-dev -- bash -lc 'cd /var/home/martintrojer/hacking/sway
 distrobox enter swayward-dev -- bash -lc 'cd /var/home/martintrojer/hacking/swayward && cargo test --all'
 ```
 
-The baseline at commit `1f0ab41f` (fork base `9e72e491`) is:
+The initial post-fork baseline (fork base `9e72e491`) is:
 
 - `cargo build`: exit 0.
 - `cargo test --all`: exit 0, with 218 passed, 0 failed, and 0 ignored across all test binaries and doc tests.

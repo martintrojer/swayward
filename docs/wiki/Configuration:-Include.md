@@ -48,10 +48,6 @@ layout {
         active-color "green"
     }
 }
-
-overview {
-    backdrop-color "green"
-}
 ```
 
 ```kdl,must-fail
@@ -64,17 +60,11 @@ layout {
 
 // This overrides the border color and the backdrop color to green.
 include "colors.kdl"
-
-// This sets the overview backdrop color to red again.
-overview {
-    backdrop-color "red"
-}
 ```
 
 The end result:
 
-- the border color is green (from `colors.kdl`),
-- the overview backdrop color is red (it was set *after* `colors.kdl`).
+- the border color is green (from `colors.kdl`).
 
 Another example:
 
@@ -135,7 +125,7 @@ include optional=true "optional-config.kdl"
 include "required-config.kdl"
 ```
 
-When an optional include file is missing, niri will emit a warning in the logs on every config reload.
+When an optional include file is missing, swayward will emit a warning in the logs on every config reload.
 This reminds you that the file is missing while still loading the config successfully.
 
 The optional file is still watched for changes, so if you create it later, the config will automatically reload and apply the new settings.
@@ -298,3 +288,7 @@ layout {
 The reason for this special case is that this is how it historically worked: back when I added borders, we didn't have any `on` flags, so I made writing the `border {}` section enable the border, with an explicit `off` to disable it.
 It wouldn't be too problematic to change it, however the default config always had a pre-filled `layout { border { off; } }` section with a note saying that commenting out the `off` is enough to enable the border.
 Many people likely have this part of the default config embedded in their configs now, so changing how it works would just cause a lot of confusion.
+
+---
+
+*This page is adapted from the niri documentation.*

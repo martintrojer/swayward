@@ -89,7 +89,8 @@ sway is ~54k lines of C. Two choices collapse it before a line is written:
 - **We promise IPC compatibility, not config compatibility.** swayward is
   configured in KDL. sway's config parser, its config-only command handlers and
   much of its 77-file command directory simply aren't needed. Migrating users get
-  a translator script — a one-time cost instead of a permanent one.
+  [`contrib/sway-to-kdl`](docs/SWAY_CONFIG_MIGRATION.md) — a one-time cost instead
+  of a permanent one.
 - **GPL-3.0-or-later**, matching niri. This is what makes niri's code *liftable*
   rather than *re-implementable*. Under MIT we'd be retyping several thousand
   lines of fiddly protocol code for zero user-visible gain.
@@ -151,8 +152,15 @@ inherited from niri on day one:
   tokens, recurring breakage with apps that expect a complete portal. niri
   implements the mutter/GNOME D-Bus APIs and rides `xdg-desktop-portal-gnome`.
   We keep `wlr-screencopy` too, so `grim`, `wl-screenrec` and OBS still work.
-- **Rounded corners, blur, shadows, dimming.** Exiled to a fork in sway's world.
-  Already in niri's render pipeline.
+- **Rounded corners, blur, shadows, dimming — and far past that.** Exiled to a
+  fork in sway's world; already in niri's render pipeline. swayward takes the
+  whole inheritance rather than a SwayFX-sized subset: 13 independently
+  configurable animations with easing *or* spring physics, user-programmable
+  open/close/resize shader hooks, colour-space-aware gradients (Oklab/Oklch),
+  focus rings, workspace shadows, tab indicators, and `ext-background-effect` so
+  layer-shell clients like waybar get blur too. None of it is work we have to
+  do — it lives in `render_helpers/` and `Tile`, which the design leaves
+  untouched.
 
 ### The honest cost
 
@@ -266,9 +274,16 @@ The refusals define the project as much as the features. These are settled.
 
 ## Design documents
 
+- [Sway compatibility](docs/SWAY_COMPATIBILITY.md) — implemented IPC requests,
+  commands, events, and verified clients.
+- [Migrate a sway config](docs/SWAY_CONFIG_MIGRATION.md) — translator usage and
+  the items that require manual review.
+- [Known deviations](docs/KNOWN_DEVIATIONS.md) — user-visible differences from
+  sway.
+- [IPC oracle coverage](docs/IPC_ORACLE_COVERAGE.md) — measured test coverage and
+  blind spots.
 - [Foundation and compatibility contract](docs/specs/2026-09-12-swayward-foundation.md)
-  — the full design: architecture, all twenty key decisions with rationale,
-  testing strategy, milestones.
+  — architecture, design decisions, testing strategy, and milestones.
 
 ## Credits
 

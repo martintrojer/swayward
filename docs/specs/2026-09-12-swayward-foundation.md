@@ -83,6 +83,59 @@ us, both of which swayward inherits from niri on day one:
 2. **Visual features.** Rounded corners, blur, shadows, dimming — exiled to a
    fork in sway's world, already implemented in niri's render pipeline.
 
+### Q5 in detail: everything niri has, not a SwayFX subset
+
+An earlier draft scoped the visual feature set to "SwayFX parity". That was
+wrong in both directions: it understates what we inherit, and it implies work we
+do not have to do.
+
+What is already present and working in the forked tree:
+
+- **13 independently configurable animations**, each accepting easing *or*
+  spring physics (`Kind::{Easing,Spring}`, `Curve`, `SpringParams`):
+  workspace-switch, window-open, window-close, window-movement, window-resize,
+  horizontal-view-movement, overview-open-close, screenshot-ui-open,
+  config-notification, exit-confirmation, recent-windows-close.
+- **Effects past SwayFX's set**: gradients with real colour-space interpolation
+  (sRGB, linear, Oklab, Oklch, with shorter/longer hue paths), `FocusRing`
+  distinct from `Border`, `WorkspaceShadow`, `TabIndicator` with configurable
+  position and length, `InsertHint`, `BlockOutFrom` for screencast privacy,
+  `xray`, and `BackgroundEffect` via `ext-background-effect` so layer-shell
+  clients such as waybar get blur.
+- **18 shaders**, including user-programmable open/close/resize hooks
+  (`open_prelude`/`open_epilogue`, `close_*`, `resize_*`). SwayFX has no
+  equivalent.
+
+The decisive point is cost: all of this lives in `render_helpers/` and `Tile`,
+both of which are zero-diff under Q7. We do not implement these features; we
+decline to break them. So the only way "SwayFX parity" could be the target is by
+deliberately removing things, which would be work in service of a smaller
+product.
+
+It also mis-sells the project. The honest pitch is **everything niri has, on the
+i3 tree** — strictly more than either parent offers.
+
+**Scroll-specific eye candy is out.** `HorizontalViewMovementAnim` and
+`OverviewOpenCloseAnim` exist to animate niri's infinite row and its overview.
+Neither concept survives in swayward, so neither animation does: they are
+*retired*, not ported to some strained i3 equivalent. Retirement means the
+config key is removed, the animation code path goes with the scrolling engine,
+and `docs/DIVERGENCE.md` records it.
+
+The distinction that matters: "everything niri has" means every effect that
+describes a *window or a workspace*, which is all of them bar these two. It does
+not mean preserving animations whose subject no longer exists. An animation for
+scrolling a viewport that cannot scroll is not a feature, and faking one would
+be worse than not having it.
+
+What is NOT retired, despite sounding scroll-adjacent: `WindowMovementAnim` and
+`WindowResizeAnim` animate windows moving and resizing, which the i3 tree does
+constantly — they matter *more* here than in niri. `TabIndicator` likewise: niri
+uses it for column tabs, swayward uses it for i3 tabbed containers.
+
+Silently broken animations remain unacceptable under I6. Retired is fine;
+broken is not.
+
 swayward closes the gap: **the i3/sway experience, uncapped, on a modern engine.**
 
 ### Who it is not for
@@ -177,9 +230,10 @@ breakage loses the entire user base at once. This invariant is the project's
 value proposition in executable form.
 
 **I2 — The tree is always well-formed.**
-No empty containers survive an operation. The focus path is always valid and
-terminates on a leaf or an empty workspace. Sibling percentages sum to 1.
-Containers that should collapse, collapse.
+No empty containers survive an operation. The focus target is always a live
+node (a container or leaf), or absent on an empty workspace. Sibling percentages
+sum to 1. Horizontal and vertical singleton containers collapse. Tabbed and
+stacked singletons may remain because sway uses them to preserve layout intent.
 *Verified by:* proptest over randomized op sequences, via the `Op` enum.
 *Why:* this is where sway itself still ships bugs, and the tree is our thesis.
 
@@ -229,7 +283,9 @@ open for reconsideration at the first request:
   Breaking changes need a migration path and a real reason.
 - **Not mandatory-anything.** Every visual effect, animation and behavioural
   flourish can be turned off. Someone should be able to configure swayward into
-  something indistinguishable from sway.
+  something indistinguishable from sway. Equally, nothing niri offers gets
+  *removed* to hit some smaller compositor's feature set — the defaults are a
+  question, the capability is not.
 - **Not a scrollable-tiling compositor.** niri already exists and is better at
   it. No runtime layout-mode switching, no "niri mode".
 - **Not bug-compatible with sway.** Matching sway's quirks is a bug-report
@@ -281,26 +337,93 @@ plumbing; replace only the payload types.
 
 | # | Decision | Rationale |
 |---|---|---|
-| Q1 | IPC byte-compatible; **config not compatible**, KDL instead | deletes sway's config parser and command tables; ship a translator instead |
+| Q1 | IPC byte-compatible; **config not compatible**, KDL instead | deletes sway's config parser and command tables; ship a translator instead. See [Q1 in detail](#q1-in-detail-why-kdl-earns-the-incompatibility) |
 | Q2 | GPL-3.0-or-later | makes niri's protocol and D-Bus code liftable |
 | Q3 | fork niri | niri's internals are not published as libraries |
 | Q4 | mutter/GNOME D-Bus **and** wlr-screencopy | portal-gnome for the real experience; screencopy for grim/OBS |
-| Q5 | full SwayFX-parity effects | already implemented in niri; costs nothing |
+| Q5 | **everything niri has**, not a SwayFX-parity subset | already implemented in niri; costs nothing to keep, and SwayFX parity is a floor we are already above |
 | Q6 | git remote + periodic merge, upstream generic fixes | keeps the fork viable long-term |
 | Q7 | `TilingTree` replaces `ScrollingSpace` inside `Workspace` | smallest diff; preserves `Tile` and all effects |
 | Q8 | one socket, sway protocol, `swayward-ipc` published | one source of truth for window state |
 | Q9 | inherit `xwayland-satellite` | free; no global X11 WM needed for this user |
 | Q10 | first slice: `swaymsg -t get_tree` returns a valid i3 tree | forces tree model + IPC + schema into existence together |
 | Q11 | ~83 runtime commands; real subset implemented, honest `{"success":false}` for the rest | a well-formed failure keeps clients alive |
-| Q12 | golden fixtures captured from real sway **plus** proptest invariants | sway has no test suite; it cannot be our oracle |
+| Q12 | golden fixtures captured from real sway **plus** proptest invariants **plus the i3 testsuite** | sway has no test suite, but i3 has 285 tests and swayward is an i3-compatible tree. See [Q12 in detail](#q12-in-detail-the-oracle-problem) |
 | Q13 | fresh KDL for `layout`/`binds`; inherit `input`/`output`/`animations`/rules | minimises diff where niri has no i3 opinion |
 | Q14 | no `bar {}` / `get_bar_config`; stub it | waybar never calls it; swaybar support is future work |
 | Q15 | rename crates to `swayward*` in one mechanical commit, first | renaming later poisons every merge |
 | Q16 | **fully nested tree, all of it, immediately** | this is the entire point of the project |
 | Q17 | full sway scratchpad, wired to foreign-toplevel minimize | one feature, two audiences (sway users and taskbars) |
 | Q18 | marks and full criteria | cheap, and heavily used in real configs |
-| Q19 | niri's existing effect config blocks, names unchanged | zero diff for zero lost function |
+| Q19 | niri's existing effect config blocks, names unchanged | zero diff for zero lost function; KDL's nested blocks already express them, and sway's flat syntax could not |
 | Q20 | **rebuild sway's global named/numbered workspace model** | bars key off `num`; this is the difference between sway-compatible and sway-flavoured |
+
+### Q12 in detail: the oracle problem
+
+Sway ships no tests. `find ../sway -iname '*test*'` returns nothing, so the
+reference implementation cannot tell us whether we match it. That gap is the
+reason this project captures golden fixtures from a running sway and asserts
+tree invariants under proptest.
+
+Both of those oracles share a weakness: they describe what swayward *does*.
+Fixtures pin the shapes we thought to capture, and invariants pin the properties
+we thought to state. Six layout defects were found in one session — split not
+being idempotent, three missing tree-compaction mechanisms, `layout` targeting
+the wrong container, and `layout` accepting a floating window — and not one was
+caught by the 284 tests passing at the time. Each was found by using the
+compositor or by reading sway's C.
+
+**i3's testsuite closes that gap.** `../i3/testcases/t` holds 285 test files,
+112 of them covering split, layout, move, focus and float behaviour, and 246 of
+the 285 drive the window manager entirely through `cmd '...'` plus `get_tree`
+assertions. Swayward is an i3-compatible container tree serving i3-compatible
+IPC, so those assertions apply directly. `t/122-split.t:113` asserts "not more
+windows after splitting again", which is the exact defect swayward shipped.
+
+This is an *external* oracle, and that is the point: it cannot be satisfied by
+writing down what our code happens to do.
+
+Two rules keep it trustworthy. i3's expected values are ported unchanged,
+because an expectation adjusted to match swayward stops being an oracle and
+becomes a snapshot. And where i3 and sway genuinely differ, swayward follows
+sway — workspaces (Q20), bars (Q14), scratchpad (Q17), marks and criteria (Q18),
+tabbed and stacked — so a failing i3 test raises one question first: does sway
+pass it? Intentional divergences are recorded in `docs/KNOWN_DEVIATIONS.md` with
+a citation.
+
+### Q1 in detail: why KDL earns the incompatibility
+
+Dropping config compatibility is the most user-visible cost in this design, so
+it needs more than "niri already parses KDL". Two properties make it a gain
+rather than a concession.
+
+**Nested blocks already express the effects.** The inherited effect
+configuration is deeply structured: `focus-ring`, `border`, `shadow` and
+`animations` each carry nested children, per-state colour variants, Oklab and
+Oklch gradients with interpolation hints, and per-animation curve parameters.
+KDL expresses that natively, so Q5 and Q19 cost a zero-diff inheritance. Sway's
+flat `key value` grammar has no nesting, so keeping config compatibility would
+have required inventing a sway-flavoured syntax for every one of these blocks:
+new grammar, new parser, new documentation, and a permanent translation layer
+between it and the renderer that already consumes the KDL types. The
+incompatible choice is the one that writes *less* code, and it preserves the 18
+shaders and 13 animations we would otherwise have had to re-express.
+
+**It fits the "sway, but modern" mantra.** Both config languages support
+includes. Sway globs them through `wordexp` and refuses a file already included
+once (`../sway/sway/config.c:573`); the inherited KDL loader resolves them
+relative to the including file and has its own recursive-include detection
+(`swayward-config/src/lib.rs:297`). Includes are therefore not the
+differentiator on their own. What differs is what they compose *over*: a KDL
+include contributes typed, nested, span-checked structure, so a shared base plus
+per-machine overrides for a desktop and a laptop compose blocks instead of
+replaying flat directives. Parse failures carry source spans that name a line
+and column, which is also why binds take a quoted command string rather than a
+bare one (Q13) — a hand-rolled preprocessor would have destroyed exactly that
+diagnostic.
+
+The translator (`contrib/sway-to-kdl`) turns the remaining cost into a one-time
+migration instead of a permanent constraint.
 
 ### Q20 in detail, because it is the expensive one
 
@@ -316,10 +439,12 @@ workspace-switch and animation machinery underneath it.
 
 ### Binds carry sway command strings
 
-`binds { Mod+H { focus left; } }` — the action is a sway command string, parsed
-by the same parser that serves `swaymsg`. One parser, one semantics, and users
-can copy command syntax straight out of `man 5 sway`. Typed KDL actions were
-considered and rejected: they would duplicate the command grammar.
+`binds { Mod+H { command "focus left"; } }` — the action is a quoted sway
+command string, parsed by the same parser that serves `swaymsg`. The explicit
+`command` child follows KDL syntax and preserves Knuffel's source-span errors; a
+preprocessor for bare `focus left` text would create a second config parser.
+Inherited typed actions remain available for features outside the current sway
+command subset.
 
 ## Testing approach
 
@@ -336,6 +461,11 @@ No new test infrastructure. Extend niri's, wholesale:
 - **Golden IPC fixtures** — a script drives `swaymsg` against real sway across
   ~20 scenarios, capturing `get_tree`, `get_workspaces`, `get_outputs`. Committed
   as fixtures and replayed as insta snapshots against swayward.
+- **The i3 testsuite as an external oracle** — `../i3/testcases/t` holds 285
+  tests that drive a window manager over i3 IPC and assert on `get_tree`. They
+  encode behaviour swayward promises but did not write, so unlike the fixtures
+  and invariants they cannot be satisfied by describing what swayward already
+  does. See [Q12 in detail](#q12-in-detail-the-oracle-problem).
 - **Visual tests** — `swayward-visual-tests`, the forked GTK4 app, runs real
   layout and render code against mock windows. This is how corners, shadows,
   blur and animations get iterated without launching a session.
@@ -365,8 +495,10 @@ changes. These are manual for now; automate what can be automated.
 - sway IPC: 13 message types, `get_tree` schema, event subscriptions, `SWAYSOCK`
 - Runtime command subset per Q11, with well-formed errors for the remainder
 - KDL config; sway→KDL translator script
-- Inherited: all effects, all protocols, all D-Bus/portal support, XWayland via
-  satellite
+- Inherited in full, not as a subset: every niri visual effect AND all 13
+  configurable animations (easing or spring), the shader-hook animation system,
+  colour-space gradients, all protocols, all D-Bus/portal support, XWayland via
+  satellite.
 
 ### Explicitly out of scope
 
@@ -374,6 +506,8 @@ changes. These are manual for now; automate what can be automated.
 - `bar {}` config block, `get_bar_config`, `barconfig_update`, launching swaybar
   — **noted as future work**
 - niri's scrollable-tiling layout, and any runtime layout-mode switching
+- Scroll-specific eye candy: `HorizontalViewMovementAnim` and
+  `OverviewOpenCloseAnim` are retired with their subject, not ported
 - niri's own IPC protocol and `niri-ipc` compatibility
 - In-process XWayland/xwm
 - Behaviour-bug-compatibility with sway (a bug-report standard, not a goal)

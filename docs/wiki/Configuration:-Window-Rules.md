@@ -238,10 +238,7 @@ window-rule {
 <sup>Since: 0.1.6</sup>
 
 Can be `true` or `false`.
-Matches the window that is the "active" window in its column.
-
-Contrary to `is-active`, there is always one `is-active-in-column` window in each column.
-It is the window that was last focused in the column, i.e. the one that will gain focus if this column is focused.
+This inherited matcher is `true` for the focused leaf in the container tree. It is kept for config compatibility; the name still refers to niri's removed column layout.
 
 <sup>Since: 25.01</sup> This rule will match `true` during the initial window opening.
 
@@ -326,12 +323,12 @@ window-rule {
 <sup>Since: 0.1.6</sup>
 
 Can be `true` or `false`.
-Matches during the first 60 seconds after starting niri.
+Matches during the first 60 seconds after starting swayward.
 
-This is useful for properties like `open-on-output` which you may want to apply only right after starting niri.
+This is useful for properties like `open-on-output` which you may want to apply only right after starting swayward.
 
 ```kdl
-// Open windows on the HDMI-A-1 monitor at niri startup, but not afterwards.
+// Open windows on the HDMI-A-1 monitor at swayward startup, but not afterwards.
 window-rule {
     match at-startup=true
     open-on-output "HDMI-A-1"
@@ -342,13 +339,11 @@ window-rule {
 
 These properties apply once, when a window first opens.
 
-To be precise, they apply at the point when niri sends the initial configure request to the window.
+To be precise, they apply at the point when swayward sends the initial configure request to the window.
 
 #### `default-column-width`
 
-Set the default width for the new window.
-
-This works for floating windows too, despite the word "column" in the name.
+This inherited setting is accepted for config compatibility. It affects the initial size of floating windows but does not constrain tiled nodes.
 
 ```kdl
 // Give Blender and GIMP some guaranteed width on opening.
@@ -426,7 +421,7 @@ window-rule {
 
 #### `open-maximized`
 
-Make the window open as a maximized column.
+Make the window open maximized.
 
 ```kdl
 // Maximize Firefox by default.
@@ -599,7 +594,7 @@ window-rule {
 
 <sup>Since: next release</sup>
 
-Set what niri does when a window requests activation through [xdg-activation](https://wayland.app/protocols/xdg-activation-v1).
+Set what swayward does when a window requests activation through [xdg-activation](https://wayland.app/protocols/xdg-activation-v1).
 
 Values:
 
@@ -610,7 +605,7 @@ Values:
 The default behavior, when this rule is unset, picks between focusing and marking the window urgent based on the serial that the application provides when creating the activation token.
 Requests with a valid serial focus the target window, and requests without a serial mark it urgent.
 
-Requests with a set, but invalid, serial, are always ignored, which you can change with the [`honor-xdg-activation-with-invalid-serial`](https://niri-wm.github.io/niri/Configuration%3A-Debug-Options.html#honor-xdg-activation-with-invalid-serial) debug flag.
+Requests with a set, but invalid, serial, are always ignored, which you can change with the [`honor-xdg-activation-with-invalid-serial`](https://martintrojer.github.io/swayward/Configuration%3A-Debug-Options.html#honor-xdg-activation-with-invalid-serial) debug flag.
 
 This is useful for apps that steal focus on incoming messages or when opening popup windows like Picture-in-Picture.
 
@@ -671,17 +666,10 @@ window-rule {
 
 <sup>Since: 25.02</sup>
 
-Set the default display mode for columns created from this window.
-Can be `normal` or `tabbed`.
-
-This is used any time a window goes into its own column.
-For example:
-- Opening a new window.
-- Expelling a window into its own column.
-- Moving a window from the floating layout to the tiling layout.
+This inherited setting is accepted for config compatibility but does not affect the container tree. Valid values are `normal` and `tabbed`.
 
 ```kdl
-// Make Evince windows open as tabbed columns.
+// This compatibility setting currently has no effect.
 window-rule {
     match app-id="^evince$"
 
@@ -924,7 +912,7 @@ Informs the window that it is tiled.
 Usually, windows will react by becoming rectangular and hiding their client-side shadows.
 Windows that snap their size to a grid (e.g. terminals like [foot](https://codeberg.org/dnkl/foot)) will usually disable this snapping when they are tiled.
 
-By default, niri will set the tiled state to `true` together with [`prefer-no-csd`](./Configuration:-Miscellaneous.md#prefer-no-csd) in order to improve behavior for apps that don't support server-side decorations.
+By default, swayward will set the tiled state to `true` together with [`prefer-no-csd`](./Configuration:-Miscellaneous.md#prefer-no-csd) in order to improve behavior for apps that don't support server-side decorations.
 You can use this window rule to override this, for example to get rectangular windows with CSD.
 
 ```kdl
@@ -1007,7 +995,7 @@ Other properties apply independently.
 >
 > - Uses a wl-subsurface instead of an xdg-popup.
 > Common in older apps using GTK 3, notably Firefox still uses these for some menus.
-> Subsurfaces are an indivisible part of a surface and they aren't usually pop-ups, so it wouldn't make sense for niri to apply these rules to them.
+> Subsurfaces are an indivisible part of a surface and they aren't usually pop-ups, so it wouldn't make sense for swayward to apply these rules to them.
 >
 > These emulated pop-ups come with other downsides: they cannot reliably extend outside their window, and if the app tries to do that, they will be clipped by rules such as `clip-to-geometry`.
 > So most modern apps will correctly use xdg-popup, which is the intended way to show pop-ups on Wayland.
@@ -1052,13 +1040,13 @@ These pop-ups with custom shapes will need the app to implement the [ext-backgro
 You can amend the window's minimum and maximum size in logical pixels.
 
 Keep in mind that the window itself always has a final say in its size.
-These values instruct niri to never ask the window to be smaller than the minimum you set, or to be bigger than the maximum you set.
+These values instruct swayward to never ask the window to be smaller than the minimum you set, or to be bigger than the maximum you set.
 
 > [!NOTE]
 > `max-height` will only apply to automatically-sized windows if it is equal to `min-height`.
 > Either set it equal to `min-height`, or change the window height manually after opening it with `set-window-height`.
 >
-> This is a limitation of niri's window height distribution algorithm.
+> This is a limitation of swayward's window height distribution algorithm.
 
 ```kdl
 window-rule {
@@ -1077,3 +1065,7 @@ window-rule {
     min-width 876
 }
 ```
+
+---
+
+*This page is adapted from the niri documentation.*
