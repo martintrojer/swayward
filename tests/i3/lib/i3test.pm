@@ -25,6 +25,7 @@ our @EXPORT = qw(
     get_focused
     get_socket_path
     get_unused_workspace
+    get_workspace_names
     get_ws
     get_ws_content
     i3

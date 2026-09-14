@@ -1,6 +1,8 @@
 #
 101-focus.t
 104-focus-stack.t
+111-goto.t
+118-openkill.t
 115-ipc-workspaces.t
 119-match.t
 121-next-prev.t
@@ -8,6 +10,7 @@
 128-open-order.t
 130-close-empty-split.t
 131-stacking-order.t
+134-invalid-command.t
 136-floating-ws-empty.t
 137-floating-unmap.t
 140-focus-lost.t

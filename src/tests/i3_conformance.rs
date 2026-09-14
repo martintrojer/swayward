@@ -24,9 +24,29 @@ struct AllowedRejection {
     reason: &'static str,
 }
 
+impl AllowedRejection {
+    fn matches(&self, test: &str, command: &str) -> bool {
+        self.test == test
+            && (self.command == command
+                || (self.command == "[con_mark=\"*\"] focus"
+                    && command.starts_with("[con_mark=\"")
+                    && command.ends_with("\"] focus")))
+    }
+}
+
 // Every rejection from a passing conformance file must be reviewed here. Keying by both file and
 // exact command prevents a new rejected setup command from hiding behind an unrelated exception.
 const ALLOWED_REJECTIONS: &[AllowedRejection] = &[
+    AllowedRejection {
+        test: "111-goto.t",
+        command: "[con_mark=\"*\"] focus",
+        reason: "test asserts that an unknown mark leaves focus unchanged",
+    },
+    AllowedRejection {
+        test: "134-invalid-command.t",
+        command: "blargh!",
+        reason: "the regression intentionally sends an invalid command",
+    },
     AllowedRejection {
         test: "101-focus.t",
         command: "[con_mark=__does_not_exist] focus",
@@ -77,6 +97,15 @@ fn allowed_rejections(test: &str) -> Vec<&'static AllowedRejection> {
         .iter()
         .filter(|allowed| allowed.test == test)
         .collect()
+}
+
+fn rejections_match(test: &str, rejected: &[&str]) -> bool {
+    let allowed = allowed_rejections(test);
+    rejected.len() == allowed.len()
+        && rejected
+            .iter()
+            .zip(allowed)
+            .all(|(command, allowed)| allowed.matches(test, command))
 }
 
 fn socket_path(kind: &str) -> PathBuf {
@@ -377,10 +406,12 @@ fn run_i3_test(test: &str) {
                 eprint!("{stderr}");
             }
             let rejected = rejected_commands(&stderr).collect::<Vec<_>>();
-            let allowed = allowed_rejections(test);
-            let expected = allowed.iter().map(|item| item.command).collect::<Vec<_>>();
+            let expected = allowed_rejections(test)
+                .iter()
+                .map(|item| item.command)
+                .collect::<Vec<_>>();
             assert!(
-                status.success() && rejected == expected,
+                status.success() && rejections_match(test, &rejected),
                 "i3 test {test} failed or its rejected commands changed\nexpected rejections: {expected:?}\nactual rejections: {rejected:?}\nstdout:\n{stdout}\nstderr:\n{stderr}"
             );
             break;
@@ -407,9 +438,14 @@ fn rejection_allowlist_is_keyed_by_file_and_exact_command() {
             .map(|item| item.command)
             .collect::<Vec<_>>()
     );
-    assert!(allowed_rejections("119-match.t")
-        .iter()
-        .all(|item| !rejected_commands(stderr).any(|command| command == item.command)));
+    assert!(!rejections_match(
+        "119-match.t",
+        &rejected_commands(stderr).collect::<Vec<_>>()
+    ));
+    assert!(rejections_match(
+        "111-goto.t",
+        &["[con_mark=\"mark.A1b2\"] focus"]
+    ));
     assert!(ALLOWED_REJECTIONS
         .iter()
         .all(|rejection| !rejection.reason.is_empty()));

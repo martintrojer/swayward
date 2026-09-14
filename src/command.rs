@@ -644,13 +644,17 @@ fn move_position(
     target: Option<crate::window::mapped::MappedId>,
     position: &MovePosition,
 ) -> Result<(), &'static str> {
-    let window = target.and_then(|target| {
-        state
-            .swayward
-            .layout
-            .windows()
-            .find_map(|(_, mapped)| (mapped.id() == target).then(|| mapped.window.clone()))
-    });
+    let window = match target {
+        Some(target) => Some(
+            state
+                .swayward
+                .layout
+                .windows()
+                .find_map(|(_, mapped)| (mapped.id() == target).then(|| mapped.window.clone()))
+                .ok_or("No matching node.")?,
+        ),
+        None => None,
+    };
     let workspace = window
         .as_ref()
         .and_then(|window| {
