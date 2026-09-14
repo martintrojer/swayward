@@ -66,6 +66,15 @@ Swayward follows sway. The command parser returns a well-formed failure for
 `open`, as required by the IPC compatibility decisions Q1, Q8, and Q11. It does
 not create i3 empty containers.
 
+### Directional floating moves in percentage points
+
+The i3 command `move right 25 ppt` moves a floating container by 25 percent of
+the output width. Sway's directional move parser reads only the numeric first
+argument and ignores the trailing `ppt` token (`sway/commands/move.c:672-681`).
+It therefore moves the container by 25 pixels (`sway/commands/move.c:693-710`).
+Swayward follows sway's pixel-only directional movement rather than i3's
+percentage-point behavior.
+
 ### Workspace rename edge cases
 
 Sway parses `rename workspace to to bla` as the current-workspace form and uses

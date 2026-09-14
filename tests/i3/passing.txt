@@ -5,9 +5,11 @@
 # list and run via SWAYWARD_I3_TEST, so the findings remain executable.
 101-focus.t
 104-focus-stack.t
+121-next-prev.t
 115-ipc-workspaces.t
 119-match.t
 126-regress-close.t
+128-open-order.t
 130-close-empty-split.t
 136-floating-ws-empty.t
 137-floating-unmap.t

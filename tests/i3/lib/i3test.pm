@@ -327,6 +327,16 @@ sub recv { $_[0]->{value} }
 
 package i3test::X;
 sub input_focus { i3test::_control({ action => 'focused' })->{id} }
+sub root { bless {}, 'i3test::Root' }
+
+package i3test::Root;
+sub rect { bless({ %{i3test::_request(4)->{rect}} }, 'i3test::Rect') }
+
+package i3test::Rect;
+sub x { $_[0]->{x} }
+sub y { $_[0]->{y} }
+sub width { $_[0]->{width} }
+sub height { $_[0]->{height} }
 
 package i3test;
 sub _find_window {
@@ -356,7 +366,10 @@ sub map {
 sub _node { (i3test::_find_window(i3test::_request(4), $_[0]->{id}, 0))[0] }
 sub rect {
     my $node = $_[0]->_node;
-    return ($node->{rect}, $node->{geometry});
+    return (
+        bless({ %{$node->{rect}} }, 'i3test::Rect'),
+        bless({ %{$node->{geometry}} }, 'i3test::Rect'),
+    );
 }
 sub mapped { (i3test::_find_window(i3test::_request(4), $_[0]->{id}, 0))[1] }
 sub unmap { $_[0]->destroy }
