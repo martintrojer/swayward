@@ -45,6 +45,8 @@ pub struct WindowRule {
     pub sway_floating_border_width: Option<u16>,
     #[knuffel(child, unwrap(argument))]
     pub on_xdg_activate: Option<OnXdgActivate>,
+    #[knuffel(children(name = "sway-for-window-command"), unwrap(argument))]
+    pub sway_for_window_commands: Vec<String>,
 
     // Rules applied dynamically.
     #[knuffel(child, unwrap(argument))]

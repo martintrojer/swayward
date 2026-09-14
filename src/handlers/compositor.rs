@@ -261,6 +261,22 @@ impl CompositorHandler for State {
                         self.swayward.queue_redraw(&output);
                     }
                     crate::command::run_for_window(self, mapped_id);
+                    let commands = self
+                        .swayward
+                        .layout
+                        .windows()
+                        .find_map(|(_, mapped)| {
+                            (mapped.id() == mapped_id)
+                                .then(|| mapped.rules().sway_for_window_commands.clone())
+                        })
+                        .unwrap_or_default();
+                    for command in commands {
+                        let targeted = format!(
+                            "[con_id={}] {command}",
+                            crate::ipc::tree::window_id(mapped_id)
+                        );
+                        let _ = crate::command::execute(self, &targeted);
+                    }
                     return;
                 }
 

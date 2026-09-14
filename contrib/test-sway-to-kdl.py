@@ -203,11 +203,19 @@ bindsym $missing+x nop
                 self.assertIn("X11-only criterion", result.stdout)
                 self.assertIn("manual attention: 1 directive(s)", result.stderr)
 
+    def test_for_window_translates_map_time_unmap_actions(self):
+        for action in ["kill", "move scratchpad"]:
+            with self.subTest(action=action):
+                result = self.translate(f'for_window [app_id="gone"] {action}\n')
+                self.assertIn(f'sway-for-window-command "{action}"', result.stdout)
+                self.assertIn("manual attention: none", result.stderr)
+
     def test_for_window_refuses_missing_rule_surfaces(self):
         for source, reason in [
             ('for_window [workspace="web"] floating enable\n', "workspace criterion"),
             ('for_window [class="foo"] mark tagged\n', "command needs manual conversion"),
             ('for_window [class="foo"] exec notify-send mapped\n', "command needs manual conversion"),
+            ('for_window [class="foo"] kill, mark tagged\n', "command needs manual conversion"),
         ]:
             with self.subTest(source=source):
                 result = self.translate(source)

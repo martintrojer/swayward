@@ -81,6 +81,9 @@ pub struct ResolvedWindowRules {
     /// What to do on xdg-activation requests.
     pub on_xdg_activate: Option<OnXdgActivate>,
 
+    /// Sway `for_window` commands to run once when this window maps.
+    pub sway_for_window_commands: Vec<String>,
+
     /// Extra bound on the minimum window width.
     pub min_width: Option<u16>,
     /// Extra bound on the minimum window height.
@@ -284,6 +287,9 @@ impl ResolvedWindowRules {
                 if let Some(x) = rule.on_xdg_activate {
                     resolved.on_xdg_activate = Some(x);
                 }
+                resolved
+                    .sway_for_window_commands
+                    .extend(rule.sway_for_window_commands.iter().cloned());
 
                 if let Some(x) = rule.min_width {
                     resolved.min_width = Some(x);

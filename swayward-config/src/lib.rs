@@ -2013,6 +2013,7 @@ mod tests {
                     on_xdg_activate: Some(
                         Ignore,
                     ),
+                    sway_for_window_commands: [],
                     min_width: None,
                     min_height: None,
                     max_width: None,
