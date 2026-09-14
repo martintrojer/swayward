@@ -190,7 +190,13 @@ command loop and its targeted clear operation
 `210-mark-unmark.t` expect i3's multi-target `mark` rejection and are excluded.
 
 X11 applications run through `xwayland-satellite`. Swayward does not include
-sway's in-process Xwayland window manager.
+sway's in-process Xwayland window manager. The satellite presents X11 clients as
+ordinary `xdg_toplevel` surfaces. The xdg-shell protocol exposes one `app_id`
+and one title, but no separate X11 class, instance, or `WM_WINDOW_ROLE` values
+(`xdg-shell.xml`, `xdg_toplevel.set_app_id`). Swayward therefore cannot evaluate
+those X11-only criteria unless the satellite supplies a metadata protocol and
+swayward stores and exposes the metadata. Sway's in-process Xwayland path does
+both (`sway/criteria.c:355-410`; `sway/sway/ipc-json.c:670-700`).
 
 ## Workspace ordering and implicit workspaces
 

@@ -254,6 +254,11 @@ sub open_floating_window {
 }
 sub open_window {
     my %args = @_ == 1 ? %{$_[0]} : @_;
+    die "a distinct X11 instance is unavailable in the Wayland test adapter\n"
+        if exists($args{instance})
+        && (!exists($args{wm_class}) || $args{instance} ne $args{wm_class});
+    die "before_map X11 property callbacks are unavailable in the Wayland test adapter\n"
+        if exists $args{before_map};
     my $name = $args{name} // 'Window ' . $window_count++;
     my $class = $args{wm_class} // $name;
     $name = decode_utf8($name) unless utf8::is_utf8($name);
