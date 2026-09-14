@@ -39,7 +39,9 @@ impl AllowedRejection {
                     && command.ends_with("] focus output right"))
                 || (self.command == "[id=*] swap container with id *"
                     && command.starts_with("[id=")
-                    && command.contains("] swap container with id ")))
+                    && command.contains("] swap container with id "))
+                || (self.command == "[app_id=b] swap with id *"
+                    && command.starts_with("[app_id=b] swap with id ")))
     }
 }
 
@@ -118,6 +120,21 @@ const ALLOWED_REJECTIONS: &[AllowedRejection] = &[
         reason: "sway's id swap target is an X11 window id unavailable to native Wayland clients",
     },
     AllowedRejection {
+        test: "302-tree.t",
+        command: "[app_id=b] swap with id *",
+        reason: "i3's optional swap words and X11 id target are unavailable in sway",
+    },
+    AllowedRejection {
+        test: "302-tree.t",
+        command: "[con_mark=S1] swap with mark V1",
+        reason: "i3 permits omitted swap words; sway requires swap container with mark",
+    },
+    AllowedRejection {
+        test: "302-tree.t",
+        command: "[con_mark=S1] swap with mark T1",
+        reason: "i3 permits omitted swap words; sway requires swap container with mark",
+    },
+    AllowedRejection {
         test: "126-regress-close.t",
         command: "mode toggle",
         reason: "stale i3 floating setup; mode now selects a binding mode",
@@ -166,7 +183,8 @@ const ALLOWED_REJECTIONS: &[AllowedRejection] = &[
 
 fn rejected_commands(stderr: &str) -> impl Iterator<Item = &str> {
     stderr.lines().filter_map(|line| {
-        line.strip_prefix("# swayward rejected `")
+        line.trim_start()
+            .strip_prefix("# swayward rejected `")
             .and_then(|line| line.split_once("`: "))
             .map(|(command, _)| command)
     })
