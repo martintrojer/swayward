@@ -364,6 +364,8 @@ class Translator:
                 effects.append('    default-column-display "tabbed"')
             elif words == ["focus"]:
                 effects.append("    open-focused true")
+            elif words[:2] == ["move", "workspace"] and len(words) == 3:
+                effects.append(f"    open-on-workspace {self.quote(words[2])}")
             elif words[:1] == ["dim_inactive"] and len(words) == 2:
                 effects.append(f"    opacity {1.0 - float(words[1]):g}")
             elif words[:1] == ["corner_radius"] and len(words) == 2:

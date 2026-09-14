@@ -6,6 +6,7 @@ use Exporter ();
 use File::Temp qw(tmpnam);
 use IO::Socket::UNIX;
 use JSON::PP qw(decode_json encode_json);
+use X11::XCB qw(:all);
 use X11::XCB::Rect;
 use Test::Builder;
 use Test::More ();
@@ -76,7 +77,7 @@ sub import {
     strict->import;
     warnings->import;
     if (defined($args{i3_config}) && $args{i3_config} ne '-default') {
-        my $config = $args{i3_config};
+        my $config = _translate_config_identity($args{i3_config});
         $config =~ s/ \] /\$\"] /g;
         $config = decode_utf8($config) unless utf8::is_utf8($config);
         my $reply = _control({ action => 'config', config => $config });
@@ -352,8 +353,16 @@ sub is_num_fullscreen {
 
 sub kill_all_windows { _control({ action => 'remove_all_windows' }) }
 
+sub _translate_config_identity {
+    my ($config) = @_;
+    $config =~ s/\b(?:class|instance)=([^\s"'\]]+)/app_id="$1"/g;
+    $config =~ s/\b(?:class|instance)=/app_id=/g;
+    $config;
+}
+
 sub launch_with_config {
     my ($config) = @_;
+    $config = _translate_config_identity($config);
     $config = decode_utf8($config) unless utf8::is_utf8($config);
     my $reply = _control({ action => 'config', config => $config });
     die $reply->{error} unless $reply->{success};

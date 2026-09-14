@@ -138,7 +138,7 @@ fn title_criteria_preserve_regex_escapes_and_translate_window_actions() {
     std::fs::write(
         &fixture,
         r#"assign [title="^test\w+$"] targetws
-for_window [title="^test\w+$"] layout tabbed, focus
+for_window [title="^test\w+$"] layout tabbed, focus, move workspace moved
 "#,
     )
     .unwrap();
@@ -164,6 +164,10 @@ for_window [title="^test\w+$"] layout tabbed, focus
         "{translated}"
     );
     assert!(translated.contains("open-focused true"), "{translated}");
+    assert!(
+        translated.contains("open-on-workspace \"moved\""),
+        "{translated}"
+    );
     assert_eq!(
         String::from_utf8(output.stderr).unwrap(),
         "manual attention: none\n"
