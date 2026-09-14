@@ -73,6 +73,11 @@ pub struct ResolvedWindowRules {
     /// Whether the window should open focused.
     pub open_focused: Option<bool>,
 
+    pub sway_border: Option<swayward_ipc::command::BorderStyle>,
+    pub sway_border_width: Option<u16>,
+    pub sway_floating_border: Option<swayward_ipc::command::BorderStyle>,
+    pub sway_floating_border_width: Option<u16>,
+
     /// What to do on xdg-activation requests.
     pub on_xdg_activate: Option<OnXdgActivate>,
 
@@ -187,6 +192,10 @@ impl ResolvedWindowRules {
         let _span = tracy_client::span!("ResolvedWindowRules::compute");
 
         let mut resolved = ResolvedWindowRules::default();
+        let current = match window {
+            WindowRef::Mapped(mapped) => Some(mapped.resolved_rules().clone()),
+            WindowRef::Unmapped(_) => None,
+        };
 
         with_toplevel_role(window.toplevel(), |role| {
             // Ensure server_pending like in Smithay's with_pending_state().
@@ -259,6 +268,18 @@ impl ResolvedWindowRules {
                 if let Some(x) = rule.open_focused {
                     resolved.open_focused = Some(x);
                 }
+                if let Some(x) = rule.sway_border {
+                    resolved.sway_border = Some(x);
+                }
+                if let Some(x) = rule.sway_border_width {
+                    resolved.sway_border_width = Some(x);
+                }
+                if let Some(x) = rule.sway_floating_border {
+                    resolved.sway_floating_border = Some(x);
+                }
+                if let Some(x) = rule.sway_floating_border_width {
+                    resolved.sway_floating_border_width = Some(x);
+                }
 
                 if let Some(x) = rule.on_xdg_activate {
                     resolved.on_xdg_activate = Some(x);
@@ -319,6 +340,12 @@ impl ResolvedWindowRules {
 
             resolved.open_on_output = open_on_output.map(|x| x.to_owned());
             resolved.open_on_workspace = open_on_workspace.map(|x| x.to_owned());
+            if let Some(current) = current {
+                resolved.sway_border = current.sway_border;
+                resolved.sway_border_width = current.sway_border_width;
+                resolved.sway_floating_border = current.sway_floating_border;
+                resolved.sway_floating_border_width = current.sway_floating_border_width;
+            }
         });
 
         resolved

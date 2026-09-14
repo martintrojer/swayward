@@ -194,6 +194,8 @@ impl CompositorHandler for State {
                     // The mapped pre-commit hook deals with dma-bufs on its own.
                     self.remove_default_dmabuf_pre_commit_hook(surface);
                     let hook = add_mapped_toplevel_pre_commit_hook(toplevel);
+                    let floating_border = is_floating
+                        .then_some((rules.sway_floating_border, rules.sway_floating_border_width));
                     let mapped = {
                         let config = self.swayward.config.borrow();
                         Mapped::new(window, rules, hook, &config)
@@ -211,16 +213,25 @@ impl CompositorHandler for State {
                     } else {
                         AddWindowTarget::Auto
                     };
-                    let output = self.swayward.layout.add_window(
-                        mapped,
-                        target,
-                        width,
-                        height,
-                        is_full_width,
-                        is_floating,
-                        activate,
-                    );
-                    let output = output.cloned();
+                    let output = self
+                        .swayward
+                        .layout
+                        .add_window(
+                            mapped,
+                            target,
+                            width,
+                            height,
+                            is_full_width,
+                            is_floating,
+                            activate,
+                        )
+                        .cloned();
+                    if let Some((Some(style), width)) = floating_border {
+                        let _ = self
+                            .swayward
+                            .layout
+                            .set_window_border(&window, style, width);
+                    }
 
                     // The window state cannot contain Fullscreen and Maximized at once. Therefore,
                     // if the window ended up fullscreen, then we only know that it is also

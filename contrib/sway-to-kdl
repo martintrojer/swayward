@@ -123,6 +123,13 @@ class Translator:
                 self.layout_settings.append(f"    gaps {match.group(1)}")
             elif match := re.fullmatch(r"gaps\s+outer\s+(.+)", text):
                 self.outer_gaps = match.group(1)
+            elif match := re.fullmatch(
+                r"(default_border|default_floating_border|new_window|new_float)\s+(.+)",
+                text,
+            ):
+                self.translate_default_border(
+                    path, line_no, text, match.group(1), match.group(2)
+                )
             elif match := re.fullmatch(r"force_focus_wrapping\s+(\S+)", text):
                 enabled = match.group(1).lower() in {
                     "1", "yes", "on", "true", "enable", "enabled", "active"
@@ -132,6 +139,42 @@ class Translator:
                 )
             elif not self.translate_swayfx(path, line_no, text):
                 self.warn(path, line_no, text, "unhandled")
+
+    def translate_default_border(
+        self, source: Path, line: int, text: str, directive: str, arguments: str
+    ) -> None:
+        words = arguments.split()
+        style = words[0] if words else ""
+        width = None
+        if match := re.fullmatch(r"(\d+)pixel", style):
+            if len(words) != 1:
+                self.warn(source, line, text, "unsupported default border")
+                return
+            style = "pixel"
+            width = match.group(1)
+        elif (
+            len(words) == 2
+            and words[1].isdigit()
+            and int(words[1]) <= 65535
+            and style in {"normal", "pixel"}
+        ):
+            width = words[1]
+        elif len(words) != 1 or style not in {"none", "normal", "pixel"}:
+            self.warn(source, line, text, "unsupported default border")
+            return
+        if style == "none" and len(words) != 1:
+            self.warn(source, line, text, "unsupported default border")
+            return
+
+        floating = directive in {"default_floating_border", "new_float"}
+        prefix = "sway-floating-border" if floating else "sway-border"
+        self.sections += [
+            f"// sway {text}",
+            "window-rule {",
+            f"    {prefix} {self.quote(style)}",
+            f"    {prefix}-width {width or 2}",
+            "}",
+        ]
 
     def translate_client_colors(
         self, source: Path, line: int, text: str, state: str, arguments: str

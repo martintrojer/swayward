@@ -374,6 +374,10 @@ impl Mapped {
         self.offscreen_data.borrow()
     }
 
+    pub fn resolved_rules(&self) -> &ResolvedWindowRules {
+        &self.rules
+    }
+
     pub fn is_focused(&self) -> bool {
         self.is_focused
     }

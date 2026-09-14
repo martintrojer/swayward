@@ -201,11 +201,20 @@ impl<W: LayoutElement> Tile<W> {
         let focus_ring_config = options.layout.focus_ring.merged_with(&rules.focus_ring);
         let shadow_config = options.layout.shadow.merged_with(&rules.shadow);
         let sizing_mode = window.sizing_mode();
+        let sway_border = rules.sway_border.map(|style| {
+            let width = rules.sway_border_width.unwrap_or(match style {
+                BorderStyle::Normal => 2,
+                BorderStyle::Pixel => 1,
+                BorderStyle::None => 0,
+                BorderStyle::Csd | BorderStyle::Toggle => unreachable!(),
+            });
+            (style, width)
+        });
 
         Self {
             window,
             border: FocusRing::new(border_config.into()),
-            sway_border: None,
+            sway_border,
             sway_uses_csd: false,
             focus_ring: FocusRing::new(focus_ring_config),
             shadow: Shadow::new(shadow_config),

@@ -111,6 +111,34 @@ bindsym $missing+x nop
         self.assertIn("open-floating false", result.stdout)
         self.assertIn("manual attention: none", result.stderr)
 
+    def test_deprecated_default_borders_translate_without_changing_shipped_defaults(self):
+        result = self.translate("new_window 1pixel\nnew_float normal 3\n")
+        self.assertIn("// sway new_window 1pixel", result.stdout)
+        self.assertIn('sway-border "pixel"', result.stdout)
+        self.assertIn("sway-border-width 1", result.stdout)
+        self.assertIn('sway-floating-border "normal"', result.stdout)
+        self.assertIn("sway-floating-border-width 3", result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+        self.assertNotIn("resources/default-config.kdl", result.stdout)
+
+    def test_default_border_forms_and_invalid_values(self):
+        for directive in ["default_border", "default_floating_border", "new_window", "new_float"]:
+            for value in ["none", "normal", "pixel", "1pixel", "pixel 5", "normal 7"]:
+                with self.subTest(directive=directive, value=value):
+                    result = self.translate(f"{directive} {value}\n")
+                    self.assertIn("manual attention: none", result.stderr)
+        for source in [
+            "default_border csd\n",
+            "default_floating_border 2pixel 3\n",
+            "new_window pixel nope\n",
+            "new_float none 2\n",
+            "new_window pixel 65536\n",
+        ]:
+            with self.subTest(source=source):
+                result = self.translate(source)
+                self.assertIn("unsupported default border", result.stdout)
+                self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
     def test_for_window_combines_class_and_title_without_losing_regex_escapes(self):
         result = self.translate(
             r'''for_window [class="^foo\\w+$" title="^bar\\d+$"] border none

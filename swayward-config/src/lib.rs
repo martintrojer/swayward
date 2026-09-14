@@ -2006,6 +2006,10 @@ mod tests {
                     open_focused: Some(
                         true,
                     ),
+                    sway_border: None,
+                    sway_border_width: None,
+                    sway_floating_border: None,
+                    sway_floating_border_width: None,
                     on_xdg_activate: Some(
                         Ignore,
                     ),

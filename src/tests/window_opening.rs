@@ -217,6 +217,45 @@ window-rule {
 }
 
 #[test]
+fn sway_default_floating_border_applies_to_initial_floats() {
+    let config = Config::parse_mem(
+        r#"
+window-rule {
+    match app-id="floating"
+    open-floating true
+}
+window-rule {
+    sway-floating-border "pixel"
+    sway-floating-border-width 3
+}
+"#,
+    )
+    .unwrap();
+    let mut f = Fixture::with_config(config);
+    f.add_output(1, (1280, 720));
+    let client = f.add_client();
+
+    let window = f.client(client).create_window();
+    window.xdg_toplevel.set_app_id("floating".into());
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    let swayward = f.swayward();
+    let mapped = swayward.layout.windows().next().unwrap().1;
+    let id = mapped.window.clone();
+    assert!(swayward.layout.active_workspace().unwrap().is_floating(&id));
+    assert_eq!(
+        swayward.layout.window_border(&id),
+        Some((swayward_ipc::command::BorderStyle::Pixel, 3))
+    );
+}
+
+#[test]
 fn target_output_and_workspaces() {
     store_and_increase_nofile_rlimit();
 

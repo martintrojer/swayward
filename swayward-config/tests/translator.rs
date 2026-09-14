@@ -219,6 +219,45 @@ fn no_focus_maps_portable_criteria_and_refuses_x11_only_criteria() {
 }
 
 #[test]
+fn sway_default_border_aliases_translate_to_initial_window_rules() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_owned();
+    let fixture = std::env::temp_dir().join(format!(
+        "swayward-default-borders-{}-{}.conf",
+        std::process::id(),
+        std::thread::current().name().unwrap_or("test")
+    ));
+    std::fs::write(&fixture, "new_window 1pixel\nnew_float normal 3\n").unwrap();
+    let output = Command::new("python3")
+        .arg(root.join("contrib/sway-to-kdl"))
+        .arg(&fixture)
+        .output()
+        .unwrap();
+    std::fs::remove_file(fixture).unwrap();
+
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8(output.stderr).unwrap(),
+        "manual attention: none\n"
+    );
+    let config = Config::parse_mem(&String::from_utf8(output.stdout).unwrap()).unwrap();
+    let rule = &config.window_rules[0];
+    assert_eq!(
+        rule.sway_border,
+        Some(swayward_ipc::command::BorderStyle::Pixel)
+    );
+    assert_eq!(rule.sway_border_width, Some(1));
+    let rule = &config.window_rules[1];
+    assert_eq!(
+        rule.sway_floating_border,
+        Some(swayward_ipc::command::BorderStyle::Normal)
+    );
+    assert_eq!(rule.sway_floating_border_width, Some(3));
+}
+
+#[test]
 fn sway_workspace_output_uses_first_preference() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()

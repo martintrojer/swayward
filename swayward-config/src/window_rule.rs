@@ -1,3 +1,4 @@
+use swayward_ipc::command::BorderStyle;
 use swayward_ipc::ColumnDisplay;
 
 use crate::appearance::{
@@ -34,6 +35,14 @@ pub struct WindowRule {
     pub open_floating: Option<bool>,
     #[knuffel(child, unwrap(argument))]
     pub open_focused: Option<bool>,
+    #[knuffel(child, unwrap(argument, str))]
+    pub sway_border: Option<BorderStyle>,
+    #[knuffel(child, unwrap(argument))]
+    pub sway_border_width: Option<u16>,
+    #[knuffel(child, unwrap(argument, str))]
+    pub sway_floating_border: Option<BorderStyle>,
+    #[knuffel(child, unwrap(argument))]
+    pub sway_floating_border_width: Option<u16>,
     #[knuffel(child, unwrap(argument))]
     pub on_xdg_activate: Option<OnXdgActivate>,
 
