@@ -327,12 +327,13 @@ fn describe_workspace_node(
             .active_window()
             .is_some_and(|window| window.is_focused());
     let mut floating_nodes = workspace
-        .tiles_with_render_positions()
-        .filter(|(tile, _, _)| workspace.is_floating(&tile.window().window))
-        .map(|(tile, pos, _)| {
+        .tiles_with_ipc_layouts()
+        .filter(|(tile, _)| workspace.is_floating(&tile.window().window))
+        .map(|(tile, layout)| {
+            let (x, y) = layout.tile_pos_in_workspace_view.unwrap_or_default();
             describe_window(
                 tile.window(),
-                rect_from(pos.x, pos.y, tile.tile_size().w, tile.tile_size().h),
+                rect_from(x, y, layout.tile_size.0, layout.tile_size.1),
                 NodeType::FloatingCon,
                 "user_on",
                 None,

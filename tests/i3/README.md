@@ -19,6 +19,8 @@ It disables window movement and resize animations and makes its Wayland clients
 acknowledge and commit the latest configure around floating and resize commands.
 Green conformance tests therefore cover settled geometry, not animated
 intermediate states or clients that delay or omit configure acknowledgements.
+Render-versus-layout geometry bugs are outside this oracle: native tests must
+leave animations enabled and sample commands or IPC while motion is in progress.
 `open_empty_con` also creates a real Wayland window because swayward cannot
 create an empty container through IPC.
 

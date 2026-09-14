@@ -1685,7 +1685,7 @@ fn resize_rejects_hidden_scratchpad_window_without_panicking() {
 }
 
 #[test]
-fn criteria_move_output_right_uses_each_windows_position_in_a_grid() {
+fn criteria_move_output_right_uses_layout_positions_during_workspace_animation() {
     let mut f = Fixture::new();
     for (name, position) in [
         ("top-left", (0, 0)),
@@ -1725,6 +1725,20 @@ fn criteria_move_output_right_uses_each_windows_position_in_a_grid() {
         f.double_roundtrip(client);
     }
 
+    assert!(f.swayward().layout.are_animations_ongoing(None));
+    let bottom = f
+        .swayward()
+        .layout
+        .windows()
+        .find(|(monitor, mapped)| {
+            monitor.is_some_and(|monitor| monitor.output_name() == "bottom-left")
+                && crate::utils::with_toplevel_role(mapped.toplevel(), |role| {
+                    role.app_id.as_deref() == Some("moveme")
+                })
+        })
+        .map(|(_, mapped)| mapped.window.clone())
+        .unwrap();
+    assert!(f.swayward().layout.window_center(&bottom).unwrap().y >= 600);
     assert!(
         crate::command::execute(f.niri_state(), r#"[app_id="moveme"] move output right"#)[0]
             .success
@@ -2450,6 +2464,41 @@ fn floating_order(tree: &Value) -> (Vec<&str>, Vec<&str>) {
         })
         .collect::<Vec<_>>();
     (floating, focus)
+}
+
+#[test]
+fn floating_ipc_rect_uses_final_position_during_animation() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.xdg_toplevel.set_app_id("animated".into());
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+    f.swayward().layout.toggle_window_floating(None);
+    f.swayward().layout.move_floating_window(
+        None,
+        swayward_ipc::PositionChange::SetFixed(100.),
+        swayward_ipc::PositionChange::SetFixed(200.),
+        true,
+    );
+
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &Default::default(),
+        &Default::default(),
+    ))
+    .unwrap();
+    let node = find_json_node(&tree, "floating_con", false).unwrap();
+    assert_eq!(node["rect"]["x"], 100);
+    assert_eq!(node["rect"]["y"], 200);
 }
 
 #[test]
