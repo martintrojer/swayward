@@ -9,7 +9,8 @@
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
-use crate::{Cast, Event, KeyboardLayouts, Window, Workspace};
+use crate::legacy::{Event, Workspace};
+use crate::{Cast, KeyboardLayouts, Window};
 
 /// Part of the state communicated via the event stream.
 pub trait EventStreamStatePart {
@@ -127,6 +128,20 @@ impl EventStreamStatePart for WorkspacesState {
             Event::WorkspacesChanged { workspaces } => {
                 self.workspaces = workspaces.into_iter().map(|ws| (ws.id, ws)).collect();
             }
+            Event::WorkspaceEmptied { current } => {
+                self.workspaces.retain(|_, workspace| {
+                    workspace.name.as_deref() != current.name.as_deref()
+                        || !matches!(
+                            &current.properties,
+                            crate::NodeProperties::Workspace(properties)
+                                if workspace.output.as_ref() == Some(&properties.output)
+                        )
+                });
+            }
+            Event::WorkspaceInitialized { .. }
+            | Event::WorkspaceRenamed { .. }
+            | Event::WorkspaceFocusChanged { .. }
+            | Event::Tick { .. } => {}
             Event::WorkspaceUrgencyChanged { id, urgent } => {
                 for ws in self.workspaces.values_mut() {
                     if ws.id == id {
@@ -175,6 +190,7 @@ impl EventStreamStatePart for WindowsState {
             Event::WindowsChanged { windows } => {
                 self.windows = windows.into_iter().map(|win| (win.id, win)).collect();
             }
+            Event::SwayWindowChanged { .. } | Event::WindowMoved { .. } => {}
             Event::WindowOpenedOrChanged { window } => {
                 let (id, is_focused) = match self.windows.entry(window.id) {
                     Entry::Occupied(mut entry) => {

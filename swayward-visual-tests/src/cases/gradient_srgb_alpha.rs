@@ -1,8 +1,8 @@
-use swayward::render_helpers::border::BorderRenderElement;
-use swayward_config::{Color, CornerRadius, GradientColorSpace, GradientInterpolation};
 use smithay::backend::renderer::element::RenderElement;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::utils::{Physical, Point, Rectangle, Size};
+use swayward::render_helpers::border::BorderRenderElement;
+use swayward_config::{Color, CornerRadius, GradientColorSpace, GradientInterpolation};
 
 use super::{Args, TestCase};
 

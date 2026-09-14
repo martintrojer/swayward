@@ -1,5 +1,11 @@
 use std::cmp::{max, min};
 
+use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
+use smithay::utils::{Logical, Size};
+use smithay::wayland::compositor::with_states;
+use smithay::wayland::shell::xdg::{
+    SurfaceCachedState, ToplevelSurface, XdgToplevelSurfaceRoleAttributes,
+};
 use swayward_config::utils::MergeWith as _;
 use swayward_config::window_rule::{Match, OnXdgActivate, WindowRule};
 use swayward_config::{
@@ -7,12 +13,6 @@ use swayward_config::{
     ResolvedPopupsRules, ShadowRule, TabIndicatorRule,
 };
 use swayward_ipc::ColumnDisplay;
-use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
-use smithay::utils::{Logical, Size};
-use smithay::wayland::compositor::with_states;
-use smithay::wayland::shell::xdg::{
-    SurfaceCachedState, ToplevelSurface, XdgToplevelSurfaceRoleAttributes,
-};
 
 use crate::utils::with_toplevel_role;
 
@@ -73,8 +73,16 @@ pub struct ResolvedWindowRules {
     /// Whether the window should open focused.
     pub open_focused: Option<bool>,
 
+    pub sway_border: Option<swayward_ipc::command::BorderStyle>,
+    pub sway_border_width: Option<u16>,
+    pub sway_floating_border: Option<swayward_ipc::command::BorderStyle>,
+    pub sway_floating_border_width: Option<u16>,
+
     /// What to do on xdg-activation requests.
     pub on_xdg_activate: Option<OnXdgActivate>,
+
+    /// Sway `for_window` commands to run once when this window maps.
+    pub sway_for_window_commands: Vec<String>,
 
     /// Extra bound on the minimum window width.
     pub min_width: Option<u16>,
@@ -187,6 +195,10 @@ impl ResolvedWindowRules {
         let _span = tracy_client::span!("ResolvedWindowRules::compute");
 
         let mut resolved = ResolvedWindowRules::default();
+        let current = match window {
+            WindowRef::Mapped(mapped) => Some(mapped.resolved_rules().clone()),
+            WindowRef::Unmapped(_) => None,
+        };
 
         with_toplevel_role(window.toplevel(), |role| {
             // Ensure server_pending like in Smithay's with_pending_state().
@@ -259,10 +271,25 @@ impl ResolvedWindowRules {
                 if let Some(x) = rule.open_focused {
                     resolved.open_focused = Some(x);
                 }
+                if let Some(x) = rule.sway_border {
+                    resolved.sway_border = Some(x);
+                }
+                if let Some(x) = rule.sway_border_width {
+                    resolved.sway_border_width = Some(x);
+                }
+                if let Some(x) = rule.sway_floating_border {
+                    resolved.sway_floating_border = Some(x);
+                }
+                if let Some(x) = rule.sway_floating_border_width {
+                    resolved.sway_floating_border_width = Some(x);
+                }
 
                 if let Some(x) = rule.on_xdg_activate {
                     resolved.on_xdg_activate = Some(x);
                 }
+                resolved
+                    .sway_for_window_commands
+                    .extend(rule.sway_for_window_commands.iter().cloned());
 
                 if let Some(x) = rule.min_width {
                     resolved.min_width = Some(x);
@@ -319,6 +346,12 @@ impl ResolvedWindowRules {
 
             resolved.open_on_output = open_on_output.map(|x| x.to_owned());
             resolved.open_on_workspace = open_on_workspace.map(|x| x.to_owned());
+            if let Some(current) = current {
+                resolved.sway_border = current.sway_border;
+                resolved.sway_border_width = current.sway_border_width;
+                resolved.sway_floating_border = current.sway_floating_border;
+                resolved.sway_floating_border_width = current.sway_floating_border_width;
+            }
         });
 
         resolved

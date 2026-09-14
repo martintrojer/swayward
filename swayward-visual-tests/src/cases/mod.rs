@@ -1,9 +1,9 @@
 use std::time::Duration;
 
-use swayward::animation::Clock;
 use smithay::backend::renderer::element::RenderElement;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::utils::{Logical, Physical, Size};
+use swayward::animation::Clock;
 
 pub mod gradient_angle;
 pub mod gradient_area;
@@ -18,6 +18,7 @@ pub mod gradient_srgb;
 pub mod gradient_srgb_alpha;
 pub mod gradient_srgblinear;
 pub mod gradient_srgblinear_alpha;
+pub mod hotkey_overlay;
 pub mod layout;
 pub mod tile;
 pub mod window;

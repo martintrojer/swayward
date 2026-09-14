@@ -2,11 +2,11 @@ use std::cmp::max;
 use std::iter::zip;
 use std::rc::Rc;
 
+use smithay::backend::renderer::gles::GlesRenderer;
+use smithay::utils::{Logical, Point, Rectangle, Scale, Serial, Size};
 use swayward_config::utils::MergeWith as _;
 use swayward_config::{PresetSize, RelativeTo};
 use swayward_ipc::{PositionChange, SizeChange, WindowLayout};
-use smithay::backend::renderer::gles::GlesRenderer;
-use smithay::utils::{Logical, Point, Rectangle, Scale, Serial, Size};
 
 use super::closing_window::{ClosingWindow, ClosingWindowRenderElement};
 use super::scrolling::ColumnWidth;
@@ -17,10 +17,10 @@ use super::{
 };
 use crate::animation::{Animation, Clock};
 use crate::layout::RenderLayer;
-use crate::swayward_render_elements;
 use crate::render_helpers::renderer::NiriRenderer;
 use crate::render_helpers::xray::XrayPos;
 use crate::render_helpers::RenderCtx;
+use crate::swayward_render_elements;
 use crate::utils::transaction::TransactionBlocker;
 use crate::utils::{
     center_preferring_top_left_in_area, clamp_preferring_top_left_in_area, ensure_min_max_size,
@@ -751,6 +751,19 @@ impl<W: LayoutElement> FloatingSpace<W> {
         self.interactive_resize_end(Some(&id));
     }
 
+    pub fn set_window_border(
+        &mut self,
+        id: &W::Id,
+        style: swayward_ipc::command::BorderStyle,
+        width: Option<u16>,
+    ) -> bool {
+        let Some(index) = self.idx_of(id) else {
+            return false;
+        };
+        let tile = &mut self.tiles[index];
+        tile.set_sway_border(style, width, true).is_ok()
+    }
+
     pub fn set_window_width(&mut self, id: Option<&W::Id>, change: SizeChange, animate: bool) {
         let Some(id) = id.or(self.active_window_id.as_ref()) else {
             return;
@@ -796,6 +809,29 @@ impl<W: LayoutElement> FloatingSpace<W> {
 
         let win_size = Size::from((win_width, win_height));
         win.request_size_once(win_size, animate);
+    }
+
+    pub fn resize_window_edge(&mut self, id: Option<&W::Id>, edge: ResizeEdge, change: SizeChange) {
+        let Some(id) = id.or(self.active_window_id.as_ref()).cloned() else {
+            return;
+        };
+        let idx = self.idx_of(&id).unwrap();
+        let old_size = self.data[idx].size;
+        if edge.intersects(ResizeEdge::LEFT_RIGHT) {
+            self.set_window_width(Some(&id), change, true);
+        } else {
+            self.set_window_height(Some(&id), change, true);
+        }
+        let new_size = self.tiles[idx].tile_expected_or_current_size();
+        let mut offset = Point::from((0., 0.));
+        if edge.contains(ResizeEdge::LEFT) {
+            offset.x = old_size.w - new_size.w;
+        }
+        if edge.contains(ResizeEdge::TOP) {
+            offset.y = old_size.h - new_size.h;
+        }
+        let pos = self.data[idx].logical_pos + offset;
+        self.data[idx].set_logical_pos(pos);
     }
 
     pub fn set_window_height(&mut self, id: Option<&W::Id>, change: SizeChange, animate: bool) {
@@ -855,11 +891,19 @@ impl<W: LayoutElement> FloatingSpace<W> {
         let active_idx = self.idx_of(active_id).unwrap();
         let center = self.data[active_idx].center();
 
-        let result = zip(&self.tiles, &self.data)
-            .filter(|(tile, _)| tile.window().id() != active_id)
-            .map(|(tile, data)| (tile, distance(center, data.center())))
+        let candidates = || {
+            zip(&self.tiles, &self.data)
+                .filter(|(tile, _)| tile.window().id() != active_id)
+                .map(|(tile, data)| (tile, distance(center, data.center())))
+        };
+        let result = candidates()
             .filter(|(_, dist)| *dist > 0.)
-            .min_by(|(_, dist_a), (_, dist_b)| f64::total_cmp(dist_a, dist_b));
+            .min_by(|(_, dist_a), (_, dist_b)| f64::total_cmp(dist_a, dist_b))
+            .or_else(|| {
+                candidates()
+                    .filter(|(_, dist)| *dist <= 0.)
+                    .min_by(|(_, dist_a), (_, dist_b)| f64::total_cmp(dist_a, dist_b))
+            });
         if let Some((tile, _)) = result {
             let id = tile.window().id().clone();
             self.activate_window(&id);

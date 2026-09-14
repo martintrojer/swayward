@@ -48,8 +48,8 @@ pub enum Sub {
     Validate {
         /// Path to config file (default: `$XDG_CONFIG_HOME/swayward/config.kdl`).
         ///
-        /// This can also be set with the `SWAYWARD_CONFIG` environment variable. If both are set, the
-        /// command line argument takes precedence.
+        /// This can also be set with the `SWAYWARD_CONFIG` environment variable. If both are set,
+        /// the command line argument takes precedence.
         #[arg(short, long)]
         config: Option<PathBuf>,
     },

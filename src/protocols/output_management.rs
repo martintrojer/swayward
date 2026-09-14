@@ -3,8 +3,6 @@ use std::collections::HashMap;
 use std::iter::zip;
 use std::mem;
 
-use swayward_config::{FloatOrInt, OutputName, Vrr};
-use swayward_ipc::Transform;
 use smithay::reexports::wayland_protocols_wlr::output_management::v1::server::{
     zwlr_output_configuration_head_v1, zwlr_output_configuration_v1, zwlr_output_head_v1,
     zwlr_output_manager_v1, zwlr_output_mode_v1,
@@ -15,6 +13,8 @@ use smithay::reexports::wayland_server::{
     Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource, WEnum,
 };
 use smithay::wayland::{Dispatch2, GlobalDispatch2};
+use swayward_config::{FloatOrInt, OutputName, Vrr};
+use swayward_ipc::Transform;
 use zwlr_output_configuration_head_v1::ZwlrOutputConfigurationHeadV1;
 use zwlr_output_configuration_v1::ZwlrOutputConfigurationV1;
 use zwlr_output_head_v1::{AdaptiveSyncState, ZwlrOutputHeadV1};
@@ -22,8 +22,8 @@ use zwlr_output_manager_v1::ZwlrOutputManagerV1;
 use zwlr_output_mode_v1::ZwlrOutputModeV1;
 
 use crate::backend::OutputId;
-use crate::swayward::State;
 use crate::protocols::EmptyData;
+use crate::swayward::State;
 use crate::utils::ipc_transform_to_smithay;
 
 const VERSION: u32 = 4;
@@ -39,7 +39,7 @@ pub struct OutputManagementManagerState {
     display: DisplayHandle,
     serial: u32,
     clients: HashMap<ClientId, ClientData>,
-    current_state: HashMap<OutputId, swayward_ipc::Output>,
+    current_state: HashMap<OutputId, swayward_ipc::legacy::Output>,
     current_config: swayward_config::Outputs,
 }
 
@@ -93,7 +93,7 @@ impl OutputManagementManagerState {
         self.current_config = new_config;
     }
 
-    pub fn notify_changes(&mut self, new_state: HashMap<OutputId, swayward_ipc::Output>) {
+    pub fn notify_changes(&mut self, new_state: HashMap<OutputId, swayward_ipc::legacy::Output>) {
         let mut changed = false; /* most likely to end up true */
         for (output, conf) in new_state.iter() {
             if let Some(old) = self.current_state.get(output) {
@@ -780,7 +780,7 @@ fn notify_removed_head(clients: &mut HashMap<ClientId, ClientData>, head: &Outpu
 fn notify_new_head(
     state: &mut OutputManagementManagerState,
     output: &OutputId,
-    conf: &swayward_ipc::Output,
+    conf: &swayward_ipc::legacy::Output,
 ) {
     let display = &state.display;
     let clients = &mut state.clients;
@@ -796,7 +796,7 @@ fn send_new_head<D>(
     client: &Client,
     client_data: &mut ClientData,
     output: OutputId,
-    conf: &swayward_ipc::Output,
+    conf: &swayward_ipc::legacy::Output,
 ) where
     D: Dispatch<ZwlrOutputModeV1, EmptyData>,
     D: Dispatch<ZwlrOutputHeadV1, OutputId>,

@@ -23,6 +23,7 @@ use crate::cases::gradient_srgb::GradientSrgb;
 use crate::cases::gradient_srgb_alpha::GradientSrgbAlpha;
 use crate::cases::gradient_srgblinear::GradientSrgbLinear;
 use crate::cases::gradient_srgblinear_alpha::GradientSrgbLinearAlpha;
+use crate::cases::hotkey_overlay::Hotkeys;
 use crate::cases::layout::Layout;
 use crate::cases::tile::Tile;
 use crate::cases::window::Window;
@@ -33,8 +34,8 @@ mod smithay_view;
 mod test_window;
 
 fn main() -> glib::ExitCode {
-    let directives =
-        env::var("RUST_LOG").unwrap_or_else(|_| "swayward-visual-tests=debug,swayward=debug".to_owned());
+    let directives = env::var("RUST_LOG")
+        .unwrap_or_else(|_| "swayward-visual-tests=debug,swayward=debug".to_owned());
     let env_filter = EnvFilter::builder().parse_lossy(directives);
     tracing_subscriber::fmt()
         .compact()
@@ -81,6 +82,9 @@ fn build_ui(app: &adw::Application) {
         anim_adjustment: anim_adjustment.clone(),
     };
 
+    s.add(Layout::asymmetric_struts, "Layout - Asymmetric Struts");
+    s.add(Hotkeys::new, "Important Hotkeys");
+
     s.add(Window::freeform, "Freeform Window");
     s.add(Window::fixed_size, "Fixed Size Window");
     s.add(
@@ -101,6 +105,8 @@ fn build_ui(app: &adw::Application) {
         "Fixed Size Tile - CSD Shadow - Open",
     );
 
+    s.add(Layout::tiling_tree, "Layout - Tiling Tree");
+    s.add(Layout::tabbed_titles, "Layout - Tabbed Titles");
     s.add(Layout::open_in_between, "Layout - Open In-Between");
     s.add(
         Layout::open_multiple_quickly,

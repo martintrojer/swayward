@@ -13,6 +13,12 @@ use single_pixel_buffer::v1::client::wp_single_pixel_buffer_manager_v1::WpSingle
 use smithay::reexports::wayland_protocols::wp::single_pixel_buffer;
 use smithay::reexports::wayland_protocols::wp::viewporter::client::wp_viewport::WpViewport;
 use smithay::reexports::wayland_protocols::wp::viewporter::client::wp_viewporter::WpViewporter;
+use smithay::reexports::wayland_protocols::xdg::activation::v1::client::xdg_activation_token_v1::{
+    self, XdgActivationTokenV1,
+};
+use smithay::reexports::wayland_protocols::xdg::activation::v1::client::xdg_activation_v1::{
+    self, XdgActivationV1,
+};
 use smithay::reexports::wayland_protocols::xdg::shell::client::xdg_surface::{self, XdgSurface};
 use smithay::reexports::wayland_protocols::xdg::shell::client::xdg_toplevel::{self, XdgToplevel};
 use smithay::reexports::wayland_protocols::xdg::shell::client::xdg_wm_base::{self, XdgWmBase};
@@ -52,6 +58,7 @@ pub struct State {
 
     pub compositor: Option<WlCompositor>,
     pub xdg_wm_base: Option<XdgWmBase>,
+    pub xdg_activation: Option<XdgActivationV1>,
     pub layer_shell: Option<ZwlrLayerShellV1>,
     pub spbm: Option<WpSinglePixelBufferManagerV1>,
     pub viewporter: Option<WpViewporter>,
@@ -178,6 +185,7 @@ impl Client {
             outputs: HashMap::new(),
             compositor: None,
             xdg_wm_base: None,
+            xdg_activation: None,
             layer_shell: None,
             spbm: None,
             viewporter: None,
@@ -214,6 +222,28 @@ impl Client {
 
     pub fn create_window(&mut self) -> &mut Window {
         self.state.create_window()
+    }
+
+    pub fn request_activation_token(
+        &mut self,
+        surface: &WlSurface,
+    ) -> Arc<std::sync::Mutex<Option<String>>> {
+        let token = Arc::new(std::sync::Mutex::new(None));
+        let activation = self.state.xdg_activation.as_ref().unwrap();
+        let request = activation.get_activation_token(&self.qh, token.clone());
+        request.set_surface(surface);
+        request.commit();
+        self.connection.flush().unwrap();
+        token
+    }
+
+    pub fn activate(&mut self, token: String, surface: &WlSurface) {
+        self.state
+            .xdg_activation
+            .as_ref()
+            .unwrap()
+            .activate(token, surface);
+        self.connection.flush().unwrap();
     }
 
     pub fn window(&mut self, surface: &WlSurface) -> &mut Window {
@@ -509,6 +539,9 @@ impl Dispatch<WlRegistry, ()> for State {
                 } else if interface == XdgWmBase::interface().name {
                     let version = min(version, XdgWmBase::interface().version);
                     state.xdg_wm_base = Some(registry.bind(name, version, qh, ()));
+                } else if interface == XdgActivationV1::interface().name {
+                    let version = min(version, XdgActivationV1::interface().version);
+                    state.xdg_activation = Some(registry.bind(name, version, qh, ()));
                 } else if interface == ZwlrLayerShellV1::interface().name {
                     let version = min(version, ZwlrLayerShellV1::interface().version);
                     state.layer_shell = Some(registry.bind(name, version, qh, ()));
@@ -570,6 +603,37 @@ impl Dispatch<WlCompositor, ()> for State {
         _qhandle: &QueueHandle<Self>,
     ) {
         unreachable!()
+    }
+}
+
+impl Dispatch<XdgActivationV1, ()> for State {
+    fn event(
+        _state: &mut Self,
+        _proxy: &XdgActivationV1,
+        _event: xdg_activation_v1::Event,
+        _data: &(),
+        _conn: &Connection,
+        _qhandle: &QueueHandle<Self>,
+    ) {
+        unreachable!()
+    }
+}
+
+impl Dispatch<XdgActivationTokenV1, Arc<std::sync::Mutex<Option<String>>>> for State {
+    fn event(
+        _state: &mut Self,
+        _proxy: &XdgActivationTokenV1,
+        event: xdg_activation_token_v1::Event,
+        token: &Arc<std::sync::Mutex<Option<String>>>,
+        _conn: &Connection,
+        _qhandle: &QueueHandle<Self>,
+    ) {
+        match event {
+            xdg_activation_token_v1::Event::Done { token: value } => {
+                *token.lock().unwrap() = Some(value);
+            }
+            _ => unreachable!(),
+        }
     }
 }
 

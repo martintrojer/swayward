@@ -183,7 +183,9 @@ impl State {
             if self.swayward.mapped_layer_surfaces.remove(layer).is_some() {
                 // A mapped surface got unmapped via a null commit. Now it needs to do a new
                 // initial commit again.
-                self.swayward.unmapped_layer_surfaces.insert(surface.clone());
+                self.swayward
+                    .unmapped_layer_surfaces
+                    .insert(surface.clone());
             } else {
                 // An unmapped surface remains unmapped. If we haven't sent an initial configure
                 // yet, we should do so.

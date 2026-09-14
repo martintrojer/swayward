@@ -11,6 +11,103 @@ use crate::FloatOrInt;
 pub const DEFAULT_BACKGROUND_COLOR: Color = Color::from_array_unpremul([0.25, 0.25, 0.25, 1.]);
 pub const DEFAULT_BACKDROP_COLOR: Color = Color::from_array_unpremul([0.15, 0.15, 0.15, 1.]);
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Titlebar {
+    pub font: String,
+    pub horizontal_padding: f64,
+    pub vertical_padding: f64,
+    pub focused: TitlebarColors,
+    pub focused_inactive: TitlebarColors,
+    pub focused_tab_title: TitlebarColors,
+    pub unfocused: TitlebarColors,
+    pub urgent: TitlebarColors,
+}
+
+impl Default for Titlebar {
+    fn default() -> Self {
+        let focused = TitlebarColors {
+            background_color: Color::new_unpremul(0.28, 0.46, 0.64, 1.),
+            text_color: Color::new_unpremul(1., 1., 1., 1.),
+        };
+        let unfocused = TitlebarColors {
+            background_color: Color::new_unpremul(0.16, 0.16, 0.16, 1.),
+            text_color: Color::new_unpremul(1., 1., 1., 1.),
+        };
+        Self {
+            font: "monospace 10".to_owned(),
+            horizontal_padding: 5.,
+            vertical_padding: 4.,
+            focused,
+            focused_inactive: unfocused,
+            focused_tab_title: unfocused,
+            unfocused,
+            urgent: unfocused,
+        }
+    }
+}
+
+impl MergeWith<TitlebarPart> for Titlebar {
+    fn merge_with(&mut self, part: &TitlebarPart) {
+        merge_clone!((self, part), font);
+        merge!((self, part), horizontal_padding, vertical_padding);
+        if let Some(colors) = &part.focused {
+            self.focused.merge_with(colors);
+        }
+        if let Some(colors) = &part.focused_inactive {
+            self.focused_inactive.merge_with(colors);
+        }
+        if let Some(colors) = &part.focused_tab_title {
+            self.focused_tab_title.merge_with(colors);
+        }
+        if let Some(colors) = &part.unfocused {
+            self.unfocused.merge_with(colors);
+        }
+        if let Some(colors) = &part.urgent {
+            self.urgent.merge_with(colors);
+        }
+    }
+}
+
+#[derive(knuffel::Decode, Debug, Default, Clone, PartialEq)]
+pub struct TitlebarPart {
+    #[knuffel(child, unwrap(argument, str))]
+    pub font: Option<String>,
+    #[knuffel(child, unwrap(argument))]
+    pub horizontal_padding: Option<FloatOrInt<0, 65535>>,
+    #[knuffel(child, unwrap(argument))]
+    pub vertical_padding: Option<FloatOrInt<0, 65535>>,
+    #[knuffel(child)]
+    pub focused: Option<TitlebarColorsPart>,
+    #[knuffel(child)]
+    pub focused_inactive: Option<TitlebarColorsPart>,
+    #[knuffel(child)]
+    pub focused_tab_title: Option<TitlebarColorsPart>,
+    #[knuffel(child)]
+    pub unfocused: Option<TitlebarColorsPart>,
+    #[knuffel(child)]
+    pub urgent: Option<TitlebarColorsPart>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TitlebarColors {
+    pub background_color: Color,
+    pub text_color: Color,
+}
+
+impl MergeWith<TitlebarColorsPart> for TitlebarColors {
+    fn merge_with(&mut self, part: &TitlebarColorsPart) {
+        merge_clone!((self, part), background_color, text_color);
+    }
+}
+
+#[derive(knuffel::Decode, Debug, Default, Clone, Copy, PartialEq)]
+pub struct TitlebarColorsPart {
+    #[knuffel(child)]
+    pub background_color: Option<Color>,
+    #[knuffel(child)]
+    pub text_color: Option<Color>,
+}
+
 /// RGB color in [0, 1] with unpremultiplied alpha.
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct Color {

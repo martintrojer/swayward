@@ -31,8 +31,8 @@ use wayland_backend::server::ClientId;
 
 use crate::layout::monitor::Monitor;
 use crate::layout::workspace::{Workspace, WorkspaceId};
-use crate::swayward::State;
 use crate::protocols::EmptyData;
+use crate::swayward::State;
 use crate::window::Mapped;
 
 const VERSION: u32 = 1;

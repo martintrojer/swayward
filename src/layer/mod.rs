@@ -1,8 +1,10 @@
-use swayward_config::layer_rule::{LayerRule, Match};
-use swayward_config::utils::MergeWith as _;
-use swayward_config::{BackgroundEffect, BlockOutFrom, CornerRadius, ResolvedPopupsRules, ShadowRule};
 use smithay::desktop::LayerSurface;
 use smithay::wayland::shell::wlr_layer::Layer;
+use swayward_config::layer_rule::{LayerRule, Match};
+use swayward_config::utils::MergeWith as _;
+use swayward_config::{
+    BackgroundEffect, BlockOutFrom, CornerRadius, ResolvedPopupsRules, ShadowRule,
+};
 
 pub mod mapped;
 pub use mapped::MappedLayer;

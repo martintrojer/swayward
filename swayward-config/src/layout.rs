@@ -1,8 +1,10 @@
+use std::str::FromStr;
+
 use knuffel::errors::DecodeError;
 use swayward_ipc::{ColumnDisplay, SizeChange};
 
 use crate::appearance::{
-    Border, FocusRing, InsertHint, Shadow, TabIndicator, DEFAULT_BACKGROUND_COLOR,
+    Border, FocusRing, InsertHint, Shadow, TabIndicator, Titlebar, DEFAULT_BACKGROUND_COLOR,
 };
 use crate::utils::{expect_only_children, Flag, MergeWith};
 use crate::{BorderRule, Color, FloatOrInt, InsertHintPart, ShadowRule, TabIndicatorPart};
@@ -13,6 +15,7 @@ pub struct Layout {
     pub border: Border,
     pub shadow: Shadow,
     pub tab_indicator: TabIndicator,
+    pub titlebar: Titlebar,
     pub insert_hint: InsertHint,
     pub preset_column_widths: Vec<PresetSize>,
     pub default_column_width: Option<PresetSize>,
@@ -21,6 +24,7 @@ pub struct Layout {
     pub always_center_single_column: bool,
     pub empty_workspace_above_first: bool,
     pub default_column_display: ColumnDisplay,
+    pub focus_wrapping: FocusWrapping,
     pub gaps: f64,
     pub struts: Struts,
     pub background_color: Color,
@@ -33,6 +37,7 @@ impl Default for Layout {
             border: Border::default(),
             shadow: Shadow::default(),
             tab_indicator: TabIndicator::default(),
+            titlebar: Titlebar::default(),
             insert_hint: InsertHint::default(),
             preset_column_widths: vec![
                 PresetSize::Proportion(1. / 3.),
@@ -44,6 +49,7 @@ impl Default for Layout {
             always_center_single_column: false,
             empty_workspace_above_first: false,
             default_column_display: ColumnDisplay::Normal,
+            focus_wrapping: FocusWrapping::Yes,
             gaps: 16.,
             struts: Struts::default(),
             preset_window_heights: vec![
@@ -64,6 +70,7 @@ impl MergeWith<LayoutPart> for Layout {
             border,
             shadow,
             tab_indicator,
+            titlebar,
             insert_hint,
             always_center_single_column,
             empty_workspace_above_first,
@@ -76,6 +83,7 @@ impl MergeWith<LayoutPart> for Layout {
             preset_window_heights,
             center_focused_column,
             default_column_display,
+            focus_wrapping,
             struts,
             background_color,
         );
@@ -105,6 +113,8 @@ pub struct LayoutPart {
     #[knuffel(child)]
     pub tab_indicator: Option<TabIndicatorPart>,
     #[knuffel(child)]
+    pub titlebar: Option<crate::appearance::TitlebarPart>,
+    #[knuffel(child)]
     pub insert_hint: Option<InsertHintPart>,
     #[knuffel(child, unwrap(children))]
     pub preset_column_widths: Option<Vec<PresetSize>>,
@@ -120,6 +130,8 @@ pub struct LayoutPart {
     pub empty_workspace_above_first: Option<Flag>,
     #[knuffel(child, unwrap(argument, str))]
     pub default_column_display: Option<ColumnDisplay>,
+    #[knuffel(child, unwrap(argument, str))]
+    pub focus_wrapping: Option<FocusWrapping>,
     #[knuffel(child, unwrap(argument))]
     pub gaps: Option<FloatOrInt<0, 65535>>,
     #[knuffel(child)]
@@ -145,6 +157,25 @@ impl From<PresetSize> for SizeChange {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DefaultPresetSize(pub Option<PresetSize>);
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum FocusWrapping {
+    #[default]
+    Yes,
+    Force,
+}
+
+impl FromStr for FocusWrapping {
+    type Err = miette::Error;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "yes" => Ok(Self::Yes),
+            "force" => Ok(Self::Force),
+            _ => Err(miette::miette!("unknown focus wrapping mode `{value}`")),
+        }
+    }
+}
 
 #[derive(knuffel::Decode, Debug, Default, Clone, Copy, PartialEq)]
 pub struct Struts {

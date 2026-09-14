@@ -6,18 +6,56 @@ use std::time::Duration;
 use bitflags::bitflags;
 use knuffel::errors::DecodeError;
 use miette::miette;
-use swayward_ipc::{
-    ColumnDisplay, LayoutSwitchTarget, PositionChange, SizeChange, WorkspaceReferenceArg,
-};
 use smithay::input::keyboard::keysyms::KEY_NoSymbol;
 use smithay::input::keyboard::xkb::{keysym_from_name, KEYSYM_CASE_INSENSITIVE, KEYSYM_NO_FLAGS};
 use smithay::input::keyboard::Keysym;
+use swayward_ipc::{
+    ColumnDisplay, LayoutSwitchTarget, PositionChange, SizeChange, WorkspaceReferenceArg,
+};
 
 use crate::recent_windows::{MruDirection, MruFilter, MruScope};
 use crate::utils::{expect_only_children, MergeWith};
 
 #[derive(Debug, Default, PartialEq)]
 pub struct Binds(pub Vec<Bind>);
+
+#[derive(Debug, PartialEq)]
+pub struct BindingMode {
+    pub name: String,
+    pub binds: Binds,
+}
+
+impl<S> knuffel::Decode<S> for BindingMode
+where
+    S: knuffel::traits::ErrorSpan,
+{
+    fn decode_node(
+        node: &knuffel::ast::SpannedNode<S>,
+        ctx: &mut knuffel::decode::Context<S>,
+    ) -> Result<Self, DecodeError<S>> {
+        let name = match &node.arguments[..] {
+            [argument] => knuffel::traits::DecodeScalar::decode(argument, ctx)?,
+            _ => {
+                return Err(DecodeError::unexpected(
+                    node,
+                    "mode",
+                    "expected mode \"<name>\" { ... }",
+                ));
+            }
+        };
+        for property in &node.properties {
+            ctx.emit_error(DecodeError::unexpected(
+                property.0,
+                "property",
+                "no properties expected for mode",
+            ));
+        }
+        Ok(Self {
+            name,
+            binds: Binds::decode_children(node, ctx),
+        })
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Bind {
@@ -39,6 +77,7 @@ pub struct Key {
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum Trigger {
     Keysym(Keysym),
+    Keycode(u32),
     MouseLeft,
     MouseRight,
     MouseMiddle,
@@ -103,6 +142,8 @@ pub struct SwitchAction {
 // Remember to add new actions to the CLI enum too.
 #[derive(knuffel::Decode, Debug, Clone, PartialEq)]
 pub enum Action {
+    #[knuffel(skip)]
+    SwayCommand(String),
     Quit(#[knuffel(property(name = "skip-confirmation"), default)] bool),
     #[knuffel(skip)]
     ChangeVt(i32),
@@ -403,7 +444,9 @@ impl From<swayward_ipc::Action> for Action {
             swayward_ipc::Action::PowerOnMonitors {} => Self::PowerOnMonitors,
             swayward_ipc::Action::Spawn { command } => Self::Spawn(command),
             swayward_ipc::Action::SpawnSh { command } => Self::SpawnSh(command),
-            swayward_ipc::Action::DoScreenTransition { delay_ms } => Self::DoScreenTransition(delay_ms),
+            swayward_ipc::Action::DoScreenTransition { delay_ms } => {
+                Self::DoScreenTransition(delay_ms)
+            }
             swayward_ipc::Action::Screenshot { show_pointer, path } => {
                 Self::Screenshot(show_pointer, path)
             }
@@ -435,7 +478,9 @@ impl From<swayward_ipc::Action> for Action {
             swayward_ipc::Action::CloseWindow { id: None } => Self::CloseWindow,
             swayward_ipc::Action::CloseWindow { id: Some(id) } => Self::CloseWindowById(id),
             swayward_ipc::Action::FullscreenWindow { id: None } => Self::FullscreenWindow,
-            swayward_ipc::Action::FullscreenWindow { id: Some(id) } => Self::FullscreenWindowById(id),
+            swayward_ipc::Action::FullscreenWindow { id: Some(id) } => {
+                Self::FullscreenWindowById(id)
+            }
             swayward_ipc::Action::ToggleWindowedFullscreen { id: None } => {
                 Self::ToggleWindowedFullscreen
             }
@@ -458,8 +503,12 @@ impl From<swayward_ipc::Action> for Action {
             swayward_ipc::Action::FocusColumnOrMonitorRight {} => Self::FocusColumnOrMonitorRight,
             swayward_ipc::Action::FocusWindowDown {} => Self::FocusWindowDown,
             swayward_ipc::Action::FocusWindowUp {} => Self::FocusWindowUp,
-            swayward_ipc::Action::FocusWindowDownOrColumnLeft {} => Self::FocusWindowDownOrColumnLeft,
-            swayward_ipc::Action::FocusWindowDownOrColumnRight {} => Self::FocusWindowDownOrColumnRight,
+            swayward_ipc::Action::FocusWindowDownOrColumnLeft {} => {
+                Self::FocusWindowDownOrColumnLeft
+            }
+            swayward_ipc::Action::FocusWindowDownOrColumnRight {} => {
+                Self::FocusWindowDownOrColumnRight
+            }
             swayward_ipc::Action::FocusWindowUpOrColumnLeft {} => Self::FocusWindowUpOrColumnLeft,
             swayward_ipc::Action::FocusWindowUpOrColumnRight {} => Self::FocusWindowUpOrColumnRight,
             swayward_ipc::Action::FocusWindowOrWorkspaceDown {} => Self::FocusWindowOrWorkspaceDown,
@@ -484,7 +533,9 @@ impl From<swayward_ipc::Action> for Action {
             swayward_ipc::Action::MoveWindowDownOrToWorkspaceDown {} => {
                 Self::MoveWindowDownOrToWorkspaceDown
             }
-            swayward_ipc::Action::MoveWindowUpOrToWorkspaceUp {} => Self::MoveWindowUpOrToWorkspaceUp,
+            swayward_ipc::Action::MoveWindowUpOrToWorkspaceUp {} => {
+                Self::MoveWindowUpOrToWorkspaceUp
+            }
             swayward_ipc::Action::ConsumeOrExpelWindowLeft { id: None } => {
                 Self::ConsumeOrExpelWindowLeft
             }
@@ -555,7 +606,9 @@ impl From<swayward_ipc::Action> for Action {
                 name,
                 reference: WorkspaceReference::from(reference),
             },
-            swayward_ipc::Action::UnsetWorkspaceName { reference: None } => Self::UnsetWorkspaceName,
+            swayward_ipc::Action::UnsetWorkspaceName { reference: None } => {
+                Self::UnsetWorkspaceName
+            }
             swayward_ipc::Action::UnsetWorkspaceName {
                 reference: Some(reference),
             } => Self::UnsetWorkSpaceNameByRef(WorkspaceReference::from(reference)),
@@ -570,7 +623,9 @@ impl From<swayward_ipc::Action> for Action {
             swayward_ipc::Action::MoveWindowToMonitorRight {} => Self::MoveWindowToMonitorRight,
             swayward_ipc::Action::MoveWindowToMonitorDown {} => Self::MoveWindowToMonitorDown,
             swayward_ipc::Action::MoveWindowToMonitorUp {} => Self::MoveWindowToMonitorUp,
-            swayward_ipc::Action::MoveWindowToMonitorPrevious {} => Self::MoveWindowToMonitorPrevious,
+            swayward_ipc::Action::MoveWindowToMonitorPrevious {} => {
+                Self::MoveWindowToMonitorPrevious
+            }
             swayward_ipc::Action::MoveWindowToMonitorNext {} => Self::MoveWindowToMonitorNext,
             swayward_ipc::Action::MoveWindowToMonitor { id: None, output } => {
                 Self::MoveWindowToMonitor(output)
@@ -583,24 +638,38 @@ impl From<swayward_ipc::Action> for Action {
             swayward_ipc::Action::MoveColumnToMonitorRight {} => Self::MoveColumnToMonitorRight,
             swayward_ipc::Action::MoveColumnToMonitorDown {} => Self::MoveColumnToMonitorDown,
             swayward_ipc::Action::MoveColumnToMonitorUp {} => Self::MoveColumnToMonitorUp,
-            swayward_ipc::Action::MoveColumnToMonitorPrevious {} => Self::MoveColumnToMonitorPrevious,
+            swayward_ipc::Action::MoveColumnToMonitorPrevious {} => {
+                Self::MoveColumnToMonitorPrevious
+            }
             swayward_ipc::Action::MoveColumnToMonitorNext {} => Self::MoveColumnToMonitorNext,
-            swayward_ipc::Action::MoveColumnToMonitor { output } => Self::MoveColumnToMonitor(output),
-            swayward_ipc::Action::SetWindowWidth { id: None, change } => Self::SetWindowWidth(change),
+            swayward_ipc::Action::MoveColumnToMonitor { output } => {
+                Self::MoveColumnToMonitor(output)
+            }
+            swayward_ipc::Action::SetWindowWidth { id: None, change } => {
+                Self::SetWindowWidth(change)
+            }
             swayward_ipc::Action::SetWindowWidth {
                 id: Some(id),
                 change,
             } => Self::SetWindowWidthById { id, change },
-            swayward_ipc::Action::SetWindowHeight { id: None, change } => Self::SetWindowHeight(change),
+            swayward_ipc::Action::SetWindowHeight { id: None, change } => {
+                Self::SetWindowHeight(change)
+            }
             swayward_ipc::Action::SetWindowHeight {
                 id: Some(id),
                 change,
             } => Self::SetWindowHeightById { id, change },
             swayward_ipc::Action::ResetWindowHeight { id: None } => Self::ResetWindowHeight,
-            swayward_ipc::Action::ResetWindowHeight { id: Some(id) } => Self::ResetWindowHeightById(id),
+            swayward_ipc::Action::ResetWindowHeight { id: Some(id) } => {
+                Self::ResetWindowHeightById(id)
+            }
             swayward_ipc::Action::SwitchPresetColumnWidth {} => Self::SwitchPresetColumnWidth,
-            swayward_ipc::Action::SwitchPresetColumnWidthBack {} => Self::SwitchPresetColumnWidthBack,
-            swayward_ipc::Action::SwitchPresetWindowWidth { id: None } => Self::SwitchPresetWindowWidth,
+            swayward_ipc::Action::SwitchPresetColumnWidthBack {} => {
+                Self::SwitchPresetColumnWidthBack
+            }
+            swayward_ipc::Action::SwitchPresetWindowWidth { id: None } => {
+                Self::SwitchPresetWindowWidth
+            }
             swayward_ipc::Action::SwitchPresetWindowWidthBack { id: None } => {
                 Self::SwitchPresetWindowWidthBack
             }
@@ -628,11 +697,15 @@ impl From<swayward_ipc::Action> for Action {
                 Self::MaximizeWindowToEdgesById(id)
             }
             swayward_ipc::Action::SetColumnWidth { change } => Self::SetColumnWidth(change),
-            swayward_ipc::Action::ExpandColumnToAvailableWidth {} => Self::ExpandColumnToAvailableWidth,
+            swayward_ipc::Action::ExpandColumnToAvailableWidth {} => {
+                Self::ExpandColumnToAvailableWidth
+            }
             swayward_ipc::Action::SwitchLayout { layout } => Self::SwitchLayout(layout),
             swayward_ipc::Action::ShowHotkeyOverlay {} => Self::ShowHotkeyOverlay,
             swayward_ipc::Action::MoveWorkspaceToMonitorLeft {} => Self::MoveWorkspaceToMonitorLeft,
-            swayward_ipc::Action::MoveWorkspaceToMonitorRight {} => Self::MoveWorkspaceToMonitorRight,
+            swayward_ipc::Action::MoveWorkspaceToMonitorRight {} => {
+                Self::MoveWorkspaceToMonitorRight
+            }
             swayward_ipc::Action::MoveWorkspaceToMonitorDown {} => Self::MoveWorkspaceToMonitorDown,
             swayward_ipc::Action::MoveWorkspaceToMonitorUp {} => Self::MoveWorkspaceToMonitorUp,
             swayward_ipc::Action::MoveWorkspaceToMonitorPrevious {} => {
@@ -684,7 +757,9 @@ impl From<swayward_ipc::Action> for Action {
             swayward_ipc::Action::MoveFloatingWindow { id, x, y } => {
                 Self::MoveFloatingWindowById { id, x, y }
             }
-            swayward_ipc::Action::ToggleWindowRuleOpacity { id: None } => Self::ToggleWindowRuleOpacity,
+            swayward_ipc::Action::ToggleWindowRuleOpacity { id: None } => {
+                Self::ToggleWindowRuleOpacity
+            }
             swayward_ipc::Action::ToggleWindowRuleOpacity { id: Some(id) } => {
                 Self::ToggleWindowRuleOpacityById(id)
             }
@@ -763,6 +838,43 @@ impl<S: knuffel::traits::ErrorSpan> knuffel::DecodeScalar<S> for WorkspaceRefere
     }
 }
 
+impl Binds {
+    fn decode_children<S: knuffel::traits::ErrorSpan>(
+        node: &knuffel::ast::SpannedNode<S>,
+        ctx: &mut knuffel::decode::Context<S>,
+    ) -> Self {
+        let mut seen_keys: HashMap<Key, &knuffel::ast::SpannedNode<S>> = HashMap::new();
+        let mut binds = Vec::new();
+
+        for child in node.children() {
+            match <Bind as knuffel::Decode<S>>::decode_node(child, ctx) {
+                Err(e) => ctx.emit_error(e),
+                Ok(bind) => match seen_keys.entry(bind.key) {
+                    Entry::Occupied(entry) => {
+                        // Even though it's technically incorrect, we use
+                        // `DecodeError::Missing` here because it labels the bind with
+                        // "node starts here", which is the least bad option
+                        ctx.emit_error(DecodeError::missing(
+                            entry.get(),
+                            "keybind first defined here",
+                        ));
+                        ctx.emit_error(DecodeError::unexpected(
+                            &child.node_name,
+                            "keybind",
+                            "duplicate keybind later defined here",
+                        ));
+                    }
+                    Entry::Vacant(entry) => {
+                        entry.insert(child);
+                        binds.push(bind);
+                    }
+                },
+            }
+        }
+        Self(binds)
+    }
+}
+
 impl<S> knuffel::Decode<S> for Binds
 where
     S: knuffel::traits::ErrorSpan,
@@ -772,43 +884,7 @@ where
         ctx: &mut knuffel::decode::Context<S>,
     ) -> Result<Self, DecodeError<S>> {
         expect_only_children(node, ctx);
-
-        let mut seen_keys: HashMap<Key, &knuffel::ast::SpannedNode<S>> = HashMap::new();
-
-        let mut binds = Vec::new();
-
-        for child in node.children() {
-            match Bind::decode_node(child, ctx) {
-                Err(e) => {
-                    ctx.emit_error(e);
-                }
-                Ok(bind) => {
-                    match seen_keys.entry(bind.key) {
-                        Entry::Occupied(entry) => {
-                            // Even though it's technically incorrect, we use
-                            // `DecodeError::Missing` here because it labels the bind with
-                            // "node starts here", which is the least bad option
-                            ctx.emit_error(DecodeError::missing(
-                                entry.get(),
-                                "keybind first defined here",
-                            ));
-
-                            ctx.emit_error(DecodeError::unexpected(
-                                &child.node_name,
-                                "keybind",
-                                "duplicate keybind later defined here",
-                            ));
-                        }
-                        Entry::Vacant(entry) => {
-                            entry.insert(child);
-                            binds.push(bind);
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(Self(binds))
+        Ok(Self::decode_children(node, ctx))
     }
 }
 
@@ -900,6 +976,50 @@ where
                     "only one action is allowed per keybind",
                 ));
             }
+            if child.node_name.as_ref() == "command" {
+                let command = match &child.arguments[..] {
+                    [argument] => match &*argument.literal {
+                        knuffel::ast::Literal::String(command) => command.to_string(),
+                        _ => {
+                            ctx.emit_error(DecodeError::unexpected(
+                                &argument.literal,
+                                "argument",
+                                "command must be a quoted string",
+                            ));
+                            return Ok(dummy);
+                        }
+                    },
+                    _ => {
+                        ctx.emit_error(DecodeError::unexpected(
+                            child,
+                            "node",
+                            "expected command \"<sway command>\"",
+                        ));
+                        return Ok(dummy);
+                    }
+                };
+                if child.children.is_some() || !child.properties.is_empty() {
+                    ctx.emit_error(DecodeError::unexpected(
+                        child,
+                        "node",
+                        "command accepts one quoted string and no children or properties",
+                    ));
+                    return Ok(dummy);
+                }
+                if let Err(error) = swayward_ipc::command::validate(&command) {
+                    ctx.emit_error(DecodeError::unexpected(child, "command", error));
+                    return Ok(dummy);
+                }
+                return Ok(Self {
+                    key,
+                    action: Action::SwayCommand(command),
+                    repeat,
+                    cooldown,
+                    allow_when_locked,
+                    allow_inhibiting,
+                    hotkey_overlay_title,
+                });
+            }
             match Action::decode_node(child, ctx) {
                 Ok(action) => {
                     if !matches!(action, Action::Spawn(_) | Action::SpawnSh(_)) {
@@ -977,7 +1097,13 @@ impl FromStr for Key {
             }
         }
 
-        let trigger = if key.eq_ignore_ascii_case("MouseLeft") {
+        let trigger = if let Some(keycode) = key.strip_prefix("code:") {
+            Trigger::Keycode(
+                keycode
+                    .parse()
+                    .map_err(|_| miette!("invalid keycode: {keycode}"))?,
+            )
+        } else if key.eq_ignore_ascii_case("MouseLeft") {
             Trigger::MouseLeft
         } else if key.eq_ignore_ascii_case("MouseRight") {
             Trigger::MouseRight

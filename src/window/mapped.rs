@@ -1,7 +1,6 @@
 use std::cell::{Cell, Ref, RefCell};
 use std::time::Duration;
 
-use swayward_config::{Color, Config, CornerRadius, GradientInterpolation, WindowRule};
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::gles::GlesRenderer;
@@ -19,6 +18,7 @@ use smithay::wayland::shell::xdg::{
     SurfaceCachedState, ToplevelCachedState, ToplevelConfigure, ToplevelSurface,
     XdgToplevelSurfaceData,
 };
+use swayward_config::{Color, Config, CornerRadius, GradientInterpolation, WindowRule};
 use wayland_backend::server::Credentials;
 
 use super::{ResolvedWindowRules, WindowRef};
@@ -27,7 +27,6 @@ use crate::layout::{
     ConfigureIntent, InteractiveResizeData, LayoutElement, LayoutElementRenderElement,
     LayoutElementRenderSnapshot, SizingMode,
 };
-use crate::swayward_render_elements;
 use crate::render_helpers::background_effect::BackgroundEffectElement;
 use crate::render_helpers::border::BorderRenderElement;
 use crate::render_helpers::offscreen::OffscreenData;
@@ -39,6 +38,7 @@ use crate::render_helpers::surface::{
 };
 use crate::render_helpers::xray::XrayPos;
 use crate::render_helpers::{background_effect, BakedBuffer, RenderCtx, RenderTarget};
+use crate::swayward_render_elements;
 use crate::utils::id::IdCounter;
 use crate::utils::transaction::Transaction;
 use crate::utils::{
@@ -96,6 +96,9 @@ pub struct Mapped {
 
     /// Whether this window is floating.
     is_floating: bool,
+
+    /// Whether the client created an xdg-decoration object for this toplevel.
+    has_xdg_decoration: bool,
 
     /// Whether this window is a target of a window cast.
     is_window_cast_target: bool,
@@ -227,8 +230,8 @@ impl MappedId {
     /// That way, clients can associate a foreign toplevel handle with an IPC window ID.
     ///
     /// We use the decimal representation of the ID, which is up to 20 characters long for u64::MAX.
-    /// This is within the 32-character limit, and is nice because it matches up with how `swayward msg`
-    /// prints the IDs to the console.
+    /// This is within the 32-character limit, and is nice because it matches up with how `swayward
+    /// msg` prints the IDs to the console.
     ///
     /// This namespace can be extended in the future, with any non-numeric prefix to disambiguate.
     pub fn to_protocol_identifier(self) -> String {
@@ -275,6 +278,9 @@ impl Mapped {
     pub fn new(window: Window, rules: ResolvedWindowRules, hook: HookId, config: &Config) -> Self {
         let surface = window.wl_surface().expect("no X11 support");
         let credentials = get_credentials_for_surface(&surface);
+        let has_xdg_decoration = window.toplevel().is_some_and(|toplevel| {
+            toplevel.with_pending_state(|state| state.decoration_mode.is_some())
+        });
         let mut rv = Self {
             window,
             id: MappedId::next(),
@@ -289,6 +295,7 @@ impl Mapped {
             is_focused: false,
             is_active_in_column: true,
             is_floating: false,
+            has_xdg_decoration,
             is_window_cast_target: false,
             ignore_opacity_window_rule: false,
             block_out_buffer: RefCell::new(SolidColorBuffer::new((0., 0.), [0., 0., 0., 1.])),
@@ -365,6 +372,10 @@ impl Mapped {
 
     pub fn offscreen_data(&self) -> Ref<'_, Option<OffscreenData>> {
         self.offscreen_data.borrow()
+    }
+
+    pub fn resolved_rules(&self) -> &ResolvedWindowRules {
+        &self.rules
     }
 
     pub fn is_focused(&self) -> bool {
@@ -628,6 +639,10 @@ impl LayoutElement for Mapped {
 
     fn update_config(&mut self, blur_config: swayward_config::Blur) {
         self.blur_config = blur_config;
+    }
+
+    fn title(&self) -> String {
+        with_toplevel_role(self.toplevel(), |role| role.title.clone()).unwrap_or_default()
     }
 
     fn size(&self) -> Size<i32, Logical> {
@@ -999,6 +1014,21 @@ impl LayoutElement for Mapped {
         let changed = self.is_floating != floating;
         self.is_floating = floating;
         self.need_to_recompute_rules |= changed;
+    }
+
+    fn has_xdg_decoration(&self) -> bool {
+        self.has_xdg_decoration
+    }
+
+    fn request_server_decoration(&mut self, server_side: bool) {
+        self.toplevel().with_pending_state(|state| {
+            state.decoration_mode = Some(if server_side {
+                zxdg_toplevel_decoration_v1::Mode::ServerSide
+            } else {
+                zxdg_toplevel_decoration_v1::Mode::ClientSide
+            });
+        });
+        self.set_needs_configure();
     }
 
     fn set_bounds(&self, bounds: Size<i32, Logical>) {

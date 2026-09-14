@@ -1,15 +1,15 @@
 use std::iter::zip;
 use std::mem;
 
-use swayward_config::{CornerRadius, Gradient, GradientRelativeTo, TabIndicatorPosition};
 use smithay::utils::{Logical, Point, Rectangle, Size};
+use swayward_config::{CornerRadius, Gradient, GradientRelativeTo, TabIndicatorPosition};
 
 use super::tile::Tile;
 use super::LayoutElement;
 use crate::animation::{Animation, Clock};
-use crate::swayward_render_elements;
 use crate::render_helpers::border::BorderRenderElement;
 use crate::render_helpers::renderer::NiriRenderer;
+use crate::swayward_render_elements;
 use crate::utils::{
     floor_logical_in_physical_max1, round_logical_in_physical, round_logical_in_physical_max1,
 };

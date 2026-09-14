@@ -13,12 +13,6 @@ use std::{env, mem, thread};
 use _server_decoration::server::org_kde_kwin_server_decoration_manager::Mode as KdeDecorationsMode;
 use anyhow::{bail, ensure, Context};
 use calloop::futures::Scheduler;
-use swayward_config::debug::PreviewRender;
-use swayward_config::output::MaxBpc;
-use swayward_config::{
-    Config, FloatOrInt, Key, Modifiers, OutputName, TrackLayout, WarpMouseToFocusMode,
-    WorkspaceReference, Xkb,
-};
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::input::{InputTime, Keycode};
 use smithay::backend::renderer::damage::OutputDamageTracker;
@@ -112,6 +106,12 @@ use smithay::wayland::viewporter::ViewporterState;
 use smithay::wayland::virtual_keyboard::VirtualKeyboardManagerState;
 use smithay::wayland::xdg_activation::XdgActivationState;
 use smithay::wayland::xdg_foreign::XdgForeignState;
+use swayward_config::debug::PreviewRender;
+use swayward_config::output::MaxBpc;
+use swayward_config::{
+    Config, FloatOrInt, Key, Modifiers, OutputName, TrackLayout, WarpMouseToFocusMode,
+    WorkspaceReference, Xkb,
+};
 use wayland_server::protocol::wl_output::WlOutput;
 
 #[cfg(feature = "dbus")]
@@ -145,7 +145,6 @@ use crate::layout::workspace::{Workspace, WorkspaceId};
 use crate::layout::{
     HitType, Layout, LayoutElement as _, LayoutElementRenderElement, MonitorRenderElement,
 };
-use crate::swayward_render_elements;
 use crate::protocols::ext_workspace::{self, ExtWorkspaceManagerState};
 use crate::protocols::foreign_toplevel::{self, ForeignToplevelManagerState};
 use crate::protocols::gamma_control::GammaControlManagerState;
@@ -167,6 +166,7 @@ use crate::render_helpers::{
 };
 #[cfg(feature = "xdp-gnome-screencast")]
 use crate::screencasting::Screencasting;
+use crate::swayward_render_elements;
 use crate::ui::config_error_notification::ConfigErrorNotification;
 use crate::ui::exit_confirm_dialog::{ExitConfirmDialog, ExitConfirmDialogRenderElement};
 use crate::ui::hotkey_overlay::HotkeyOverlay;
@@ -229,6 +229,18 @@ pub struct Swayward {
     // Each workspace corresponds to a Space. Each workspace generally has one Output mapped to it,
     // however it may have none (when there are no outputs connected) or multiple (when mirroring).
     pub layout: Layout<Mapped>,
+
+    pub marks: HashMap<String, MappedId>,
+    pub marks_by_window: HashMap<MappedId, Vec<String>>,
+    pub marks_by_container: HashMap<
+        (
+            crate::layout::workspace::WorkspaceId,
+            crate::layout::tiling_tree::NodeId,
+        ),
+        Vec<String>,
+    >,
+    pub for_window: Vec<(String, String, crate::criteria::Criteria)>,
+    pub binding_mode: String,
 
     // This space does not actually contain any windows, but all outputs are mapped into it
     // according to their global position.
@@ -815,7 +827,9 @@ impl State {
         // Needs to be called after updating the keyboard focus.
         self.swayward.refresh_layout();
 
-        self.swayward.cursor_manager.check_cursor_image_surface_alive();
+        self.swayward
+            .cursor_manager
+            .check_cursor_image_surface_alive();
         self.swayward.refresh_pointer_outputs();
         self.swayward.global_space.refresh();
         self.swayward.refresh_idle_inhibit();
@@ -857,7 +871,8 @@ impl State {
         };
 
         // Disable the hidden pointer if the contents underneath have changed.
-        if !self.swayward.pointer_visibility.is_visible() && self.swayward.pointer_contents != under {
+        if !self.swayward.pointer_visibility.is_visible() && self.swayward.pointer_contents != under
+        {
             self.swayward.pointer_visibility = PointerVisibility::Disabled;
 
             // When setting PointerVisibility::Hidden together with pointer contents changing,
@@ -1276,7 +1291,8 @@ impl State {
                 surface: Some(surface),
             } = &self.swayward.keyboard_focus
             {
-                if let Some((mapped, _)) = self.swayward.layout.find_window_and_output_mut(surface) {
+                if let Some((mapped, _)) = self.swayward.layout.find_window_and_output_mut(surface)
+                {
                     mapped.set_is_focused(false);
                 }
             }
@@ -1284,7 +1300,8 @@ impl State {
                 surface: Some(surface),
             } = &focus
             {
-                if let Some((mapped, _)) = self.swayward.layout.find_window_and_output_mut(surface) {
+                if let Some((mapped, _)) = self.swayward.layout.find_window_and_output_mut(surface)
+                {
                     mapped.set_is_focused(true);
 
                     // If `mapped` does not have a focus timestamp, then the window is newly
@@ -1412,7 +1429,15 @@ impl State {
     }
 
     fn load_xkb_file(&mut self) {
-        let xkb_file = self.swayward.config.borrow().input.keyboard.xkb.file.clone();
+        let xkb_file = self
+            .swayward
+            .config
+            .borrow()
+            .input
+            .keyboard
+            .xkb
+            .file
+            .clone();
         if let Some(xkb_file) = xkb_file {
             if let Err(err) = self.set_xkb_file(xkb_file) {
                 warn!("error loading xkb_file: {err:?}");
@@ -1828,7 +1853,9 @@ impl State {
         }
 
         let config = self.swayward.config.borrow().outputs.clone();
-        self.swayward.output_management_state.on_config_changed(config);
+        self.swayward
+            .output_management_state
+            .on_config_changed(config);
     }
 
     pub fn modify_output_config<F>(&mut self, name: &str, fun: F)
@@ -1874,17 +1901,23 @@ impl State {
         fun(config);
     }
 
-    pub fn apply_transient_output_config(&mut self, name: &str, action: swayward_ipc::OutputAction) {
+    pub fn apply_transient_output_config(
+        &mut self,
+        name: &str,
+        action: swayward_ipc::OutputAction,
+    ) {
         self.modify_output_config(name, move |config| match action {
             swayward_ipc::OutputAction::Off => config.off = true,
             swayward_ipc::OutputAction::On => config.off = false,
             swayward_ipc::OutputAction::Mode { mode } => {
                 config.mode = match mode {
                     swayward_ipc::ModeToSet::Automatic => None,
-                    swayward_ipc::ModeToSet::Specific(mode) => Some(swayward_config::output::Mode {
-                        custom: false,
-                        mode,
-                    }),
+                    swayward_ipc::ModeToSet::Specific(mode) => {
+                        Some(swayward_config::output::Mode {
+                            custom: false,
+                            mode,
+                        })
+                    }
                 };
                 config.modeline = None;
             }
@@ -1930,10 +1963,12 @@ impl State {
             swayward_ipc::OutputAction::Position { position } => {
                 config.position = match position {
                     swayward_ipc::PositionToSet::Automatic => None,
-                    swayward_ipc::PositionToSet::Specific(position) => Some(swayward_config::Position {
-                        x: position.x,
-                        y: position.y,
-                    }),
+                    swayward_ipc::PositionToSet::Specific(position) => {
+                        Some(swayward_config::Position {
+                            x: position.x,
+                            y: position.y,
+                        })
+                    }
                 }
             }
             swayward_ipc::OutputAction::Vrr { vrr } => {
@@ -1945,7 +1980,9 @@ impl State {
                     None
                 }
             }
-            swayward_ipc::OutputAction::MaxBpc { max_bpc } => config.max_bpc = Some(MaxBpc(max_bpc)),
+            swayward_ipc::OutputAction::MaxBpc { max_bpc } => {
+                config.max_bpc = Some(MaxBpc(max_bpc))
+            }
         });
 
         self.reload_output_config();
@@ -1973,7 +2010,9 @@ impl State {
         self.swayward.on_ipc_outputs_changed();
 
         let new_config = self.backend.ipc_outputs().lock().unwrap().clone();
-        self.swayward.output_management_state.notify_changes(new_config);
+        self.swayward
+            .output_management_state
+            .notify_changes(new_config);
     }
 
     pub fn open_screenshot_ui(&mut self, show_pointer: bool, path: Option<String>) {
@@ -1991,20 +2030,19 @@ impl State {
 
         self.swayward.update_render_elements(None);
 
-        let Some(screenshots) = self
-            .backend
-            .with_primary_renderer(|renderer| self.swayward.capture_screenshots(renderer).collect())
-        else {
+        let Some(screenshots) = self.backend.with_primary_renderer(|renderer| {
+            self.swayward.capture_screenshots(renderer).collect()
+        }) else {
             return;
         };
 
         // Now that we captured the screenshots, clear grabs like drag-and-drop, etc.
         let time = InputTime::now();
-        self.swayward
-            .seat
-            .get_pointer()
-            .unwrap()
-            .unset_grab(self, SERIAL_COUNTER.next_serial(), time);
+        self.swayward.seat.get_pointer().unwrap().unset_grab(
+            self,
+            SERIAL_COUNTER.next_serial(),
+            time,
+        );
         if let Some(touch) = self.swayward.seat.get_touch() {
             touch.unset_grab(self);
         }
@@ -2014,9 +2052,13 @@ impl State {
         }
 
         self.backend.with_primary_renderer(|renderer| {
-            self.swayward
-                .screenshot_ui
-                .open(renderer, screenshots, default_output, show_pointer, path)
+            self.swayward.screenshot_ui.open(
+                renderer,
+                screenshots,
+                default_output,
+                show_pointer,
+                path,
+            )
         });
 
         self.swayward
@@ -2025,7 +2067,10 @@ impl State {
         self.swayward.queue_redraw_all();
     }
 
-    pub fn handle_pick_color(&mut self, tx: async_channel::Sender<Option<swayward_ipc::PickedColor>>) {
+    pub fn handle_pick_color(
+        &mut self,
+        tx: async_channel::Sender<Option<swayward_ipc::PickedColor>>,
+    ) {
         let pointer = self.swayward.seat.get_pointer().unwrap();
         let start_data = PointerGrabStartData {
             focus: None,
@@ -2050,7 +2095,10 @@ impl State {
         self.backend.with_primary_renderer(|renderer| {
             match self.swayward.screenshot_ui.capture(renderer) {
                 Ok((size, pixels)) => {
-                    if let Err(err) = self.swayward.save_screenshot(size, pixels, write_to_disk, path) {
+                    if let Err(err) =
+                        self.swayward
+                            .save_screenshot(size, pixels, write_to_disk, path)
+                    {
                         warn!("error saving screenshot: {err:?}");
                     }
                 }
@@ -2381,9 +2429,12 @@ impl Swayward {
             .insert_source(
                 Timer::from_duration(XDG_ACTIVATION_TOKEN_TIMEOUT),
                 |_, _, state| {
-                    state.swayward.activation_state.retain_tokens(|_, token_data| {
-                        token_data.timestamp.elapsed() < XDG_ACTIVATION_TOKEN_TIMEOUT
-                    });
+                    state
+                        .swayward
+                        .activation_state
+                        .retain_tokens(|_, token_data| {
+                            token_data.timestamp.elapsed() < XDG_ACTIVATION_TOKEN_TIMEOUT
+                        });
                     TimeoutAction::ToDuration(XDG_ACTIVATION_TOKEN_TIMEOUT)
                 },
             )
@@ -2525,6 +2576,11 @@ impl Swayward {
             clock: animation_clock,
 
             layout,
+            marks: HashMap::new(),
+            marks_by_window: HashMap::new(),
+            marks_by_container: HashMap::new(),
+            for_window: Vec::new(),
+            binding_mode: "default".into(),
             global_space: Space::default(),
             sorted_outputs: Vec::default(),
             output_state: HashMap::new(),
@@ -2661,6 +2717,57 @@ impl Swayward {
         swayward
     }
 
+    pub fn set_mark(&mut self, window: MappedId, mark: &str, add: bool, toggle: bool) {
+        let had_mark = self.marks.get(mark) == Some(&window);
+        if !add {
+            if let Some(existing) = self.marks_by_window.remove(&window) {
+                for mark in existing {
+                    self.marks.remove(&mark);
+                }
+            }
+        }
+        if let Some(previous) = self.marks.remove(mark) {
+            if let Some(marks) = self.marks_by_window.get_mut(&previous) {
+                marks.retain(|existing| existing != mark);
+            }
+        }
+        if !toggle || !had_mark {
+            self.marks.insert(mark.to_owned(), window);
+            self.marks_by_window
+                .entry(window)
+                .or_default()
+                .push(mark.to_owned());
+        }
+    }
+
+    pub fn unmark(&mut self, window: Option<MappedId>, mark: Option<&str>) {
+        match (window, mark) {
+            (Some(window), Some(mark)) if self.marks.get(mark) == Some(&window) => {
+                self.marks.remove(mark);
+                if let Some(marks) = self.marks_by_window.get_mut(&window) {
+                    marks.retain(|existing| existing != mark);
+                }
+            }
+            (Some(window), None) => {
+                for mark in self.marks_by_window.remove(&window).unwrap_or_default() {
+                    self.marks.remove(&mark);
+                }
+            }
+            (None, Some(mark)) => {
+                if let Some(window) = self.marks.remove(mark) {
+                    if let Some(marks) = self.marks_by_window.get_mut(&window) {
+                        marks.retain(|existing| existing != mark);
+                    }
+                }
+            }
+            (None, None) => {
+                self.marks.clear();
+                self.marks_by_window.clear();
+            }
+            _ => {}
+        }
+    }
+
     pub fn insert_client(&mut self, client: NewClient) {
         let NewClient {
             client,
@@ -2693,7 +2800,12 @@ impl Swayward {
             "/org/freedesktop/login1",
             Some("org.freedesktop.login1.Manager"),
             "Inhibit",
-            &("handle-power-key", "swayward", "Power key handling", "block"),
+            &(
+                "handle-power-key",
+                "swayward",
+                "Power key handling",
+                "block",
+            ),
         )?;
 
         let fd: zbus::zvariant::OwnedFd = message.body().deserialize()?;
@@ -3492,67 +3604,119 @@ impl Swayward {
     }
 
     pub fn output_left_of(&self, current: &Output) -> Option<Output> {
-        let current_geo = self.global_space.output_geometry(current)?;
-        let extended_geo = Rectangle::new(
-            Point::from((i32::MIN / 2, current_geo.loc.y)),
-            Size::from((i32::MAX, current_geo.size.h)),
-        );
+        self.output_left_of_point(current, center(self.global_space.output_geometry(current)?))
+    }
 
-        self.global_space
-            .outputs()
-            .map(|output| (output, self.global_space.output_geometry(output).unwrap()))
-            .filter(|(_, geo)| center(*geo).x < center(current_geo).x && geo.overlaps(extended_geo))
-            .min_by_key(|(_, geo)| center(current_geo).x - center(*geo).x)
-            .map(|(output, _)| output)
-            .cloned()
+    pub fn output_left_of_point(
+        &self,
+        current: &Output,
+        reference: Point<i32, Logical>,
+    ) -> Option<Output> {
+        self.output_in_direction(current, reference, true, false)
     }
 
     pub fn output_right_of(&self, current: &Output) -> Option<Output> {
-        let current_geo = self.global_space.output_geometry(current)?;
-        let extended_geo = Rectangle::new(
-            Point::from((i32::MIN / 2, current_geo.loc.y)),
-            Size::from((i32::MAX, current_geo.size.h)),
-        );
+        self.output_right_of_point(current, center(self.global_space.output_geometry(current)?))
+    }
 
-        self.global_space
-            .outputs()
-            .map(|output| (output, self.global_space.output_geometry(output).unwrap()))
-            .filter(|(_, geo)| center(*geo).x > center(current_geo).x && geo.overlaps(extended_geo))
-            .min_by_key(|(_, geo)| center(*geo).x - center(current_geo).x)
-            .map(|(output, _)| output)
-            .cloned()
+    pub fn output_right_of_point(
+        &self,
+        current: &Output,
+        reference: Point<i32, Logical>,
+    ) -> Option<Output> {
+        self.output_in_direction(current, reference, true, true)
     }
 
     pub fn output_up_of(&self, current: &Output) -> Option<Output> {
-        let current_geo = self.global_space.output_geometry(current)?;
-        let extended_geo = Rectangle::new(
-            Point::from((current_geo.loc.x, i32::MIN / 2)),
-            Size::from((current_geo.size.w, i32::MAX)),
-        );
+        self.output_up_of_point(current, center(self.global_space.output_geometry(current)?))
+    }
 
-        self.global_space
-            .outputs()
-            .map(|output| (output, self.global_space.output_geometry(output).unwrap()))
-            .filter(|(_, geo)| center(*geo).y < center(current_geo).y && geo.overlaps(extended_geo))
-            .min_by_key(|(_, geo)| center(current_geo).y - center(*geo).y)
-            .map(|(output, _)| output)
-            .cloned()
+    pub fn output_up_of_point(
+        &self,
+        current: &Output,
+        reference: Point<i32, Logical>,
+    ) -> Option<Output> {
+        self.output_in_direction(current, reference, false, false)
     }
 
     pub fn output_down_of(&self, current: &Output) -> Option<Output> {
-        let current_geo = self.global_space.output_geometry(current)?;
-        let extended_geo = Rectangle::new(
-            Point::from((current_geo.loc.x, i32::MIN / 2)),
-            Size::from((current_geo.size.w, i32::MAX)),
-        );
+        self.output_down_of_point(current, center(self.global_space.output_geometry(current)?))
+    }
 
-        self.global_space
-            .outputs()
-            .map(|output| (output, self.global_space.output_geometry(output).unwrap()))
-            .filter(|(_, geo)| center(*geo).y > center(current_geo).y && geo.overlaps(extended_geo))
-            .min_by_key(|(_, geo)| center(*geo).y - center(current_geo).y)
-            .map(|(output, _)| output)
-            .cloned()
+    pub fn output_down_of_point(
+        &self,
+        current: &Output,
+        reference: Point<i32, Logical>,
+    ) -> Option<Output> {
+        self.output_in_direction(current, reference, false, true)
+    }
+
+    fn output_in_direction(
+        &self,
+        current: &Output,
+        reference: Point<i32, Logical>,
+        horizontal: bool,
+        positive: bool,
+    ) -> Option<Output> {
+        let current_geo = self.global_space.output_geometry(current)?;
+        let candidates = || {
+            self.global_space
+                .outputs()
+                .filter(|output| *output != current)
+                .filter_map(|output| {
+                    self.global_space
+                        .output_geometry(output)
+                        .map(|geometry| (output, geometry))
+                })
+        };
+        let in_direction = |geometry: Rectangle<i32, Logical>| {
+            if horizontal {
+                if positive {
+                    geometry.loc.x >= current_geo.loc.x + current_geo.size.w
+                } else {
+                    geometry.loc.x + geometry.size.w <= current_geo.loc.x
+                }
+            } else if positive {
+                geometry.loc.y >= current_geo.loc.y + current_geo.size.h
+            } else {
+                geometry.loc.y + geometry.size.h <= current_geo.loc.y
+            }
+        };
+        let distance = |geometry: Rectangle<i32, Logical>| {
+            let closest = Point::from((
+                reference
+                    .x
+                    .clamp(geometry.loc.x, geometry.loc.x + geometry.size.w),
+                reference
+                    .y
+                    .clamp(geometry.loc.y, geometry.loc.y + geometry.size.h),
+            ));
+            let delta = closest - reference;
+            i64::from(delta.x) * i64::from(delta.x) + i64::from(delta.y) * i64::from(delta.y)
+        };
+
+        candidates()
+            .filter(|(_, geometry)| in_direction(*geometry))
+            .min_by_key(|(_, geometry)| distance(*geometry))
+            .or_else(|| {
+                candidates()
+                    .filter(|(_, geometry)| {
+                        let positive = !positive;
+                        if horizontal {
+                            if positive {
+                                geometry.loc.x >= current_geo.loc.x + current_geo.size.w
+                            } else {
+                                geometry.loc.x + geometry.size.w <= current_geo.loc.x
+                            }
+                        } else if positive {
+                            geometry.loc.y >= current_geo.loc.y + current_geo.size.h
+                        } else {
+                            geometry.loc.y + geometry.size.h <= current_geo.loc.y
+                        }
+                    })
+                    .max_by_key(|(_, geometry)| distance(*geometry))
+            })
+            .map(|(output, _)| output.clone())
     }
 
     pub fn output_previous_of(&self, current: &Output) -> Option<Output> {
@@ -6229,20 +6393,20 @@ impl Swayward {
             }
         }
 
-        if let Some(window) = &new_focus.window {
-            if !self.layout.is_overview_open() && current_focus.window.as_ref() != Some(window) {
-                let (window, hit) = window;
-
-                // Don't trigger focus-follows-mouse over the tab indicator.
-                if matches!(
-                    hit,
-                    HitType::Activate {
-                        is_tab_indicator: true
-                    }
-                ) {
-                    return;
+        if let Some((window, hit)) = &new_focus.window {
+            let tab_target = matches!(
+                hit,
+                HitType::Activate {
+                    is_tab_indicator: true
                 }
+            )
+            .then(|| self.layout.tab_indicator_focus_target(window))
+            .flatten()
+            .map(|mapped| mapped.window.clone());
+            let window = tab_target.as_ref().unwrap_or(window);
+            let current_window = current_focus.window.as_ref().map(|(window, _)| window);
 
+            if !self.layout.is_overview_open() && current_window != Some(window) {
                 if !self.layout.should_trigger_focus_follows_mouse_on(window) {
                     return;
                 }

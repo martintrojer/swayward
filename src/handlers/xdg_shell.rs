@@ -1,7 +1,6 @@
 use std::cell::Cell;
 
 use calloop::Interest;
-use swayward_config::PresetSize;
 use smithay::backend::input::InputTime;
 use smithay::desktop::{
     find_popup_root_surface, get_popup_toplevel_coords, layer_map_for_output, utils, LayerSurface,
@@ -34,6 +33,7 @@ use smithay::wayland::shell::xdg::{
     XdgToplevelSurfaceData,
 };
 use smithay::wayland::xdg_foreign::{XdgForeignHandler, XdgForeignState};
+use swayward_config::PresetSize;
 use tracing::field::Empty;
 
 use crate::input::move_grab::MoveGrab;
@@ -475,7 +475,11 @@ impl XdgShellHandler for State {
 
             let window = mapped.window.clone();
             self.swayward.layout.set_maximized(&window, true);
-        } else if let Some(unmapped) = self.swayward.unmapped_windows.get_mut(toplevel.wl_surface()) {
+        } else if let Some(unmapped) = self
+            .swayward
+            .unmapped_windows
+            .get_mut(toplevel.wl_surface())
+        {
             match &mut unmapped.state {
                 InitialConfigureState::NotConfigured {
                     wants_maximized, ..
@@ -500,7 +504,9 @@ impl XdgShellHandler for State {
                         .or_else(|| {
                             toplevel
                                 .parent()
-                                .and_then(|parent| self.swayward.layout.find_window_and_output(&parent))
+                                .and_then(|parent| {
+                                    self.swayward.layout.find_window_and_output(&parent)
+                                })
                                 .and_then(|(_win, output)| output)
                                 .and_then(|o| self.swayward.layout.monitor_for_output(o))
                                 .map(|mon| (mon, true))
@@ -557,7 +563,11 @@ impl XdgShellHandler for State {
 
             let window = mapped.window.clone();
             self.swayward.layout.set_maximized(&window, false);
-        } else if let Some(unmapped) = self.swayward.unmapped_windows.get_mut(toplevel.wl_surface()) {
+        } else if let Some(unmapped) = self
+            .swayward
+            .unmapped_windows
+            .get_mut(toplevel.wl_surface())
+        {
             match &mut unmapped.state {
                 InitialConfigureState::NotConfigured {
                     wants_maximized, ..
@@ -694,7 +704,11 @@ impl XdgShellHandler for State {
             }
 
             self.swayward.layout.set_fullscreen(&window, true);
-        } else if let Some(unmapped) = self.swayward.unmapped_windows.get_mut(toplevel.wl_surface()) {
+        } else if let Some(unmapped) = self
+            .swayward
+            .unmapped_windows
+            .get_mut(toplevel.wl_surface())
+        {
             match &mut unmapped.state {
                 InitialConfigureState::NotConfigured {
                     wants_fullscreen, ..
@@ -716,7 +730,9 @@ impl XdgShellHandler for State {
                         .or_else(|| {
                             toplevel
                                 .parent()
-                                .and_then(|parent| self.swayward.layout.find_window_and_output(&parent))
+                                .and_then(|parent| {
+                                    self.swayward.layout.find_window_and_output(&parent)
+                                })
                                 .and_then(|(_win, output)| output)
                                 .and_then(|o| self.swayward.layout.monitor_for_output(o))
                                 .map(|mon| (mon, true))
@@ -768,7 +784,11 @@ impl XdgShellHandler for State {
 
             let window = mapped.window.clone();
             self.swayward.layout.set_fullscreen(&window, false);
-        } else if let Some(unmapped) = self.swayward.unmapped_windows.get_mut(toplevel.wl_surface()) {
+        } else if let Some(unmapped) = self
+            .swayward
+            .unmapped_windows
+            .get_mut(toplevel.wl_surface())
+        {
             match &mut unmapped.state {
                 InitialConfigureState::NotConfigured {
                     wants_fullscreen, ..
@@ -917,7 +937,9 @@ impl XdgShellHandler for State {
         let was_active = active_window == Some(&window);
 
         self.swayward.window_mru_ui.remove_window(id);
-        self.swayward.layout.remove_window(&window, transaction.clone());
+        self.swayward
+            .layout
+            .remove_window(&window, transaction.clone());
 
         let surface = surface.wl_surface();
         // This check is necessary because implicit resource destruction is done with
@@ -1079,7 +1101,7 @@ impl State {
     pub fn send_initial_configure(&mut self, toplevel: &ToplevelSurface) {
         let _span = tracy_client::span!("State::send_initial_configure");
 
-        let Some(unmapped) = self.swayward.unmapped_windows.get_mut(toplevel.wl_surface()) else {
+        let Some(unmapped) = self.swayward.unmapped_windows.get(toplevel.wl_surface()) else {
             error!("window must be present in unmapped_windows in send_initial_configure()");
             return;
         };
@@ -1091,6 +1113,17 @@ impl State {
             self.swayward.is_at_startup,
         );
 
+        let workspace_name = rules.open_on_workspace.clone();
+        drop(config);
+        if let Some(name) = workspace_name.as_deref() {
+            self.swayward.layout.ensure_sway_workspace(name);
+        }
+        let config = self.swayward.config.borrow();
+        let unmapped = self
+            .swayward
+            .unmapped_windows
+            .get_mut(toplevel.wl_surface())
+            .unwrap();
         let Unmapped { window, state, .. } = unmapped;
 
         let InitialConfigureState::NotConfigured {
@@ -1420,7 +1453,11 @@ impl State {
         let config = self.swayward.config.borrow();
         let window_rules = &config.window_rules;
 
-        if let Some(unmapped) = self.swayward.unmapped_windows.get_mut(toplevel.wl_surface()) {
+        if let Some(unmapped) = self
+            .swayward
+            .unmapped_windows
+            .get_mut(toplevel.wl_surface())
+        {
             let new_rules = ResolvedWindowRules::compute(
                 window_rules,
                 WindowRef::Unmapped(unmapped),
@@ -1495,7 +1532,8 @@ pub fn add_mapped_toplevel_pre_commit_hook(toplevel: &ToplevelSurface) -> HookId
         let span =
             trace_span!("toplevel pre-commit", surface = %surface.id(), serial = Empty).entered();
 
-        let Some((mapped, output)) = state.swayward.layout.find_window_and_output_mut(surface) else {
+        let Some((mapped, output)) = state.swayward.layout.find_window_and_output_mut(surface)
+        else {
             error!("pre-commit hook for mapped surfaces must be removed upon unmapping");
             return;
         };

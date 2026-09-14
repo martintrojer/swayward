@@ -6,6 +6,8 @@ pub mod a11y;
 pub mod animation;
 pub mod backend;
 pub mod cli;
+pub mod command;
+pub mod criteria;
 pub mod cursor;
 #[cfg(feature = "dbus")]
 pub mod dbus;
@@ -15,12 +17,12 @@ pub mod input;
 pub mod ipc;
 pub mod layer;
 pub mod layout;
-pub mod swayward;
 pub mod protocols;
 pub mod render_helpers;
 pub mod rubber_band;
 #[cfg(feature = "xdp-gnome-screencast")]
 pub mod screencasting;
+pub mod swayward;
 pub mod ui;
 pub mod utils;
 pub mod window;

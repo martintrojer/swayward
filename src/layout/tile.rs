@@ -1,12 +1,13 @@
 use core::f64;
 use std::rc::Rc;
 
-use swayward_config::utils::MergeWith as _;
-use swayward_config::{Color, CornerRadius, GradientInterpolation};
-use swayward_ipc::WindowLayout;
 use smithay::backend::renderer::element::{Element, Kind};
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::utils::{Logical, Point, Rectangle, Scale, Size};
+use swayward_config::utils::MergeWith as _;
+use swayward_config::{Color, CornerRadius, GradientInterpolation};
+use swayward_ipc::command::BorderStyle;
+use swayward_ipc::WindowLayout;
 
 use super::focus_ring::{FocusRing, FocusRingRenderElement};
 use super::opening_window::{OpenAnimation, OpeningWindowRenderElement};
@@ -17,7 +18,6 @@ use super::{
 };
 use crate::animation::{Animation, Clock};
 use crate::layout::SizingMode;
-use crate::swayward_render_elements;
 use crate::render_helpers::background_effect::BackgroundEffectElement;
 use crate::render_helpers::border::BorderRenderElement;
 use crate::render_helpers::clipped_surface::{ClippedSurfaceRenderElement, RoundedCornerDamage};
@@ -30,6 +30,7 @@ use crate::render_helpers::snapshot::RenderSnapshot;
 use crate::render_helpers::solid_color::{SolidColorBuffer, SolidColorRenderElement};
 use crate::render_helpers::xray::{Xray, XrayPos};
 use crate::render_helpers::{RenderCtx, RenderTarget};
+use crate::swayward_render_elements;
 use crate::utils::transaction::Transaction;
 use crate::utils::{
     baba_is_float_offset, round_logical_in_physical, round_logical_in_physical_max1,
@@ -43,6 +44,8 @@ pub struct Tile<W: LayoutElement> {
 
     /// The border around the window.
     border: FocusRing,
+    sway_border: Option<(BorderStyle, u16)>,
+    sway_uses_csd: bool,
 
     /// The focus ring around the window.
     focus_ring: FocusRing,
@@ -61,6 +64,13 @@ pub struct Tile<W: LayoutElement> {
 
     /// Whether the tile should float upon unfullscreening.
     pub(super) restore_to_floating: bool,
+
+    /// Position in the tiling focus history before this tile became floating.
+    pub(super) tiling_focus_rank: Option<usize>,
+
+    /// Parent container before this tile became floating.
+    pub(super) tiling_parent: Option<super::tiling_tree::NodeId>,
+    pub(super) is_sticky: bool,
 
     /// The size that the window should assume when going floating.
     ///
@@ -191,15 +201,29 @@ impl<W: LayoutElement> Tile<W> {
         let focus_ring_config = options.layout.focus_ring.merged_with(&rules.focus_ring);
         let shadow_config = options.layout.shadow.merged_with(&rules.shadow);
         let sizing_mode = window.sizing_mode();
+        let sway_border = rules.sway_border.map(|style| {
+            let width = rules.sway_border_width.unwrap_or(match style {
+                BorderStyle::Normal => 2,
+                BorderStyle::Pixel => 1,
+                BorderStyle::None => 0,
+                BorderStyle::Csd | BorderStyle::Toggle => unreachable!(),
+            });
+            (style, width)
+        });
 
         Self {
             window,
             border: FocusRing::new(border_config.into()),
+            sway_border,
+            sway_uses_csd: false,
             focus_ring: FocusRing::new(focus_ring_config),
             shadow: Shadow::new(shadow_config),
             sizing_mode,
             fullscreen_backdrop: SolidColorBuffer::new((0., 0.), [0., 0., 0., 1.]),
             restore_to_floating: false,
+            tiling_focus_rank: None,
+            tiling_parent: None,
+            is_sticky: false,
             floating_window_size: None,
             floating_pos: None,
             floating_preset_width_idx: None,
@@ -237,13 +261,12 @@ impl<W: LayoutElement> Tile<W> {
         self.scale = scale;
         self.options = options;
 
-        let round_max1 = |logical| round_logical_in_physical_max1(self.scale, logical);
+        let scale = self.scale;
+        let round_max1 = |logical| round_logical_in_physical_max1(scale, logical);
+
+        self.update_border_config();
 
         let rules = self.window.rules();
-
-        let mut border_config = self.options.layout.border.merged_with(&rules.border);
-        border_config.width = round_max1(border_config.width);
-        self.border.update_config(border_config.into());
 
         let mut focus_ring_config = self
             .options
@@ -388,12 +411,12 @@ impl<W: LayoutElement> Tile<W> {
             }
         }
 
-        let round_max1 = |logical| round_logical_in_physical_max1(self.scale, logical);
+        let scale = self.scale;
+        let round_max1 = |logical| round_logical_in_physical_max1(scale, logical);
+
+        self.update_border_config();
 
         let rules = self.window.rules();
-        let mut border_config = self.options.layout.border.merged_with(&rules.border);
-        border_config.width = round_max1(border_config.width);
-        self.border.update_config(border_config.into());
 
         let mut focus_ring_config = self
             .options
@@ -603,7 +626,11 @@ impl<W: LayoutElement> Tile<W> {
         self.animate_move_x_from_with_config(from, self.options.animations.window_movement.0);
     }
 
-    pub fn animate_move_x_from_with_config(&mut self, from: f64, config: swayward_config::Animation) {
+    pub fn animate_move_x_from_with_config(
+        &mut self,
+        from: f64,
+        config: swayward_config::Animation,
+    ) {
         let current_offset = self.render_offset().x;
 
         // Preserve the previous config if ongoing.
@@ -627,7 +654,11 @@ impl<W: LayoutElement> Tile<W> {
         self.animate_move_y_from_with_config(from, self.options.animations.window_movement.0);
     }
 
-    pub fn animate_move_y_from_with_config(&mut self, from: f64, config: swayward_config::Animation) {
+    pub fn animate_move_y_from_with_config(
+        &mut self,
+        from: f64,
+        config: swayward_config::Animation,
+    ) {
         let current_offset = self.render_offset().y;
 
         // Preserve the previous config if ongoing.
@@ -1566,6 +1597,71 @@ impl<W: LayoutElement> Tile<W> {
 
     pub fn border(&self) -> &FocusRing {
         &self.border
+    }
+
+    pub fn sway_border(&self) -> (BorderStyle, u16) {
+        let (style, width) = self.sway_border.unwrap_or((BorderStyle::Normal, 2));
+        (style, if style == BorderStyle::None { 0 } else { width })
+    }
+
+    pub fn has_sway_titlebar(&self) -> bool {
+        !self.sway_uses_csd
+            && self.sway_border.map_or_else(
+                || self.effective_border_width().is_some(),
+                |(style, _)| style == BorderStyle::Normal,
+            )
+    }
+
+    pub fn set_sway_border(
+        &mut self,
+        style: BorderStyle,
+        width: Option<u16>,
+        floating: bool,
+    ) -> Result<f64, &'static str> {
+        let old_width = self.effective_border_width().unwrap_or(0.);
+        let (current_style, current_width) = self.sway_border.unwrap_or((BorderStyle::Normal, 2));
+        let style = match style {
+            BorderStyle::Toggle if self.sway_uses_csd => BorderStyle::None,
+            BorderStyle::Toggle => match current_style {
+                BorderStyle::None => BorderStyle::Pixel,
+                BorderStyle::Pixel => BorderStyle::Normal,
+                BorderStyle::Normal if self.window.has_xdg_decoration() => BorderStyle::Csd,
+                BorderStyle::Normal | BorderStyle::Csd | BorderStyle::Toggle => BorderStyle::None,
+            },
+            style => style,
+        };
+        if style == BorderStyle::Csd && !self.window.has_xdg_decoration() {
+            return Err("This window doesn't support client side decorations");
+        }
+        self.window
+            .request_server_decoration(style != BorderStyle::Csd);
+        self.sway_uses_csd = style == BorderStyle::Csd;
+        let style = if style == BorderStyle::Csd && !floating {
+            current_style
+        } else {
+            style
+        };
+        let width = width.unwrap_or(match style {
+            BorderStyle::Normal => 2,
+            BorderStyle::Pixel => 1,
+            BorderStyle::None | BorderStyle::Csd | BorderStyle::Toggle => current_width,
+        });
+        self.sway_border = Some((style, width));
+        self.update_border_config();
+        Ok(self.effective_border_width().unwrap_or(0.) - old_width)
+    }
+
+    fn update_border_config(&mut self) {
+        let rules = self.window.rules();
+        let mut config = self.options.layout.border.merged_with(&rules.border);
+        if let Some((style, width)) = self.sway_border {
+            config.off = self.sway_uses_csd || style == BorderStyle::None;
+            if matches!(style, BorderStyle::Pixel | BorderStyle::Normal) {
+                config.width = f64::from(width);
+            }
+        }
+        config.width = round_logical_in_physical_max1(self.scale, config.width);
+        self.border.update_config(config.into());
     }
 
     pub fn focus_ring(&self) -> &FocusRing {

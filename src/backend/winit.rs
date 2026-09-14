@@ -5,7 +5,6 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Context as _;
-use swayward_config::{Config, OutputName};
 use smithay::backend::allocator::dmabuf::Dmabuf;
 use smithay::backend::egl::EGLDevice;
 use smithay::backend::renderer::damage::OutputDamageTracker;
@@ -20,11 +19,12 @@ use smithay::reexports::winit::platform::wayland::WindowAttributesWayland;
 use smithay::reexports::winit::window::WindowAttributes;
 use smithay::wayland::dmabuf::{DmabufFeedbackBuilder, DmabufGlobal};
 use smithay::wayland::presentation::Refresh;
+use swayward_config::{Config, OutputName};
 
 use super::{IpcOutputMap, OutputId, RenderResult};
-use crate::swayward::{Swayward, RedrawState, State};
 use crate::render_helpers::debug::draw_damage;
 use crate::render_helpers::{resources, shaders, RenderCtx, RenderTarget};
+use crate::swayward::{RedrawState, State, Swayward};
 use crate::utils::{get_monotonic_time, logical_output};
 
 pub struct Winit {
@@ -42,6 +42,11 @@ impl Winit {
         event_loop: LoopHandle<State>,
     ) -> Result<Self, winit::Error> {
         let _span = tracy_client::span!("Winit::new");
+
+        // Mesa's Wayland EGL swap waits for a host frame callback. That wait blocks the
+        // compositor event loop, which is also responsible for dispatching the callback.
+        // Disable swap throttling for the nested backend to avoid this self-deadlock.
+        std::env::set_var("vblank_mode", "0");
 
         let builder = WindowAttributes::default()
             .with_surface_size(LogicalSize::new(1280.0, 800.0))
@@ -80,7 +85,7 @@ impl Winit {
         let physical_properties = output.physical_properties();
         let ipc_outputs = Arc::new(Mutex::new(HashMap::from([(
             OutputId::next(),
-            swayward_ipc::Output {
+            swayward_ipc::legacy::Output {
                 name: output.name(),
                 make: physical_properties.make,
                 model: physical_properties.model,
@@ -206,7 +211,8 @@ impl Winit {
             Err(err) => {
                 debug!("failed building default dmabuf feedback, falling back to v3: {err:?}");
                 let primary_formats = renderer.dmabuf_formats();
-                swayward.dmabuf_state
+                swayward
+                    .dmabuf_state
                     .create_global::<State>(&swayward.display_handle, primary_formats)
             }
         };
@@ -271,7 +277,8 @@ impl Winit {
 
             self.backend.submit(Some(damage)).unwrap();
 
-            let mut presentation_feedbacks = swayward.take_presentation_feedbacks(output, &res.states);
+            let mut presentation_feedbacks =
+                swayward.take_presentation_feedbacks(output, &res.states);
             presentation_feedbacks.presented::<_, smithay::utils::Monotonic>(
                 get_monotonic_time(),
                 Refresh::Unknown,

@@ -88,6 +88,7 @@ pub struct Config {
     pub window_rules: Vec<WindowRule>,
     pub layer_rules: Vec<LayerRule>,
     pub binds: Binds,
+    pub binding_modes: Vec<BindingMode>,
     pub switch_events: SwitchBinds,
     pub debug: Debug,
     pub workspaces: Vec<Workspace>,
@@ -165,6 +166,7 @@ where
                     | "window-rule"
                     | "layer-rule"
                     | "workspace"
+                    | "mode"
                     | "include"
             ) && !seen.insert(name)
             {
@@ -214,6 +216,7 @@ where
                 "window-rule" => m_push!(window_rules),
                 "layer-rule" => m_push!(layer_rules),
                 "workspace" => m_push!(workspaces),
+                "mode" => m_push!(binding_modes),
 
                 // Single-part sections.
                 "binds" => {
@@ -639,6 +642,108 @@ mod tests {
     #[test]
     fn can_create_default_config() {
         let _ = Config::load_default();
+    }
+
+    #[test]
+    fn default_config_enables_the_quiet_effect_set() {
+        let config = Config::load_default();
+        assert!(config.layout.focus_ring.off);
+        assert!(!config.layout.border.off);
+        assert!(config.layout.shadow.on);
+        assert!(config
+            .window_rules
+            .iter()
+            .all(|rule| rule.background_effect.blur != Some(true)));
+
+        let default_rule = config
+            .window_rules
+            .iter()
+            .find(|rule| rule.matches.is_empty() && rule.excludes.is_empty())
+            .unwrap();
+        assert_eq!(default_rule.geometry_corner_radius, Some(12_f32.into()));
+        assert_eq!(default_rule.clip_to_geometry, Some(true));
+    }
+
+    #[test]
+    fn default_config_exposes_core_tree_commands() {
+        let config = Config::load_default();
+        let command_for = |key: &str| {
+            let key = key.parse::<Key>().unwrap();
+            config.binds.0.iter().find_map(|bind| {
+                (bind.key == key).then_some(match &bind.action {
+                    Action::SwayCommand(command) => command.as_str(),
+                    _ => "<typed action>",
+                })
+            })
+        };
+
+        for (key, command) in [
+            ("Mod+H", "focus left"),
+            ("Mod+Left", "focus left"),
+            ("Mod+Shift+H", "move left"),
+            ("Mod+Shift+Left", "move left"),
+            ("Mod+B", "split h"),
+            ("Mod+V", "split v"),
+            ("Mod+W", "layout tabbed"),
+            ("Mod+S", "layout stacking"),
+            ("Mod+E", "layout toggle split"),
+            ("Mod+A", "focus parent"),
+            ("Mod+Ctrl+A", "focus child"),
+            ("Mod+F", "fullscreen"),
+            ("Mod+Shift+Space", "floating toggle"),
+            ("Mod+Shift+Minus", "move scratchpad"),
+            ("Mod+Minus", "scratchpad show"),
+            ("Mod+R", "mode resize"),
+        ] {
+            assert_eq!(command_for(key), Some(command), "default bind {key}");
+        }
+        assert!(config
+            .binding_modes
+            .iter()
+            .any(|mode| mode.name == "resize"));
+    }
+
+    #[test]
+    fn binding_mode_parses_command_binds() {
+        let config = Config::parse_mem(
+            r#"mode "resize" {
+                Left { command "resize shrink width 10 px"; }
+                Escape { command "mode default"; }
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(config.binding_modes.len(), 1);
+        assert_eq!(config.binding_modes[0].name, "resize");
+        assert_eq!(config.binding_modes[0].binds.0.len(), 2);
+        assert_eq!(
+            config.binding_modes[0].binds.0[1].action,
+            Action::SwayCommand("mode default".into())
+        );
+    }
+
+    #[test]
+    fn sway_command_bind_parses_and_invalid_command_fails_at_load_time() {
+        let config = Config::parse_mem(
+            "binds { Mod+H repeat=false cooldown-ms=150 allow-when-locked=true hotkey-overlay-title=\"Left\" { command \"focus left\"; }; }",
+        )
+        .unwrap();
+        let bind = &config.binds.0[0];
+        assert_eq!(bind.action, Action::SwayCommand("focus left".into()));
+        assert!(!bind.repeat);
+        assert_eq!(bind.cooldown, Some(std::time::Duration::from_millis(150)));
+        assert!(bind.allow_when_locked);
+        assert_eq!(bind.hotkey_overlay_title, Some(Some("Left".into())));
+
+        let error = Config::parse_mem("binds { Mod+H { command \"frobnicate\"; }; }").unwrap_err();
+        assert!(format!("{error:?}").contains("Unknown/invalid command 'frobnicate'"));
+        let labels = miette::Diagnostic::related(&error)
+            .unwrap()
+            .flat_map(|diagnostic| diagnostic.labels().into_iter().flatten())
+            .collect::<Vec<_>>();
+        assert!(labels
+            .iter()
+            .any(|label| label.offset() == 16 && !label.is_empty()));
     }
 
     #[test]
@@ -1417,6 +1522,81 @@ mod tests {
                     inactive_gradient: None,
                     urgent_gradient: None,
                 },
+                titlebar: Titlebar {
+                    font: "monospace 10",
+                    horizontal_padding: 5.0,
+                    vertical_padding: 4.0,
+                    focused: TitlebarColors {
+                        background_color: Color {
+                            r: 0.28,
+                            g: 0.46,
+                            b: 0.64,
+                            a: 1.0,
+                        },
+                        text_color: Color {
+                            r: 1.0,
+                            g: 1.0,
+                            b: 1.0,
+                            a: 1.0,
+                        },
+                    },
+                    focused_inactive: TitlebarColors {
+                        background_color: Color {
+                            r: 0.16,
+                            g: 0.16,
+                            b: 0.16,
+                            a: 1.0,
+                        },
+                        text_color: Color {
+                            r: 1.0,
+                            g: 1.0,
+                            b: 1.0,
+                            a: 1.0,
+                        },
+                    },
+                    focused_tab_title: TitlebarColors {
+                        background_color: Color {
+                            r: 0.16,
+                            g: 0.16,
+                            b: 0.16,
+                            a: 1.0,
+                        },
+                        text_color: Color {
+                            r: 1.0,
+                            g: 1.0,
+                            b: 1.0,
+                            a: 1.0,
+                        },
+                    },
+                    unfocused: TitlebarColors {
+                        background_color: Color {
+                            r: 0.16,
+                            g: 0.16,
+                            b: 0.16,
+                            a: 1.0,
+                        },
+                        text_color: Color {
+                            r: 1.0,
+                            g: 1.0,
+                            b: 1.0,
+                            a: 1.0,
+                        },
+                    },
+                    urgent: TitlebarColors {
+                        background_color: Color {
+                            r: 0.16,
+                            g: 0.16,
+                            b: 0.16,
+                            a: 1.0,
+                        },
+                        text_color: Color {
+                            r: 1.0,
+                            g: 1.0,
+                            b: 1.0,
+                            a: 1.0,
+                        },
+                    },
+                },
                 insert_hint: InsertHint {
                     off: false,
                     color: Color {
@@ -1485,6 +1665,7 @@ mod tests {
                 always_center_single_column: false,
                 empty_workspace_above_first: false,
                 default_column_display: Tabbed,
+                focus_wrapping: Yes,
                 gaps: 8.0,
                 struts: Struts {
                     left: FloatOrInt(
@@ -1825,9 +2006,14 @@ mod tests {
                     open_focused: Some(
                         true,
                     ),
+                    sway_border: None,
+                    sway_border_width: None,
+                    sway_floating_border: None,
+                    sway_floating_border_width: None,
                     on_xdg_activate: Some(
                         Ignore,
                     ),
+                    sway_for_window_commands: [],
                     min_width: None,
                     min_height: None,
                     max_width: None,
@@ -2251,6 +2437,7 @@ mod tests {
                     },
                 ],
             ),
+            binding_modes: [],
             switch_events: SwitchBinds {
                 lid_open: None,
                 lid_close: None,
@@ -2466,10 +2653,11 @@ mod tests {
         let mut default_config = Config::load_default();
         let empty_config = Config::parse_mem("").unwrap();
 
-        // Some notable omissions: the default config has some window rules, and an empty config
-        // will not have any binds. Clear them out so they don't spam the diff.
+        // Some notable omissions: the default config has some window rules and binding modes,
+        // and an empty config will not have any binds. Clear them out so they don't spam the diff.
         default_config.window_rules.clear();
         default_config.binds.0.clear();
+        default_config.binding_modes.clear();
 
         assert_snapshot!(
             diff_lines(
@@ -2494,6 +2682,15 @@ mod tests {
         +            ],
         +        },
         +    ],
+
+        -            off: false,
+        +            off: true,
+
+        -            off: true,
+        +            off: false,
+
+        -            on: false,
+        +            on: true,
 
         -                0.3333333333333333,
         +                0.33333,

@@ -1,4 +1,3 @@
-use swayward_ipc::PickedColor;
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::input::ButtonState;
 use smithay::backend::renderer::element::utils::{Relocate, RelocateRenderElement};
@@ -11,9 +10,10 @@ use smithay::input::pointer::{
 };
 use smithay::input::SeatHandler;
 use smithay::utils::{Logical, Physical, Point, Scale, Size, Transform};
+use swayward_ipc::PickedColor;
 
-use crate::swayward::State;
 use crate::render_helpers::{render_and_download, RenderCtx, RenderTarget};
+use crate::swayward::State;
 
 pub struct PickColorGrab {
     start_data: PointerGrabStartData<State>,

@@ -2,6 +2,10 @@ use std::cell::RefCell;
 use std::cmp::{max, min};
 use std::rc::Rc;
 
+use smithay::backend::renderer::element::Kind;
+use smithay::output::{self, Output};
+use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+use smithay::utils::{Logical, Point, Scale, Serial, Size, Transform};
 use swayward::layout::{
     ConfigureIntent, InteractiveResizeData, LayoutElement, LayoutElementRenderElement,
     LayoutElementRenderSnapshot, SizingMode,
@@ -12,10 +16,6 @@ use swayward::render_helpers::solid_color::{SolidColorBuffer, SolidColorRenderEl
 use swayward::render_helpers::RenderCtx;
 use swayward::utils::transaction::Transaction;
 use swayward::window::ResolvedWindowRules;
-use smithay::backend::renderer::element::Kind;
-use smithay::output::{self, Output};
-use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::utils::{Logical, Point, Scale, Serial, Size, Transform};
 
 #[derive(Debug)]
 struct TestWindowInner {
@@ -32,6 +32,7 @@ struct TestWindowInner {
 #[derive(Debug, Clone)]
 pub struct TestWindow {
     id: usize,
+    title: String,
     inner: Rc<RefCell<TestWindowInner>>,
     rules: ResolvedWindowRules,
 }
@@ -45,6 +46,7 @@ impl TestWindow {
 
         Self {
             id,
+            title: format!("Window {id}"),
             inner: Rc::new(RefCell::new(TestWindowInner {
                 size,
                 requested_size: None,
@@ -57,6 +59,12 @@ impl TestWindow {
             })),
             rules: ResolvedWindowRules::default(),
         }
+    }
+
+    pub fn titled(id: usize, title: impl Into<String>) -> Self {
+        let mut window = Self::freeform(id);
+        window.title = title.into();
+        window
     }
 
     pub fn fixed_size(id: usize) -> Self {
@@ -74,6 +82,10 @@ impl TestWindow {
 
     pub fn set_max_size(&self, size: Size<i32, Logical>) {
         self.inner.borrow_mut().max_size = size;
+    }
+
+    pub fn set_rules(&mut self, rules: ResolvedWindowRules) {
+        self.rules = rules;
     }
 
     pub fn set_color(&self, color: [f32; 4]) {
@@ -135,6 +147,10 @@ impl LayoutElement for TestWindow {
 
     fn id(&self) -> &Self::Id {
         &self.id
+    }
+
+    fn title(&self) -> String {
+        self.title.clone()
     }
 
     fn size(&self) -> Size<i32, Logical> {

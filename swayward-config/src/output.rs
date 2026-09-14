@@ -157,7 +157,7 @@ impl Outputs {
 }
 
 impl OutputName {
-    pub fn from_ipc_output(output: &swayward_ipc::Output) -> Self {
+    pub fn from_ipc_output(output: &swayward_ipc::legacy::Output) -> Self {
         Self {
             connector: output.name.clone(),
             make: (output.make != "Unknown").then(|| output.make.clone()),

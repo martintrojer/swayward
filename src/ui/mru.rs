@@ -6,10 +6,6 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use anyhow::ensure;
-use swayward_config::{
-    Action, Bind, Color, Config, CornerRadius, GradientInterpolation, Key, Modifiers, MruDirection,
-    MruFilter, MruScope, Trigger,
-};
 use pango::FontDescription;
 use pangocairo::cairo::{self, ImageSurface};
 use smithay::backend::allocator::Fourcc;
@@ -22,12 +18,14 @@ use smithay::backend::renderer::Color32F;
 use smithay::input::keyboard::Keysym;
 use smithay::output::Output;
 use smithay::utils::{Logical, Point, Rectangle, Scale, Size, Transform};
+use swayward_config::{
+    Action, Bind, Color, Config, CornerRadius, GradientInterpolation, Key, Modifiers, MruDirection,
+    MruFilter, MruScope, Trigger,
+};
 
 use crate::animation::{Animation, Clock};
 use crate::layout::focus_ring::{FocusRing, FocusRingRenderElement};
 use crate::layout::{Layout, LayoutElement as _, LayoutElementRenderElement};
-use crate::swayward::Swayward;
-use crate::swayward_render_elements;
 use crate::render_helpers::border::BorderRenderElement;
 use crate::render_helpers::clipped_surface::ClippedSurfaceRenderElement;
 use crate::render_helpers::gradient_fade_texture::GradientFadeTextureRenderElement;
@@ -37,6 +35,8 @@ use crate::render_helpers::renderer::NiriRenderer;
 use crate::render_helpers::solid_color::{SolidColorBuffer, SolidColorRenderElement};
 use crate::render_helpers::texture::{TextureBuffer, TextureRenderElement};
 use crate::render_helpers::RenderCtx;
+use crate::swayward::Swayward;
+use crate::swayward_render_elements;
 use crate::utils::{
     baba_is_float_offset, output_size, round_logical_in_physical, to_physical_precise_round,
     with_toplevel_role,
@@ -1882,6 +1882,9 @@ fn make_dynamic_opened_binds(config: &Config) -> Vec<Bind> {
     let mut binds: HashMap<Trigger, Vec<Bind>> = HashMap::new();
 
     for bind in &config.binds.0 {
+        // Keep inherited typed focus actions as compatibility aliases while the MRU is open. The
+        // shipped sway command binds do not enter this match, and these aliases only traverse the
+        // timestamp-sorted MRU list; they do not impose the old column order on the container tree.
         let action = match &bind.action {
             Action::FocusColumnRight
             | Action::FocusColumnRightOrFirst

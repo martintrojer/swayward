@@ -8,8 +8,8 @@ use std::{io, thread};
 
 use atomic::Atomic;
 use libc::{getrlimit, rlim_t, rlimit, setrlimit, RLIMIT_NOFILE};
-use swayward_config::Environment;
 use smithay::wayland::xdg_activation::XdgActivationToken;
+use swayward_config::Environment;
 
 use crate::utils::expand_home;
 

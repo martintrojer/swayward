@@ -3,16 +3,17 @@ use std::iter::zip;
 use std::rc::Rc;
 use std::time::Duration;
 
-use swayward_config::{CornerRadius, LayoutPart};
 use smithay::backend::renderer::element::utils::{
     CropRenderElement, Relocate, RelocateRenderElement, RescaleRenderElement,
 };
 use smithay::output::Output;
 use smithay::utils::{Logical, Point, Rectangle, Size};
+use swayward_config::{CornerRadius, LayoutPart};
 
 use super::insert_hint_element::{InsertHintElement, InsertHintRenderElement};
-use super::scrolling::{Column, ColumnWidth};
+use super::scrolling::ColumnWidth;
 use super::tile::Tile;
+use super::tiling_tree::NodeId;
 use super::workspace::{
     compute_working_area, OutputId, Workspace, WorkspaceAddWindowTarget, WorkspaceId,
     WorkspaceRenderElement,
@@ -21,13 +22,13 @@ use super::{compute_overview_zoom, ActivateWindow, HitType, LayoutElement, Optio
 use crate::animation::{Animation, Clock};
 use crate::input::swipe_tracker::SwipeTracker;
 use crate::layout::RenderLayer;
-use crate::swayward_render_elements;
 use crate::render_helpers::renderer::NiriRenderer;
 use crate::render_helpers::shadow::ShadowRenderElement;
 use crate::render_helpers::solid_color::SolidColorRenderElement;
 use crate::render_helpers::xray::XrayPos;
 use crate::render_helpers::RenderCtx;
 use crate::rubber_band::RubberBand;
+use crate::swayward_render_elements;
 use crate::utils::transaction::Transaction;
 use crate::utils::{
     output_size, round_logical_in_physical, round_logical_in_physical_max1, ResizeEdge,
@@ -130,6 +131,7 @@ pub struct WorkspaceSwitchGesture {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum InsertPosition {
     NewColumn(usize),
+    #[allow(dead_code)]
     InColumn(usize, usize),
     Floating,
 }
@@ -418,7 +420,30 @@ impl<W: LayoutElement> Monitor<W> {
             self.clock.clone(),
             self.options.clone(),
         );
+        self.insert_new_workspace_at(idx, ws);
+    }
 
+    pub fn sort_sway_workspaces(&mut self) {
+        let active = self.active_workspace_ref().id();
+        self.workspaces.sort_by_key(|workspace| {
+            workspace
+                .number()
+                .map_or((true, 0), |number| (false, number))
+        });
+        self.active_workspace_idx = self.idx_of_ws(active).unwrap();
+    }
+
+    pub fn add_sway_workspace_at(&mut self, idx: usize, name: Option<String>, number: Option<i32>) {
+        let mut ws = Workspace::new(
+            self.output.clone(),
+            self.clock.clone(),
+            self.options.clone(),
+        );
+        ws.set_sway_identity(name, number);
+        self.insert_new_workspace_at(idx, ws);
+    }
+
+    fn insert_new_workspace_at(&mut self, idx: usize, ws: Workspace<W>) {
         self.workspaces.insert(idx, ws);
         if idx <= self.active_workspace_idx {
             self.active_workspace_idx += 1;
@@ -456,7 +481,11 @@ impl<W: LayoutElement> Monitor<W> {
         }
 
         let prev_active_idx = self.active_workspace_idx;
+        let focused = self.workspaces[prev_active_idx]
+            .active_window()
+            .map(|window| window.id().clone());
         self.active_workspace_idx = idx;
+        self.move_sticky_to_active_workspace(prev_active_idx, focused.as_ref());
 
         let config = config.unwrap_or(self.options.animations.workspace_switch.0);
 
@@ -544,16 +573,10 @@ impl<W: LayoutElement> Monitor<W> {
         );
     }
 
-    pub fn add_column(
-        &mut self,
-        mut workspace_idx: usize,
-        column: Column<W>,
-        activate: bool,
-        anim: Option<swayward_config::Animation>,
-    ) {
+    pub fn add_tiling_tile(&mut self, mut workspace_idx: usize, tile: Tile<W>, activate: bool) {
         let workspace = &mut self.workspaces[workspace_idx];
 
-        workspace.add_column(column, activate, anim);
+        workspace.add_tiling_tile(tile, activate);
 
         // After adding a new window, workspace becomes this output's own.
         if workspace.name().is_none() {
@@ -647,8 +670,45 @@ impl<W: LayoutElement> Monitor<W> {
         }
     }
 
+    fn move_sticky_to_active_workspace(&mut self, old_idx: usize, focused: Option<&W::Id>) {
+        if old_idx == self.active_workspace_idx {
+            return;
+        }
+        let sticky = self.workspaces[old_idx].take_sticky_tiles();
+        let target = &mut self.workspaces[self.active_workspace_idx];
+        let activate_sticky = !target.has_windows()
+            || sticky
+                .iter()
+                .any(|removed| Some(removed.tile.window().id()) == focused);
+        for removed in sticky {
+            let activate = activate_sticky && Some(removed.tile.window().id()) == focused;
+            target.add_tile(
+                removed.tile,
+                WorkspaceAddWindowTarget::Auto,
+                if activate {
+                    ActivateWindow::Yes
+                } else {
+                    ActivateWindow::No
+                },
+                removed.width,
+                removed.is_full_width,
+                true,
+                None,
+            );
+        }
+    }
+
     pub fn clean_up_workspaces(&mut self) {
         assert!(self.workspace_switch.is_none());
+        let active_workspace_id = self.workspaces[self.active_workspace_idx].id();
+        for workspace in &mut self.workspaces {
+            if workspace.id() != active_workspace_id
+                && !workspace.has_non_sticky_windows()
+                && !workspace.is_persistent()
+            {
+                workspace.unname();
+            }
+        }
 
         let range_start = if self.options.layout.empty_workspace_above_first {
             1
@@ -808,6 +868,27 @@ impl<W: LayoutElement> Monitor<W> {
         }
     }
 
+    pub fn move_tiling_subtree_to_workspace(
+        &mut self,
+        source_workspace: WorkspaceId,
+        node: NodeId,
+        target_workspace: WorkspaceId,
+        preserve_empty_workspace: bool,
+    ) -> Option<Vec<(NodeId, NodeId)>> {
+        if source_workspace == target_workspace {
+            return Some(Vec::new());
+        }
+        let source_idx = self.idx_of_ws(source_workspace)?;
+        let target_idx = self.idx_of_ws(target_workspace)?;
+        let (subtree, old_parent) = self.workspaces[source_idx].detach_tiling_subtree(node)?;
+        let remapped = self.workspaces[target_idx].attach_tiling_subtree(subtree).1;
+        self.workspaces[source_idx].finish_tiling_subtree_detach(old_parent);
+        if !preserve_empty_workspace && self.workspace_switch.is_none() {
+            self.clean_up_workspaces();
+        }
+        Some(remapped)
+    }
+
     pub fn move_to_workspace_up(&mut self, activate: ActivateWindow) {
         let new_idx = self.active_workspace_idx.saturating_sub(1);
         self.move_to_workspace(None, new_idx, activate);
@@ -855,6 +936,8 @@ impl<W: LayoutElement> Monitor<W> {
             .find_map(|(tile, offset, _visible)| (tile.window().id() == &window).then_some(offset))
             .unwrap();
 
+        let fullscreen = workspace.fullscreen_mode();
+        let fullscreen_window = workspace.fullscreen_window().cloned();
         let transaction = Transaction::new();
         let removed = workspace.remove_tile(&window, transaction);
 
@@ -882,6 +965,10 @@ impl<W: LayoutElement> Monitor<W> {
             removed.is_floating,
             Some(config),
         );
+        if let (Some(fullscreen), Some(fullscreen_window)) = (fullscreen, fullscreen_window) {
+            self.workspaces[new_idx].set_window_fullscreen(&fullscreen_window, Some(fullscreen));
+            self.workspaces[new_idx].set_fullscreen_restore_to_floating(&fullscreen_window);
+        }
 
         if self.workspace_switch.is_none() {
             self.clean_up_workspaces();
@@ -936,22 +1023,17 @@ impl<W: LayoutElement> Monitor<W> {
             return;
         }
 
-        let Some(id) = workspace.scrolling().active_column().map(Column::id) else {
+        let Some(window) = workspace.active_window().map(|window| window.id().clone()) else {
             return;
         };
         let mut old_render_pos = workspace
-            .scrolling()
-            .columns_with_render_positions()
-            .find_map(|(col, pos)| (col.id() == id).then_some(pos))
+            .tiles_with_render_positions()
+            .find_map(|(tile, pos, _)| (tile.window().id() == &window).then_some(pos))
             .unwrap();
+        let tile = workspace.remove_active_tiling_tile().unwrap();
 
-        let column = workspace.remove_active_column().unwrap();
-
-        // Animate vertical movement between workspaces.
         old_render_pos.y +=
             self.workspace_size_with_gap(1.).h * (source_workspace_idx as f64 - new_idx as f64);
-
-        // If the view is following the column, match the animation.
         let config = if activate {
             self.options.animations.workspace_switch.0
         } else {
@@ -959,16 +1041,15 @@ impl<W: LayoutElement> Monitor<W> {
         };
 
         let new_id = self.workspaces[new_idx].id();
-        self.add_column(new_idx, column, activate, Some(config));
+        self.add_tiling_tile(new_idx, tile, activate);
 
         let new_idx = self.idx_of_ws(new_id).unwrap();
-        let (column, new_render_pos) = self.workspaces[new_idx]
-            .scrolling_mut()
-            .columns_with_render_positions_mut()
-            .find(|(col, _pos)| col.id() == id)
+        let (tile, new_render_pos) = self.workspaces[new_idx]
+            .tiles_with_render_positions_mut(false)
+            .find(|(tile, _)| tile.window().id() == &window)
             .unwrap();
-        column.animate_move_from_with_config(old_render_pos - new_render_pos, config);
-        column.set_anim_y_between_workspaces();
+        tile.animate_move_from_with_config(old_render_pos - new_render_pos, config);
+        tile.set_anim_y_between_workspaces();
     }
 
     pub fn switch_workspace_up(&mut self) {
@@ -999,7 +1080,7 @@ impl<W: LayoutElement> Monitor<W> {
         self.activate_workspace(new_idx);
     }
 
-    fn previous_workspace_idx(&self) -> Option<usize> {
+    pub(super) fn previous_workspace_idx(&self) -> Option<usize> {
         let id = self.previous_workspace_id?;
         self.idx_of_ws(id)
     }
@@ -1211,7 +1292,10 @@ impl<W: LayoutElement> Monitor<W> {
         self.options = options;
     }
 
-    pub fn update_layout_config(&mut self, layout_config: Option<swayward_config::LayoutPart>) -> bool {
+    pub fn update_layout_config(
+        &mut self,
+        layout_config: Option<swayward_config::LayoutPart>,
+    ) -> bool {
         if self.layout_config == layout_config {
             return false;
         }
@@ -1544,6 +1628,20 @@ impl<W: LayoutElement> Monitor<W> {
             .filter(move |(_ws, geo)| !cull || geo.intersection(output_geo).is_some())
     }
 
+    // Render geometry versus layout geometry.
+    //
+    // The queries below deliberately use rendered positions, which include
+    // in-flight animation offsets. They answer "what is under this pointer",
+    // so they must agree with what the user can see; settled geometry here
+    // would make a click during an animation select the wrong window.
+    //
+    // Anything answering a question about STATE must use settled geometry
+    // instead: IPC replies, command targeting, focus resolution and criteria
+    // matching. Reading rendered positions there reports transient values, and
+    // has caused three real bugs - a floating GET_TREE rect that moved while
+    // the window did not, a directional output move that picked the wrong
+    // output mid workspace switch, and a dialog placed ~950px from its parent.
+    // Prefer tiles_with_ipc_layouts or FloatingData::center.
     pub fn workspace_under(
         &self,
         pos_within_output: Point<f64, Logical>,
