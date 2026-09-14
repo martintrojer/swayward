@@ -25,7 +25,7 @@ fn set_fullscreen_on_removed_output_does_not_panic() {
     // Remove the output on the niri side. Its wl_output global is disabled but not yet
     // destroyed, so the client's wl_output resource is still valid and usable.
     let output = f.niri_output(2);
-    f.niri().remove_output(&output);
+    f.swayward().remove_output(&output);
 
     // Request fullscreen on the now-removed wl_output. niri must not panic.
     let window = f.client(id).window(&surface);

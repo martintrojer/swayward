@@ -8,7 +8,7 @@
 * [Overview](./Overview.md)
 * [Screencasting](./Screencasting.md)
 * [Layer‐Shell Components](./Layer%E2%80%90Shell-Components.md)
-* [IPC, `niri msg`](./IPC.md)
+* [IPC, `swayward msg`](./IPC.md)
 * [Application-Specific Issues](./Application-Issues.md)
 * [Nvidia](./Nvidia.md)
 * [Xwayland](./Xwayland.md)

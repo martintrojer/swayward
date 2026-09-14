@@ -36,10 +36,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Build tests
-        run: cargo test --no-run --all --exclude niri-visual-tests
+        run: cargo test --no-run --all --exclude swayward-visual-tests
 
       - name: Test
-        run: cargo test --all --exclude niri-visual-tests -- --nocapture
+        run: cargo test --all --exclude swayward-visual-tests -- --nocapture
 
   build:
     strategy:
@@ -135,10 +135,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Build tests
-        run: cargo test --no-run --all --exclude niri-visual-tests --release
+        run: cargo test --no-run --all --exclude swayward-visual-tests --release
 
       - name: Test
-        run: cargo test --all --exclude niri-visual-tests --release
+        run: cargo test --all --exclude swayward-visual-tests --release
 
   visual-tests:
     strategy:
@@ -162,7 +162,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Build
-        run: cargo build --package niri-visual-tests
+        run: cargo build --package swayward-visual-tests
 
   msrv:
     strategy:
@@ -248,7 +248,7 @@ jobs:
   freebsd:
     runs-on: ubuntu-24.04
     env:
-      CARGO_HOME: /home/runner/work/niri/niri/cargo-home
+      CARGO_HOME: /home/runner/work/swayward/swayward/cargo-home
 
     steps:
       - uses: actions/checkout@v6
@@ -367,16 +367,16 @@ jobs:
         run: uv sync --locked --all-extras --dev
         working-directory: docs/
 
-      - name: Generate niri documentation
+      - name: Generate swayward documentation
         run: uv run mkdocs build
         working-directory: docs/
 
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Generate rustdoc documentation
-        run: cargo doc --no-deps -p niri-ipc
+        run: cargo doc --no-deps -p swayward-ipc
 
-      - run: mkdir -p publish/niri_ipc
+      - run: mkdir -p publish/swayward_ipc
       - run: cp -r ./target/doc/* ./publish/
       - run: cp -r ./docs/site/* ./publish/
 

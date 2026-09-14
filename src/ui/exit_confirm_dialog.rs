@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Mutex;
 
-use niri_config::Config;
+use swayward_config::Config;
 use ordered_float::NotNan;
 use pangocairo::cairo::{self, ImageSurface};
 use pangocairo::pango::{Alignment, FontDescription};
@@ -14,7 +14,7 @@ use smithay::reexports::gbm::Format as Fourcc;
 use smithay::utils::{Point, Transform};
 
 use crate::animation::{Animation, Clock};
-use crate::niri_render_elements;
+use crate::swayward_render_elements;
 use crate::render_helpers::memory::MemoryBuffer;
 use crate::render_helpers::primary_gpu_texture::PrimaryGpuTextureRenderElement;
 use crate::render_helpers::renderer::NiriRenderer;
@@ -36,7 +36,7 @@ pub struct ExitConfirmDialog {
     config: Rc<RefCell<Config>>,
 }
 
-niri_render_elements! {
+swayward_render_elements! {
     ExitConfirmDialogRenderElement => {
         Texture = RescaleRenderElement<PrimaryGpuTextureRenderElement>,
         SolidColor = SolidColorRenderElement,
@@ -290,7 +290,7 @@ fn text(markup: bool) -> String {
     };
 
     format!(
-        "Are you sure you want to exit niri?\n\n\
+        "Are you sure you want to exit swayward?\n\n\
          Press {key} to confirm."
     )
 }
@@ -298,7 +298,7 @@ fn text(markup: bool) -> String {
 #[cfg(feature = "dbus")]
 pub fn a11y_node() -> accesskit::Node {
     let mut node = accesskit::Node::new(accesskit::Role::AlertDialog);
-    node.set_label("Exit niri");
+    node.set_label("Exit swayward");
     node.set_description(text(false));
     node.set_modal();
     node

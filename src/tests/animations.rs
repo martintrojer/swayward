@@ -2,19 +2,19 @@ use std::fmt::Write as _;
 use std::time::Duration;
 
 use insta::assert_snapshot;
-use niri_config::animations::{Curve, EasingParams, Kind};
-use niri_config::Config;
-use niri_ipc::SizeChange;
+use swayward_config::animations::{Curve, EasingParams, Kind};
+use swayward_config::Config;
+use swayward_ipc::SizeChange;
 use smithay::utils::{Point, Size};
 use wayland_client::protocol::wl_surface::WlSurface;
 
 use super::client::ClientId;
 use super::*;
-use crate::niri::Niri;
+use crate::swayward::Swayward;
 
-fn format_tiles(niri: &Niri) -> String {
+fn format_tiles(swayward: &Swayward) -> String {
     let mut buf = String::new();
-    let ws = niri.layout.active_workspace().unwrap();
+    let ws = swayward.layout.active_workspace().unwrap();
     let mut tiles: Vec<_> = ws.tiles_with_render_positions().collect();
 
     // We sort by id since that gives us a consistent order (from first opened to last), but we
@@ -44,26 +44,26 @@ fn create_window(f: &mut Fixture, id: ClientId, w: u16, h: u16) -> WlSurface {
     surface
 }
 
-fn set_time(niri: &mut Niri, time: Duration) {
+fn set_time(swayward: &mut Swayward, time: Duration) {
     // This is a bit involved because we're dealing with an AdjustableClock that maintains its own
     // internal current_time.
 
     // First, reset current_time to zero by matching unadjusted time to it (at rate 0.0), then
     // setting unadjusted time to zero at rate 1.0 (causing current_time to also go to zero).
-    let now = niri.clock.now();
-    niri.clock.set_unadjusted(now);
-    let _ = niri.clock.now();
-    niri.clock.set_unadjusted(Duration::ZERO);
-    niri.clock.set_rate(1.0);
-    let _ = niri.clock.now();
+    let now = swayward.clock.now();
+    swayward.clock.set_unadjusted(now);
+    let _ = swayward.clock.now();
+    swayward.clock.set_unadjusted(Duration::ZERO);
+    swayward.clock.set_rate(1.0);
+    let _ = swayward.clock.now();
 
     // Now, set the desired time at rate 1.0.
-    niri.clock.set_unadjusted(time);
-    let _ = niri.clock.now();
+    swayward.clock.set_unadjusted(time);
+    let _ = swayward.clock.now();
 
     // Freeze the clock so that clear() inside the niri loop callback followed by some get()
     // doesn't replace it with the monotonic time.
-    niri.clock.set_rate(0.0);
+    swayward.clock.set_rate(0.0);
 }
 
 // Sets up a fixture with linear animations, a renderer, and an output.
@@ -98,8 +98,8 @@ fn set_up_two_in_column() -> (Fixture, ClientId, WlSurface, WlSurface) {
     let _ = f.client(id).window(&surface2).recent_configures();
 
     // Consume into one column.
-    f.niri().layout.focus_left();
-    f.niri().layout.consume_into_column();
+    f.swayward().layout.focus_left();
+    f.swayward().layout.consume_into_column();
     f.double_roundtrip(id);
 
     // Commit for the column consume.
@@ -111,7 +111,7 @@ fn set_up_two_in_column() -> (Fixture, ClientId, WlSurface, WlSurface) {
 
     f.double_roundtrip(id);
 
-    set_time(f.niri(), Duration::ZERO);
+    set_time(f.swayward(), Duration::ZERO);
     f.niri_complete_animations();
 
     (f, id, surface1, surface2)
@@ -122,7 +122,7 @@ fn egl_height_resize_animates_next_y() {
     let (mut f, id, surface1, surface2) = set_up_two_in_column();
 
     // Issue a resize.
-    f.niri()
+    f.swayward()
         .layout
         .set_window_height(None, SizeChange::AdjustFixed(-50));
     f.double_roundtrip(id);
@@ -138,27 +138,27 @@ fn egl_height_resize_animates_next_y() {
     f.roundtrip(id);
 
     // No time had passed yet, so we're at the initial state.
-    assert_snapshot!(format_tiles(f.niri()), @r"
+    assert_snapshot!(format_tiles(f.swayward()), @r"
     100 × 100 at x:  0 y:  0
     200 × 200 at x:  0 y:100
     ");
 
     // Advance the time halfway.
-    set_time(f.niri(), Duration::from_millis(500));
-    f.niri().advance_animations();
+    set_time(f.swayward(), Duration::from_millis(500));
+    f.swayward().advance_animations();
 
     // Top window is half-resized at 75 px tall, bottom window is at y=75 matching it.
-    assert_snapshot!(format_tiles(f.niri()), @r"
+    assert_snapshot!(format_tiles(f.swayward()), @r"
     100 ×  75 at x:  0 y:  0
     200 × 200 at x:  0 y: 75
     ");
 
     // Advance the time to completion.
-    set_time(f.niri(), Duration::from_millis(1000));
-    f.niri().advance_animations();
+    set_time(f.swayward(), Duration::from_millis(1000));
+    f.swayward().advance_animations();
 
     // Final state at 50 px.
-    assert_snapshot!(format_tiles(f.niri()), @r"
+    assert_snapshot!(format_tiles(f.swayward()), @r"
     100 ×  50 at x:  0 y:  0
     200 × 200 at x:  0 y: 50
     ");
@@ -169,7 +169,7 @@ fn egl_clientside_height_change_doesnt_animate() {
     let (mut f, id, surface1, _surface2) = set_up_two_in_column();
 
     // The initial state.
-    assert_snapshot!(format_tiles(f.niri()), @r"
+    assert_snapshot!(format_tiles(f.swayward()), @r"
     100 × 100 at x:  0 y:  0
     200 × 200 at x:  0 y:100
     ");
@@ -183,7 +183,7 @@ fn egl_clientside_height_change_doesnt_animate() {
     f.roundtrip(id);
 
     // No time had passed yet, but we are at the final state right away.
-    assert_snapshot!(format_tiles(f.niri()), @r"
+    assert_snapshot!(format_tiles(f.swayward()), @r"
     100 ×  50 at x:  0 y:  0
     200 × 200 at x:  0 y: 50
     ");

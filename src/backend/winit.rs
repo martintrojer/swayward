@@ -5,7 +5,7 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Context as _;
-use niri_config::{Config, OutputName};
+use swayward_config::{Config, OutputName};
 use smithay::backend::allocator::dmabuf::Dmabuf;
 use smithay::backend::egl::EGLDevice;
 use smithay::backend::renderer::damage::OutputDamageTracker;
@@ -22,7 +22,7 @@ use smithay::wayland::dmabuf::{DmabufFeedbackBuilder, DmabufGlobal};
 use smithay::wayland::presentation::Refresh;
 
 use super::{IpcOutputMap, OutputId, RenderResult};
-use crate::niri::{Niri, RedrawState, State};
+use crate::swayward::{Swayward, RedrawState, State};
 use crate::render_helpers::debug::draw_damage;
 use crate::render_helpers::{resources, shaders, RenderCtx, RenderTarget};
 use crate::utils::{get_monotonic_time, logical_output};
@@ -46,9 +46,9 @@ impl Winit {
         let builder = WindowAttributes::default()
             .with_surface_size(LogicalSize::new(1280.0, 800.0))
             // .with_resizable(false)
-            .with_title("niri")
+            .with_title("swayward")
             .with_platform_attributes(Box::new(
-                WindowAttributesWayland::default().with_name("niri", ""),
+                WindowAttributesWayland::default().with_name("swayward", ""),
             ));
         let (backend, winit) = winit::init_from_attributes(builder)?;
 
@@ -80,13 +80,13 @@ impl Winit {
         let physical_properties = output.physical_properties();
         let ipc_outputs = Arc::new(Mutex::new(HashMap::from([(
             OutputId::next(),
-            niri_ipc::Output {
+            swayward_ipc::Output {
                 name: output.name(),
                 make: physical_properties.make,
                 model: physical_properties.model,
                 serial: None,
                 physical_size: None,
-                modes: vec![niri_ipc::Mode {
+                modes: vec![swayward_ipc::Mode {
                     width: backend.window_size().w.clamp(0, u16::MAX as i32) as u16,
                     height: backend.window_size().h.clamp(0, u16::MAX as i32) as u16,
                     refresh_rate: 60_000,
@@ -127,15 +127,15 @@ impl Winit {
                             logical.width = size.w as u32;
                             logical.height = size.h as u32;
                         }
-                        state.niri.ipc_outputs_changed = true;
+                        state.swayward.ipc_outputs_changed = true;
                     }
 
-                    state.niri.output_resized(&winit.output);
+                    state.swayward.output_resized(&winit.output);
                 }
                 WinitEvent::Input(event) => state.process_input_event(event),
                 WinitEvent::Focus(_) => (),
-                WinitEvent::Redraw => state.niri.queue_redraw(&state.backend.winit().output),
-                WinitEvent::CloseRequested => state.niri.stop_signal.stop(),
+                WinitEvent::Redraw => state.swayward.queue_redraw(&state.backend.winit().output),
+                WinitEvent::CloseRequested => state.swayward.stop_signal.stop(),
             })
             .unwrap();
 
@@ -149,9 +149,9 @@ impl Winit {
         })
     }
 
-    pub fn init(&mut self, niri: &mut Niri) {
+    pub fn init(&mut self, swayward: &mut Swayward) {
         let renderer = self.backend.renderer();
-        if let Err(err) = renderer.bind_wl_display(&niri.display_handle) {
+        if let Err(err) = renderer.bind_wl_display(&swayward.display_handle) {
             // wl_drm is on its way out so this is expected on most modern distros.
             trace!("error binding legacy EGL to wl_display: {err}");
         } else {
@@ -173,14 +173,14 @@ impl Winit {
         }
         drop(config);
 
-        niri.update_shaders();
+        swayward.update_shaders();
 
-        self.create_dmabuf_global(niri);
+        self.create_dmabuf_global(swayward);
 
-        niri.add_output(self.output.clone(), None, false);
+        swayward.add_output(self.output.clone(), None, false);
     }
 
-    pub fn create_dmabuf_global(&mut self, niri: &mut Niri) {
+    pub fn create_dmabuf_global(&mut self, swayward: &mut Swayward) {
         let renderer = self.backend.renderer();
 
         let default_feedback = || {
@@ -200,14 +200,14 @@ impl Winit {
 
         // Fallback to dmabuf v3 if we failed to build feedback.
         let dmabuf_global = match default_feedback() {
-            Ok(feedback) => niri
+            Ok(feedback) => swayward
                 .dmabuf_state
-                .create_global_with_default_feedback::<State>(&niri.display_handle, &feedback),
+                .create_global_with_default_feedback::<State>(&swayward.display_handle, &feedback),
             Err(err) => {
                 debug!("failed building default dmabuf feedback, falling back to v3: {err:?}");
                 let primary_formats = renderer.dmabuf_formats();
-                niri.dmabuf_state
-                    .create_global::<State>(&niri.display_handle, primary_formats)
+                swayward.dmabuf_state
+                    .create_global::<State>(&swayward.display_handle, primary_formats)
             }
         };
         assert!(self.dmabuf_global.replace(dmabuf_global).is_none());
@@ -224,7 +224,7 @@ impl Winit {
         Some(f(self.backend.renderer()))
     }
 
-    pub fn render(&mut self, niri: &mut Niri, output: &Output) -> RenderResult {
+    pub fn render(&mut self, swayward: &mut Swayward, output: &Output) -> RenderResult {
         let _span = tracy_client::span!("Winit::render");
 
         // Render the elements.
@@ -233,11 +233,11 @@ impl Winit {
             target: RenderTarget::Output,
             xray: None,
         };
-        let mut elements = niri.render_to_vec(ctx, output, true);
+        let mut elements = swayward.render_to_vec(ctx, output, true);
 
         // Visualize the damage, if enabled.
-        if niri.debug_draw_damage {
-            let output_state = niri.output_state.get_mut(output).unwrap();
+        if swayward.debug_draw_damage {
+            let output_state = swayward.output_state.get_mut(output).unwrap();
             draw_damage(&mut output_state.debug_damage_tracker, &mut elements);
         }
 
@@ -253,7 +253,7 @@ impl Winit {
                 .unwrap()
         };
 
-        niri.update_primary_scanout_output(output, &res.states);
+        swayward.update_primary_scanout_output(output, &res.states);
 
         let rv;
         if let Some(damage) = res.damage {
@@ -271,7 +271,7 @@ impl Winit {
 
             self.backend.submit(Some(damage)).unwrap();
 
-            let mut presentation_feedbacks = niri.take_presentation_feedbacks(output, &res.states);
+            let mut presentation_feedbacks = swayward.take_presentation_feedbacks(output, &res.states);
             presentation_feedbacks.presented::<_, smithay::utils::Monotonic>(
                 get_monotonic_time(),
                 Refresh::Unknown,
@@ -284,7 +284,7 @@ impl Winit {
             rv = RenderResult::NoDamage;
         }
 
-        let output_state = niri.output_state.get_mut(output).unwrap();
+        let output_state = swayward.output_state.get_mut(output).unwrap();
         match mem::replace(&mut output_state.redraw_state, RedrawState::Idle) {
             RedrawState::Idle => unreachable!(),
             RedrawState::Queued => (),

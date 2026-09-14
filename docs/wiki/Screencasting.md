@@ -4,7 +4,7 @@ The primary screencasting interface that niri offers is through portals and pipe
 It is supported by [OBS], Firefox, Chromium, Electron, Telegram, and other apps.
 You can screencast both monitors and individual windows.
 
-In order to use it, you need a working D-Bus session, pipewire, `xdg-desktop-portal-gnome`, and [running niri as a session](./Getting-Started.md) (i.e. through `niri-session` or from a display manager).
+In order to use it, you need a working D-Bus session, pipewire, `xdg-desktop-portal-gnome`, and [running niri as a session](./Getting-Started.md) (i.e. through `swayward-session` or from a display manager).
 On widely used distros this should all "just work".
 
 Alternatively, you can use tools that rely on the `wlr-screencopy` protocol, which niri also supports.
@@ -63,7 +63,7 @@ The stream won't start until you make your first target selection.
 You can also use these actions from the command line, for example to interactively pick which window to cast:
 
 ```sh
-$ niri msg action set-dynamic-cast-window --id $(niri msg --json pick-window | jq .id)
+$ swayward msg action set-dynamic-cast-window --id $(swayward msg --json pick-window | jq .id)
 ```
 
 <video controls src="https://github.com/user-attachments/assets/c617a9d6-7d5e-4f1f-b8cc-9301182d9634">
@@ -144,7 +144,7 @@ Currently, niri doesn't have built-in output mirroring, but you can use a third-
 Note that the command below requires [`jq`](https://jqlang.org/download/) to be installed.
 ```kdl
 binds {
-    Mod+P repeat=false { spawn-sh "wl-mirror $(niri msg --json focused-output | jq -r .name)"; }
+    Mod+P repeat=false { spawn-sh "wl-mirror $(swayward msg --json focused-output | jq -r .name)"; }
 }
 ```
 Focus the output you want to mirror, press <kbd>Mod</kbd><kbd>P</kbd> and move the `wl-mirror` window to the target output.

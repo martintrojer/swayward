@@ -2,8 +2,8 @@
 
 <sup>Since: 25.08</sup>
 
-Niri has basic support for screen readers (specifically, [Orca](https://orca.gnome.org)) when running as a full desktop session, i.e. you need to start niri through a display manager or through `niri-session`.
-To avoid conflicts with an already running compositor, niri won't expose accessibility interfaces when started as a nested window, or as a plain `/usr/bin/niri` on a TTY.
+Niri has basic support for screen readers (specifically, [Orca](https://orca.gnome.org)) when running as a full desktop session, i.e. you need to start niri through a display manager or through `swayward-session`.
+To avoid conflicts with an already running compositor, niri won't expose accessibility interfaces when started as a nested window, or as a plain `/usr/bin/swayward` on a TTY.
 
 We implement the `org.freedesktop.a11y.KeyboardMonitor` D-Bus interface for Orca to listen and grab keyboard keys, and we expose the main niri UI elements via [AccessKit](https://accesskit.dev).
 Specifically, niri will announce:

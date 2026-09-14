@@ -6,7 +6,7 @@ use smithay::utils::Scale;
 
 use super::renderer::NiriRenderer;
 use super::solid_color::SolidColorRenderElement;
-use crate::niri::OutputRenderElements;
+use crate::swayward::OutputRenderElements;
 
 pub fn push_opaque_regions<R: NiriRenderer>(
     elem: &OutputRenderElements<R>,

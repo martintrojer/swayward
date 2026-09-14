@@ -2250,109 +2250,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "niri"
-version = "26.4.0"
-dependencies = [
- "accesskit",
- "accesskit_unix",
- "anyhow",
- "approx",
- "arrayvec",
- "async-channel",
- "async-io",
- "atomic",
- "bitflags",
- "bytemuck",
- "calloop",
- "calloop-wayland-source",
- "clap",
- "clap_complete",
- "clap_complete_nushell",
- "directories",
- "drm-ffi",
- "fastrand",
- "futures-util",
- "git-version",
- "glam",
- "input",
- "insta",
- "keyframe",
- "libc",
- "libdisplay-info",
- "log",
- "niri-config",
- "niri-ipc",
- "ordered-float",
- "pango",
- "pangocairo",
- "pipewire",
- "pkg-config",
- "png",
- "portable-atomic",
- "profiling",
- "proptest",
- "proptest-derive",
- "rayon",
- "sd-notify",
- "serde",
- "serde_json",
- "smithay",
- "smithay-drm-extras",
- "tracing",
- "tracing-subscriber",
- "tracy-client",
- "wayland-backend",
- "wayland-client",
- "wayland-scanner",
- "wayland-server",
- "xcursor",
- "xshell",
- "zbus",
-]
-
-[[package]]
-name = "niri-config"
-version = "26.4.0"
-dependencies = [
- "bitflags",
- "csscolorparser",
- "diff",
- "insta",
- "knuffel",
- "miette",
- "niri-ipc",
- "pretty_assertions",
- "regex",
- "smithay",
- "tracing",
- "tracy-client",
-]
-
-[[package]]
-name = "niri-ipc"
-version = "26.4.0"
-dependencies = [
- "clap",
- "schemars",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "niri-visual-tests"
-version = "26.4.0"
-dependencies = [
- "anyhow",
- "gtk4",
- "libadwaita",
- "niri",
- "niri-config",
- "smithay",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "nix"
 version = "0.31.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3592,6 +3489,109 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f850c19edd184a205e883199a261ed44471c81e39bd95b1357f5febbef00e77a"
 dependencies = [
  "is-terminal",
+]
+
+[[package]]
+name = "swayward"
+version = "26.4.0"
+dependencies = [
+ "accesskit",
+ "accesskit_unix",
+ "anyhow",
+ "approx",
+ "arrayvec",
+ "async-channel",
+ "async-io",
+ "atomic",
+ "bitflags",
+ "bytemuck",
+ "calloop",
+ "calloop-wayland-source",
+ "clap",
+ "clap_complete",
+ "clap_complete_nushell",
+ "directories",
+ "drm-ffi",
+ "fastrand",
+ "futures-util",
+ "git-version",
+ "glam",
+ "input",
+ "insta",
+ "keyframe",
+ "libc",
+ "libdisplay-info",
+ "log",
+ "ordered-float",
+ "pango",
+ "pangocairo",
+ "pipewire",
+ "pkg-config",
+ "png",
+ "portable-atomic",
+ "profiling",
+ "proptest",
+ "proptest-derive",
+ "rayon",
+ "sd-notify",
+ "serde",
+ "serde_json",
+ "smithay",
+ "smithay-drm-extras",
+ "swayward-config",
+ "swayward-ipc",
+ "tracing",
+ "tracing-subscriber",
+ "tracy-client",
+ "wayland-backend",
+ "wayland-client",
+ "wayland-scanner",
+ "wayland-server",
+ "xcursor",
+ "xshell",
+ "zbus",
+]
+
+[[package]]
+name = "swayward-config"
+version = "26.4.0"
+dependencies = [
+ "bitflags",
+ "csscolorparser",
+ "diff",
+ "insta",
+ "knuffel",
+ "miette",
+ "pretty_assertions",
+ "regex",
+ "smithay",
+ "swayward-ipc",
+ "tracing",
+ "tracy-client",
+]
+
+[[package]]
+name = "swayward-ipc"
+version = "26.4.0"
+dependencies = [
+ "clap",
+ "schemars",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "swayward-visual-tests"
+version = "26.4.0"
+dependencies = [
+ "anyhow",
+ "gtk4",
+ "libadwaita",
+ "smithay",
+ "swayward",
+ "swayward-config",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

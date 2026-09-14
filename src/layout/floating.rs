@@ -2,9 +2,9 @@ use std::cmp::max;
 use std::iter::zip;
 use std::rc::Rc;
 
-use niri_config::utils::MergeWith as _;
-use niri_config::{PresetSize, RelativeTo};
-use niri_ipc::{PositionChange, SizeChange, WindowLayout};
+use swayward_config::utils::MergeWith as _;
+use swayward_config::{PresetSize, RelativeTo};
+use swayward_ipc::{PositionChange, SizeChange, WindowLayout};
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::utils::{Logical, Point, Rectangle, Scale, Serial, Size};
 
@@ -17,7 +17,7 @@ use super::{
 };
 use crate::animation::{Animation, Clock};
 use crate::layout::RenderLayer;
-use crate::niri_render_elements;
+use crate::swayward_render_elements;
 use crate::render_helpers::renderer::NiriRenderer;
 use crate::render_helpers::xray::XrayPos;
 use crate::render_helpers::RenderCtx;
@@ -70,7 +70,7 @@ pub struct FloatingSpace<W: LayoutElement> {
     options: Rc<Options>,
 }
 
-niri_render_elements! {
+swayward_render_elements! {
     FloatingSpaceRenderElement<R> => {
         Tile = TileRenderElement<R>,
         ClosingWindow = ClosingWindowRenderElement,
@@ -1407,7 +1407,7 @@ impl<W: LayoutElement> FloatingSpace<W> {
 }
 
 fn compute_toplevel_bounds(
-    border_config: niri_config::Border,
+    border_config: swayward_config::Border,
     working_area_size: Size<f64, Logical>,
 ) -> Size<i32, Logical> {
     let mut border = 0.;

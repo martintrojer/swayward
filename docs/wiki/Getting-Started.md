@@ -6,13 +6,13 @@ Fedora:
 ```
 sudo dnf copr enable avengemedia/dms
 sudo dnf install niri dms
-systemctl --user add-wants niri.service dms
+systemctl --user add-wants swayward.service dms
 ```
 
 Arch Linux:
 ```
 sudo pacman -Syu niri xwayland-satellite xdg-desktop-portal-gnome xdg-desktop-portal-gtk alacritty dms-shell-niri matugen cava qt6-multimedia-ffmpeg
-systemctl --user add-wants niri.service dms
+systemctl --user add-wants swayward.service dms
 ```
 
 Ubuntu 25.10 and above:
@@ -23,12 +23,12 @@ sudo apt install niri dms
 ```
 
 After running these commands, log out, choose Niri in your display manager, and log back in.
-Or, if not using a display manager, run `niri-session` on a TTY.
+Or, if not using a display manager, run `swayward-session` on a TTY.
 
 The default niri config will run Waybar, so you might get two bars on screen.
-To fix this, stop Waybar with `pkill waybar` command, then open `~/.config/niri/config.kdl` and delete the `spawn-at-startup "waybar"` line.
+To fix this, stop Waybar with `pkill waybar` command, then open `~/.config/swayward/config.kdl` and delete the `spawn-at-startup "waybar"` line.
 
-Check the DankMaterialShell's [compositor setup page](https://danklinux.com/docs/dankmaterialshell/compositors#niri-configuration) to learn how to configure DMS-specific binds and other niri integrations.
+Check the DankMaterialShell's [compositor setup page](https://danklinux.com/docs/dankmaterialshell/compositors#swayward-configuration) to learn how to configure DMS-specific binds and other niri integrations.
 
 ## Slower and more considered start
 
@@ -42,9 +42,9 @@ After installing, start niri from your display manager like GDM.
 Press <kbd>Super</kbd><kbd>T</kbd> to run a terminal ([Alacritty]) and <kbd>Super</kbd><kbd>D</kbd> to run an application launcher ([fuzzel]).
 To exit niri, press <kbd>Super</kbd><kbd>Shift</kbd><kbd>E</kbd>.
 
-If you're not using a display manager, you should run `niri-session` (systemd/dinit) or `niri --session` (others) from a TTY.
+If you're not using a display manager, you should run `swayward-session` (systemd/dinit) or `swayward --session` (others) from a TTY.
 The `--session` flag will make niri import its environment variables globally into the system manager and D-Bus, and start its D-Bus services.
-The `niri-session` script will additionally start niri as a systemd/dinit service, which starts up a graphical session target required by some services like portals.
+The `swayward-session` script will additionally start niri as a systemd/dinit service, which starts up a graphical session target required by some services like portals.
 
 You can also run `niri` inside an existing desktop session.
 Then it will open as a window, where you can give it a try.
@@ -94,7 +94,7 @@ crw-rw-rw-@ 226,129 root 14 мая 07:07 renderD129
 
 You will likely have one `render` device and two `card` devices.
 
-Open the niri config file at `~/.config/niri/config.kdl` and put your `render` device path like this:
+Open the niri config file at `~/.config/swayward/config.kdl` and put your `render` device path like this:
 
 ```kdl
 debug {
@@ -195,12 +195,12 @@ For example, you can replace systemd integration with dinit integration using `c
 
 ### NixOS/Nix
 
-We have a community-maintained flake which provides a devshell with required dependencies. Use `nix build` to build niri, and then run `./results/bin/niri`.
+We have a community-maintained flake which provides a devshell with required dependencies. Use `nix build` to build niri, and then run `./results/bin/swayward`.
 
 If you're not on NixOS, you may need [NixGL](https://github.com/nix-community/nixGL) to run the resulting binary:
 
 ```sh
-nix run --impure github:guibou/nixGL -- ./results/bin/niri
+nix run --impure github:guibou/nixGL -- ./results/bin/swayward
 ```
 
 ### Manual Installation
@@ -209,19 +209,19 @@ If installing directly without a package, the recommended file destinations are 
 In this case, put the files in the directories indicated in the table below.
 These may vary depending on your distribution.
 
-Don't forget to make sure that the path to `niri` in niri.service is correct.
-This defaults to `/usr/bin/niri`.
+Don't forget to make sure that the path to `niri` in swayward.service is correct.
+This defaults to `/usr/bin/swayward`.
 
 | File | Destination |
 | ---- | ----------- |
-| `target/release/niri` | `/usr/local/bin/` |
-| `resources/niri-session` | `/usr/local/bin/` |
-| `resources/niri.desktop`  | `/usr/local/share/wayland-sessions/` |
-| `resources/niri-portals.conf` | `/usr/local/share/xdg-desktop-portal/` |
-| `resources/niri.service` (systemd) | `/etc/systemd/user/` |
-| `resources/niri-shutdown.target` (systemd) | `/etc/systemd/user/` |
-| `resources/dinit/niri` (dinit) | `/etc/dinit.d/user/` |
-| `resources/dinit/niri.target` (dinit) | `/etc/dinit.d/user/` |
+| `target/release/swayward` | `/usr/local/bin/` |
+| `resources/swayward-session` | `/usr/local/bin/` |
+| `resources/swayward.desktop`  | `/usr/local/share/wayland-sessions/` |
+| `resources/swayward-portals.conf` | `/usr/local/share/xdg-desktop-portal/` |
+| `resources/swayward.service` (systemd) | `/etc/systemd/user/` |
+| `resources/swayward-shutdown.target` (systemd) | `/etc/systemd/user/` |
+| `resources/dinit/swayward` (dinit) | `/etc/dinit.d/user/` |
+| `resources/dinit/swayward.target` (dinit) | `/etc/dinit.d/user/` |
 
 [Alacritty]: https://github.com/alacritty/alacritty
 [fuzzel]: https://codeberg.org/dnkl/fuzzel
