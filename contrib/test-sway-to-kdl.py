@@ -215,6 +215,27 @@ bindsym $missing+x nop
                 self.assertIn(reason, result.stdout)
                 self.assertIn("manual attention: 1 directive(s)", result.stderr)
 
+    def test_mouse_warping_maps_exact_modes_and_refuses_output(self):
+        for value, expected in [
+            ("none", None),
+            ("NoNe", None),
+            ("container", 'warp-mouse-to-focus mode="center-xy"'),
+            ("CoNtAiNeR", 'warp-mouse-to-focus mode="center-xy"'),
+        ]:
+            with self.subTest(value=value):
+                result = self.translate(f"mouse_warping {value}\n")
+                if expected:
+                    self.assertIn(expected, result.stdout)
+                else:
+                    self.assertNotIn("warp-mouse-to-focus", result.stdout)
+                self.assertIn("manual attention: none", result.stderr)
+        for value in ["output", "OuTpUt", "invalid"]:
+            with self.subTest(value=value):
+                result = self.translate(f"mouse_warping {value}\n")
+                self.assertNotIn("warp-mouse-to-focus", result.stdout)
+                self.assertIn("mouse_warping output", result.stdout)
+                self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
     def test_duplicate_bind_is_reported_instead_of_silently_overwritten(self):
         result = self.translate("bindsym Mod4+h focus left\nbindsym Mod4+h focus right\n")
         self.assertIn('Super+h { command "focus left"; }', result.stdout)

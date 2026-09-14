@@ -152,6 +152,8 @@ class Translator:
                         text,
                         "visibility-dependent smart mode has no window-rule equivalent",
                     )
+            elif match := re.fullmatch(r"mouse_warping\s+(\S+)", text, re.IGNORECASE):
+                self.translate_mouse_warping(path, line_no, text, match.group(1))
             elif not self.translate_swayfx(path, line_no, text):
                 self.warn(path, line_no, text, "unhandled")
 
@@ -190,6 +192,26 @@ class Translator:
             f"    {prefix}-width {width or 2}",
             "}",
         ]
+
+    def translate_mouse_warping(
+        self, source: Path, line: int, text: str, value: str
+    ) -> None:
+        value = value.lower()
+        if value == "none":
+            return
+        if value == "container":
+            self.sections += [
+                "input {",
+                '    warp-mouse-to-focus mode="center-xy"',
+                "}",
+            ]
+            return
+        reason = (
+            "mouse_warping output has no exact swayward equivalent"
+            if value == "output"
+            else "expected mouse_warping output|container|none"
+        )
+        self.warn(source, line, text, reason)
 
     def translate_client_colors(
         self, source: Path, line: int, text: str, state: str, arguments: str

@@ -258,6 +258,70 @@ fn sway_default_border_aliases_translate_to_initial_window_rules() {
 }
 
 #[test]
+fn mouse_warping_maps_exact_modes_and_refuses_output() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_owned();
+    for (value, expected) in [
+        ("none", None),
+        ("NoNe", None),
+        (
+            "container",
+            Some(swayward_config::WarpMouseToFocusMode::CenterXy),
+        ),
+        (
+            "CoNtAiNeR",
+            Some(swayward_config::WarpMouseToFocusMode::CenterXy),
+        ),
+    ] {
+        let fixture = std::env::temp_dir().join(format!(
+            "swayward-mouse-warping-{}-{value}.conf",
+            std::process::id()
+        ));
+        std::fs::write(&fixture, format!("mouse_warping {value}\n")).unwrap();
+        let output = Command::new("python3")
+            .arg(root.join("contrib/sway-to-kdl"))
+            .arg(&fixture)
+            .output()
+            .unwrap();
+        std::fs::remove_file(fixture).unwrap();
+
+        assert!(output.status.success());
+        assert_eq!(
+            String::from_utf8(output.stderr).unwrap(),
+            "manual attention: none\n"
+        );
+        let config = Config::parse_mem(&String::from_utf8(output.stdout).unwrap()).unwrap();
+        assert_eq!(
+            config
+                .input
+                .warp_mouse_to_focus
+                .and_then(|warping| warping.mode),
+            expected
+        );
+    }
+
+    let fixture = std::env::temp_dir().join(format!(
+        "swayward-mouse-warping-{}-output.conf",
+        std::process::id()
+    ));
+    std::fs::write(&fixture, "mouse_warping OuTpUt\n").unwrap();
+    let output = Command::new("python3")
+        .arg(root.join("contrib/sway-to-kdl"))
+        .arg(&fixture)
+        .output()
+        .unwrap();
+    std::fs::remove_file(fixture).unwrap();
+    assert!(String::from_utf8(output.stderr)
+        .unwrap()
+        .starts_with("manual attention: 1 directive(s)"));
+    assert!(String::from_utf8(output.stdout)
+        .unwrap()
+        .contains("mouse_warping output has no exact swayward equivalent"));
+}
+
+#[test]
 fn sway_workspace_output_uses_first_preference() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()

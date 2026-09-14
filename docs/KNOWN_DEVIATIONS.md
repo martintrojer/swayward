@@ -22,12 +22,21 @@ binds {
 Swayward also retains typed niri actions for features outside the current sway
 command subset.
 
-### Pointer focus default
+### Pointer focus and warping defaults
 
 Sway enables `focus_follows_mouse` by default (`sway/sway/config.c:272`).
 Swayward retains niri's opt-in setting, so the shipped configuration leaves
 `focus-follows-mouse` commented out (`resources/default-config.kdl:68`). Enable
 that setting to use sway's default pointer-focus behavior.
+
+Sway defaults `mouse_warping` to `output` (`sway/sway/config.c:273`): it warps
+only when focus crosses an output boundary (`sway/sway/input/seat.c:1530-1548`).
+Swayward leaves `warp-mouse-to-focus` disabled by default
+(`resources/default-config.kdl:64-65`). The config translator maps
+`mouse_warping none` to that disabled default and `mouse_warping container` to
+`warp-mouse-to-focus mode="center-xy"`. It reports `mouse_warping output` for
+manual conversion because swayward cannot express output-only warping without
+also enabling within-output window warps.
 
 ## Bars
 
