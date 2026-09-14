@@ -1600,6 +1600,20 @@ impl<W: LayoutElement> Monitor<W> {
             .filter(move |(_ws, geo)| !cull || geo.intersection(output_geo).is_some())
     }
 
+    // Render geometry versus layout geometry.
+    //
+    // The queries below deliberately use rendered positions, which include
+    // in-flight animation offsets. They answer "what is under this pointer",
+    // so they must agree with what the user can see; settled geometry here
+    // would make a click during an animation select the wrong window.
+    //
+    // Anything answering a question about STATE must use settled geometry
+    // instead: IPC replies, command targeting, focus resolution and criteria
+    // matching. Reading rendered positions there reports transient values, and
+    // has caused three real bugs - a floating GET_TREE rect that moved while
+    // the window did not, a directional output move that picked the wrong
+    // output mid workspace switch, and a dialog placed ~950px from its parent.
+    // Prefer tiles_with_ipc_layouts or FloatingData::center.
     pub fn workspace_under(
         &self,
         pos_within_output: Point<f64, Logical>,
