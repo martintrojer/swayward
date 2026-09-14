@@ -42,6 +42,7 @@
 274-move-branch-position.t
 285-sticky.t
 292-regress-layout-toggle.t
+296-regress-focus-behind-fullscreen-floating.t
 299-regress-scratchpad-focus.t
 303-regress-move-floating.t
 # Add a file here as soon as a conformance slice makes it green, and never
