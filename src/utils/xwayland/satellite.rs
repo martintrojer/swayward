@@ -102,6 +102,10 @@ fn test_ondemand(path: &str) -> bool {
 
     let mut child = match process.spawn() {
         Ok(child) => child,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            info!("xwayland-satellite not found at {path:?}; X11 integration disabled");
+            return false;
+        }
         Err(err) => {
             warn!("error spawning xwayland-satellite at {path:?}, disabling integration: {err}");
             return false;
