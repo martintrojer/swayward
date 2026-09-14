@@ -747,6 +747,23 @@ fn parent_and_child_focus_walk_the_tree_and_layout_the_selected_parent() {
 }
 
 #[test]
+fn split_parent_preserves_stacked_child_focus_axis() {
+    let mut t = tree((1200., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let second = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.set_focused_layout(Layout::Stacked);
+
+    assert!(t.focus_parent());
+    t.split_focused(Layout::SplitH);
+    assert!(t.focus_child());
+    assert!(t.focus_down());
+    assert_eq!(t.focus(), Some(first));
+    assert!(t.focus_up());
+    assert_eq!(t.focus(), Some(second));
+    t.check_invariants();
+}
+
+#[test]
 fn layout_toggle_restores_the_previous_split_axis() {
     for previous in [Layout::SplitH, Layout::SplitV] {
         let mut t = tree((1200., 800.), 0.);

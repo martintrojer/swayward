@@ -1,16 +1,13 @@
-# Upstream i3 conformance files that pass in full against swayward.
 #
-# Add a file here as soon as a conformance slice makes it green, and never
-# remove one to make a change pass. Files with known failures stay out of this
-# list and run via SWAYWARD_I3_TEST, so the findings remain executable.
 101-focus.t
 104-focus-stack.t
-121-next-prev.t
 115-ipc-workspaces.t
 119-match.t
+121-next-prev.t
 126-regress-close.t
 128-open-order.t
 130-close-empty-split.t
+131-stacking-order.t
 136-floating-ws-empty.t
 137-floating-unmap.t
 140-focus-lost.t
@@ -34,3 +31,7 @@
 292-regress-layout-toggle.t
 299-regress-scratchpad-focus.t
 303-regress-move-floating.t
+# Add a file here as soon as a conformance slice makes it green, and never
+# list and run via SWAYWARD_I3_TEST, so the findings remain executable.
+# remove one to make a change pass. Files with known failures stay out of this
+# Upstream i3 conformance files that pass in full against swayward.

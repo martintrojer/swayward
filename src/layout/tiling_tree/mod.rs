@@ -648,7 +648,7 @@ impl<W: LayoutElement> TilingTree<W> {
         } else {
             let parent = self.nodes[&id].parent.unwrap_or(self.root);
             let siblings = self.split_len(parent).unwrap_or_default();
-            if id == self.root || siblings <= 1 {
+            if id == self.root {
                 if let Some(Node {
                     value:
                         TreeNode::Split {
@@ -656,6 +656,17 @@ impl<W: LayoutElement> TilingTree<W> {
                         },
                     ..
                 }) = self.nodes.get_mut(&id)
+                {
+                    *current = layout;
+                }
+            } else if siblings <= 1 {
+                if let Some(Node {
+                    value:
+                        TreeNode::Split {
+                            layout: current, ..
+                        },
+                    ..
+                }) = self.nodes.get_mut(&parent)
                 {
                     *current = layout;
                 }
