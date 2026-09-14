@@ -34,6 +34,8 @@ our @EXPORT = qw(
     is_num_fullscreen
     isa_ok
     kill_all_windows
+    launch_with_config
+    exit_gracefully
     isnt
     ok
     open_empty_con
@@ -314,6 +316,17 @@ sub is_num_fullscreen {
 sub kill_all_windows {
     sync_with_i3();
     cmd('[app_id=".*"] kill');
+}
+
+sub launch_with_config {
+    my ($config) = @_;
+    my $reply = _control({ action => 'config', config => $config });
+    die $reply->{error} unless $reply->{success};
+    return 1;
+}
+
+sub exit_gracefully {
+    kill_all_windows();
 }
 
 sub sync_with_i3 { _control({ action => 'reap_closed' }) }

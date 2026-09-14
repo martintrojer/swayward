@@ -80,8 +80,10 @@ assertions 33 and 41 only prove that no internal placeholder leaks as workspace
 
 The adapter cannot reproduce a compositor restart. Rebuilding `Fixture` destroys
 its Wayland clients and windows, while `State::reload_config` preserves them and
-is not a restart. Tests that depend on state surviving a restart remain
-unproven. In particular, `176-workspace-baf.t` launches two compositor
+is not a restart. `launch_with_config` is supported only for independent config
+phases: it reloads the requested config, and `exit_gracefully` removes all test
+windows before the next phase. Tests that depend on state surviving a restart
+remain unproven. In particular, `176-workspace-baf.t` launches two compositor
 configurations and later verifies back-and-forth state across `restart`; using
 reload for either transition would test a weaker lifecycle.
 
@@ -165,6 +167,10 @@ without fabricating a tree that real sway clients do not see. See
 | `131-stacking-order.t` | 7 | pass | `split h` on a focused stacked container changes its singleton parent rather than the stacked container itself, preserving the stacked container's vertical focus axis (`sway/tree/container.c:1565-1582`; `sway/commands/focus.c:158-203`). |
 | `140-focus-lost.t` | 3 | pass | Focus survives a layout change. |
 | `156-fullscreen-focus.t` | 64 | finished: 60 pass; 4 unproven | Fullscreen focus barriers, nested-container traversal, floating-origin restoration, direct focus unfullscreening, and global mode match sway (`sway/commands/focus.c:88-220,405-412`; `sway/tree/container.c:587-605,1200-1339`). Assertions 40–43 inspect the child count below i3's fullscreen split after workspace moves; sway serializes no equivalent wrapper (`sway/sway/ipc-json.c:532-540,854-893`), so their count remains unproven. |
+| `170-force_focus_wrapping.t` | 12 | 6 pass; remainder blocked by config gap | The default wrapping half passes with zero rejected commands. The second compositor configuration stops fail-loud because `force_focus_wrapping true` is not translated. Sway retains it as a deprecated alias for `focus_wrapping force` (`sway/commands/force_focus_wrapping.c:6-23`; `sway.5.scd:743-750`). |
+| `186-regress-assign-focus-parent.t` | 6 | blocked by config gap | The fail-loud translator rejects `assign [title="testcase"]` before assertions. Sway supports title regex criteria and evaluates assignments before placement (`sway/criteria.c:203-217,601-650`; `sway/tree/view.c:631-664`). |
+| `236-floating-focus-raise.t` | 6 | unproven: i3 floating wrappers | All unchanged assertions traverse `floating_nodes[-1].nodes[0]`, but sway serializes floating leaves directly (`sway/sway/ipc-json.c:532-540,854-893`). A temporary uncommitted direct-node diagnostic passes 6/6, confirming directional focus raises the selected float as sway does (`sway/commands/focus.c:475-486`; `sway/tree/container.c:1682-1692`). |
+| `237-regress-assign-focus.t` | 1 | blocked by config gap | The fail-loud translator rejects title-based `assign` and `for_window ... layout tabbed, focus` before the liveness assertion. Sway supports title criteria, assignment placement, and matching command execution (`sway/criteria.c:203-217,601-650`; `sway/tree/view.c:570-590,631-664`). |
 | `005-floating.t` | 13 | finished: 6 pass; 7 unproven | Assertions 5 and 7–13 depend on i3's X11 `rect` creation input. Wayland `xdg_toplevel` has no equivalent absolute-position request; using a window rule or compositor move would test a different input. Sway clamps and centers natural floating geometry (`sway/tree/container.c:793-905,955-982`). See the adapter limitation above. |
 | `135-floating-focus.t` | 82 | finished: 66 pass; 16 skip | Assertions 23–25 require distinct X11 positions that the Wayland adapter cannot request. Assertions 31, 32, 34, 35, 37, 40, 43, 46, 50, 54, 58, 62, 66, 70, 73, and 74 use i3's floating wrappers, X11-only `window` field, or opposite floating-list insertion order; equivalent direct-node checks pass where the hierarchy agrees. Layer focus modes, workspace child descent, cross-workspace focus, nested reinsertion, and close restoration match sway. Assertions 75 and 77 pass through a temporary direct-node diagnostic after preserving non-root parents across floating transitions (`sway/tree/container.c:955-1013`). Assertions 50 and 58 expect i3's new floating wrapper at index 0, while sway appends new floating containers (`sway/tree/workspace.c:961-971`). See [Floating container wrappers](../../docs/KNOWN_DEVIATIONS.md#floating-container-wrappers). |
 | `136-floating-ws-empty.t` | 11 | pass | An inactive workspace remains present while it contains floating windows, matching sway's emptiness check over both tiled and non-sticky floating children (`sway/tree/workspace.c:752-764`). |
