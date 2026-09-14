@@ -913,6 +913,18 @@ impl<W: LayoutElement> Workspace<W> {
         &mut self,
         subtree: DetachedSubtree<W>,
     ) -> (NodeId, Vec<(NodeId, NodeId)>) {
+        self.attach_tiling_subtree_at(subtree, None)
+    }
+
+    pub fn move_tiling_subtree_to_node(&mut self, source: NodeId, target: NodeId) -> bool {
+        self.tiling.move_subtree_to_node(source, target)
+    }
+
+    pub fn attach_tiling_subtree_at(
+        &mut self,
+        subtree: DetachedSubtree<W>,
+        target: Option<NodeId>,
+    ) -> (NodeId, Vec<(NodeId, NodeId)>) {
         if let Some(output) = &self.output {
             subtree.for_each_window(|window| window.output_enter(output));
         }
@@ -921,7 +933,7 @@ impl<W: LayoutElement> Workspace<W> {
             self.disable_fullscreen();
         }
         self.floating_is_active = FloatingActive::No;
-        self.tiling.attach_subtree(subtree)
+        self.tiling.attach_subtree_at(subtree, target)
     }
 
     pub fn finish_tiling_subtree_detach(&mut self, old_parent: Option<NodeId>) {
@@ -1904,6 +1916,17 @@ impl<W: LayoutElement> Workspace<W> {
 
     pub fn contains_tiling_node(&self, id: crate::layout::tiling_tree::NodeId) -> bool {
         self.tiling.contains(id)
+    }
+
+    pub fn tiling_node_for_window(
+        &self,
+        window: &W::Id,
+    ) -> Option<crate::layout::tiling_tree::NodeId> {
+        self.tiling.node_for_window(window)
+    }
+
+    pub fn is_tiling_split(&self, id: crate::layout::tiling_tree::NodeId) -> bool {
+        self.tiling.is_split(id)
     }
 
     pub fn ipc_tiling_tree(&self) -> super::tiling_tree::IpcNode<W::Id> {

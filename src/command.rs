@@ -201,6 +201,16 @@ fn execute_one(
             }
             None
         }
+        Command::MoveToMark(mark) => {
+            let Some(source) = focused_target(state) else {
+                return success();
+            };
+            let outcome = move_target_to_mark(state, source, &mark);
+            if !outcome.success {
+                return outcome;
+            }
+            None
+        }
         Command::MoveToOutput(target) => {
             let focused = state
                 .swayward
@@ -845,6 +855,153 @@ fn move_target_to_workspace(
     success()
 }
 
+fn marked_target(state: &State, mark: &str) -> Option<CommandTarget> {
+    state
+        .swayward
+        .marks_by_window
+        .iter()
+        .find_map(|(window, marks)| {
+            marks
+                .iter()
+                .any(|existing| existing == mark)
+                .then_some(*window)
+        })
+        .map(CommandTarget::Window)
+        .or_else(|| {
+            state
+                .swayward
+                .marks_by_container
+                .iter()
+                .find_map(|(&(workspace, node), marks)| {
+                    marks
+                        .iter()
+                        .any(|existing| existing == mark)
+                        .then_some(CommandTarget::Container(workspace, node))
+                })
+        })
+}
+
+fn move_target_to_mark(state: &mut State, source: CommandTarget, mark: &str) -> CommandOutcome {
+    let Some(destination) = marked_target(state, mark) else {
+        return failure(format!("Mark '{mark}' not found"));
+    };
+    let destination =
+        match destination {
+            CommandTarget::Container(workspace, node) => (workspace, node),
+            CommandTarget::Window(window) => {
+                let mapped =
+                    state.swayward.layout.windows().find_map(|(_, mapped)| {
+                        (mapped.id() == window).then(|| mapped.window.clone())
+                    });
+                let mapped = mapped.or_else(|| {
+                    state
+                        .swayward
+                        .layout
+                        .scratchpad_windows()
+                        .find_map(|mapped| (mapped.id() == window).then(|| mapped.window.clone()))
+                });
+                let Some(mapped) = mapped else {
+                    return failure("No matching node.");
+                };
+                if state.swayward.layout.is_scratchpad_hidden(&mapped) {
+                    let CommandTarget::Window(source) = source else {
+                        return failure(
+                            "moving container subtrees to scratchpad is not implemented yet",
+                        );
+                    };
+                    let source = state.swayward.layout.windows().find_map(|(_, mapped)| {
+                        (mapped.id() == source).then(|| mapped.window.clone())
+                    });
+                    let Some(source) = source else {
+                        return failure("No matching node.");
+                    };
+                    state.swayward.layout.move_to_scratchpad(Some(&source));
+                    state.swayward.queue_redraw_all();
+                    return success();
+                }
+                if let Some(target) = state.swayward.layout.tiling_target_for_window(&mapped) {
+                    target
+                } else {
+                    let Some(workspace) = state.swayward.layout.window_workspace_id(&mapped) else {
+                        return failure("No matching node.");
+                    };
+                    let CommandTarget::Window(source) = source else {
+                        return failure(
+                            "moving container subtrees to floating marks is not implemented yet",
+                        );
+                    };
+                    let source = state.swayward.layout.windows().find_map(|(_, mapped)| {
+                        (mapped.id() == source).then(|| mapped.window.clone())
+                    });
+                    let Some(source) = source else {
+                        return failure("No matching node.");
+                    };
+                    if let Err(error) = state
+                        .swayward
+                        .layout
+                        .move_window_to_workspace_id(&source, workspace)
+                    {
+                        return failure(error);
+                    }
+                    state.swayward.queue_redraw_all();
+                    return success();
+                }
+            }
+        };
+    let source = match source {
+        CommandTarget::Container(workspace, node) => (workspace, node),
+        CommandTarget::Window(window) => {
+            let Some(mapped) = state
+                .swayward
+                .layout
+                .windows()
+                .find_map(|(_, mapped)| (mapped.id() == window).then(|| mapped.window.clone()))
+            else {
+                return failure("No matching node.");
+            };
+            if state
+                .swayward
+                .layout
+                .workspaces()
+                .any(|(_, _, ws)| ws.is_floating(&mapped))
+            {
+                if let Err(error) = state
+                    .swayward
+                    .layout
+                    .move_window_to_workspace_id(&mapped, destination.0)
+                {
+                    return failure(error);
+                }
+                state.swayward.queue_redraw_all();
+                return success();
+            }
+            let Some(source) = state.swayward.layout.tiling_target_for_window(&mapped) else {
+                return failure("No matching node.");
+            };
+            source
+        }
+    };
+    let remapped = match state.swayward.layout.move_tiling_subtree_to_node(
+        source.0,
+        source.1,
+        destination.0,
+        destination.1,
+    ) {
+        Ok(remapped) => remapped,
+        Err(error) => return failure(error),
+    };
+    for (old, new) in remapped {
+        if let Some(marks) = state.swayward.marks_by_container.remove(&(source.0, old)) {
+            state
+                .swayward
+                .marks_by_container
+                .insert((destination.0, new), marks);
+        }
+    }
+    state.swayward.queue_redraw_all();
+    success()
+}
+
 fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget) -> CommandOutcome {
     match command {
         Command::Mark {
@@ -864,6 +1021,12 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
         }
         Command::MoveToWorkspace(workspace_target) => {
             let outcome = move_target_to_workspace(state, target, workspace_target.clone(), true);
+            if !outcome.success {
+                return outcome;
+            }
+        }
+        Command::MoveToMark(mark) => {
+            let outcome = move_target_to_mark(state, target, mark);
             if !outcome.success {
                 return outcome;
             }
@@ -1151,35 +1314,47 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
 }
 
 fn focused_target(state: &State) -> Option<CommandTarget> {
-    if let Some(window) = focused_id(state) {
-        return Some(CommandTarget::Window(window));
-    }
     let workspace = state.swayward.layout.active_workspace()?;
-    workspace
+    if let Some(node) = workspace
         .focused_container_node()
-        .map(|node| CommandTarget::Container(workspace.id(), node))
+        .filter(|node| workspace.is_tiling_split(*node))
+    {
+        return Some(CommandTarget::Container(workspace.id(), node));
+    }
+    focused_id(state).map(CommandTarget::Window)
 }
 
 fn mark_target(state: &mut State, target: CommandTarget, mark: &str, add: bool, toggle: bool) {
+    let had_mark = match target {
+        CommandTarget::Window(window) => state
+            .swayward
+            .marks_by_window
+            .get(&window)
+            .is_some_and(|marks| marks.iter().any(|existing| existing == mark)),
+        CommandTarget::Container(workspace, node) => state
+            .swayward
+            .marks_by_container
+            .get(&(workspace, node))
+            .is_some_and(|marks| marks.iter().any(|existing| existing == mark)),
+    };
+    if !add {
+        unmark_target(state, target, None);
+    }
+    state.swayward.unmark(None, Some(mark));
+    for marks in state.swayward.marks_by_container.values_mut() {
+        marks.retain(|existing| existing != mark);
+    }
+    if toggle && had_mark {
+        return;
+    }
     match target {
-        CommandTarget::Window(window) => state.swayward.set_mark(window, mark, add, toggle),
-        CommandTarget::Container(workspace, node) => {
-            let marks = state
-                .swayward
-                .marks_by_container
-                .entry((workspace, node))
-                .or_default();
-            if !add {
-                marks.clear();
-            }
-            if let Some(index) = marks.iter().position(|existing| existing == mark) {
-                if toggle {
-                    marks.remove(index);
-                }
-            } else {
-                marks.push(mark.to_owned());
-            }
-        }
+        CommandTarget::Window(window) => state.swayward.set_mark(window, mark, true, false),
+        CommandTarget::Container(workspace, node) => state
+            .swayward
+            .marks_by_container
+            .entry((workspace, node))
+            .or_default()
+            .push(mark.to_owned()),
     }
 }
 
@@ -1508,6 +1683,20 @@ mod tests {
             command("move container output HDMI-A-1"),
             Command::MoveToOutput(OutputTarget::Name("HDMI-A-1".into()))
         );
+        for input in [
+            "move mark target",
+            "move to mark target",
+            "move window mark target",
+            "move window to mark target",
+            "move container mark target",
+            "move container to mark target",
+        ] {
+            assert_eq!(
+                command(input),
+                Command::MoveToMark("target".into()),
+                "{input}"
+            );
+        }
         assert_eq!(
             command("move workspace to output right"),
             Command::MoveWorkspaceToOutput(OutputTarget::Direction(Direction::Right))

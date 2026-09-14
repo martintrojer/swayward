@@ -670,6 +670,24 @@ fn detached_subtree_attaches_with_shape_and_internal_focus() {
 }
 
 #[test]
+fn move_subtree_to_node_inserts_beside_a_leaf_and_into_a_split() {
+    let mut t = tree((1200., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let second = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    let third = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+
+    assert!(t.move_subtree_to_node(first, second));
+    assert_eq!(t.root_children().unwrap(), &[second, first, third]);
+
+    t.split(second, Layout::SplitV);
+    let split = t.nodes[&second].parent.unwrap();
+    assert!(t.move_subtree_to_node(third, split));
+    assert_eq!(t.nodes[&third].parent, Some(split));
+    assert_eq!(t.root_children().unwrap(), &[split, first]);
+    t.check_invariants();
+}
+
+#[test]
 fn removing_a_sibling_collapses_the_implicit_container() {
     let mut t = tree((1920., 1080.), 0.);
     let a = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);

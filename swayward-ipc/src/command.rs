@@ -111,6 +111,7 @@ pub enum Command {
     MovePosition(MovePosition),
     MoveToWorkspace(WorkspaceTarget),
     MoveToOutput(OutputTarget),
+    MoveToMark(String),
     MoveWorkspaceToOutput(OutputTarget),
     MoveScratchpad,
     ScratchpadShow,
@@ -476,6 +477,10 @@ fn parse_move(args: &[&str]) -> Result<Command, String> {
         }
         if workspace.eq_ignore_ascii_case("output") {
             return parse_output(rest).map(Command::MoveToOutput);
+        }
+        if workspace.eq_ignore_ascii_case("mark") {
+            return one(rest, "move [window|container] [to] mark <mark>")
+                .map(|mark| Command::MoveToMark(join_words(&[mark])));
         }
     }
     if matches!(args, [scratchpad] if scratchpad.eq_ignore_ascii_case("scratchpad"))

@@ -2684,6 +2684,119 @@ impl<W: LayoutElement> Layout<W> {
         self.move_to_sway_workspace_inner(None, target)
     }
 
+    pub fn move_tiling_subtree_to_node(
+        &mut self,
+        source_workspace: WorkspaceId,
+        source: tiling_tree::NodeId,
+        target_workspace: WorkspaceId,
+        target: tiling_tree::NodeId,
+    ) -> Result<Vec<(tiling_tree::NodeId, tiling_tree::NodeId)>, String> {
+        if source_workspace == target_workspace {
+            let workspace = self
+                .workspaces_mut()
+                .find(|workspace| workspace.id() == source_workspace)
+                .ok_or_else(|| "No matching node.".to_owned())?;
+            if !workspace.contains_tiling_node(source) || !workspace.contains_tiling_node(target) {
+                return Err("No matching node.".to_owned());
+            }
+            workspace.move_tiling_subtree_to_node(source, target);
+            Ok(Vec::new())
+        } else {
+            let MonitorSet::Normal { monitors, .. } = &mut self.monitor_set else {
+                return Err("cannot move a container without an output".into());
+            };
+            let source_monitor = monitors
+                .iter()
+                .position(|monitor| monitor.has_ws(source_workspace))
+                .ok_or_else(|| "No matching node.".to_owned())?;
+            let target_monitor = monitors
+                .iter()
+                .position(|monitor| monitor.has_ws(target_workspace))
+                .ok_or_else(|| "No matching node.".to_owned())?;
+            let (source_ws, target_ws) = if source_monitor == target_monitor {
+                let monitor = &mut monitors[source_monitor];
+                let source_idx = monitor.idx_of_ws(source_workspace).unwrap();
+                let target_idx = monitor.idx_of_ws(target_workspace).unwrap();
+                if source_idx < target_idx {
+                    let (before, after) = monitor.workspaces.split_at_mut(target_idx);
+                    (&mut before[source_idx], &mut after[0])
+                } else {
+                    let (before, after) = monitor.workspaces.split_at_mut(source_idx);
+                    (&mut after[0], &mut before[target_idx])
+                }
+            } else if source_monitor < target_monitor {
+                let (before, after) = monitors.split_at_mut(target_monitor);
+                let source_idx = before[source_monitor].idx_of_ws(source_workspace).unwrap();
+                let target_idx = after[0].idx_of_ws(target_workspace).unwrap();
+                (
+                    &mut before[source_monitor].workspaces[source_idx],
+                    &mut after[0].workspaces[target_idx],
+                )
+            } else {
+                let (before, after) = monitors.split_at_mut(source_monitor);
+                let source_idx = after[0].idx_of_ws(source_workspace).unwrap();
+                let target_idx = before[target_monitor].idx_of_ws(target_workspace).unwrap();
+                (
+                    &mut after[0].workspaces[source_idx],
+                    &mut before[target_monitor].workspaces[target_idx],
+                )
+            };
+            let (subtree, old_parent) = source_ws
+                .detach_tiling_subtree(source)
+                .ok_or_else(|| "No matching node.".to_owned())?;
+            let remapped = target_ws.attach_tiling_subtree_at(subtree, Some(target)).1;
+            source_ws.finish_tiling_subtree_detach(old_parent);
+            Ok(remapped)
+        }
+    }
+
+    pub fn window_workspace_id(&self, window: &W::Id) -> Option<WorkspaceId> {
+        self.workspaces()
+            .find_map(|(_, _, workspace)| workspace.has_window(window).then(|| workspace.id()))
+    }
+
+    pub fn move_window_to_workspace_id(
+        &mut self,
+        window: &W::Id,
+        target: WorkspaceId,
+    ) -> Result<(), String> {
+        let (target_output, target_index) = self
+            .workspaces()
+            .find_map(|(monitor, index, workspace)| {
+                (workspace.id() == target)
+                    .then(|| (monitor.map(|monitor| monitor.output().clone()), index))
+            })
+            .ok_or_else(|| "target workspace does not exist".to_owned())?;
+        let source_output = self
+            .workspaces()
+            .find(|(_, _, workspace)| workspace.has_window(window))
+            .and_then(|(monitor, _, _)| monitor.map(|monitor| monitor.output().clone()));
+        if target_output != source_output {
+            let output =
+                target_output.ok_or_else(|| "target workspace has no output".to_owned())?;
+            self.move_to_output(
+                Some(window),
+                &output,
+                Some(target_index),
+                ActivateWindow::No,
+            );
+        } else {
+            self.move_to_workspace(Some(window), target_index, ActivateWindow::No);
+        }
+        Ok(())
+    }
+
+    pub fn tiling_target_for_window(
+        &self,
+        window: &W::Id,
+    ) -> Option<(WorkspaceId, tiling_tree::NodeId)> {
+        self.workspaces().find_map(|(_, _, workspace)| {
+            workspace
+                .tiling_node_for_window(window)
+                .map(|node| (workspace.id(), node))
+        })
+    }
+
     pub fn move_tiling_subtree_to_sway_workspace(
         &mut self,
         source_workspace: WorkspaceId,

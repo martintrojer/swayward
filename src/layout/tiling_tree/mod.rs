@@ -525,15 +525,29 @@ impl<W: LayoutElement> TilingTree<W> {
         &mut self,
         subtree: DetachedSubtree<W>,
     ) -> (NodeId, Vec<(NodeId, NodeId)>) {
+        let target = self.focus;
+        self.attach_subtree_at(subtree, target)
+    }
+
+    pub fn attach_subtree_at(
+        &mut self,
+        subtree: DetachedSubtree<W>,
+        target: Option<NodeId>,
+    ) -> (NodeId, Vec<(NodeId, NodeId)>) {
         let focus_history = subtree.focus_history;
         let mut remapped = Vec::new();
         let id = self.insert_detached_node(subtree.node, None, &mut remapped);
-        let target = self.focus;
-        let parent = target
-            .and_then(|target| self.nodes.get(&target)?.parent)
-            .unwrap_or(self.root);
-        let after = target
-            .filter(|target| self.nodes.get(target).and_then(|node| node.parent) == Some(parent));
+        let (parent, after) = match target.and_then(|target| self.nodes.get(&target)) {
+            Some(Node {
+                parent: Some(parent),
+                value: TreeNode::Leaf { .. },
+            }) => (*parent, target),
+            Some(Node {
+                value: TreeNode::Split { .. },
+                ..
+            }) => (target.unwrap(), None),
+            _ => (self.root, None),
+        };
         self.insert_child(parent, id, after);
         let insertion = usize::from(self.focus.is_some());
         for window in focus_history.into_iter().rev() {
@@ -757,6 +771,13 @@ impl<W: LayoutElement> TilingTree<W> {
 
     pub fn contains(&self, id: NodeId) -> bool {
         self.nodes.contains_key(&id)
+    }
+
+    pub fn is_split(&self, id: NodeId) -> bool {
+        matches!(
+            self.nodes.get(&id).map(|node| &node.value),
+            Some(TreeNode::Split { .. })
+        )
     }
 
     pub fn focus_parent(&mut self) -> bool {
@@ -983,6 +1004,38 @@ impl<W: LayoutElement> TilingTree<W> {
         } else {
             self.split(id, layout);
         }
+    }
+
+    pub fn move_subtree_to_node(&mut self, id: NodeId, destination: NodeId) -> bool {
+        if id == self.root
+            || id == destination
+            || !self.nodes.contains_key(&id)
+            || !self.nodes.contains_key(&destination)
+            || self.contains_node(id, destination)
+        {
+            return false;
+        }
+        let (parent, after) = match self.nodes[&destination] {
+            Node {
+                parent: Some(parent),
+                value: TreeNode::Leaf { .. },
+            } => (parent, Some(destination)),
+            Node {
+                value: TreeNode::Split { .. },
+                ..
+            } => (destination, None),
+            _ => return false,
+        };
+        let old = self.compute_geometry();
+        let Some(old_parent) = self.detach_subtree_only(id) else {
+            return false;
+        };
+        self.insert_child(parent, id, after);
+        self.reap_empty_from(old_parent);
+        self.compact_tree();
+        self.animate_geometry_changes(old, None);
+        self.request_window_sizes();
+        true
     }
 
     pub fn move_direction(&mut self, id: NodeId, direction: Direction) -> bool {
