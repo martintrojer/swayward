@@ -1024,6 +1024,57 @@ fn directional_move_squashes_the_whole_tree() {
 }
 
 #[test]
+fn directional_move_squashes_after_reordering_siblings() {
+    let mut t = tree((1200., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let second = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    let third = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+    let fourth = t.add_tile(tile(4, t.view_size()), InsertTarget::Focused);
+    let child = t.alloc(Node {
+        parent: None,
+        value: TreeNode::Split {
+            layout: Layout::SplitH,
+            children: vec![first, second],
+            percents: vec![0.5, 0.5],
+        },
+    });
+    let container = t.alloc(Node {
+        parent: Some(t.root),
+        value: TreeNode::Split {
+            layout: Layout::SplitV,
+            children: vec![child],
+            percents: vec![1.],
+        },
+    });
+    t.nodes.get_mut(&first).unwrap().parent = Some(child);
+    t.nodes.get_mut(&second).unwrap().parent = Some(child);
+    t.nodes.get_mut(&child).unwrap().parent = Some(container);
+    t.nodes.get_mut(&third).unwrap().parent = Some(t.root);
+    t.nodes.get_mut(&fourth).unwrap().parent = Some(t.root);
+    t.nodes.get_mut(&t.root).unwrap().value = TreeNode::Split {
+        layout: Layout::SplitH,
+        children: vec![container, third, fourth],
+        percents: vec![0.5, 0.25, 0.25],
+    };
+
+    assert!(t.move_direction(fourth, Direction::Left));
+
+    let IpcNode::Split { children, .. } = t.ipc_tree() else {
+        panic!("root must be a split");
+    };
+    assert!(matches!(
+        &children[..],
+        [
+            IpcNode::Leaf { id: left, .. },
+            IpcNode::Leaf { id: middle, .. },
+            IpcNode::Leaf { id: moved, .. },
+            IpcNode::Leaf { id: right, .. },
+        ] if *left == first && *middle == second && *moved == fourth && *right == third
+    ));
+    t.check_invariants();
+}
+
+#[test]
 fn directional_move_reorders_siblings_and_stops_at_tree_edge() {
     let mut t = tree((1200., 800.), 0.);
     let a = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
