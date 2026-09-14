@@ -23,6 +23,7 @@ our @EXPORT = qw(
     cmd
     cmd_nosync
     cmp_float
+    cmp_tree
     cmp_ok
     diag
     does_i3_live
@@ -45,6 +46,7 @@ our @EXPORT = qw(
     isa_ok
     kill_all_windows
     launch_with_config
+    create_layout
     exit_gracefully
     isnt
     ok
@@ -55,6 +57,7 @@ our @EXPORT = qw(
     sync_with_i3
     wait_for_map
     wait_for_unmap
+    verify_layout
     workspace_exists
 );
 
@@ -368,6 +371,203 @@ sub is_num_fullscreen {
 }
 
 sub kill_all_windows { _control({ action => 'remove_all_windows' }) }
+
+sub _parse_layout {
+    my ($layout) = @_;
+    my @chars = split('', $layout);
+    my $idx = 0;
+    my $focus;
+    my %layout_counts = (H => 0, V => 0, S => 0, T => 0);
+
+    my $parse_nodes;
+    $parse_nodes = sub {
+        my ($nested) = @_;
+        my @nodes;
+        while ($idx < @chars) {
+            my $char = $chars[$idx++];
+            next if $char eq ' ';
+            last if $nested && $char eq ']';
+            die "Unexpected ] in layout\n" if $char eq ']';
+            if ($char =~ /[HVST]/) {
+                my $layout_name = { H => 'splith', V => 'splitv', S => 'stacked', T => 'tabbed' }->{$char};
+                die "Expected [ after $char\n" unless ($chars[$idx++] // '') eq '[';
+                push @nodes, {
+                    type => 'container',
+                    layout => $layout_name,
+                    mark => $char . ++$layout_counts{$char},
+                    nodes => $parse_nodes->(1),
+                };
+            } elsif ($char =~ /[[:alnum:]]/) {
+                push @nodes, { type => 'window', name => $char };
+            } elsif ($char eq '*') {
+                die "Focus marker has no preceding window\n" unless @nodes;
+                my $node = $nodes[-1];
+                die "Focus marker on a container is only valid in layout_after\n"
+                    unless $node->{type} eq 'window';
+                $focus = $node->{name};
+            } else {
+                die "Could not understand $char\n";
+            }
+        }
+        die "Invalid layout, missing ]\n" if $nested && ($idx == 0 || $chars[$idx - 1] ne ']');
+        return \@nodes;
+    };
+
+    my $nodes = $parse_nodes->(0);
+    return ($nodes, $focus);
+}
+
+sub _open_layout_windows {
+    my ($node, $windows) = @_;
+    if ($node->{type} eq 'window') {
+        push @{$windows}, open_window(wm_class => $node->{name}, name => $node->{name});
+        return;
+    }
+    _open_layout_windows($_, $windows) for @{$node->{nodes}};
+}
+
+sub _node_with_mark {
+    my ($node, $mark) = @_;
+    return $node if grep { $_ eq $mark } @{$node->{marks} // []};
+    for my $child (@{$node->{nodes} // []}, @{$node->{floating_nodes} // []}) {
+        my $found = _node_with_mark($child, $mark);
+        return $found if $found;
+    }
+    return;
+}
+
+sub _node_and_parent {
+    my ($node, $match, $parent) = @_;
+    return ($node, $parent) if $match->($node);
+    for my $child (@{$node->{nodes} // []}, @{$node->{floating_nodes} // []}) {
+        my @found = _node_and_parent($child, $match, $node);
+        return @found if @found;
+    }
+    return;
+}
+
+sub _layout_selector {
+    my ($node) = @_;
+    return '[app_id=' . $node->{name} . ']' if $node->{type} eq 'window';
+    return '[con_mark=' . $node->{mark} . ']';
+}
+
+sub _build_layout_node {
+    my ($node) = @_;
+    return if $node->{type} eq 'window';
+    die "Layout container has no children\n" unless @{$node->{nodes}};
+    _build_layout_node($_) for @{$node->{nodes}};
+
+    my @children = @{$node->{nodes}};
+    my $first = _layout_selector($children[0]);
+    cmd "$first focus";
+    cmd 'split h';
+    my ($actual, $parent) = _node_and_parent(
+        _request(4),
+        $children[0]{type} eq 'window'
+            ? sub { my ($candidate) = @_; ($candidate->{app_id} // '') eq $children[0]{name} }
+            : sub {
+                my ($candidate) = @_;
+                scalar grep { $_ eq $children[0]{mark} } @{$candidate->{marks} // []};
+            },
+    );
+    die "Could not find container created for $node->{mark}\n" unless $actual && $parent;
+    cmd '[con_id=' . $parent->{id} . '] mark ' . $node->{mark};
+    cmd _layout_selector($children[$_]) . ' move to mark ' . $node->{mark}
+        for 1 .. $#children;
+    cmd '[con_id=' . $parent->{id} . '] layout ' . $node->{layout};
+}
+
+sub create_layout {
+    my ($layout) = @_;
+    my ($nodes, $focus) = _parse_layout($layout);
+    my @windows;
+    _open_layout_windows($_, \@windows) for @{$nodes};
+    _build_layout_node($_) for @{$nodes};
+    cmd '[app_id=' . $focus . '] focus' if defined($focus);
+    return @windows;
+}
+
+sub verify_layout {
+    my ($layout, $ws) = @_;
+    my $nodes = get_ws_content($ws);
+    my %counters;
+    my $depth = 0;
+    my $node;
+
+    foreach my $char (split('', $layout)) {
+        my ($node_name, $node_layout);
+        if ($char eq 'H') {
+            $node_layout = 'splith';
+        } elsif ($char eq 'V') {
+            $node_layout = 'splitv';
+        } elsif ($char eq 'S') {
+            $node_layout = 'stacked';
+        } elsif ($char eq 'T') {
+            $node_layout = 'tabbed';
+        } elsif ($char eq '[') {
+            $depth++;
+            delete $counters{$depth};
+        } elsif ($char eq ']') {
+            $depth--;
+        } elsif ($char eq ' ') {
+        } elsif ($char eq '*') {
+            $tester->is_eq($node->{focused}, 1, 'Correct node focused');
+        } elsif ($char =~ /[[:alnum:]]/) {
+            $node_name = $char;
+        } else {
+            die "Could not understand $char\n";
+        }
+
+        if ($node_layout || $node_name) {
+            $counters{$depth} = exists($counters{$depth}) ? $counters{$depth} + 1 : 0;
+            $node = $nodes->[$counters{0}];
+            for my $i (1 .. $depth) {
+                $node = $node->{nodes}->[$counters{$i}];
+            }
+            # Match upstream's one assertion per layout token even when the
+            # corresponding node is absent. An absent node must fail, not abort
+            # the remainder of the comparison or get skipped.
+            $node //= {};
+
+            if ($node_layout) {
+                $tester->is_eq(
+                    $node->{layout},
+                    $node_layout,
+                    "Layouts match in depth $depth, node number " . $counters{$depth},
+                );
+            } else {
+                $tester->is_eq(
+                    $node->{name},
+                    $node_name,
+                    "Names match in depth $depth, node number " . $counters{$depth},
+                );
+            }
+        }
+    }
+}
+
+sub cmp_tree {
+    local $Test::Builder::Level = $Test::Builder::Level + 1;
+    my %args = @_;
+    my $ws = $args{ws};
+    if (defined($ws)) {
+        cmd "workspace $ws";
+    } else {
+        $ws = fresh_workspace;
+    }
+    my $msg = $args{msg} ? $args{msg} . ': ' : '';
+    die unless $args{layout_before};
+    die unless $args{layout_after};
+
+    kill_all_windows unless $args{dont_kill};
+    my @windows = create_layout($args{layout_before});
+    Test::More::subtest $msg . $args{layout_before} . ' -> ' . $args{layout_after} => sub {
+        $args{cb}->(\@windows) if $args{cb};
+        verify_layout($args{layout_after}, $ws);
+    };
+    return @windows;
+}
 
 sub _translate_config_identity {
     my ($config) = @_;
