@@ -1049,6 +1049,20 @@ impl<W: LayoutElement> TilingTree<W> {
         changed
     }
 
+    pub fn move_window_direction(&mut self, window: &W::Id, direction: Direction) -> bool {
+        let Some(id) = self.node_for_window(window) else {
+            return false;
+        };
+        self.move_node_direction(id, direction)
+    }
+
+    pub fn move_node_direction(&mut self, id: NodeId, direction: Direction) -> bool {
+        let focus = self.focus;
+        let changed = self.move_direction(id, direction);
+        self.set_focus_id(focus);
+        changed
+    }
+
     fn move_direction_inner(&mut self, id: NodeId, direction: Direction) -> bool {
         if !self.nodes.contains_key(&id) || id == self.root || self.windows().nth(1).is_none() {
             return false;

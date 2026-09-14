@@ -1967,6 +1967,28 @@ impl<W: LayoutElement> Layout<W> {
         workspace.move_right();
     }
 
+    pub fn move_window_in_direction(
+        &mut self,
+        window: &W::Id,
+        direction: tiling_tree::Direction,
+        pixels: f64,
+    ) -> bool {
+        self.workspaces_mut()
+            .find(|workspace| workspace.has_window(window))
+            .is_some_and(|workspace| workspace.move_window_in_direction(window, direction, pixels))
+    }
+
+    pub fn move_tiling_node_in_direction(
+        &mut self,
+        workspace_id: workspace::WorkspaceId,
+        node: tiling_tree::NodeId,
+        direction: tiling_tree::Direction,
+    ) -> bool {
+        self.workspaces_mut()
+            .find(|workspace| workspace.id() == workspace_id)
+            .is_some_and(|workspace| workspace.move_tiling_node_in_direction(node, direction))
+    }
+
     pub fn move_column_to_first(&mut self) {
         let Some(workspace) = self.active_workspace_mut() else {
             return;

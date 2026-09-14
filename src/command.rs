@@ -1031,6 +1031,36 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
             identifier,
         } => mark_target(state, target, identifier, *add, *toggle),
         Command::Unmark(identifier) => unmark_target(state, target, identifier.as_deref()),
+        Command::MoveDirection { direction, pixels } => {
+            let direction = match direction {
+                Direction::Left => crate::layout::tiling_tree::Direction::Left,
+                Direction::Right => crate::layout::tiling_tree::Direction::Right,
+                Direction::Up => crate::layout::tiling_tree::Direction::Up,
+                Direction::Down => crate::layout::tiling_tree::Direction::Down,
+            };
+            match target {
+                CommandTarget::Window(target) => {
+                    let window = state.swayward.layout.windows().find_map(|(_, mapped)| {
+                        (mapped.id() == target).then(|| mapped.window.clone())
+                    });
+                    let Some(window) = window else {
+                        return failure("No matching node.");
+                    };
+                    state.swayward.layout.move_window_in_direction(
+                        &window,
+                        direction,
+                        f64::from(pixels.unwrap_or(10)),
+                    );
+                }
+                CommandTarget::Container(workspace, node) => {
+                    state
+                        .swayward
+                        .layout
+                        .move_tiling_node_in_direction(workspace, node, direction);
+                }
+            }
+            state.swayward.queue_redraw_all();
+        }
         Command::MovePosition(position) => {
             let CommandTarget::Window(target) = target else {
                 return failure("command requires a window target");

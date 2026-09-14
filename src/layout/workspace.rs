@@ -22,7 +22,7 @@ use super::scrolling::{ColumnWidth, ScrollDirection};
 use super::shadow::Shadow;
 use super::tile::{Tile, TileRenderSnapshot};
 use super::tiling_tree::{
-    DetachedSubtree, InsertTarget, NodeId, TilingTree, TilingTreeRenderElement,
+    DetachedSubtree, Direction, InsertTarget, NodeId, TilingTree, TilingTreeRenderElement,
 };
 use super::{
     ActivateWindow, HitType, InsertPosition, InteractiveResizeData, LayoutElement, Options,
@@ -1305,6 +1305,35 @@ impl<W: LayoutElement> Workspace<W> {
         } else {
             self.tiling.move_right()
         }
+    }
+
+    pub fn move_window_in_direction(
+        &mut self,
+        window: &W::Id,
+        direction: Direction,
+        pixels: f64,
+    ) -> bool {
+        if self.floating.has_window(window) {
+            let (x, y) = match direction {
+                Direction::Left => (-pixels, 0.),
+                Direction::Right => (pixels, 0.),
+                Direction::Up => (0., -pixels),
+                Direction::Down => (0., pixels),
+            };
+            self.floating.move_window(
+                Some(window),
+                PositionChange::AdjustFixed(x),
+                PositionChange::AdjustFixed(y),
+                true,
+            );
+            true
+        } else {
+            self.tiling.move_window_direction(window, direction)
+        }
+    }
+
+    pub fn move_tiling_node_in_direction(&mut self, node: NodeId, direction: Direction) -> bool {
+        self.tiling.move_node_direction(node, direction)
     }
 
     pub fn move_column_to_first(&mut self) {

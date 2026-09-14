@@ -1568,6 +1568,60 @@ fn workspace_commands_create_sparse_global_identities() {
 }
 
 #[test]
+fn criteria_directional_move_uses_the_materialized_target_without_changing_focus() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    for app_id in ["target", "middle", "target", "focused"] {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+    let focused = f.swayward().layout.focus().unwrap().id();
+
+    let outcome = crate::command::execute(f.niri_state(), r#"[app_id="target"] move right"#);
+
+    assert!(outcome[0].success, "{outcome:?}");
+    assert_eq!(f.swayward().layout.focus().unwrap().id(), focused);
+    let apps = f
+        .swayward()
+        .layout
+        .active_workspace()
+        .unwrap()
+        .tiles()
+        .map(|tile| {
+            crate::utils::with_toplevel_role(tile.window().toplevel(), |role| {
+                role.app_id.clone().unwrap()
+            })
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(apps, ["middle", "target", "focused", "target"]);
+
+    let outcome = crate::command::execute(f.niri_state(), r#"[app_id="target"] move left"#);
+    assert!(outcome[0].success, "{outcome:?}");
+    assert_eq!(f.swayward().layout.focus().unwrap().id(), focused);
+    let apps = f
+        .swayward()
+        .layout
+        .active_workspace()
+        .unwrap()
+        .tiles()
+        .map(|tile| {
+            crate::utils::with_toplevel_role(tile.window().toplevel(), |role| {
+                role.app_id.clone().unwrap()
+            })
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(apps, ["target", "middle", "target", "focused"]);
+}
+
+#[test]
 fn criteria_commands_do_not_change_focus() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));
