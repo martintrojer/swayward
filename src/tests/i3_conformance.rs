@@ -404,6 +404,19 @@ fn handle_control(fixture: &mut Fixture, client: super::client::ClientId, stream
     writeln!(&stream, "{reply}").unwrap();
 }
 
+fn tap_failure_summary(stdout: &str, stderr: &str) -> String {
+    stdout
+        .lines()
+        .filter(|line| line.starts_with("not ok "))
+        .chain(
+            stderr
+                .lines()
+                .filter(|line| line.starts_with("#   Failed test") || line.starts_with("#   at ")),
+        )
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn run_i3_test(test: &str) {
     let mut config = swayward_config::Config::default();
     config.layout.gaps = 0.;
@@ -460,7 +473,8 @@ fn run_i3_test(test: &str) {
                 .collect::<Vec<_>>();
             assert!(
                 status.success() && rejections_match(test, &rejected),
-                "i3 test {test} failed or its rejected commands changed\nexpected rejections: {expected:?}\nactual rejections: {rejected:?}\nstdout:\n{stdout}\nstderr:\n{stderr}"
+                "i3 test {test} failed or its rejected commands changed\nTAP failures:\n{}\nexpected rejections: {expected:?}\nactual rejections: {rejected:?}\nstdout:\n{stdout}\nstderr:\n{stderr}",
+                tap_failure_summary(&stdout, &stderr),
             );
             break;
         }
@@ -475,6 +489,16 @@ fn run_i3_test(test: &str) {
 /// list in its own file rather than in this runner lets slices land in
 /// parallel without editing the same Rust source.
 const PASSING: &str = include_str!("../../tests/i3/passing.txt");
+
+#[test]
+fn tap_failure_summary_names_assertions() {
+    let stdout = "ok 159 - setup\nnot ok 160 - No empty workspace created\n1..160\n";
+    let stderr = "#   Failed test 'No empty workspace created'\n#   at test.t line 398.\n";
+    assert_eq!(
+        tap_failure_summary(stdout, stderr),
+        "not ok 160 - No empty workspace created\n#   Failed test 'No empty workspace created'\n#   at test.t line 398."
+    );
+}
 
 #[test]
 fn rejection_allowlist_is_keyed_by_file_and_exact_command() {
