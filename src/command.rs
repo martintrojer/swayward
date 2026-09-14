@@ -2,9 +2,10 @@ use swayward_config::Action;
 use swayward_ipc::command::parse_error;
 pub use swayward_ipc::command::{
     parse, parse_boolean, Command, Direction, Layout, LayoutToggle, LayoutToggleEntry,
-    OutputTarget, ParsedCommand, ResizeAmount, ResizeAxis, ResizeUnit, Toggle, WorkspaceTarget,
+    MovePosition, OutputTarget, ParsedCommand, ResizeAmount, ResizeAxis, ResizeUnit, Toggle,
+    WorkspaceTarget,
 };
-use swayward_ipc::legacy::SizeChange;
+use swayward_ipc::legacy::{PositionChange, SizeChange};
 use swayward_ipc::{criteria, CommandOutcome};
 
 use crate::swayward::State;
@@ -160,8 +161,8 @@ fn execute_one(
                 };
                 state.swayward.layout.move_floating_window(
                     None,
-                    swayward_ipc::PositionChange::AdjustFixed(x),
-                    swayward_ipc::PositionChange::AdjustFixed(y),
+                    PositionChange::AdjustFixed(x),
+                    PositionChange::AdjustFixed(y),
                     true,
                 );
                 state.swayward.queue_redraw_all();
@@ -174,6 +175,13 @@ fn execute_one(
                     Direction::Down => Action::MoveWindowDown,
                 })
             }
+        }
+        Command::MovePosition(position) => {
+            if let Err(error) = move_position(state, None, &position) {
+                return failure(error);
+            }
+            state.swayward.queue_redraw_all();
+            None
         }
         Command::MoveToWorkspace(target) => {
             if state.swayward.layout.global_fullscreen_active()
@@ -618,6 +626,131 @@ fn output_target_name(target: &OutputTarget) -> &str {
     }
 }
 
+fn move_position(
+    state: &mut State,
+    target: Option<crate::window::mapped::MappedId>,
+    position: &MovePosition,
+) -> Result<(), &'static str> {
+    let window = target.and_then(|target| {
+        state
+            .swayward
+            .layout
+            .windows()
+            .find_map(|(_, mapped)| (mapped.id() == target).then(|| mapped.window.clone()))
+    });
+    let workspace = window
+        .as_ref()
+        .and_then(|window| {
+            state
+                .swayward
+                .layout
+                .workspaces()
+                .find_map(|(_, _, workspace)| workspace.has_window(window).then_some(workspace))
+        })
+        .or_else(|| state.swayward.layout.active_workspace())
+        .ok_or("Only floating containers can be moved to an absolute position")?;
+    if !window
+        .as_ref()
+        .map_or(workspace.floating_is_active(), |window| {
+            workspace.is_floating(window)
+        })
+    {
+        return Err("Only floating containers can be moved to an absolute position");
+    }
+    let target_geometry = || {
+        let id = window
+            .as_ref()
+            .or_else(|| state.swayward.layout.focus().map(|mapped| &mapped.window))?;
+        state
+            .swayward
+            .layout
+            .workspaces()
+            .find_map(|(monitor, _, workspace)| {
+                workspace
+                    .tiles_with_ipc_layouts()
+                    .find(|(tile, _)| &tile.window().window == id)
+                    .map(|(tile, _)| {
+                        let output_origin = monitor.map_or_else(Default::default, |monitor| {
+                            monitor.output().current_location().to_f64()
+                        });
+                        (
+                            tile.tile_size(),
+                            output_origin + workspace.working_area().loc,
+                        )
+                    })
+            })
+    };
+    let (x, y) = match *position {
+        MovePosition::Coordinates { x, y, absolute } => {
+            if absolute
+                && (x.unit == ResizeUnit::PercentagePoints
+                    || y.unit == ResizeUnit::PercentagePoints)
+            {
+                return Err("Cannot move to absolute positions by ppt");
+            }
+            let coordinate = |amount: ResizeAmount, extent: f64| match amount.unit {
+                ResizeUnit::Default | ResizeUnit::Pixels => f64::from(amount.amount),
+                ResizeUnit::PercentagePoints => extent * f64::from(amount.amount) / 100.,
+            };
+            let offset: smithay::utils::Point<f64, smithay::utils::Logical> = if absolute {
+                let Some((_, workspace_origin)) = target_geometry() else {
+                    return Err("Only floating containers can be moved to an absolute position");
+                };
+                (-workspace_origin.x, -workspace_origin.y).into()
+            } else {
+                Default::default()
+            };
+            (
+                PositionChange::SetFixed(coordinate(x, workspace.working_area().size.w) + offset.x),
+                PositionChange::SetFixed(coordinate(y, workspace.working_area().size.h) + offset.y),
+            )
+        }
+        MovePosition::Center { absolute: false } => {
+            state.swayward.layout.center_window(window.as_ref());
+            return Ok(());
+        }
+        MovePosition::Center { absolute: true } => {
+            let root = state
+                .swayward
+                .global_space
+                .outputs()
+                .filter_map(|output| state.swayward.global_space.output_geometry(output))
+                .reduce(|root, output| root.merge(output));
+            let Some(root) = root else { return Ok(()) };
+            let Some((tile_size, workspace_origin)) = target_geometry() else {
+                return Err("Only floating containers can be moved to an absolute position");
+            };
+            let root_center = crate::utils::center(root).to_f64();
+            let position = root_center - tile_size.downscale(2.) - workspace_origin;
+            (
+                PositionChange::SetFixed(position.x),
+                PositionChange::SetFixed(position.y),
+            )
+        }
+        MovePosition::Pointer => {
+            let pointer = state
+                .swayward
+                .seat
+                .get_pointer()
+                .ok_or("No cursor device")?
+                .current_location();
+            let Some((tile_size, workspace_origin)) = target_geometry() else {
+                return Err("Only floating containers can be moved to an absolute position");
+            };
+            let position = pointer - tile_size.downscale(2.) - workspace_origin;
+            (
+                PositionChange::SetFixed(position.x),
+                PositionChange::SetFixed(position.y),
+            )
+        }
+    };
+    state
+        .swayward
+        .layout
+        .move_floating_window(window.as_ref(), x, y, true);
+    Ok(())
+}
+
 fn select_resize_amount(
     first: ResizeAmount,
     second: Option<ResizeAmount>,
@@ -649,6 +782,15 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
             identifier,
         } => mark_target(state, target, identifier, *add, *toggle),
         Command::Unmark(identifier) => unmark_target(state, target, identifier.as_deref()),
+        Command::MovePosition(position) => {
+            let CommandTarget::Window(target) = target else {
+                return failure("command requires a window target");
+            };
+            if let Err(error) = move_position(state, Some(target), position) {
+                return failure(error);
+            }
+            state.swayward.queue_redraw_all();
+        }
         Command::MoveToOutput(output_target_name) => {
             let CommandTarget::Window(target) = target else {
                 return failure("command requires a window target");
@@ -1404,6 +1546,44 @@ mod tests {
         for input in [r#"[bogus=\"x\"] nop"#, r#"[app_id=\"(\"] nop"#, "[] nop"] {
             let error = parse(input).into_iter().next().unwrap().unwrap_err();
             assert_eq!(error.parse_error, Some(true), "{input}");
+        }
+    }
+
+    #[test]
+    fn parses_sway_move_positions() {
+        let px = |amount| ResizeAmount {
+            amount,
+            unit: ResizeUnit::Pixels,
+        };
+        let ppt = |amount| ResizeAmount {
+            amount,
+            unit: ResizeUnit::PercentagePoints,
+        };
+        assert_eq!(
+            command("move position 5 px 15px"),
+            Command::MovePosition(MovePosition::Coordinates {
+                x: px(5),
+                y: px(15),
+                absolute: false,
+            })
+        );
+        assert_eq!(
+            command("move position 20 ppt 30ppt"),
+            Command::MovePosition(MovePosition::Coordinates {
+                x: ppt(20),
+                y: ppt(30),
+                absolute: false,
+            })
+        );
+        assert_eq!(
+            command("move absolute position center"),
+            Command::MovePosition(MovePosition::Center { absolute: true })
+        );
+        for pointer in ["cursor", "mouse", "pointer"] {
+            assert_eq!(
+                command(&format!("move position {pointer}")),
+                Command::MovePosition(MovePosition::Pointer)
+            );
         }
     }
 

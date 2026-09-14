@@ -61,6 +61,19 @@ pub struct ResizeAmount {
     pub unit: ResizeUnit,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MovePosition {
+    Coordinates {
+        x: ResizeAmount,
+        y: ResizeAmount,
+        absolute: bool,
+    },
+    Center {
+        absolute: bool,
+    },
+    Pointer,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OutputTarget {
     Name(String),
@@ -95,6 +108,7 @@ pub enum Command {
         direction: Direction,
         pixels: Option<i32>,
     },
+    MovePosition(MovePosition),
     MoveToWorkspace(WorkspaceTarget),
     MoveToOutput(OutputTarget),
     MoveWorkspaceToOutput(OutputTarget),
@@ -473,6 +487,11 @@ fn parse_move(args: &[&str]) -> Result<Command, String> {
             .transpose()?;
         return Ok(Command::MoveDirection { direction, pixels });
     }
+    if args.first().is_some_and(|arg| {
+        arg.eq_ignore_ascii_case("position") || arg.eq_ignore_ascii_case("absolute")
+    }) {
+        return parse_move_position(args).map(Command::MovePosition);
+    }
     let target = match args {
         [workspace, rest @ ..] if workspace.eq_ignore_ascii_case("workspace") => {
             parse_workspace(rest)?
@@ -489,6 +508,45 @@ fn parse_move(args: &[&str]) -> Result<Command, String> {
         }
     };
     Ok(Command::MoveToWorkspace(target))
+}
+
+fn parse_move_position(args: &[&str]) -> Result<MovePosition, String> {
+    let (absolute, args) = match args {
+        [absolute, rest @ ..] if absolute.eq_ignore_ascii_case("absolute") => (true, rest),
+        args => (false, args),
+    };
+    let [position, args @ ..] = args else {
+        return Err(move_position_usage());
+    };
+    if !position.eq_ignore_ascii_case("position") {
+        return Err(move_position_usage());
+    }
+    if matches!(args, [value] if value.eq_ignore_ascii_case("center")) {
+        return Ok(MovePosition::Center { absolute });
+    }
+    if matches!(args, [value] if value.eq_ignore_ascii_case("cursor") || value.eq_ignore_ascii_case("mouse") || value.eq_ignore_ascii_case("pointer"))
+    {
+        return (!absolute)
+            .then_some(MovePosition::Pointer)
+            .ok_or_else(move_position_usage);
+    }
+    if args.len() < 2 {
+        return Err(move_position_usage());
+    }
+    let (x, consumed) = parse_resize_amount(args).map_err(|_| "Invalid x position specified")?;
+    let args = &args[consumed..];
+    if args.is_empty() {
+        return Err(move_position_usage());
+    }
+    let (y, consumed) = parse_resize_amount(args).map_err(|_| "Invalid y position specified")?;
+    if consumed != args.len() {
+        return Err(move_position_usage());
+    }
+    Ok(MovePosition::Coordinates { x, y, absolute })
+}
+
+fn move_position_usage() -> String {
+    "Expected 'move [absolute] position <x> [px] <y> [px]' or 'move [absolute] position center' or 'move position cursor|mouse|pointer'".into()
 }
 
 fn parse_output(args: &[&str]) -> Result<OutputTarget, String> {

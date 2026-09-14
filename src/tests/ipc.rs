@@ -2739,6 +2739,162 @@ fn move_command_uses_sway_floating_pixel_distances() {
 }
 
 #[test]
+fn move_position_uses_workspace_coordinates_and_rejects_absolute_ppt() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1000, 800));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+    assert!(crate::command::execute(f.niri_state(), "floating enable")[0].success);
+
+    let rect = |f: &mut Fixture| {
+        let swayward = f.swayward();
+        let tree = serde_json::to_value(describe_tree(
+            &swayward.layout,
+            &swayward.global_space,
+            &Default::default(),
+            &Default::default(),
+        ))
+        .unwrap();
+        find_json_node(&tree, "floating_con", false).unwrap()["rect"].clone()
+    };
+
+    assert!(crate::command::execute(f.niri_state(), "move position 5 px 15")[0].success);
+    assert_eq!(rect(&mut f)["x"], 5);
+    assert_eq!(rect(&mut f)["y"], 15);
+
+    assert!(crate::command::execute(f.niri_state(), "move position 20 ppt 25 ppt")[0].success);
+    assert_eq!(rect(&mut f)["x"], 200);
+    assert_eq!(rect(&mut f)["y"], 200);
+
+    for command in [
+        "move absolute position 20 ppt 5 px",
+        "move absolute position 5 px 20 ppt",
+    ] {
+        let outcome = crate::command::execute(f.niri_state(), command);
+        assert!(!outcome[0].success);
+        assert_eq!(
+            outcome[0].error.as_deref(),
+            Some("Cannot move to absolute positions by ppt")
+        );
+    }
+}
+
+#[test]
+fn move_position_centers_on_root_and_pointer() {
+    let mut f = Fixture::new();
+    f.add_output_at(1, (1000, 800), Some((100, 50)));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+    assert!(crate::command::execute(f.niri_state(), "floating enable")[0].success);
+
+    let rect = |f: &mut Fixture| {
+        let swayward = f.swayward();
+        let tree = serde_json::to_value(describe_tree(
+            &swayward.layout,
+            &swayward.global_space,
+            &Default::default(),
+            &Default::default(),
+        ))
+        .unwrap();
+        find_json_node(&tree, "floating_con", false).unwrap()["rect"].clone()
+    };
+
+    assert!(crate::command::execute(f.niri_state(), "move position 150 75")[0].success);
+    let relative = rect(&mut f);
+    assert_eq!(relative["x"], 150);
+    assert_eq!(relative["y"], 75);
+
+    assert!(crate::command::execute(f.niri_state(), "move absolute position 150 75")[0].success);
+    let absolute = rect(&mut f);
+    assert_eq!(absolute["x"], 50);
+    assert_eq!(absolute["y"], 25);
+
+    assert!(crate::command::execute(f.niri_state(), "move absolute position center")[0].success);
+    let centered = rect(&mut f);
+    assert_eq!(
+        centered["x"].as_i64(),
+        Some(((1000. - centered["width"].as_f64().unwrap()) / 2.).round() as i64)
+    );
+    assert_eq!(
+        centered["y"].as_i64(),
+        Some(((800. - centered["height"].as_f64().unwrap()) / 2.).round() as i64)
+    );
+
+    f.niri_state().move_cursor((300., 250.).into());
+    assert!(crate::command::execute(f.niri_state(), "move position pointer")[0].success);
+    let pointer = rect(&mut f);
+    assert_eq!(
+        pointer["x"].as_i64(),
+        Some((200. - pointer["width"].as_f64().unwrap() / 2.).round() as i64)
+    );
+    assert_eq!(
+        pointer["y"].as_i64(),
+        Some((200. - pointer["height"].as_f64().unwrap() / 2.).round() as i64)
+    );
+}
+
+#[test]
+fn move_position_targets_floating_windows_by_criteria() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1000, 800));
+    let client = f.add_client();
+    for app_id in ["first", "second"] {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+        assert!(crate::command::execute(f.niri_state(), "floating enable")[0].success);
+    }
+
+    assert!(
+        crate::command::execute(
+            f.niri_state(),
+            r#"[app_id="first"] move position 25 px 30 px"#,
+        )[0]
+        .success
+    );
+
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &Default::default(),
+        &Default::default(),
+    ))
+    .unwrap();
+    fn find_first(value: &Value) -> Option<&Value> {
+        if value["app_id"] == "first" {
+            return Some(value);
+        }
+        ["nodes", "floating_nodes"]
+            .into_iter()
+            .find_map(|key| value[key].as_array()?.iter().find_map(find_first))
+    }
+    let first = find_first(&tree).unwrap();
+    assert_eq!(first["rect"]["x"], 25);
+    assert_eq!(first["rect"]["y"], 30);
+}
+
+#[test]
 fn floating_ipc_rect_uses_final_position_during_animation() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));

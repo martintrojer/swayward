@@ -5,7 +5,7 @@ Invariant I5: prefer new modules; when an inherited file must be edited, add a l
 ## Edits to inherited files
 
 (workspace-wide) — mechanical niri→swayward rename, with no behavioural change. See the rename commit.
-swayward-ipc/src/lib.rs, swayward-ipc/src/legacy.rs, swayward-ipc/src/command.rs — retain inherited config vocabulary in `legacy` beside the sway schema until milestone 4 moves binds to sway command strings, carry internal window-move events for sway IPC translation, and parse sway's floating/tiling focus modes and directional move distances.
+swayward-ipc/src/lib.rs, swayward-ipc/src/legacy.rs, swayward-ipc/src/command.rs — retain inherited config vocabulary in `legacy` beside the sway schema until milestone 4 moves binds to sway command strings, carry internal window-move events for sway IPC translation, and parse sway's floating/tiling focus modes, directional move distances, and move-position forms.
 src/ipc/client.rs, src/ipc/server.rs — import colliding inherited IPC types from `legacy` while the new sway schema keeps the bare names.
 src/ipc/server.rs, src/ipc/wire.rs — replace niri's line-delimited request dispatch with tested sway binary framing and honest unsupported-message replies.
 src/ipc/client.rs — remove niri's client because swaymsg is swayward's supported IPC client.
@@ -35,7 +35,7 @@ src/layout/workspace.rs — expose a read-only TilingTree snapshot for sway GET_
 src/handlers/compositor.rs, src/swayward.rs — apply for_window commands when a toplevel maps and remove its marks when it unmaps.
 src/layout/mod.rs, src/handlers/mod.rs, src/protocols/foreign_toplevel.rs — store sway scratchpad windows and map foreign-toplevel minimize requests to hide/show them.
 src/command.rs — apply criteria-targeted scratchpad move and show commands to the matched window, matching sway's overridden-node command context.
-src/command.rs, src/layout/mod.rs — reject floating and resize changes to hidden scratchpad windows like sway and guard typed by-id actions from reaching workspace-only mutation paths.
+src/command.rs, src/layout/mod.rs — reject floating and resize changes to hidden scratchpad windows like sway, guard typed by-id actions from reaching workspace-only mutation paths, and execute sway floating position commands in workspace or global coordinates.
 src/layout/mod.rs, src/layout/workspace.rs — fall back to normal placement for children of hidden scratchpad windows and center dialogs from stable parent geometry.
 swayward-ipc/src/command.rs, src/command.rs, src/layout/mod.rs, src/layout/monitor.rs, src/layout/tile.rs, src/layout/workspace.rs, src/ipc/tree.rs — implement sway sticky commands and move sticky floating windows with workspace focus on their output.
 swayward-ipc/src/command.rs, src/command.rs — parse and execute sway's container and workspace move-to-output forms by output name or direction.
