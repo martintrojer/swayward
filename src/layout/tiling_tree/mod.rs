@@ -350,19 +350,10 @@ impl<W: LayoutElement> TilingTree<W> {
             InsertTarget::Node(id) => Some(id),
         };
         let parent = target
-            .and_then(|id| {
-                self.nodes.get(&id).and_then(|node| match &node.value {
-                    TreeNode::Split { .. } => Some(id),
-                    TreeNode::Leaf { .. } => node.parent,
-                })
-            })
+            .and_then(|id| self.nodes.get(&id)?.parent)
             .unwrap_or(self.root);
-        let after = target.filter(|target| {
-            matches!(
-                self.nodes.get(target).map(|node| &node.value),
-                Some(TreeNode::Leaf { .. })
-            ) && self.nodes.get(target).and_then(|node| node.parent) == Some(parent)
-        });
+        let after = target
+            .filter(|target| self.nodes.get(target).and_then(|node| node.parent) == Some(parent));
         self.insert_child(parent, id, after);
         self.set_focus_id(if activate {
             Some(id)

@@ -897,6 +897,37 @@ fn collapse_squashes_redundant_perpendicular_singleton_pairs() {
 }
 
 #[test]
+fn opening_a_window_after_a_focused_split_adds_its_sibling() {
+    let mut t = tree((1200., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let second = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.split(second, Layout::SplitV);
+    let split = t.nodes[&second].parent.unwrap();
+    t.set_focus(split);
+
+    let third = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+
+    let IpcNode::Split { children, .. } = t.ipc_tree() else {
+        panic!("root must be a split");
+    };
+    assert!(matches!(
+        &children[..],
+        [
+            IpcNode::Leaf { id: left, .. },
+            IpcNode::Split {
+                id,
+                children: nested,
+                ..
+            },
+            IpcNode::Leaf { id: right, .. },
+        ] if *left == first && *id == split
+            && matches!(&nested[..], [IpcNode::Leaf { id, .. }] if *id == second)
+            && *right == third
+    ));
+    t.check_invariants();
+}
+
+#[test]
 fn opening_a_window_preserves_intentional_nested_splits() {
     let mut t = tree((1200., 800.), 0.);
     let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
