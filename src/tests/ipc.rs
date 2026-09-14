@@ -2149,6 +2149,42 @@ fn criteria_targeted_move_workspace_preserves_a_container_subtree() {
 }
 
 #[test]
+fn criteria_targeted_scratchpad_show_toggles_every_matching_window() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    for _ in 0..2 {
+        let window = f.client(client).create_window();
+        window.set_title("toggle-window");
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+        assert!(crate::command::execute(f.niri_state(), "move scratchpad")[0].success);
+    }
+
+    for expected_hidden in [0, 2, 0] {
+        let outcome =
+            crate::command::execute(f.niri_state(), r#"[title="toggle-"] scratchpad show"#);
+        assert!(outcome[0].success, "{outcome:?}");
+        assert_eq!(
+            f.swayward().layout.scratchpad_windows().count(),
+            expected_hidden
+        );
+    }
+    for expected_hidden in [1, 2] {
+        assert!(crate::command::execute(f.niri_state(), "scratchpad show")[0].success);
+        assert_eq!(
+            f.swayward().layout.scratchpad_windows().count(),
+            expected_hidden
+        );
+    }
+}
+
+#[test]
 fn criteria_targeted_scratchpad_commands_move_only_the_matching_window() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));

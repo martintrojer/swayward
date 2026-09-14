@@ -3130,35 +3130,44 @@ impl<W: LayoutElement> Layout<W> {
     }
 
     pub fn show_scratchpad(&mut self, window: Option<&W::Id>) -> Option<W::Id> {
-        let shown = self
-            .scratchpad_windows
-            .iter()
-            .find(|id| {
-                !self
-                    .scratchpad
+        let focused = self.focus().map(|window| window.id().clone());
+        let shown = focused
+            .filter(|id| self.scratchpad_windows.contains(id) && !self.is_scratchpad_hidden(id))
+            .or_else(|| {
+                self.scratchpad_windows
                     .iter()
-                    .any(|removed| removed.tile.window().id() == *id)
-            })
-            .cloned();
+                    .find(|id| !self.is_scratchpad_hidden(id))
+                    .cloned()
+            });
         let mut target_index = window.and_then(|window| {
             self.scratchpad
                 .iter()
                 .position(|removed| removed.tile.window().id() == window)
         });
-        if target_index.is_none() {
-            if let Some(shown) = shown {
-                if self.focus().is_some_and(|focused| focused.id() == &shown) {
-                    self.move_to_scratchpad(Some(&shown));
+        if let Some(window) = window {
+            if target_index.is_none() {
+                let on_active_workspace = self
+                    .active_workspace()
+                    .is_some_and(|workspace| workspace.has_window(window));
+                self.move_to_scratchpad(Some(window));
+                if on_active_workspace {
                     return None;
                 }
-                self.move_to_scratchpad(Some(&shown));
                 target_index = self
                     .scratchpad
                     .iter()
-                    .position(|removed| removed.tile.window().id() == &shown);
+                    .position(|removed| removed.tile.window().id() == window);
             }
         } else if let Some(shown) = shown {
+            if self.focus().is_some_and(|focused| focused.id() == &shown) {
+                self.move_to_scratchpad(Some(&shown));
+                return None;
+            }
             self.move_to_scratchpad(Some(&shown));
+            target_index = self
+                .scratchpad
+                .iter()
+                .position(|removed| removed.tile.window().id() == &shown);
         }
 
         let index = target_index.unwrap_or(0);
