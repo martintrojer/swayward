@@ -25,6 +25,8 @@ pub struct Layout {
     pub empty_workspace_above_first: bool,
     pub default_column_display: ColumnDisplay,
     pub focus_wrapping: FocusWrapping,
+    pub floating_minimum_size: FloatingSize,
+    pub floating_maximum_size: FloatingSize,
     pub gaps: f64,
     pub struts: Struts,
     pub background_color: Color,
@@ -50,6 +52,14 @@ impl Default for Layout {
             empty_workspace_above_first: false,
             default_column_display: ColumnDisplay::Normal,
             focus_wrapping: FocusWrapping::Yes,
+            floating_minimum_size: FloatingSize {
+                width: 75,
+                height: 50,
+            },
+            floating_maximum_size: FloatingSize {
+                width: 0,
+                height: 0,
+            },
             gaps: 16.,
             struts: Struts::default(),
             preset_window_heights: vec![
@@ -84,6 +94,8 @@ impl MergeWith<LayoutPart> for Layout {
             center_focused_column,
             default_column_display,
             focus_wrapping,
+            floating_minimum_size,
+            floating_maximum_size,
             struts,
             background_color,
         );
@@ -132,6 +144,10 @@ pub struct LayoutPart {
     pub default_column_display: Option<ColumnDisplay>,
     #[knuffel(child, unwrap(argument, str))]
     pub focus_wrapping: Option<FocusWrapping>,
+    #[knuffel(child)]
+    pub floating_minimum_size: Option<FloatingSize>,
+    #[knuffel(child)]
+    pub floating_maximum_size: Option<FloatingSize>,
     #[knuffel(child, unwrap(argument))]
     pub gaps: Option<FloatOrInt<0, 65535>>,
     #[knuffel(child)]
@@ -153,6 +169,14 @@ impl From<PresetSize> for SizeChange {
             PresetSize::Fixed(fixed) => SizeChange::SetFixed(fixed),
         }
     }
+}
+
+#[derive(knuffel::Decode, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FloatingSize {
+    #[knuffel(argument)]
+    pub width: i32,
+    #[knuffel(argument)]
+    pub height: i32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

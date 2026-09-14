@@ -1666,6 +1666,14 @@ mod tests {
                 empty_workspace_above_first: false,
                 default_column_display: Tabbed,
                 focus_wrapping: Yes,
+                floating_minimum_size: FloatingSize {
+                    width: 75,
+                    height: 50,
+                },
+                floating_maximum_size: FloatingSize {
+                    width: 0,
+                    height: 0,
+                },
                 gaps: 8.0,
                 struts: Struts {
                     left: FloatOrInt(

@@ -200,6 +200,53 @@ impl Data {
     }
 }
 
+fn constrain_floating_size(
+    mut size: Size<i32, Logical>,
+    minimum: swayward_config::FloatingSize,
+    maximum: swayward_config::FloatingSize,
+    automatic_maximum: Size<f64, Logical>,
+    client_minimum: Size<i32, Logical>,
+    client_maximum: Size<i32, Logical>,
+) -> Size<i32, Logical> {
+    let minimum: Size<i32, Logical> = Size::from((
+        if minimum.width == -1 {
+            0
+        } else if minimum.width == 0 {
+            75
+        } else {
+            minimum.width
+        },
+        if minimum.height == -1 {
+            0
+        } else if minimum.height == 0 {
+            50
+        } else {
+            minimum.height
+        },
+    ));
+    let maximum: Size<i32, Logical> = Size::from((
+        if maximum.width == -1 {
+            0
+        } else if maximum.width == 0 {
+            automatic_maximum.w.round() as i32
+        } else {
+            maximum.width
+        },
+        if maximum.height == -1 {
+            0
+        } else if maximum.height == 0 {
+            automatic_maximum.h.round() as i32
+        } else {
+            maximum.height
+        },
+    ));
+    size.w = ensure_min_max_size(size.w, minimum.w, maximum.w);
+    size.h = ensure_min_max_size(size.h, minimum.h, maximum.h);
+    size.w = ensure_min_max_size(size.w, client_minimum.w, client_maximum.w);
+    size.h = ensure_min_max_size(size.h, client_minimum.h, client_maximum.h);
+    size
+}
+
 impl<W: LayoutElement> FloatingSpace<W> {
     pub fn new(
         view_size: Size<f64, Logical>,
@@ -682,7 +729,12 @@ impl<W: LayoutElement> FloatingSpace<W> {
         };
 
         let preset = self.options.layout.preset_column_widths[preset_idx];
-        self.set_window_width(Some(&id), SizeChange::from(preset), true);
+        self.set_window_width(
+            Some(&id),
+            SizeChange::from(preset),
+            true,
+            self.view_size.to_i32_round(),
+        );
 
         self.tiles[idx].floating_preset_width_idx = Some(preset_idx);
 
@@ -743,7 +795,12 @@ impl<W: LayoutElement> FloatingSpace<W> {
         };
 
         let preset = self.options.layout.preset_window_heights[preset_idx];
-        self.set_window_height(Some(&id), SizeChange::from(preset), true);
+        self.set_window_height(
+            Some(&id),
+            SizeChange::from(preset),
+            true,
+            self.view_size.to_i32_round(),
+        );
 
         let tile = &mut self.tiles[idx];
         tile.floating_preset_height_idx = Some(preset_idx);
@@ -764,7 +821,13 @@ impl<W: LayoutElement> FloatingSpace<W> {
         tile.set_sway_border(style, width, true).is_ok()
     }
 
-    pub fn set_window_width(&mut self, id: Option<&W::Id>, change: SizeChange, animate: bool) {
+    pub fn set_window_width(
+        &mut self,
+        id: Option<&W::Id>,
+        change: SizeChange,
+        animate: bool,
+        automatic_maximum: Size<i32, Logical>,
+    ) {
         let Some(id) = id.or(self.active_window_id.as_ref()) else {
             return;
         };
@@ -802,12 +865,15 @@ impl<W: LayoutElement> FloatingSpace<W> {
         let min_size = win.min_size();
         let max_size = win.max_size();
 
-        let win_width = ensure_min_max_size(win_width, min_size.w, max_size.w);
-
         let win_height = win.expected_size().unwrap_or_default().h;
-        let win_height = ensure_min_max_size(win_height, min_size.h, max_size.h);
-
-        let win_size = Size::from((win_width, win_height));
+        let win_size = constrain_floating_size(
+            Size::from((win_width, win_height)),
+            self.options.layout.floating_minimum_size,
+            self.options.layout.floating_maximum_size,
+            automatic_maximum.to_f64(),
+            min_size,
+            max_size,
+        );
         win.request_size_once(win_size, animate);
     }
 
@@ -818,9 +884,9 @@ impl<W: LayoutElement> FloatingSpace<W> {
         let idx = self.idx_of(&id).unwrap();
         let old_size = self.data[idx].size;
         if edge.intersects(ResizeEdge::LEFT_RIGHT) {
-            self.set_window_width(Some(&id), change, true);
+            self.set_window_width(Some(&id), change, true, self.view_size.to_i32_round());
         } else {
-            self.set_window_height(Some(&id), change, true);
+            self.set_window_height(Some(&id), change, true, self.view_size.to_i32_round());
         }
         let new_size = self.tiles[idx].tile_expected_or_current_size();
         let mut offset = Point::from((0., 0.));
@@ -834,7 +900,13 @@ impl<W: LayoutElement> FloatingSpace<W> {
         self.data[idx].set_logical_pos(pos);
     }
 
-    pub fn set_window_height(&mut self, id: Option<&W::Id>, change: SizeChange, animate: bool) {
+    pub fn set_window_height(
+        &mut self,
+        id: Option<&W::Id>,
+        change: SizeChange,
+        animate: bool,
+        automatic_maximum: Size<i32, Logical>,
+    ) {
         let Some(id) = id.or(self.active_window_id.as_ref()) else {
             return;
         };
@@ -872,12 +944,15 @@ impl<W: LayoutElement> FloatingSpace<W> {
         let min_size = win.min_size();
         let max_size = win.max_size();
 
-        let win_height = ensure_min_max_size(win_height, min_size.h, max_size.h);
-
         let win_width = win.expected_size().unwrap_or_default().w;
-        let win_width = ensure_min_max_size(win_width, min_size.w, max_size.w);
-
-        let win_size = Size::from((win_width, win_height));
+        let win_size = constrain_floating_size(
+            Size::from((win_width, win_height)),
+            self.options.layout.floating_minimum_size,
+            self.options.layout.floating_maximum_size,
+            automatic_maximum.to_f64(),
+            min_size,
+            max_size,
+        );
         win.request_size_once(win_size, animate);
     }
 
@@ -1193,7 +1268,12 @@ impl<W: LayoutElement> FloatingSpace<W> {
             };
 
             let window_width = (original_window_size.w + dx).round() as i32;
-            self.set_window_width(Some(window), SizeChange::SetFixed(window_width), false);
+            self.set_window_width(
+                Some(window),
+                SizeChange::SetFixed(window_width),
+                false,
+                self.view_size.to_i32_round(),
+            );
         }
 
         if edges.intersects(ResizeEdge::TOP_BOTTOM) {
@@ -1203,7 +1283,12 @@ impl<W: LayoutElement> FloatingSpace<W> {
             };
 
             let window_height = (original_window_size.h + dy).round() as i32;
-            self.set_window_height(Some(window), SizeChange::SetFixed(window_height), false);
+            self.set_window_height(
+                Some(window),
+                SizeChange::SetFixed(window_height),
+                false,
+                self.view_size.to_i32_round(),
+            );
         }
 
         true

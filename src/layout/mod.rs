@@ -1126,7 +1126,11 @@ impl<W: LayoutElement> Layout<W> {
                             .iter_mut()
                             .find(|ws| ws.has_window(&id))
                             .unwrap();
-                        ws.set_window_height(Some(&id), change);
+                        ws.set_window_height(
+                            Some(&id),
+                            change,
+                            output_size(&mon.output).to_i32_round(),
+                        );
                     }
                 }
 
@@ -1200,7 +1204,7 @@ impl<W: LayoutElement> Layout<W> {
                 // Set the default height for scrolling windows.
                 if !is_floating {
                     if let Some(change) = scrolling_height {
-                        ws.set_window_height(Some(&id), change);
+                        ws.set_window_height(Some(&id), change, Size::from((1280, 720)));
                     }
                 }
 
@@ -1949,6 +1953,22 @@ impl<W: LayoutElement> Layout<W> {
         };
 
         monitors.iter()
+    }
+
+    fn output_layout_size(&self) -> Size<i32, Logical> {
+        let mut left = 0;
+        let mut top = 0;
+        let mut right = 0;
+        let mut bottom = 0;
+        for monitor in self.monitors() {
+            let location = monitor.output().current_location();
+            let size = output_size(monitor.output()).to_i32_round();
+            left = left.min(location.x);
+            top = top.min(location.y);
+            right = right.max(location.x.saturating_add(size.w));
+            bottom = bottom.max(location.y.saturating_add(size.h));
+        }
+        Size::from((right.saturating_sub(left), bottom.saturating_sub(top)))
     }
 
     pub fn monitors_mut(&mut self) -> impl Iterator<Item = &mut Monitor<W>> + '_ {
@@ -3199,8 +3219,9 @@ impl<W: LayoutElement> Layout<W> {
         {
             return;
         }
+        let automatic_maximum = self.output_layout_size();
         if let Some(workspace) = self.workspaces_mut().find(|ws| ws.has_window(&window)) {
-            workspace.prepare_tiled_window_for_scratchpad(&window);
+            workspace.prepare_tiled_window_for_scratchpad(&window, automatic_maximum);
             if workspace.fullscreen_contains_window(&window) {
                 workspace.set_fullscreen(&window, false);
             }
@@ -4215,6 +4236,7 @@ impl<W: LayoutElement> Layout<W> {
             }
         }
 
+        let automatic_maximum = self.output_layout_size();
         let workspace = if let Some(window) = window {
             Some(
                 self.workspaces_mut()
@@ -4228,7 +4250,7 @@ impl<W: LayoutElement> Layout<W> {
         let Some(workspace) = workspace else {
             return;
         };
-        workspace.set_window_width(window, change);
+        workspace.set_window_width(window, change, automatic_maximum);
     }
 
     pub fn set_window_height(&mut self, window: Option<&W::Id>, change: SizeChange) {
@@ -4241,6 +4263,7 @@ impl<W: LayoutElement> Layout<W> {
             }
         }
 
+        let automatic_maximum = self.output_layout_size();
         let workspace = if let Some(window) = window {
             Some(
                 self.workspaces_mut()
@@ -4254,7 +4277,7 @@ impl<W: LayoutElement> Layout<W> {
         let Some(workspace) = workspace else {
             return;
         };
-        workspace.set_window_height(window, change);
+        workspace.set_window_height(window, change, automatic_maximum);
     }
 
     pub fn resize_window_edge(

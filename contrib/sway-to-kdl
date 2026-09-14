@@ -130,6 +130,16 @@ class Translator:
                 self.translate_default_border(
                     path, line_no, text, match.group(1), match.group(2)
                 )
+            elif match := re.fullmatch(
+                r"(floating_minimum_size|floating_maximum_size)\s+(-?\d+)\s+(x)\s+(-?\d+)",
+                text,
+            ):
+                width, height = int(match.group(2)), int(match.group(4))
+                if width < -1 or height < -1:
+                    self.warn(path, line_no, text, "floating size below -1 is unsupported")
+                else:
+                    name = match.group(1).replace("_", "-")
+                    self.layout_settings.append(f"    {name} {width} {height}")
             elif match := re.fullmatch(r"force_focus_wrapping\s+(\S+)", text):
                 enabled = match.group(1).lower() in {
                     "1", "yes", "on", "true", "enable", "enabled", "active"

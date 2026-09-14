@@ -178,6 +178,86 @@ fn focus_wrapping_maps_exact_modes_and_refuses_unrepresentable_modes() {
 }
 
 #[test]
+fn floating_constraints_preserve_values_and_refuse_invalid_forms() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_owned();
+    for (source, minimum, maximum) in [
+        (
+            "floating_minimum_size 60 x 40\nfloating_maximum_size 100 x 90\n",
+            Some((60, 40)),
+            Some((100, 90)),
+        ),
+        (
+            "floating_minimum_size -1 x -1\nfloating_maximum_size 0 x 0\n",
+            Some((-1, -1)),
+            Some((0, 0)),
+        ),
+    ] {
+        let fixture = std::env::temp_dir().join(format!(
+            "swayward-floating-constraints-{}-{}.conf",
+            std::process::id(),
+            minimum.unwrap().0
+        ));
+        std::fs::write(&fixture, source).unwrap();
+        let output = Command::new("python3")
+            .arg(root.join("contrib/sway-to-kdl"))
+            .arg(&fixture)
+            .output()
+            .unwrap();
+        std::fs::remove_file(fixture).unwrap();
+
+        assert!(output.status.success());
+        assert_eq!(
+            String::from_utf8(output.stderr).unwrap(),
+            "manual attention: none\n"
+        );
+        let config = Config::parse_mem(&String::from_utf8(output.stdout).unwrap()).unwrap();
+        let minimum = minimum.unwrap();
+        let maximum = maximum.unwrap();
+        assert_eq!(
+            (
+                config.layout.floating_minimum_size.width,
+                config.layout.floating_minimum_size.height
+            ),
+            minimum
+        );
+        assert_eq!(
+            (
+                config.layout.floating_maximum_size.width,
+                config.layout.floating_maximum_size.height
+            ),
+            maximum
+        );
+    }
+
+    for source in [
+        "floating_minimum_size 60 X 40\n",
+        "floating_maximum_size -2 x 100\n",
+        "floating_minimum_size 60x40\n",
+    ] {
+        let fixture = std::env::temp_dir().join(format!(
+            "swayward-invalid-floating-constraints-{}-{}.conf",
+            std::process::id(),
+            source.len()
+        ));
+        std::fs::write(&fixture, source).unwrap();
+        let output = Command::new("python3")
+            .arg(root.join("contrib/sway-to-kdl"))
+            .arg(&fixture)
+            .output()
+            .unwrap();
+        std::fs::remove_file(fixture).unwrap();
+
+        assert!(output.status.success());
+        assert!(String::from_utf8(output.stderr)
+            .unwrap()
+            .starts_with("manual attention: 1 directive(s)"));
+    }
+}
+
+#[test]
 fn title_criteria_preserve_regex_escapes_and_translate_window_actions() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()

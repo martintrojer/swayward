@@ -2236,6 +2236,44 @@ fn scratchpad_default_size_honors_client_size_hints() {
 }
 
 #[test]
+fn configured_floating_constraints_clamp_resize_requests() {
+    let mut options = Options::default();
+    options.layout.border.off = true;
+    options.layout.floating_minimum_size = swayward_config::FloatingSize {
+        width: 60,
+        height: 50,
+    };
+    options.layout.floating_maximum_size = swayward_config::FloatingSize {
+        width: 100,
+        height: 90,
+    };
+    let mut params = TestWindowParams::new(1);
+    params.is_floating = true;
+    let layout = check_ops_with_options(
+        options,
+        [
+            Op::AddOutput(1),
+            Op::AddWindow { params },
+            Op::SetWindowWidth {
+                id: None,
+                change: SizeChange::SetFixed(200),
+            },
+            Op::SetWindowHeight {
+                id: None,
+                change: SizeChange::SetFixed(10),
+            },
+        ],
+    );
+
+    let window = layout
+        .windows()
+        .find(|(_, window)| window.id() == &1)
+        .unwrap()
+        .1;
+    assert_eq!(window.0.requested_size.get(), Some(Size::from((100, 50))));
+}
+
+#[test]
 fn large_max_size() {
     let ops = [
         Op::AddOutput(1),

@@ -1527,27 +1527,40 @@ impl<W: LayoutElement> Workspace<W> {
 
     pub fn set_column_width(&mut self, change: SizeChange) {
         if self.floating_is_active.get() {
-            self.floating.set_window_width(None, change, true);
+            self.floating
+                .set_window_width(None, change, true, self.view_size.to_i32_round());
         } else {
             self.tiling.set_window_width(None, change);
         }
     }
 
-    pub fn set_window_width(&mut self, window: Option<&W::Id>, change: SizeChange) {
+    pub fn set_window_width(
+        &mut self,
+        window: Option<&W::Id>,
+        change: SizeChange,
+        automatic_maximum: Size<i32, Logical>,
+    ) {
         if window.map_or(self.floating_is_active.get(), |id| {
             self.floating.has_window(id)
         }) {
-            self.floating.set_window_width(window, change, true);
+            self.floating
+                .set_window_width(window, change, true, automatic_maximum);
         } else {
             self.tiling.set_window_width(window, change);
         }
     }
 
-    pub fn set_window_height(&mut self, window: Option<&W::Id>, change: SizeChange) {
+    pub fn set_window_height(
+        &mut self,
+        window: Option<&W::Id>,
+        change: SizeChange,
+        automatic_maximum: Size<i32, Logical>,
+    ) {
         if window.map_or(self.floating_is_active.get(), |id| {
             self.floating.has_window(id)
         }) {
-            self.floating.set_window_height(window, change, true);
+            self.floating
+                .set_window_height(window, change, true, automatic_maximum);
         } else {
             self.tiling.set_window_height(window, change);
         }
@@ -1723,7 +1736,11 @@ impl<W: LayoutElement> Workspace<W> {
         self.set_maximized(window, !current);
     }
 
-    pub(super) fn prepare_tiled_window_for_scratchpad(&mut self, id: &W::Id) {
+    pub(super) fn prepare_tiled_window_for_scratchpad(
+        &mut self,
+        id: &W::Id,
+        automatic_maximum: Size<i32, Logical>,
+    ) {
         let Some(tile) = self
             .tiling
             .tiles_mut()
@@ -1734,12 +1751,42 @@ impl<W: LayoutElement> Workspace<W> {
 
         // Sway sizes a tiled window from the workspace box when it first enters
         // the scratchpad (sway/tree/container.c:913-932).
+        let minimum = self.options.layout.floating_minimum_size;
+        let maximum = self.options.layout.floating_maximum_size;
+        let min_width = if minimum.width == -1 {
+            0.
+        } else if minimum.width == 0 {
+            75.
+        } else {
+            f64::from(minimum.width)
+        };
+        let min_height = if minimum.height == -1 {
+            0.
+        } else if minimum.height == 0 {
+            50.
+        } else {
+            f64::from(minimum.height)
+        };
+        let max_width = if maximum.width == -1 {
+            f64::INFINITY
+        } else if maximum.width == 0 {
+            f64::from(automatic_maximum.w)
+        } else {
+            f64::from(maximum.width)
+        };
+        let max_height = if maximum.height == -1 {
+            f64::INFINITY
+        } else if maximum.height == 0 {
+            f64::from(automatic_maximum.h)
+        } else {
+            f64::from(maximum.height)
+        };
         let tile_width = (self.working_area.size.w * 0.5)
-            .min(self.working_area.size.w)
-            .max(75.);
+            .min(max_width)
+            .max(min_width);
         let tile_height = (self.working_area.size.h * 0.75)
-            .min(self.working_area.size.h)
-            .max(50.);
+            .min(max_height)
+            .max(min_height);
         let min_size = tile.window().min_size();
         let max_size = tile.window().max_size();
         let window_width = ensure_min_max_size(
