@@ -111,11 +111,21 @@ container to the end of this list (`sway/sway/tree/workspace.c:961-971`), while
 i3 inserts a new floating wrapper at the front (`i3/src/floating.c:280-295`).
 Swayward follows sway's hierarchy and list order.
 
-The final assertion in i3's `141-resize.t` searches only the children of each
-floating node. It cannot find either direct floating leaf, so it does not test
-the targeted resize result against sway or swayward. The preceding assertion
-confirms that the untargeted floating window is unchanged. This assertion is
-excluded as an i3-only tree-shape check.
+Several i3 conformance assertions cannot observe the equivalent sway behavior
+because they traverse the wrapper's child instead of the direct floating node:
+
+- The final assertion in `141-resize.t` cannot find either floating leaf. The
+  preceding assertion confirms that the untargeted floating window is unchanged.
+- Assertions 40–43 in `156-fullscreen-focus.t` inspect the child count below an
+  i3 fullscreen wrapper after workspace moves.
+- All six assertions in `236-floating-focus-raise.t` inspect the wrapper child.
+  Replacing only that lookup in a temporary diagnostic makes all six pass.
+  Swayward therefore raises the focused float correctly and serializes the list
+  back-to-front. The behavior is also pinned by the real sway captures
+  `one_floating.tree.json`, `three_floating_before_raise.tree.json`, and
+  `three_floating_after_raise.tree.json`: their order changes from `[1, 2, 3]` to
+  `[2, 3, 1]` after raising the first window. The fixture test was
+  mutation-verified when added.
 
 The same difference affects 13 assertions in `135-floating-focus.t`: assertions
 31, 32, 34, 35, 37, 40, 43, 46, 54, 62, 66, 73, and 74. Some traverse the i3
