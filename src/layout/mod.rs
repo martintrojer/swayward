@@ -2454,10 +2454,21 @@ impl<W: LayoutElement> Layout<W> {
     }
 
     pub fn switch_workspace_auto_back_and_forth(&mut self, idx: usize) {
-        let Some(monitor) = self.active_monitor() else {
-            return;
+        let previous_name = {
+            let Some(monitor) = self.active_monitor() else {
+                return;
+            };
+            let idx = idx.min(monitor.workspaces.len() - 1);
+            (idx == monitor.active_workspace_idx && monitor.previous_workspace_idx().is_none())
+                .then(|| monitor.previous_workspace_name().map(str::to_owned))
+                .flatten()
         };
-        monitor.switch_workspace_auto_back_and_forth(idx);
+        if let Some(previous_name) = previous_name {
+            let _ =
+                self.activate_sway_workspace(crate::command::WorkspaceTarget::Name(previous_name));
+        } else if let Some(monitor) = self.active_monitor() {
+            monitor.switch_workspace_auto_back_and_forth(idx);
+        }
     }
 
     pub fn switch_workspace_previous(&mut self) {
@@ -2465,6 +2476,38 @@ impl<W: LayoutElement> Layout<W> {
             return;
         };
         monitor.switch_workspace_previous();
+    }
+
+    pub fn activate_sway_workspace_auto_back_and_forth(
+        &mut self,
+        target: crate::command::WorkspaceTarget,
+    ) -> Result<(), String> {
+        use crate::command::WorkspaceTarget;
+
+        let existing = self.workspaces().find_map(|(monitor, index, workspace)| {
+            let matches = match &target {
+                WorkspaceTarget::Number(value) => workspace.number() == parse_workspace_num(value),
+                WorkspaceTarget::Name(value) => workspace
+                    .sway_name()
+                    .is_some_and(|name| name.eq_ignore_ascii_case(value)),
+                _ => false,
+            };
+            matches.then(|| (monitor.map(|monitor| monitor.output().clone()), index))
+        });
+        let Some((output, index)) = existing else {
+            return self.activate_sway_workspace(target);
+        };
+        if let Some(output) = output {
+            if self.active_output() == Some(&output) {
+                self.switch_workspace_auto_back_and_forth(index);
+            } else {
+                self.focus_output(&output);
+                self.switch_workspace(index);
+            }
+        } else {
+            self.switch_workspace_auto_back_and_forth(index);
+        }
+        Ok(())
     }
 
     pub fn activate_sway_workspace(

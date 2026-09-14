@@ -101,6 +101,7 @@ fn execute_one(
 
     let action = match parsed.command {
         Command::Focus => None,
+        Command::FocusWorkspace => return failure("No container to focus was specified."),
         Command::FocusDirection(direction) => focus::direction(state, direction),
         Command::FocusOutput(identifier) => {
             if let Err(error) = focus::output(state, &identifier) {
@@ -320,7 +321,21 @@ fn execute_one(
             None
         }
         Command::Workspace(target) => {
-            if let Err(error) = state.swayward.layout.activate_sway_workspace(target) {
+            let auto_back_and_forth = state
+                .swayward
+                .config
+                .borrow()
+                .input
+                .workspace_auto_back_and_forth;
+            let result = if auto_back_and_forth {
+                state
+                    .swayward
+                    .layout
+                    .activate_sway_workspace_auto_back_and_forth(target)
+            } else {
+                state.swayward.layout.activate_sway_workspace(target)
+            };
+            if let Err(error) = result {
                 return failure(error);
             }
             state.swayward.queue_redraw_all();
@@ -659,6 +674,11 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
         }
         Command::Focus => {
             if let Err(error) = focus::targeted(state, target) {
+                return error;
+            }
+        }
+        Command::FocusWorkspace => {
+            if let Err(error) = focus::targeted_workspace(state, target) {
                 return error;
             }
         }
@@ -1030,6 +1050,7 @@ mod tests {
     #[test]
     fn parses_every_supported_command_family() {
         assert_eq!(command("focus"), Command::Focus);
+        assert_eq!(command("focus workspace"), Command::FocusWorkspace);
         assert_eq!(
             command("focus left"),
             Command::FocusDirection(Direction::Left)

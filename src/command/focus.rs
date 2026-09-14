@@ -69,7 +69,11 @@ pub(super) fn targeted(state: &mut State, target: CommandTarget) -> Result<(), C
             let Some(window) = window else {
                 return Err(failure("No matching node."));
             };
-            state.swayward.layout.activate_window(&window);
+            if state.swayward.layout.is_scratchpad_hidden(&window) {
+                state.swayward.layout.show_scratchpad(Some(&window));
+            } else {
+                state.swayward.layout.activate_window(&window);
+            }
         }
         CommandTarget::Container(workspace, node) => {
             if !state.swayward.layout.focus_tiling_node(workspace, node) {
@@ -78,6 +82,50 @@ pub(super) fn targeted(state: &mut State, target: CommandTarget) -> Result<(), C
         }
     }
     Ok(())
+}
+
+pub(super) fn targeted_workspace(
+    state: &mut State,
+    target: CommandTarget,
+) -> Result<(), CommandOutcome> {
+    let CommandTarget::Window(target_id) = target else {
+        return Err(failure("No container to focus was specified."));
+    };
+    let window = state
+        .swayward
+        .layout
+        .windows()
+        .find_map(|(_, mapped)| (mapped.id() == target_id).then(|| mapped.window.clone()));
+    let Some(window) = window else {
+        return Err(failure("No matching node."));
+    };
+    let target_workspace = state
+        .swayward
+        .layout
+        .workspaces()
+        .find(|(_, _, workspace)| workspace.has_window(&window))
+        .map(|(_, _, workspace)| workspace.id());
+    let active_workspace = state
+        .swayward
+        .layout
+        .active_workspace()
+        .map(|workspace| workspace.id());
+    let auto_back_and_forth = state
+        .swayward
+        .config
+        .borrow()
+        .input
+        .workspace_auto_back_and_forth;
+    if auto_back_and_forth && target_workspace == active_workspace {
+        let previous = crate::command::WorkspaceTarget::BackAndForth;
+        state
+            .swayward
+            .layout
+            .activate_sway_workspace(previous)
+            .map_err(failure)
+    } else {
+        targeted(state, target)
+    }
 }
 
 pub(super) fn targeted_direction(

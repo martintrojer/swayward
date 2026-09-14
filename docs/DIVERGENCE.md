@@ -23,7 +23,7 @@ src/layout/mod.rs — resolve relative move-to-workspace targets with sway's glo
 src/layout/mod.rs, src/layout/monitor.rs — retain the previous sway workspace name alongside its live ID so `workspace back_and_forth` can recreate a workspace removed by cleanup, matching sway's seat state.
 src/ipc/server.rs — include the Wayland socket name in IPC socket paths so parallel headless tests do not collide.
 src/tests/mod.rs — run vendored i3 Perl assertions against the existing headless compositor and real sway IPC socket.
-contrib/sway-to-kdl — translate sway workspace output preferences to named-workspace initial output configuration.
+contrib/sway-to-kdl — translate sway workspace output preferences to named-workspace initial output configuration and map `workspace_auto_back_and_forth` to the existing typed input setting using sway's boolean vocabulary.
 swayward-ipc/src/message.rs — omit absent optional command-result fields to match sway's RUN_COMMAND reply schema.
 .github/FUNDING.yml — remove inherited niri sponsorship attribution because swayward is not soliciting sponsorship.
 .github/ISSUE_TEMPLATE/bug_report.md, .github/ISSUE_TEMPLATE/config.yml — point issue reporting and support at swayward rather than niri.
@@ -40,7 +40,7 @@ tests/i3/lib/i3test.pm — derive the i3 `focused_output` helper from the unmodi
 src/layout/workspace.rs — expose a read-only TilingTree snapshot for sway GET_TREE serialization.
 src/handlers/compositor.rs, src/swayward.rs — apply for_window commands when a toplevel maps, including translated kill and scratchpad actions without retaining a target after an earlier action removes it, and remove its marks when it unmaps.
 src/layout/mod.rs, src/handlers/mod.rs, src/protocols/foreign_toplevel.rs — store sway scratchpad windows and map foreign-toplevel minimize requests to hide/show them.
-src/command.rs — apply criteria-targeted scratchpad move and show commands to the matched window, matching sway's overridden-node command context.
+src/command.rs — apply criteria-targeted scratchpad move, show, and focus commands to the matched window, including revealing hidden scratchpad targets and clearing obstructing fullscreen state, matching sway's overridden-node command context.
 src/layout/mod.rs — disable the target workspace and global fullscreen states through `Workspace::set_fullscreen` before showing a scratchpad window, matching sway's scratchpad transition order.
 src/command.rs, src/layout/mod.rs — move criteria-matched windows to workspaces without changing focus, matching sway's overridden-node command context.
 src/command.rs, src/ipc/tree.rs, src/layout/mod.rs, src/layout/monitor.rs, src/layout/workspace.rs, src/layout/tiling_tree/mod.rs — transfer focused container subtrees and workspace-root floating children between workspaces without flattening their structure, losing internal focus history, or dropping floating/fullscreen state; criteria-targeted directional moves cross output boundaries while retaining focus.

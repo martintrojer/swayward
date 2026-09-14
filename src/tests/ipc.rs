@@ -3034,6 +3034,28 @@ fn relative_move_includes_empty_active_workspace_and_uses_direction() {
 }
 
 #[test]
+fn targeted_focus_reveals_a_hidden_scratchpad_window() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.set_title("target");
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    assert!(crate::command::execute(f.niri_state(), "move scratchpad")[0].success);
+    let outcome = crate::command::execute(f.niri_state(), r#"[title="target"] focus workspace"#);
+    assert!(outcome[0].success, "{outcome:?}");
+    assert_eq!(f.swayward().layout.scratchpad_windows().count(), 0);
+    assert!(f.swayward().layout.focus().is_some());
+}
+
+#[test]
 fn targeted_focus_selects_the_requested_unfocused_window() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));

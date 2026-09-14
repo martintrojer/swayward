@@ -137,6 +137,14 @@ class Translator:
                 self.layout_settings.append(
                     f'    focus-wrapping "{"force" if enabled else "yes"}"'
                 )
+            elif match := re.fullmatch(r"workspace_auto_back_and_forth\s+(\S+)", text):
+                enabled = match.group(1).lower() in {
+                    "1", "yes", "on", "true", "enable", "enabled", "active"
+                }
+                self.inputs.setdefault("", []).append(
+                    "workspace-auto-back-and-forth" if enabled
+                    else "workspace-auto-back-and-forth false"
+                )
             elif match := re.fullmatch(r"focus_on_window_activation\s+(\S+)", text):
                 actions = {"urgent": "set-urgent", "focus": "focus", "none": "ignore"}
                 if action := actions.get(match.group(1)):
@@ -700,12 +708,15 @@ class Translator:
         if self.inputs:
             output += ["", "input {"]
             for target, settings in self.inputs.items():
-                output += [f"    {target} {{"]
-                output += [
-                    f"        {item}" if not item.startswith("        ") else item
-                    for item in settings
-                ]
-                output += ["    }"]
+                if target:
+                    output += [f"    {target} {{"]
+                    output += [
+                        f"        {item}" if not item.startswith("        ") else item
+                        for item in settings
+                    ]
+                    output += ["    }"]
+                else:
+                    output += [f"    {item}" for item in settings]
             output += ["}"]
         if self.blur_settings:
             output += [

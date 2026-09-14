@@ -156,6 +156,18 @@ bindsym $missing+x nop
         self.assertIn("width 1", result.stdout)
         self.assertIn("manual attention: none", result.stderr)
 
+    def test_workspace_auto_back_and_forth_uses_sway_boolean_words(self):
+        for value in ["1", "yes", "on", "true", "enable", "enabled", "active"]:
+            with self.subTest(value=value):
+                result = self.translate(f"workspace_auto_back_and_forth {value}\n")
+                self.assertIn("workspace-auto-back-and-forth", result.stdout)
+                self.assertNotIn("workspace-auto-back-and-forth false", result.stdout)
+                self.assertIn("manual attention: none", result.stderr)
+
+        result = self.translate("workspace_auto_back_and_forth no\n")
+        self.assertIn("workspace-auto-back-and-forth false", result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
     def test_focus_on_window_activation_translates_sway_modes(self):
         expected = {
             "urgent": "set-urgent",

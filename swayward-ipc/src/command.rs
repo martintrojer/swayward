@@ -127,6 +127,7 @@ pub enum Command {
     FocusDirection(Direction),
     FocusOutput(String),
     Focus,
+    FocusWorkspace,
     FocusParent,
     FocusChild,
     FocusNext,
@@ -498,6 +499,7 @@ fn parse_focus(args: &[&str]) -> Result<Command, String> {
         "floating" => Ok(Command::FocusFloating),
         "tiling" => Ok(Command::FocusTiling),
         "mode_toggle" => Ok(Command::FocusModeToggle),
+        "workspace" => Ok(Command::FocusWorkspace),
         _ => Err(
             "Expected 'focus <left|right|up|down|parent|child|next|prev|floating|tiling|mode_toggle>'"
                 .into(),
