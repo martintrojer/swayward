@@ -74,3 +74,8 @@
 261-match-con_id-con_mark-combinations.t
 293-sticky-output-crash.t
 241-consistent-center.t
+
+507-workspace-move-crash.t
+309-crash-move-parent.t
+
+512-move-wraps.t

@@ -131,6 +131,15 @@ Swayward follows sway. The command parser returns a well-formed failure for
 `open`, as required by the IPC compatibility decisions Q1, Q8, and Q11. It does
 not create i3 empty containers.
 
+### Directional output moves do not wrap
+
+I3 wraps `move container to output <direction>` from the edge output to the
+opposite edge. Sway resolves the destination with
+`wlr_output_layout_adjacent_output` and returns no destination when no output is
+adjacent (`sway/sway/tree/output.c:316-330`; `sway/sway/commands/move.c:277-309`).
+Swayward follows sway, so the two wrap assertions in `512-move-wraps.t` are
+skipped. This behavior is independent of the `focus_wrapping` configuration.
+
 ### Directional floating moves in percentage points
 
 The i3 command `move right 25 ppt` moves a floating container by 25 percent of
