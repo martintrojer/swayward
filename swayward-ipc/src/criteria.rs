@@ -146,7 +146,9 @@ impl Criteria {
                     criteria.con_id = Some(if value == "__focused__" {
                         focused_con_id.unwrap_or(0)
                     } else {
-                        number(name.as_str(), value)?
+                        value.parse().map_err(|_| {
+                            "The value for 'con_id' should be '__focused__' or numeric".to_owned()
+                        })?
                     });
                 }
                 "id" => criteria.id = Some(number(&name, required(&name, value.as_deref())?)?),
@@ -361,6 +363,22 @@ mod tests {
             &escaped_dot_must_not_become_wildcard,
             &WindowInfo::default()
         ));
+    }
+
+    #[test]
+    fn numeric_criteria_errors_match_sway_verbatim() {
+        assert_eq!(
+            Criteria::parse("[con_id=nope]", None).unwrap_err(),
+            "The value for 'con_id' should be '__focused__' or numeric"
+        );
+        assert_eq!(
+            Criteria::parse("[id=nope]", None).unwrap_err(),
+            "The value for 'id' should be numeric"
+        );
+        assert_eq!(
+            Criteria::parse("[pid=nope]", None).unwrap_err(),
+            "The value for 'pid' should be numeric"
+        );
     }
 
     #[test]
