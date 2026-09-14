@@ -9,6 +9,11 @@ use JSON::PP qw(decode_json encode_json);
 use Test::Builder;
 use Test::More ();
 
+# Upstream tests name the boolean constants from i3's JSON::XS dependency.
+package JSON::XS;
+sub false () { JSON::PP::false }
+
+package i3test;
 our @ISA = qw(Exporter);
 our @EXPORT = qw(
     $x
