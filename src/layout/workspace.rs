@@ -1983,6 +1983,10 @@ impl<W: LayoutElement> Workspace<W> {
         self.tiling.is_split(id)
     }
 
+    pub fn tab_indicator_focus_target(&self, window: &W::Id) -> Option<&W> {
+        self.tiling.tab_indicator_focus_target(window)
+    }
+
     pub fn ipc_tiling_tree(&self) -> super::tiling_tree::IpcNode<W::Id> {
         let mut tree = self.tiling.ipc_tree();
         tree.retain_leaves(&|window| !self.is_floating_for_ipc(window));

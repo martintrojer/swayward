@@ -54,8 +54,8 @@
 146-floating-reinsert.t
 145-flattening.t
 132-move-workspace.t
-
 138-floating-attach.t
 240-focus-on-window-activation.t
 233-regress-manage-focus-unmapped.t
 225-ipc-window-fullscreen.t
+246-window-decoration-focus.t

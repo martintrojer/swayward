@@ -453,6 +453,9 @@ fn handle_control(fixture: &mut Fixture, client: super::client::ClientId, stream
         "warp_pointer" => match (request["x"].as_f64(), request["y"].as_f64()) {
             (Some(x), Some(y)) => {
                 settle_configures(fixture, client);
+                fixture.swayward().clock.set_complete_instantly(true);
+                fixture.swayward().layout.advance_animations();
+                fixture.swayward().clock.set_complete_instantly(false);
                 let location = (x, y).into();
                 let under = fixture.swayward().contents_under(location);
                 fixture.swayward().handle_focus_follows_mouse(&under);

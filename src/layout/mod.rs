@@ -1615,6 +1615,11 @@ impl<W: LayoutElement> Layout<W> {
         0.
     }
 
+    pub fn tab_indicator_focus_target(&self, window: &W::Id) -> Option<&W> {
+        self.workspaces()
+            .find_map(|(_, _, workspace)| workspace.tab_indicator_focus_target(window))
+    }
+
     pub fn should_trigger_focus_follows_mouse_on(&self, window: &W::Id) -> bool {
         // During an animation, it's easy to trigger focus-follows-mouse on the previous workspace,
         // especially when clicking to switch workspace on a bar of some kind. This cancels the

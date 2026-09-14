@@ -1627,6 +1627,27 @@ fn stacked_split_reserves_one_titlebar_row_per_child() {
 }
 
 #[test]
+fn tab_indicator_focus_target_is_the_focused_descendant() {
+    for layout in [Layout::Tabbed, Layout::Stacked] {
+        let mut t = tree((1000., 800.), 0.);
+        let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+        t.split(first, layout);
+        let second = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+        t.split(second, Layout::SplitH);
+        t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+
+        assert_eq!(
+            t.tab_indicator_focus_target(&1).map(|window| *window.id()),
+            Some(3)
+        );
+        assert_eq!(
+            t.tab_indicator_focus_target(&2).map(|window| *window.id()),
+            Some(3)
+        );
+    }
+}
+
+#[test]
 fn fullscreen_suppresses_titlebar() {
     let mut t = tree((1000., 800.), 0.);
     let id = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);

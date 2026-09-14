@@ -2086,13 +2086,45 @@ impl<W: LayoutElement> TilingTree<W> {
         })
     }
 
+    pub fn tab_indicator_focus_target(&self, window: &W::Id) -> Option<&W> {
+        let id = self.node_for_window(window)?;
+        let candidates = self.nodes.iter().filter_map(|(parent, node)| {
+            let TreeNode::Split {
+                layout: Layout::Tabbed | Layout::Stacked,
+                children,
+                ..
+            } = &node.value
+            else {
+                return None;
+            };
+            children
+                .iter()
+                .find(|child| self.first_leaf_in(**child) == Some(id))
+                .map(|branch| (*parent, *branch))
+        });
+        let (_, represented) = candidates.max_by_key(|(parent, _)| {
+            let mut depth = 0;
+            let mut node = *parent;
+            while let Some(next) = self.nodes.get(&node).and_then(|node| node.parent) {
+                depth += 1;
+                node = next;
+            }
+            depth
+        })?;
+        let parent = self.nodes.get(&represented)?.parent?;
+        let focused = self.focused_leaf_in(parent)?;
+        self.tile(focused).map(|tile| tile.window())
+    }
+
     pub fn window_under(&self, pos: Point<f64, Logical>) -> Option<(&W, HitType)> {
         let geometries = self.compute_geometry();
-        if let Some(titlebar) = geometries
+        let titlebar = geometries
             .titlebars
-            .values()
-            .find(|titlebar| titlebar.rect.contains(pos))
-        {
+            .iter()
+            .filter(|(_, titlebar)| titlebar.rect.contains(pos))
+            .max_by_key(|(id, _)| self.node_depth(**id))
+            .map(|(_, titlebar)| titlebar);
+        if let Some(titlebar) = titlebar {
             let id = self.node_for_window(&titlebar.target)?;
             let tile = self.tile(id)?;
             return Some((
@@ -2538,6 +2570,15 @@ impl<W: LayoutElement> TilingTree<W> {
 
         let geometries = self.compute_geometry();
         snapshot(self, self.root, None, &geometries)
+    }
+
+    fn node_depth(&self, mut id: NodeId) -> usize {
+        let mut depth = 0;
+        while let Some(parent) = self.nodes.get(&id).and_then(|node| node.parent) {
+            depth += 1;
+            id = parent;
+        }
+        depth
     }
 
     fn is_descendant(&self, mut id: NodeId, ancestor: NodeId) -> bool {

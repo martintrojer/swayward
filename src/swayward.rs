@@ -6393,20 +6393,20 @@ impl Swayward {
             }
         }
 
-        if let Some(window) = &new_focus.window {
-            if !self.layout.is_overview_open() && current_focus.window.as_ref() != Some(window) {
-                let (window, hit) = window;
-
-                // Don't trigger focus-follows-mouse over the tab indicator.
-                if matches!(
-                    hit,
-                    HitType::Activate {
-                        is_tab_indicator: true
-                    }
-                ) {
-                    return;
+        if let Some((window, hit)) = &new_focus.window {
+            let tab_target = matches!(
+                hit,
+                HitType::Activate {
+                    is_tab_indicator: true
                 }
+            )
+            .then(|| self.layout.tab_indicator_focus_target(window))
+            .flatten()
+            .map(|mapped| mapped.window.clone());
+            let window = tab_target.as_ref().unwrap_or(window);
+            let current_window = current_focus.window.as_ref().map(|(window, _)| window);
 
+            if !self.layout.is_overview_open() && current_window != Some(window) {
                 if !self.layout.should_trigger_focus_follows_mouse_on(window) {
                     return;
                 }
