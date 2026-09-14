@@ -508,6 +508,24 @@ fn handle_control(fixture: &mut Fixture, client: super::client::ClientId, stream
         "activate" => json!({
             "success": activate_window(fixture, client, request["id"].as_i64().unwrap())
         }),
+        "type_key_chords" => {
+            let chords = request["chords"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|chord| {
+                    chord
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|key| u32::try_from(key.as_u64().unwrap()).unwrap())
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>();
+            let chords = chords.iter().map(Vec::as_slice).collect::<Vec<_>>();
+            super::ipc::type_key_chords(fixture, &chords);
+            json!({ "success": true })
+        }
         "warp_pointer" => match (request["x"].as_f64(), request["y"].as_f64()) {
             (Some(x), Some(y)) => {
                 settle_configures(fixture, client);
@@ -609,6 +627,14 @@ fn run_i3_test(test: &str) {
         .env("I3SOCK", &ipc_socket)
         .env("SWAYWARD_TEST_CONTROL", &control_path)
         .env("SWAYWARD_I3_TEST", test)
+        .env(
+            "PATH",
+            format!(
+                "{}:{}",
+                root.join("tests/i3/bin").display(),
+                std::env::var("PATH").unwrap_or_default()
+            ),
+        )
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()

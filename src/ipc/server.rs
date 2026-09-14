@@ -245,10 +245,12 @@ async fn handle_client(ctx: ClientCtx, stream: Async<'static, UnixStream>) -> an
                     continue;
                 }
             };
-            if !subscriptions
-                .iter()
-                .all(|event| matches!(event.as_str(), "workspace" | "mode" | "window" | "tick"))
-            {
+            if !subscriptions.iter().all(|event| {
+                matches!(
+                    event.as_str(),
+                    "workspace" | "mode" | "window" | "binding" | "tick"
+                )
+            }) {
                 write
                     .write_all(&encode(msg_type, r#"{"success": false}"#))
                     .await
@@ -448,10 +450,12 @@ async fn handle_event_stream_client(client: EventStreamClient) -> anyhow::Result
                     .context("error reading IPC subscription payload")?;
                 let requested: Vec<String> = serde_json::from_slice(&payload)
                     .context("error parsing IPC subscription payload")?;
-                if !requested
-                    .iter()
-                    .all(|event| matches!(event.as_str(), "workspace" | "mode" | "window" | "tick"))
-                {
+                if !requested.iter().all(|event| {
+                    matches!(
+                        event.as_str(),
+                        "workspace" | "mode" | "window" | "binding" | "tick"
+                    )
+                }) {
                     write
                         .write_all(&encode(msg_type, r#"{"success": false}"#))
                         .await
@@ -506,6 +510,29 @@ async fn handle_event_stream_client(client: EventStreamClient) -> anyhow::Result
             Event::BindingModeChanged { mode, pango_markup } if subscriptions.contains("mode") => (
                 (1 << 31) | 2,
                 serde_json::json!({"change":mode,"pango_markup":pango_markup}),
+            ),
+            Event::SwayBinding {
+                command,
+                event_state_mask,
+                input_codes,
+                input_code,
+                symbols,
+                symbol,
+                input_type,
+            } if subscriptions.contains("binding") => (
+                (1 << 31) | 5,
+                serde_json::json!({
+                    "change":"run",
+                    "binding": {
+                        "command": command,
+                        "event_state_mask": event_state_mask,
+                        "input_codes": input_codes,
+                        "input_code": input_code,
+                        "symbols": symbols,
+                        "symbol": symbol,
+                        "input_type": input_type,
+                    }
+                }),
             ),
             Event::SwayWindowChanged { change, container } if subscriptions.contains("window") => (
                 (1 << 31) | 3,

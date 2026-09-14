@@ -23,7 +23,7 @@ src/swayward.rs, src/layout/mod.rs, src/layout/workspace.rs, src/layout/tiling_t
 src/layout/mod.rs, src/layout/monitor.rs, src/layout/workspace.rs — give workspaces stable global sway names/numbers, sparse creation, switching, movement, output assignment, rename sorting, map-time assignment creation, and sway-compatible inactive-workspace cleanup while retaining monitor animations.
 src/layout/mod.rs — resolve relative move-to-workspace targets with sway's global numbered and per-output workspace ordering.
 src/layout/mod.rs, src/layout/monitor.rs — retain the previous sway workspace name alongside its live ID so `workspace back_and_forth` can recreate a workspace removed by cleanup, matching sway's seat state.
-src/ipc/server.rs — include the Wayland socket name in IPC socket paths so parallel headless tests do not collide.
+src/ipc/server.rs — include the Wayland socket name in IPC socket paths so parallel headless tests do not collide, and accept sway `binding` subscriptions with the complete captured event schema.
 src/tests/mod.rs — run vendored i3 Perl assertions against the existing headless compositor and real sway IPC socket.
 contrib/sway-to-kdl — translate sway workspace output preferences to named-workspace initial output configuration, map `workspace_auto_back_and_forth` to the existing typed input setting using sway's boolean vocabulary, and accept only the exactly equivalent `hide_edge_borders none` while keeping unsupported edge and lone-tab suppression fail-loud.
 swayward-ipc/src/message.rs — omit absent optional command-result fields to match sway's RUN_COMMAND reply schema.
@@ -38,7 +38,7 @@ src/layout/workspace.rs — replace the scrolling tiling field and render elemen
 src/layout/monitor.rs, src/layout/mod.rs — transfer focused tree tiles rather than concrete scrolling columns between workspaces and outputs.
 src/layout/mod.rs, src/swayward.rs — resolve directional output moves from the moved window's geometry and wrap to the farthest opposite output, matching wlroots geometry semantics.
 src/ipc/server.rs, src/ipc/tree.rs — serve sway GET_TREE, GET_WORKSPACES, and GET_OUTPUTS from live compositor state, including focused empty workspaces, workspace focus membership, sway-compatible workspace number parsing, and back-to-front stacking order for floating children, instead of niri IPC requests.
-tests/i3/lib/i3test.pm — derive the i3 `focused_output` helper from the unmodified sway GET_TREE root focus array and expose native Wayland event-container identity through the same test-side `window` alias used for tree queries, matching upstream i3test without changing sway's schema.
+tests/i3/lib/i3test.pm — derive the i3 `focused_output` helper from the unmodified sway GET_TREE root focus array, expose native Wayland event-container identity through the same test-side `window` alias used for tree queries, and route 238's xdotool key calls through a test-local executable backed by real headless keyboard events, without changing sway's schema.
 src/layout/workspace.rs — expose a read-only TilingTree snapshot for sway GET_TREE serialization.
 src/handlers/compositor.rs, src/swayward.rs — apply for_window commands when a toplevel maps, including translated kill and scratchpad actions without retaining a target after an earlier action removes it, and remove its marks when it unmaps.
 src/layout/mod.rs, src/handlers/mod.rs, src/protocols/foreign_toplevel.rs — store sway scratchpad windows and map foreign-toplevel minimize requests to hide/show them.

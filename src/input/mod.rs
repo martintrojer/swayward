@@ -15,6 +15,7 @@ use smithay::backend::input::{
 };
 use smithay::backend::libinput::LibinputInputBackend;
 use smithay::input::dnd::DnDGrab;
+use smithay::input::keyboard::xkb::keysym_get_name;
 use smithay::input::keyboard::{keysyms, FilterResult, Keysym, Layout, ModifiersState};
 use smithay::input::pointer::{
     AxisFrame, ButtonEvent, CursorIcon, CursorImageStatus, Focus, GestureHoldBeginEvent,
@@ -677,41 +678,50 @@ impl State {
     }
 
     pub fn handle_bind(&mut self, bind: Bind) {
-        let Some(cooldown) = bind.cooldown else {
-            self.do_action(bind.action, bind.allow_when_locked);
-            return;
-        };
-
-        // Check this first so that it doesn't trigger the cooldown.
         if self.swayward.is_locked()
             && !(bind.allow_when_locked || allowed_when_locked(&bind.action))
         {
             return;
         }
 
-        match self.swayward.bind_cooldown_timers.entry(bind.key) {
-            // The bind is on cooldown.
-            Entry::Occupied(_) => (),
-            Entry::Vacant(entry) => {
-                let timer = Timer::from_duration(cooldown);
-                let token = self
-                    .swayward
-                    .event_loop
-                    .insert_source(timer, move |_, _, state| {
-                        if state
-                            .swayward
-                            .bind_cooldown_timers
-                            .remove(&bind.key)
-                            .is_none()
-                        {
-                            error!("bind cooldown timer entry disappeared");
-                        }
-                        TimeoutAction::Drop
-                    })
-                    .unwrap();
-                entry.insert(token);
+        if let Some(cooldown) = bind.cooldown {
+            match self.swayward.bind_cooldown_timers.entry(bind.key) {
+                Entry::Occupied(_) => return,
+                Entry::Vacant(entry) => {
+                    let timer = Timer::from_duration(cooldown);
+                    let token = self
+                        .swayward
+                        .event_loop
+                        .insert_source(timer, move |_, _, state| {
+                            if state
+                                .swayward
+                                .bind_cooldown_timers
+                                .remove(&bind.key)
+                                .is_none()
+                            {
+                                error!("bind cooldown timer entry disappeared");
+                            }
+                            TimeoutAction::Drop
+                        })
+                        .unwrap();
+                    entry.insert(token);
+                }
+            }
+        }
 
-                self.do_action(bind.action, bind.allow_when_locked);
+        let event = sway_binding_event(&bind, self.backend.mod_key(&self.swayward.config.borrow()));
+        let succeeded = match bind.action {
+            Action::SwayCommand(command) => crate::command::execute(self, &command)
+                .into_iter()
+                .all(|outcome| outcome.success),
+            action => {
+                self.do_action(action, bind.allow_when_locked);
+                false
+            }
+        };
+        if succeeded {
+            if let (Some(server), Some(event)) = (&self.swayward.ipc_server, event) {
+                server.send_event(event);
             }
         }
     }
@@ -4930,6 +4940,70 @@ fn find_configured_switch_action(
     switch_action
         .as_ref()
         .map(|switch_action| Action::Spawn(switch_action.spawn.clone()))
+}
+
+fn sway_binding_event(bind: &Bind, mod_key: ModKey) -> Option<swayward_ipc::legacy::Event> {
+    let Action::SwayCommand(command) = &bind.action else {
+        return None;
+    };
+    let mut modifiers = bind.key.modifiers;
+    if modifiers.contains(Modifiers::COMPOSITOR) {
+        modifiers.remove(Modifiers::COMPOSITOR);
+        modifiers.insert(mod_key.to_modifiers());
+    }
+    let event_state_mask = [
+        (Modifiers::SHIFT, "Shift"),
+        (Modifiers::CTRL, "Control"),
+        (Modifiers::ALT, "Mod1"),
+        (Modifiers::ISO_LEVEL5_SHIFT, "Mod3"),
+        (Modifiers::SUPER, "Mod4"),
+        (Modifiers::ISO_LEVEL3_SHIFT, "Mod5"),
+    ]
+    .into_iter()
+    .filter(|(modifier, _)| modifiers.contains(*modifier))
+    .map(|(_, name)| name.into())
+    .collect();
+    let (input_codes, input_code, symbols, symbol, input_type) = match bind.key.trigger {
+        Trigger::Keycode(code) => (vec![code], code, vec![], None, "keyboard"),
+        Trigger::Keysym(keysym) => {
+            let symbol = keysym_get_name(keysym);
+            (vec![], 0, vec![symbol.clone()], Some(symbol), "keyboard")
+        }
+        Trigger::MouseLeft
+        | Trigger::MouseRight
+        | Trigger::MouseMiddle
+        | Trigger::MouseBack
+        | Trigger::MouseForward
+        | Trigger::WheelScrollDown
+        | Trigger::WheelScrollUp
+        | Trigger::WheelScrollLeft
+        | Trigger::WheelScrollRight => {
+            let symbol: String = match bind.key.trigger {
+                Trigger::MouseLeft => "button1",
+                Trigger::MouseRight => "button2",
+                Trigger::MouseMiddle => "button3",
+                Trigger::MouseBack => "button4",
+                Trigger::MouseForward => "button5",
+                Trigger::WheelScrollUp => "button4",
+                Trigger::WheelScrollDown => "button5",
+                Trigger::WheelScrollLeft => "button6",
+                Trigger::WheelScrollRight => "button7",
+                _ => unreachable!(),
+            }
+            .into();
+            (vec![], 0, vec![symbol.clone()], Some(symbol), "mouse")
+        }
+        _ => return None,
+    };
+    Some(swayward_ipc::legacy::Event::SwayBinding {
+        command: command.clone(),
+        event_state_mask,
+        input_codes,
+        input_code,
+        symbols,
+        symbol,
+        input_type: input_type.into(),
+    })
 }
 
 fn modifiers_from_state(mods: ModifiersState) -> Modifiers {

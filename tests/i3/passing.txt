@@ -60,6 +60,7 @@
 233-regress-manage-focus-unmapped.t
 225-ipc-window-fullscreen.t
 231-ipc-floating-event.t
+238-ipc-binding-event.t
 246-window-decoration-focus.t
 
 502-focus-output.t

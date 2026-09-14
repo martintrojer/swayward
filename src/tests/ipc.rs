@@ -876,6 +876,7 @@ impl smithay::backend::input::Device for TestDevice {
 struct TestKeyEvent {
     key: u32,
     count: u32,
+    state: smithay::backend::input::KeyState,
 }
 
 impl smithay::backend::input::Event<TestInput> for TestKeyEvent {
@@ -894,7 +895,7 @@ impl smithay::backend::input::KeyboardKeyEvent<TestInput> for TestKeyEvent {
     }
 
     fn state(&self) -> smithay::backend::input::KeyState {
-        smithay::backend::input::KeyState::Pressed
+        self.state
     }
 
     fn count(&self) -> u32 {
@@ -930,12 +931,39 @@ impl smithay::backend::input::InputBackend for TestInput {
     type SpecialEvent = ();
 }
 
+pub(super) fn type_key_chords(fixture: &mut Fixture, chords: &[&[u32]]) {
+    for chord in chords {
+        for &key in *chord {
+            fixture.niri_state().process_input_event::<TestInput>(
+                smithay::backend::input::InputEvent::Keyboard {
+                    event: TestKeyEvent {
+                        key,
+                        count: 1,
+                        state: smithay::backend::input::KeyState::Pressed,
+                    },
+                },
+            );
+        }
+        for &key in chord.iter().rev() {
+            fixture.niri_state().process_input_event::<TestInput>(
+                smithay::backend::input::InputEvent::Keyboard {
+                    event: TestKeyEvent {
+                        key,
+                        count: 0,
+                        state: smithay::backend::input::KeyState::Released,
+                    },
+                },
+            );
+        }
+    }
+}
+
 #[test]
 fn binding_modes_switch_binds_emit_events_and_list_over_ipc() {
     let config = swayward_config::Config::parse_mem(
         r#"binds { Super+R { command "mode resize"; }; }
         mode "resize" {
-            code:10 { command "workspace 7"; };
+            Super+1 { command "workspace 7"; };
             Escape { command "mode default"; };
         }"#,
     )
@@ -947,7 +975,7 @@ fn binding_modes_switch_binds_emit_events_and_list_over_ipc() {
     subscriber
         .write_all(&crate::ipc::wire::encode(
             MessageType::Subscribe,
-            r#"["mode"]"#,
+            r#"["mode","binding"]"#,
         ))
         .unwrap();
     let (_, reply) = read_ipc_reply(&mut fixture, &mut subscriber);
@@ -962,11 +990,19 @@ fn binding_modes_switch_binds_emit_events_and_list_over_ipc() {
     .unwrap();
     assert_event_shape(&expected, &serde_json::from_str(&payload).unwrap(), "$mode");
 
-    fixture.niri_state().process_input_event::<TestInput>(
-        smithay::backend::input::InputEvent::Keyboard {
-            event: TestKeyEvent { key: 2, count: 1 },
-        },
+    type_key_chords(&mut fixture, &[&[133, 10]]);
+    let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
+    assert_eq!(event_type, (1 << 31) | 5);
+    let expected: Value = serde_json::from_str(include_str!(
+        "../../tests/fixtures/sway/events/binding.run.json"
+    ))
+    .unwrap();
+    assert_event_shape(
+        &expected,
+        &serde_json::from_str(&payload).unwrap(),
+        "$binding",
     );
+
     let swayward = fixture.swayward();
     assert_eq!(
         describe_workspaces(&swayward.layout, &swayward.global_space)[0].num,
@@ -1003,7 +1039,11 @@ fn command_bind_executes_the_sway_command_path() {
     fixture.add_output(1, (1920, 1080));
     fixture.niri_state().process_input_event::<TestInput>(
         smithay::backend::input::InputEvent::Keyboard {
-            event: TestKeyEvent { key: 133, count: 1 },
+            event: TestKeyEvent {
+                key: 133,
+                count: 1,
+                state: smithay::backend::input::KeyState::Pressed,
+            },
         },
     );
     assert!(
@@ -1017,7 +1057,11 @@ fn command_bind_executes_the_sway_command_path() {
     );
     fixture.niri_state().process_input_event::<TestInput>(
         smithay::backend::input::InputEvent::Keyboard {
-            event: TestKeyEvent { key: 10, count: 2 },
+            event: TestKeyEvent {
+                key: 10,
+                count: 2,
+                state: smithay::backend::input::KeyState::Pressed,
+            },
         },
     );
 

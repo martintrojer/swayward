@@ -1,0 +1,26 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use IO::Socket::UNIX;
+use JSON::PP qw(decode_json encode_json);
+
+@ARGV == 2 && $ARGV[0] eq 'key'
+    or die "swayward xdotool adapter supports only: xdotool key <chord>\n";
+my %codes = (
+    Shift => 50,
+    Ctrl => 37,
+    t => 28,
+    m => 58,
+    a => 38,
+    b => 56,
+);
+my @chord = map {
+    exists $codes{$_} or die "unsupported key in swayward xdotool adapter: $_\n";
+    $codes{$_};
+} split /\+/, $ARGV[1];
+my $socket = IO::Socket::UNIX->new(Peer => $ENV{SWAYWARD_TEST_CONTROL})
+    or die "connect $ENV{SWAYWARD_TEST_CONTROL}: $!";
+print {$socket} encode_json({ action => 'type_key_chords', chords => [\@chord] }), "\n";
+my $reply = <$socket>;
+defined($reply) or die "test control closed without a reply\n";
+decode_json($reply)->{success} or die "native key injection failed\n";

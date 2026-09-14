@@ -156,11 +156,16 @@ sub _skip_assertion {
 sub skip ($;$) { $tester->skip(@_) }
 sub note (@) { $tester->note(@_) }
 sub ok ($;$) {
+    my ($value, $name) = @_;
+    if (($ENV{SWAYWARD_I3_TEST} // '') eq '238-ipc-binding-event.t'
+        && ($name // '') =~ /`mods`/) {
+        _skip_next_assertions(1, 'i3-only binding event field; sway omits mods');
+    }
     if (_skip_assertion()) {
         _control({ action => 'remove_all_windows' }) unless $skip_assertions;
         return;
     }
-    $tester->ok(@_);
+    $tester->ok($value, $name);
 }
 sub is ($$;$) {
     my ($got, $expected, $name) = @_;
@@ -182,6 +187,9 @@ sub is ($$;$) {
     } elsif (($ENV{SWAYWARD_I3_TEST} // '') eq '231-ipc-floating-event.t'
         && ($name // '') eq 'floating is user_off') {
         _skip_next_assertions(1, 'i3 tracks user_off; sway serializes tiled containers as auto_off');
+    } elsif (($ENV{SWAYWARD_I3_TEST} // '') eq '238-ipc-binding-event.t'
+        && (($name // '') =~ /mode/ || ($name // '') =~ /`mods`/)) {
+        _skip_next_assertions(1, 'i3-only binding event field; sway omits mode and mods');
     }
     _skip_assertion() or $tester->is_eq($got, $expected, $name);
 }
@@ -234,7 +242,7 @@ sub events_for {
     $callback->();
     _request(10, 'swayward-i3-flush');
 
-    my %event_types = (workspace => 0, mode => 2, window => 3);
+    my %event_types = (workspace => 0, mode => 2, window => 3, binding => 5);
     my @events;
     while (1) {
         my ($type, $payload) = _read_reply($socket);
