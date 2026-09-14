@@ -1101,11 +1101,7 @@ impl State {
     pub fn send_initial_configure(&mut self, toplevel: &ToplevelSurface) {
         let _span = tracy_client::span!("State::send_initial_configure");
 
-        let Some(unmapped) = self
-            .swayward
-            .unmapped_windows
-            .get_mut(toplevel.wl_surface())
-        else {
+        let Some(unmapped) = self.swayward.unmapped_windows.get(toplevel.wl_surface()) else {
             error!("window must be present in unmapped_windows in send_initial_configure()");
             return;
         };
@@ -1117,6 +1113,17 @@ impl State {
             self.swayward.is_at_startup,
         );
 
+        let workspace_name = rules.open_on_workspace.clone();
+        drop(config);
+        if let Some(name) = workspace_name.as_deref() {
+            self.swayward.layout.ensure_sway_workspace(name);
+        }
+        let config = self.swayward.config.borrow();
+        let unmapped = self
+            .swayward
+            .unmapped_windows
+            .get_mut(toplevel.wl_surface())
+            .unwrap();
         let Unmapped { window, state, .. } = unmapped;
 
         let InitialConfigureState::NotConfigured {

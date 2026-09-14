@@ -14,7 +14,7 @@ src/layout/mod.rs, src/layout/workspace.rs, src/layout/tile.rs — expose focuse
 src/layout/mod.rs, src/layout/workspace.rs, src/layout/tiling_tree/mod.rs, src/layout/tiling_tree/geometry.rs — model workspace and global fullscreen on nested tree containers so focus, movement, rendering, and IPC follow sway's fullscreen ancestry rules.
 src/layout/tiling_tree/mod.rs — apply split and layout commands to an empty workspace root, expose workspace-root focus and active tile state, retain intentional nested and tabbed/stacked singleton wrappers, assign new siblings an equal share, use directional focus and resize by parent layout axis, insert directional moves by the destination branch axis and inactive child, preserve MRU focus through removal and reinsertion, preserve source wrappers while directional moves attach and then squash the completed tree, and restore the recorded split axis for `layout default`, matching sway's tree behavior.
 src/layout/mod.rs, src/window/mapped.rs — expose window titles to the tree renderer for sway-style server-side titlebars.
-src/layout/mod.rs, src/layout/monitor.rs, src/layout/workspace.rs — give workspaces stable global sway names/numbers, sparse creation, switching, movement, output assignment, rename sorting, and sway-compatible inactive-workspace cleanup while retaining monitor animations.
+src/layout/mod.rs, src/layout/monitor.rs, src/layout/workspace.rs — give workspaces stable global sway names/numbers, sparse creation, switching, movement, output assignment, rename sorting, map-time assignment creation, and sway-compatible inactive-workspace cleanup while retaining monitor animations.
 src/layout/mod.rs — resolve relative move-to-workspace targets with sway's global numbered and per-output workspace ordering.
 src/ipc/server.rs — include the Wayland socket name in IPC socket paths so parallel headless tests do not collide.
 src/tests/mod.rs — run vendored i3 Perl assertions against the existing headless compositor and real sway IPC socket.
@@ -30,7 +30,7 @@ src/layout/floating.rs, src/layout/mod.rs, src/layout/workspace.rs — route swa
 src/layout/workspace.rs — replace the scrolling tiling field and render element with TilingTree while preserving FloatingSpace.
 src/layout/monitor.rs, src/layout/mod.rs — transfer focused tree tiles rather than concrete scrolling columns between workspaces and outputs.
 src/layout/mod.rs, src/swayward.rs — resolve directional output moves from the moved window's geometry and wrap to the farthest opposite output, matching wlroots geometry semantics.
-src/ipc/server.rs, src/ipc/tree.rs — serve sway GET_TREE, GET_WORKSPACES, and GET_OUTPUTS from live compositor state, including workspace focus membership, sway-compatible workspace number parsing, and back-to-front stacking order for floating children, instead of niri IPC requests.
+src/ipc/server.rs, src/ipc/tree.rs — serve sway GET_TREE, GET_WORKSPACES, and GET_OUTPUTS from live compositor state, including focused empty workspaces, workspace focus membership, sway-compatible workspace number parsing, and back-to-front stacking order for floating children, instead of niri IPC requests.
 src/layout/workspace.rs — expose a read-only TilingTree snapshot for sway GET_TREE serialization.
 src/handlers/compositor.rs, src/swayward.rs — apply for_window commands when a toplevel maps and remove its marks when it unmaps.
 src/layout/mod.rs, src/handlers/mod.rs, src/protocols/foreign_toplevel.rs — store sway scratchpad windows and map foreign-toplevel minimize requests to hide/show them.

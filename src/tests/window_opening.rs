@@ -217,6 +217,48 @@ window-rule {
 }
 
 #[test]
+fn assigned_window_on_another_workspace_does_not_steal_focus() {
+    let config = Config::parse_mem(
+        r#"
+window-rule {
+    match app-id="assigned"
+    open-on-workspace "target"
+}
+"#,
+    )
+    .unwrap();
+    let mut f = Fixture::with_config(config);
+    f.add_output(1, (1280, 720));
+    let client = f.add_client();
+
+    let focused = f.client(client).create_window();
+    focused.xdg_toplevel.set_app_id("focused".into());
+    focused.commit();
+    let focused_surface = focused.surface.clone();
+    f.roundtrip(client);
+    let focused = f.client(client).window(&focused_surface);
+    focused.attach_new_buffer();
+    focused.ack_last_and_commit();
+    f.double_roundtrip(client);
+    let focused = f.swayward().layout.focus().unwrap().id();
+
+    let assigned = f.client(client).create_window();
+    assigned.xdg_toplevel.set_app_id("assigned".into());
+    assigned.commit();
+    let assigned_surface = assigned.surface.clone();
+    f.roundtrip(client);
+    let assigned = f.client(client).window(&assigned_surface);
+    assigned.attach_new_buffer();
+    assigned.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    let swayward = f.swayward();
+    let (_, target) = swayward.layout.find_workspace_by_name("target").unwrap();
+    assert!(target.windows().any(|window| window.id() != focused));
+    assert_eq!(swayward.layout.focus().unwrap().id(), focused);
+}
+
+#[test]
 fn sway_default_floating_border_applies_to_initial_floats() {
     let config = Config::parse_mem(
         r#"

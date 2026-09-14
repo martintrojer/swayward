@@ -1405,6 +1405,26 @@ impl<W: LayoutElement> Layout<W> {
         None
     }
 
+    pub fn ensure_sway_workspace(&mut self, workspace_name: &str) {
+        if self.find_workspace_by_name(workspace_name).is_some() {
+            return;
+        }
+        let (name, number) = sway_workspace_identity(crate::command::WorkspaceTarget::Name(
+            workspace_name.to_owned(),
+        ))
+        .unwrap();
+        if let MonitorSet::Normal {
+            monitors,
+            active_monitor_idx,
+            ..
+        } = &mut self.monitor_set
+        {
+            let monitor = &mut monitors[*active_monitor_idx];
+            let index = monitor.workspaces.len().saturating_sub(1);
+            monitor.add_sway_workspace_at(index, name, number);
+        }
+    }
+
     pub fn find_workspace_by_ref(
         &mut self,
         reference: WorkspaceReference,

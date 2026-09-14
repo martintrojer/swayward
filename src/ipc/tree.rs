@@ -322,7 +322,13 @@ fn describe_workspace_node(
         std::mem::take(focus),
         *focused,
     );
-    let focused = container_focused
+    let workspace_focused = compositor_layout
+        .active_monitor_ref()
+        .is_some_and(|monitor| {
+            monitor.output_name() == output && monitor.active_workspace_ref().id() == workspace.id()
+        });
+    let focused = workspace_focused
+        || container_focused
         || workspace
             .active_window()
             .is_some_and(|window| window.is_focused());
