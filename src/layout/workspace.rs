@@ -945,6 +945,10 @@ impl<W: LayoutElement> Workspace<W> {
         self.tiling.move_subtree_to_node(source, target)
     }
 
+    pub fn swap_tiling_nodes(&mut self, first: NodeId, second: NodeId) -> Result<(), &'static str> {
+        self.tiling.swap_nodes(first, second)
+    }
+
     pub fn sort_tiling_focus_by_timestamp(&mut self) {
         self.tiling.sort_focus_history_by_timestamp();
     }

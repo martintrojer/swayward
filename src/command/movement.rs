@@ -3,7 +3,7 @@ use swayward_ipc::CommandOutcome;
 
 use super::{
     failure, success, CommandTarget, Direction, MovePosition, OutputTarget, ResizeAmount,
-    ResizeUnit, WorkspaceTarget,
+    ResizeUnit, SwapTarget, WorkspaceTarget,
 };
 use crate::swayward::State;
 
@@ -303,6 +303,121 @@ pub(super) fn move_target_to_workspace(
         }
     };
     if let Err(error) = result {
+        return failure(error);
+    }
+    state.swayward.queue_redraw_all();
+    success()
+}
+
+fn swap_kind_value(target: &SwapTarget) -> (&'static str, &str) {
+    match target {
+        SwapTarget::Id(value) => ("id", value),
+        SwapTarget::ConId(value) => ("con_id", value),
+        SwapTarget::Mark(value) => ("mark", value),
+    }
+}
+
+fn swap_destination(state: &State, target: &SwapTarget) -> Result<CommandTarget, CommandOutcome> {
+    let (kind, value, destination) = match target {
+        SwapTarget::Id(value) => ("id", value, None),
+        SwapTarget::ConId(value) => (
+            "con_id",
+            value,
+            value.parse::<i64>().ok().and_then(|id| {
+                state
+                    .swayward
+                    .layout
+                    .workspaces()
+                    .find_map(|(_, _, workspace)| {
+                        workspace
+                            .ipc_tiling_tree()
+                            .nodes()
+                            .into_iter()
+                            .find_map(|(node, _)| {
+                                (crate::ipc::tree::container_id(node) == id)
+                                    .then_some(CommandTarget::Container(workspace.id(), node))
+                            })
+                    })
+                    .or_else(|| {
+                        state.swayward.layout.windows().find_map(|(_, mapped)| {
+                            (crate::ipc::tree::window_id(mapped.id()) == id)
+                                .then_some(CommandTarget::Window(mapped.id()))
+                        })
+                    })
+            }),
+        ),
+        SwapTarget::Mark(value) => ("mark", value, marked_target(state, value)),
+    };
+    destination.ok_or_else(|| failure(format!("Failed to find {kind} '{value}'")))
+}
+
+pub(super) fn swap_target(
+    state: &mut State,
+    source: CommandTarget,
+    target: &SwapTarget,
+) -> CommandOutcome {
+    let destination = match swap_destination(state, target) {
+        Ok(destination) => destination,
+        Err(error) => return error,
+    };
+    if source == destination {
+        return failure("Cannot swap a container with itself");
+    }
+    let (source_workspace, source_node) = match source {
+        CommandTarget::Container(workspace, node) => (workspace, node),
+        CommandTarget::Window(window) => {
+            let Some(mapped) = state
+                .swayward
+                .layout
+                .windows()
+                .find_map(|(_, mapped)| (mapped.id() == window).then(|| mapped.window.clone()))
+            else {
+                return failure("Can only swap with containers and views");
+            };
+            let Some(target) = state.swayward.layout.tiling_target_for_window(&mapped) else {
+                return failure("Can only swap with containers and views");
+            };
+            target
+        }
+    };
+    let (destination_workspace, destination_node) = match destination {
+        CommandTarget::Container(workspace, node) => (workspace, node),
+        CommandTarget::Window(window) => {
+            let Some(mapped) = state
+                .swayward
+                .layout
+                .windows()
+                .find_map(|(_, mapped)| (mapped.id() == window).then(|| mapped.window.clone()))
+            else {
+                let (kind, value) = swap_kind_value(target);
+                return failure(format!("Failed to find {kind} '{value}'"));
+            };
+            let Some(target) = state.swayward.layout.tiling_target_for_window(&mapped) else {
+                return failure("Can only swap with containers and views");
+            };
+            target
+        }
+    };
+    if state
+        .swayward
+        .layout
+        .is_tiling_root(source_workspace, source_node)
+        || state
+            .swayward
+            .layout
+            .is_tiling_root(destination_workspace, destination_node)
+    {
+        return failure("Can only swap with containers and views");
+    }
+    if source_workspace != destination_workspace {
+        return failure("swapping containers across workspaces is not implemented yet");
+    }
+    if let Err(error) =
+        state
+            .swayward
+            .layout
+            .swap_tiling_nodes(source_workspace, source_node, destination_node)
+    {
         return failure(error);
     }
     state.swayward.queue_redraw_all();

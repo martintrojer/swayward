@@ -2799,6 +2799,27 @@ impl<W: LayoutElement> Layout<W> {
         self.move_to_sway_workspace_inner(None, target)
     }
 
+    pub fn is_tiling_root(&self, workspace: WorkspaceId, node: tiling_tree::NodeId) -> bool {
+        self.workspaces()
+            .find(|(_, _, candidate)| candidate.id() == workspace)
+            .is_some_and(|(_, _, candidate)| candidate.tiling().is_root(node))
+    }
+
+    pub fn swap_tiling_nodes(
+        &mut self,
+        workspace: WorkspaceId,
+        first: tiling_tree::NodeId,
+        second: tiling_tree::NodeId,
+    ) -> Result<(), String> {
+        let workspace = self
+            .workspaces_mut()
+            .find(|candidate| candidate.id() == workspace)
+            .ok_or_else(|| "No matching node.".to_owned())?;
+        workspace
+            .swap_tiling_nodes(first, second)
+            .map_err(str::to_owned)
+    }
+
     pub fn move_tiling_subtree_to_node(
         &mut self,
         source_workspace: WorkspaceId,

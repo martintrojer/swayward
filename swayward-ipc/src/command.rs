@@ -111,6 +111,13 @@ pub enum OutputTarget {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SwapTarget {
+    Id(String),
+    ConId(String),
+    Mark(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkspaceTarget {
     Name(String),
     Number(String),
@@ -157,6 +164,7 @@ pub enum Command {
     Floating(Toggle),
     Border(Border),
     Sticky(String),
+    Swap(SwapTarget),
     Workspace {
         target: WorkspaceTarget,
         auto_back_and_forth: bool,
@@ -389,6 +397,7 @@ fn parse_one(input: &str) -> Result<Command, String> {
         "border" => parse_border(rest).map(Command::Border),
         "sticky" => one(rest, "sticky <enable|disable|toggle>")
             .map(|value| Command::Sticky(value.to_owned())),
+        "swap" => parse_swap(rest),
         "workspace" => parse_workspace_command(rest),
         "rename" => parse_rename(rest),
         "scratchpad" => match rest {
@@ -741,6 +750,30 @@ fn parse_rename(args: &[&str]) -> Result<Command, String> {
         old: Some(parse_workspace(&rest[..to])?),
         new_name: join_words(&rest[to + 1..]),
     })
+}
+
+fn parse_swap(args: &[&str]) -> Result<Command, String> {
+    const SYNTAX: &str = "Expected 'swap container with id|con_id|mark <arg>'";
+    let [container, with, kind, value @ ..] = args else {
+        return Err(SYNTAX.into());
+    };
+    if !container.eq_ignore_ascii_case("container")
+        || !with.eq_ignore_ascii_case("with")
+        || value.is_empty()
+    {
+        return Err(SYNTAX.into());
+    }
+    let value = join_words(value);
+    let target = if kind.eq_ignore_ascii_case("id") {
+        SwapTarget::Id(value)
+    } else if kind.eq_ignore_ascii_case("con_id") {
+        SwapTarget::ConId(value)
+    } else if kind.eq_ignore_ascii_case("mark") {
+        SwapTarget::Mark(value)
+    } else {
+        return Err(SYNTAX.into());
+    };
+    Ok(Command::Swap(target))
 }
 
 fn parse_workspace_command(args: &[&str]) -> Result<Command, String> {

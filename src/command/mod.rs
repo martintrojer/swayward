@@ -2,8 +2,8 @@ use swayward_config::Action;
 use swayward_ipc::command::parse_error;
 pub use swayward_ipc::command::{
     parse, parse_boolean, BorderStyle, Command, Direction, Layout, LayoutToggle, LayoutToggleEntry,
-    MovePosition, OutputTarget, ParsedCommand, ResizeAmount, ResizeAxis, ResizeUnit, Toggle,
-    WorkspaceTarget,
+    MovePosition, OutputTarget, ParsedCommand, ResizeAmount, ResizeAxis, ResizeUnit, SwapTarget,
+    Toggle, WorkspaceTarget,
 };
 use swayward_ipc::legacy::{PositionChange, SizeChange};
 use swayward_ipc::{criteria, CommandOutcome};
@@ -100,6 +100,16 @@ fn execute_one(
     }
 
     let action = match parsed.command {
+        Command::Swap(target) => {
+            let Some(source) = focused_target(state) else {
+                return failure("Can only swap with containers and views");
+            };
+            let outcome = movement::swap_target(state, source, &target);
+            if !outcome.success {
+                return outcome;
+            }
+            None
+        }
         Command::Focus => None,
         Command::FocusWorkspace => return failure("No container to focus was specified."),
         Command::FocusDirection(direction) => focus::direction(state, direction),
@@ -500,6 +510,12 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
             identifier,
         } => mark_target(state, target, identifier, *add, *toggle),
         Command::Unmark(identifier) => unmark_target(state, target, identifier.as_deref()),
+        Command::Swap(swap_target) => {
+            let outcome = movement::swap_target(state, target, swap_target);
+            if !outcome.success {
+                return outcome;
+            }
+        }
         Command::MoveDirection { direction, pixels } => {
             let layout_direction = match direction {
                 Direction::Left => crate::layout::tiling_tree::Direction::Left,
@@ -1107,6 +1123,22 @@ mod tests {
         assert_eq!(command("move scratchpad"), Command::MoveScratchpad);
         assert_eq!(command("move to scratchpad"), Command::MoveScratchpad);
         assert_eq!(command("scratchpad show"), Command::ScratchpadShow);
+        assert_eq!(
+            command("swap container with con_id 42"),
+            Command::Swap(SwapTarget::ConId("42".into()))
+        );
+        for input in [
+            "swap",
+            "swap window with con_id 42",
+            "swap container to con_id 42",
+            "swap container with nope 42",
+        ] {
+            assert_eq!(
+                parse(input)[0].as_ref().unwrap_err().error.as_deref(),
+                Some("Expected 'swap container with id|con_id|mark <arg>'"),
+                "{input}"
+            );
+        }
         assert_eq!(command("layout stacked"), Command::Layout(Layout::Stacked));
         assert_eq!(command("layout default"), Command::LayoutDefault);
         assert_eq!(

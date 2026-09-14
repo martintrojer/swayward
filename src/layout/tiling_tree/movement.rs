@@ -1,6 +1,58 @@
 use super::*;
 
 impl<W: LayoutElement> TilingTree<W> {
+    pub fn swap_nodes(&mut self, first: NodeId, second: NodeId) -> Result<(), &'static str> {
+        if !self.nodes.contains_key(&first) || !self.nodes.contains_key(&second) {
+            return Err("No matching node.");
+        }
+        if first == second {
+            return Err("Cannot swap a container with itself");
+        }
+        if self.contains_node(first, second) || self.contains_node(second, first) {
+            return Err("Cannot swap ancestor and descendant");
+        }
+
+        let old = self.compute_geometry();
+        let first_parent = self.nodes[&first].parent.unwrap();
+        let second_parent = self.nodes[&second].parent.unwrap();
+        let first_index = self.child_index(first_parent, first).unwrap();
+        let second_index = self.child_index(second_parent, second).unwrap();
+        if first_parent == second_parent {
+            let TreeNode::Split { children, .. } =
+                &mut self.nodes.get_mut(&first_parent).unwrap().value
+            else {
+                unreachable!();
+            };
+            children.swap(first_index, second_index);
+        } else {
+            let TreeNode::Split { children, .. } =
+                &mut self.nodes.get_mut(&first_parent).unwrap().value
+            else {
+                unreachable!();
+            };
+            children[first_index] = second;
+            let TreeNode::Split { children, .. } =
+                &mut self.nodes.get_mut(&second_parent).unwrap().value
+            else {
+                unreachable!();
+            };
+            children[second_index] = first;
+        }
+        self.nodes.get_mut(&first).unwrap().parent = Some(second_parent);
+        self.nodes.get_mut(&second).unwrap().parent = Some(first_parent);
+        let first_mode = self.pending_modes.remove(&first);
+        let second_mode = self.pending_modes.remove(&second);
+        if let Some(mode) = first_mode {
+            self.pending_modes.insert(second, mode);
+        }
+        if let Some(mode) = second_mode {
+            self.pending_modes.insert(first, mode);
+        }
+        self.animate_geometry_changes(old, None);
+        self.request_window_sizes();
+        Ok(())
+    }
+
     pub fn move_subtree_to_node(&mut self, id: NodeId, destination: NodeId) -> bool {
         if id == self.root
             || id == destination

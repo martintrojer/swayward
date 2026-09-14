@@ -1331,6 +1331,117 @@ fn focused_container_can_be_marked_and_targeted_by_con_id() {
 }
 
 #[test]
+fn swap_con_id_and_mark_preserve_focus_and_reject_invalid_targets() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let mut ids = Vec::new();
+    for name in ["first", "second", "third"] {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(name.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+        ids.push(f.swayward().layout.focus().unwrap().id());
+    }
+    assert!(
+        crate::command::execute(
+            f.niri_state(),
+            &format!("[con_id={}] focus", crate::ipc::tree::window_id(ids[0]))
+        )[0]
+        .success
+    );
+    assert!(crate::command::execute(f.niri_state(), "mark target")[0].success);
+    assert!(
+        crate::command::execute(
+            f.niri_state(),
+            &format!("[con_id={}] focus", crate::ipc::tree::window_id(ids[2]))
+        )[0]
+        .success
+    );
+    let focused = f.swayward().layout.focus().unwrap().id();
+
+    assert!(
+        crate::command::execute(
+            f.niri_state(),
+            &format!(
+                "swap container with con_id {}",
+                crate::ipc::tree::window_id(ids[1])
+            )
+        )[0]
+        .success
+    );
+    assert_eq!(f.swayward().layout.focus().unwrap().id(), focused);
+    assert!(crate::command::execute(f.niri_state(), "swap container with mark target")[0].success);
+    assert_eq!(f.swayward().layout.focus().unwrap().id(), focused);
+
+    let x11_id = crate::ipc::tree::window_id(ids[0]);
+    let unknown_id =
+        crate::command::execute(f.niri_state(), &format!("swap container with id {x11_id}"));
+    assert_eq!(
+        unknown_id[0].error.as_deref(),
+        Some(format!("Failed to find id '{x11_id}'").as_str())
+    );
+
+    assert!(crate::command::execute(f.niri_state(), "split vertical")[0].success);
+    let fourth = f.client(client).create_window();
+    fourth.xdg_toplevel.set_app_id("fourth".into());
+    fourth.commit();
+    let surface = fourth.surface.clone();
+    f.roundtrip(client);
+    let fourth = f.client(client).window(&surface);
+    fourth.attach_new_buffer();
+    fourth.ack_last_and_commit();
+    f.double_roundtrip(client);
+    let fourth = f.swayward().layout.focus().unwrap().id();
+    assert!(crate::command::execute(f.niri_state(), "focus parent")[0].success);
+    let parent = f
+        .swayward()
+        .layout
+        .active_workspace()
+        .unwrap()
+        .focused_container_node()
+        .unwrap();
+    let child = crate::ipc::tree::window_id(fourth);
+    let result = crate::command::execute(
+        f.niri_state(),
+        &format!("swap container with con_id {child}"),
+    );
+    assert_eq!(
+        result[0].error.as_deref(),
+        Some("Cannot swap ancestor and descendant")
+    );
+    assert_eq!(
+        f.swayward()
+            .layout
+            .active_workspace()
+            .unwrap()
+            .focused_container_node(),
+        Some(parent)
+    );
+
+    assert!(crate::command::execute(f.niri_state(), "focus child")[0].success);
+    let self_id = crate::ipc::tree::window_id(f.swayward().layout.focus().unwrap().id());
+    for (command, expected) in [
+        (
+            "swap container with con_id 999",
+            "Failed to find con_id '999'",
+        ),
+        (
+            &format!("swap container with con_id {self_id}"),
+            "Cannot swap a container with itself",
+        ),
+    ] {
+        let result = crate::command::execute(f.niri_state(), command);
+        assert_eq!(result[0].error.as_deref(), Some(expected));
+    }
+}
+
+#[test]
 fn marks_are_globally_unique_across_windows_and_containers() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));

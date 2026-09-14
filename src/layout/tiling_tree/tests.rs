@@ -763,6 +763,38 @@ fn detached_subtree_attaches_with_shape_and_internal_focus() {
 }
 
 #[test]
+fn swapping_nodes_preserves_focus_history_and_rejects_ancestry() {
+    let mut t = tree((1200., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    t.split(first, Layout::SplitV);
+    let second = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    let parent = t.nodes[&first].parent.unwrap();
+    let third = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+    t.set_focus(first);
+    let focus = t.focus();
+    let history = t.window_focus_history();
+    assert!(t.set_node_fullscreen(first, Some(FullscreenMode::Workspace)));
+
+    t.swap_nodes(first, third).unwrap();
+    assert_eq!(t.nodes[&first].parent, Some(t.root));
+    assert_eq!(t.nodes[&third].parent, Some(parent));
+    assert_eq!(t.focus(), focus);
+    assert_eq!(t.window_focus_history(), history);
+    assert_eq!(t.fullscreen_mode(first), None);
+    assert_eq!(t.fullscreen_mode(third), Some(FullscreenMode::Workspace));
+    assert_eq!(t.nodes[&parent].parent, None);
+    assert_eq!(
+        t.swap_nodes(first, first),
+        Err("Cannot swap a container with itself")
+    );
+    assert_eq!(
+        t.swap_nodes(parent, second),
+        Err("Cannot swap ancestor and descendant")
+    );
+    t.check_invariants();
+}
+
+#[test]
 fn move_subtree_to_node_inserts_beside_a_leaf_and_into_a_split() {
     let mut t = tree((1200., 800.), 0.);
     let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
