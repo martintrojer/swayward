@@ -38,6 +38,7 @@
 227-ipc-workspace-empty.t
 237-regress-assign-focus.t
 242-no-focus.t
+244-new-workspace-floating-enable-center.t
 273-regress-focus-toggle.t
 274-move-branch-position.t
 285-sticky.t

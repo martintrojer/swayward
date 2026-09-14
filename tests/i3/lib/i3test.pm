@@ -492,10 +492,9 @@ sub _node { (i3test::_find_window(i3test::_request(4), $_[0]->{id}, 0))[0] }
 sub rect {
     die "X11 window geometry mutation is unavailable in the Wayland test adapter\n" if @_ > 1;
     my $node = $_[0]->_node;
-    return (
-        bless({ %{$node->{rect}} }, 'i3test::Rect'),
-        bless({ %{$node->{geometry}} }, 'i3test::Rect'),
-    );
+    my $absolute = bless({ %{$node->{rect}} }, 'i3test::Rect');
+    return $absolute unless wantarray;
+    return ($absolute, bless({ %{$node->{geometry}} }, 'i3test::Rect'));
 }
 sub mapped { (i3test::_find_window(i3test::_request(4), $_[0]->{id}, 0))[1] }
 sub unmap { $_[0]->destroy }

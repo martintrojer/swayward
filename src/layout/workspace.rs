@@ -1799,11 +1799,14 @@ impl<W: LayoutElement> Workspace<W> {
                     } else {
                         Point::from((50., 50.))
                     };
-                let pos = render_pos + offset;
-                let size = tile.tile_size();
-                let pos = self.floating.clamp_within_working_area(pos, size);
-                let pos = self.floating.logical_to_size_frac(pos);
-                tile.floating_pos = Some(pos);
+                let pos = if self.tiling.is_empty() {
+                    let size = tile.tile_size().to_point();
+                    (self.view_size.to_point() - size).downscale(2.)
+                } else {
+                    self.floating
+                        .clamp_within_working_area(render_pos + offset, tile.tile_size())
+                };
+                tile.floating_pos = Some(self.floating.logical_to_size_frac(pos));
             }
 
             self.floating.add_tile(tile, target_is_active);
