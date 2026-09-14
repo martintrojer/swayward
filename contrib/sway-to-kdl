@@ -137,6 +137,21 @@ class Translator:
                 self.layout_settings.append(
                     f'    focus-wrapping "{"force" if enabled else "yes"}"'
                 )
+            elif match := re.fullmatch(r"focus_on_window_activation\s+(\S+)", text):
+                actions = {"urgent": "set-urgent", "focus": "focus", "none": "ignore"}
+                if action := actions.get(match.group(1)):
+                    self.sections += [
+                        "window-rule {",
+                        f"    on-xdg-activate {self.quote(action)}",
+                        "}",
+                    ]
+                else:
+                    self.warn(
+                        path,
+                        line_no,
+                        text,
+                        "visibility-dependent smart mode has no window-rule equivalent",
+                    )
             elif not self.translate_swayfx(path, line_no, text):
                 self.warn(path, line_no, text, "unhandled")
 

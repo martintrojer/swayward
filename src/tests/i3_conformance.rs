@@ -294,6 +294,31 @@ fn remove_all_windows(fixture: &mut Fixture, client: super::client::ClientId) {
     }
 }
 
+fn activate_window(fixture: &mut Fixture, client: super::client::ClientId, id: i64) -> bool {
+    let surface_id = fixture.swayward().layout.windows().find_map(|(_, mapped)| {
+        (crate::ipc::tree::window_id(mapped.id()) == id)
+            .then(|| mapped.toplevel().wl_surface().id().protocol_id())
+    });
+    let Some(surface_id) = surface_id else {
+        return false;
+    };
+    let surface = fixture
+        .client(client)
+        .state
+        .windows
+        .iter()
+        .find(|window| window.surface.id().protocol_id() == surface_id)
+        .unwrap()
+        .surface
+        .clone();
+    let token = fixture.client(client).request_activation_token(&surface);
+    fixture.double_roundtrip(client);
+    let token = token.lock().unwrap().take().unwrap();
+    fixture.client(client).activate(token, &surface);
+    fixture.double_roundtrip(client);
+    true
+}
+
 fn close_window(fixture: &mut Fixture, client: super::client::ClientId, id: i64) -> bool {
     let surface_id = fixture.swayward().layout.windows().find_map(|(_, mapped)| {
         (crate::ipc::tree::window_id(mapped.id()) == id)
@@ -421,6 +446,9 @@ fn handle_control(fixture: &mut Fixture, client: super::client::ClientId, stream
                 .layout
                 .focus()
                 .map(|mapped| crate::ipc::tree::window_id(mapped.id()))
+        }),
+        "activate" => json!({
+            "success": activate_window(fixture, client, request["id"].as_i64().unwrap())
         }),
         "warp_pointer" => match (request["x"].as_f64(), request["y"].as_f64()) {
             (Some(x), Some(y)) => {

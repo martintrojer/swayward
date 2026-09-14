@@ -567,6 +567,7 @@ fn describe_window(
     node.percent = percent;
     node.scratchpad_state = Some(if in_scratchpad { "fresh" } else { "none" }.into());
     node.fullscreen_mode = i32::from(mapped.pending_sizing_mode().is_fullscreen());
+    node.urgent = mapped.is_urgent();
     node.geometry = rect_from(0., 0., mapped.size().w.into(), mapped.size().h.into());
     node.marks = marks.get(&mapped.id()).cloned().unwrap_or_default();
     node.window_rect = Rect {

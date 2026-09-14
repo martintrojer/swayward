@@ -156,6 +156,23 @@ bindsym $missing+x nop
         self.assertIn("width 1", result.stdout)
         self.assertIn("manual attention: none", result.stderr)
 
+    def test_focus_on_window_activation_translates_sway_modes(self):
+        expected = {
+            "urgent": "set-urgent",
+            "focus": "focus",
+            "none": "ignore",
+        }
+        for mode, action in expected.items():
+            with self.subTest(mode=mode):
+                result = self.translate(f"focus_on_window_activation {mode}\n")
+                self.assertIn(f'on-xdg-activate "{action}"', result.stdout)
+                self.assertIn("manual attention: none", result.stderr)
+
+        result = self.translate("focus_on_window_activation smart\n")
+        self.assertNotIn("on-xdg-activate", result.stdout)
+        self.assertIn("visibility-dependent smart mode", result.stdout)
+        self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
     def test_no_focus_translates_portable_criteria(self):
         result = self.translate(
             'no_focus [class="^chat$"]\nno_focus [title="^splash$"]\n'

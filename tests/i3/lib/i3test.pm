@@ -408,8 +408,23 @@ sub input_focus { i3test::_control({ action => 'focused' })->{id} }
 sub root { bless {}, 'i3test::Root' }
 sub atom {
     my %args = @_[1 .. $#_];
-    $args{name};
+    bless { name => $args{name} }, 'i3test::Atom';
 }
+sub get_root_window { bless {}, 'i3test::Root' }
+sub send_event {
+    my ($self, $propagate, $destination, $mask, $message) = @_;
+    ($ENV{SWAYWARD_I3_TEST} // '') eq '240-focus-on-window-activation.t'
+        or die "X11 events are unavailable in the Wayland test adapter\n";
+    my @fields = unpack('CCSLLLLLLL', $message);
+    $fields[0] == X11::XCB::CLIENT_MESSAGE
+        or die "only activation client messages are portable\n";
+    $fields[1] == 32 or die "activation client message must use format 32\n";
+    my $reply = i3test::_control({ action => 'activate', id => $fields[3] });
+    $reply->{success} or die "xdg activation failed for window $fields[3]\n";
+}
+
+package i3test::Atom;
+sub id { 0 }
 
 package i3test::Root;
 sub rect { bless({ %{i3test::_request(4)->{rect}} }, 'i3test::Rect') }

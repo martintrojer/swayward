@@ -54,3 +54,4 @@
 132-move-workspace.t
 
 138-floating-attach.t
+240-focus-on-window-activation.t
