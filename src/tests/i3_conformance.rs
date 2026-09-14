@@ -85,9 +85,29 @@ const ALLOWED_REJECTIONS: &[AllowedRejection] = &[
         reason: "stale i3 floating setup; mode now selects a binding mode",
     },
     AllowedRejection {
+        test: "127-regress-floating-parent.t",
+        command: "mode toggle",
+        reason: "obsolete setup cannot create or restore the floating container under test",
+    },
+    AllowedRejection {
+        test: "142-regress-move-floating.t",
+        command: "mode toggle",
+        reason: "obsolete setup leaves the window tiled instead of testing a floating move",
+    },
+    AllowedRejection {
         test: "144-regress-floating-resize.t",
         command: "mode toggle",
         reason: "stale i3 floating setup; mode now selects a binding mode",
+    },
+    AllowedRejection {
+        test: "147-regress-floatingmove.t",
+        command: "mode toggle",
+        reason: "obsolete setup leaves the parent tiled instead of testing floating-tree moves",
+    },
+    AllowedRejection {
+        test: "151-regress-float-size.t",
+        command: "mode toggle",
+        reason: "obsolete setup omits both floating-to-tiling transitions under test",
     },
     AllowedRejection {
         test: "152-regress-level-up.t",
@@ -127,6 +147,12 @@ fn expected_rejections(test: &str) -> Vec<&'static AllowedRejection> {
         .flat_map(|allowed| {
             let count = if test == "120-multiple-cmds.t" && allowed.command == "move gibberish" {
                 11
+            } else if matches!(
+                test,
+                "127-regress-floating-parent.t" | "151-regress-float-size.t"
+            ) && allowed.command == "mode toggle"
+            {
+                2
             } else {
                 1
             };
