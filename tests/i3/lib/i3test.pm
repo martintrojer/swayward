@@ -131,8 +131,11 @@ sub isa_ok ($$;$) {
     $tester->ok(ref($value) && $value->isa($class), $name);
 }
 sub diag (@) { $tester->diag(@_) }
-sub done_testing (;$) { $tester->done_testing(@_) }
-sub subtest ($&) { Test::More::subtest(@_) }
+sub done_testing (;$) {
+    die "i3 test executed zero assertions\n" unless $tester->current_test;
+    $tester->done_testing(@_);
+}
+sub subtest { Test::More::subtest(@_) }
 
 sub _read_exact {
     my ($socket, $length) = @_;
@@ -214,11 +217,14 @@ sub open_window {
     my $class = $args{wm_class} // $name;
     $name = decode_utf8($name) unless utf8::is_utf8($name);
     $class = decode_utf8($class) unless utf8::is_utf8($class);
-    my $window = X11::XCB::Window->new(_control({
-        action => 'create',
+    my $window = X11::XCB::Window->new({
+        %{_control({
+            action => 'create',
+            name => $name,
+            app_id => $class,
+        })},
         name => $name,
-        app_id => $class,
-    }));
+    });
     $window->map unless $args{dont_map};
     return $window;
 }
@@ -337,6 +343,7 @@ sub _find_window {
 package X11::XCB::Window;
 sub new { bless $_[1], $_[0] }
 sub id { $_[0]->{id} }
+sub name { $_[0]->{name} }
 sub map {
     my ($self) = @_;
     return $self if defined($self->{id});
