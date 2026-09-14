@@ -140,6 +140,29 @@ It therefore moves the container by 25 pixels (`sway/commands/move.c:693-710`).
 Swayward follows sway's pixel-only directional movement rather than i3's
 percentage-point behavior.
 
+### Workspace names beginning with `__`
+
+I3 reserves workspace names beginning with `__`: it excludes such names while
+collecting startup workspace bindings and rejects them in workspace switch,
+container move, and rename commands (`i3/src/workspace.c:231`;
+`i3/src/commands.c:318,912,2116`).
+
+Sway does not reserve that prefix. Its workspace command creates an arbitrary
+name when no workspace matches (`sway/sway/commands/workspace.c:223-227`), its
+move command likewise creates an arbitrary destination
+(`sway/sway/commands/move.c:450-504`), and rename rejects special command words
+rather than an `__` prefix (`sway/sway/commands/rename.c:72-82`). Startup
+workspace discovery also accepts arbitrary binding targets after excluding only
+workspace command words (`sway/sway/tree/workspace.c:356-490`). Sway's
+`__i3` output and `__i3_scratch` workspace are synthetic GET_TREE nodes, not
+reserved user-workspace identities (`sway/sway/ipc-json.c:459-499`).
+
+Swayward follows sway and permits names such as `__foo`. The i3 adapter excludes
+the synthetic `__i3` output when implementing `get_workspace_names`, but does
+not hide real user-created `__*` workspaces. Assertions requiring i3's prefix
+restriction are skipped rather than adding a workspace-name guard that sway
+does not have.
+
 ### Workspace rename edge cases
 
 Sway parses `rename workspace to to bla` as the current-workspace form and uses
