@@ -30,6 +30,7 @@ our @EXPORT = qw(
     done_testing
     events_for
     fresh_workspace
+    focused_output
     focused_ws
     get_dock_clients
     get_focused
@@ -316,6 +317,15 @@ sub fresh_workspace {
 }
 
 sub workspace_exists { defined(get_ws($_[0])) }
+
+sub _focused_output {
+    my $tree = _request(4);
+    my $focused = $tree->{focus}->[0];
+    my ($output) = grep { $_->{id} == $focused } @{$tree->{nodes}};
+    return $output;
+}
+
+sub focused_output { _focused_output()->{name} }
 
 sub focused_ws {
     my ($workspace) = grep { $_->{focused} } @{_request(1)};

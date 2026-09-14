@@ -80,6 +80,12 @@ applies sway's default focus-follows-mouse behavior (`sway/config.c:272`). Of th
 call `warp_pointer`, 12 are in the 217-file portable set. The other five require
 X11 client rectangles, XTEST, shape, or pointer-query protocol.
 
+The adapter derives `focused_output` exactly as upstream i3test does: it reads
+`GET_TREE`, takes the first id in the root `focus` array, and finds that id among
+the root output nodes (`i3/testcases/lib/i3test.pm.in:700-710`). It does not use
+`GET_OUTPUTS.focused`; real sway tree captures leave output-node `focused` false
+while root `focus[0]` identifies the seat-focused output.
+
 Upstream has 49 test files that reference `X11::XCB`; all 49 are among the 68
 files classified as X11-touching, so none belongs wholly to the 217 portable
 set. Some contain useful portable prefixes. The local `X11::XCB` module exports
@@ -291,6 +297,9 @@ without fabricating a tree that real sway clients do not see. See
 | `312-regress-layout-default.t` | 0 | unproven | Upstream contains no TAP assertions. The adapter's zero-assertion guard rejects the file, so it cannot provide evidence even though both commands execute. |
 | `517-regress-move-direction-ipc.t` | 6 | skip: i3-only workspace event | Real sway 1.11 emits no workspace event when `move right` carries the focused window to an adjacent output, whether the destination workspace is empty or occupied and whether the moved window is the source workspace's last window. Captured ordered streams are empty in all three cases. Sway reparents the container without calling `seat_set_focus`, so `set_workspace` cannot emit the focus event that i3 expects (`sway/commands/move.c:168-190,276-299,672-744`; `sway/input/seat.c:1098-1113`). |
 | `520-regress-focus-direction-floating.t` | 1 | pass | `mouse_warping none` maps to swayward's disabled `warp-mouse-to-focus` setting. The portable assertion proves that directional focus crossing outputs selects the existing floating window when the source output has no tiling window, matching sway's directional focus traversal (`sway/commands/focus.c:240-262`). |
+| `502-focus-output.t` | 19 | 13 pass; 6 fail | The helper now compiles and reads focused output from `GET_TREE` root `focus[0]`. Six assertions expose an I1 defect: swayward's root focus array keeps naming the first occupied output after focus moves to `fake-1`. Real sway root focus names the focused output (`tests/fixtures/sway/empty_named.tree.json`), while output nodes remain `focused: false`. The file also contains one intentionally unmatched criterion and one malformed upstream criterion; both commands fail loud without crashing. |
+| `506-focus-right.t` | 31 | 21 pass; 10 fail | All assertions run with real pointer warps and `focused_output`. Six window-focus failures and four output-focus failures expose the separate directional output-selection defect already tracked from `510-focus-across-outputs.t`; sway chooses the geometrically adjacent output and its inactive focus, then wraps to the farthest opposite output (`sway/commands/focus.c:78-130,310-352`). |
+| `544-focus-multiple-outputs.t` | 41 | 3 pass; 37 skip; 1 fail | The three direct `fake-0` sanity checks pass. Assertion 20 exposes the root-focus I1 defect after direct `focus output fake-1`. The other 37 assertions use i3-only output cycles: sway joins all arguments into one identifier, accepts only one output name/id or direction, and rejects `next`, `nonprimary`, and output lists (`sway/commands/focus.c:310-352`; `sway/desktop/output.c:42-63`). |
 | `143-regress-floating-restart.t` | 5 | unproven | The unchanged assertions pass around a rejected `restart`, so no compositor state crosses an in-place restart. The harness cannot reproduce that lifecycle. |
 | `150-regress-dock-restart.t` | 11 | unproven | The test combines X11 EWMH dock windows with in-place restart. The Wayland harness provides neither. |
 | `154-regress-multiple-dock.t` | 2 | unproven | The assertions pass only because `get_dock_clients` is empty and native test windows are not X11 docks; the intended dock-destruction path is not exercised. |

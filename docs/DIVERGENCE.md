@@ -36,6 +36,7 @@ src/layout/workspace.rs — replace the scrolling tiling field and render elemen
 src/layout/monitor.rs, src/layout/mod.rs — transfer focused tree tiles rather than concrete scrolling columns between workspaces and outputs.
 src/layout/mod.rs, src/swayward.rs — resolve directional output moves from the moved window's geometry and wrap to the farthest opposite output, matching wlroots geometry semantics.
 src/ipc/server.rs, src/ipc/tree.rs — serve sway GET_TREE, GET_WORKSPACES, and GET_OUTPUTS from live compositor state, including focused empty workspaces, workspace focus membership, sway-compatible workspace number parsing, and back-to-front stacking order for floating children, instead of niri IPC requests.
+tests/i3/lib/i3test.pm — derive the i3 `focused_output` helper from the unmodified sway GET_TREE root focus array, matching upstream i3test without relying on output-node focused booleans.
 src/layout/workspace.rs — expose a read-only TilingTree snapshot for sway GET_TREE serialization.
 src/handlers/compositor.rs, src/swayward.rs — apply for_window commands when a toplevel maps, including translated kill and scratchpad actions without retaining a target after an earlier action removes it, and remove its marks when it unmaps.
 src/layout/mod.rs, src/handlers/mod.rs, src/protocols/foreign_toplevel.rs — store sway scratchpad windows and map foreign-toplevel minimize requests to hide/show them.
