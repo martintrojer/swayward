@@ -2677,6 +2677,67 @@ fn floating_order(tree: &Value) -> (Vec<&str>, Vec<&str>) {
 }
 
 #[test]
+fn move_command_rejects_fullscreen_floating_windows() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+    assert!(crate::command::execute(f.niri_state(), "floating enable")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "fullscreen enable")[0].success);
+
+    let outcome = crate::command::execute(f.niri_state(), "move left");
+    assert!(!outcome[0].success);
+    assert_eq!(
+        outcome[0].error.as_deref(),
+        Some("Cannot move fullscreen floating container")
+    );
+}
+
+#[test]
+fn move_command_uses_sway_floating_pixel_distances() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+    assert!(crate::command::execute(f.niri_state(), "floating enable")[0].success);
+
+    let rect = |f: &mut Fixture| {
+        let swayward = f.swayward();
+        let tree = serde_json::to_value(describe_tree(
+            &swayward.layout,
+            &swayward.global_space,
+            &Default::default(),
+            &Default::default(),
+        ))
+        .unwrap();
+        find_json_node(&tree, "floating_con", false).unwrap()["rect"].clone()
+    };
+    let before = rect(&mut f);
+
+    assert!(crate::command::execute(f.niri_state(), "move left")[0].success);
+    let moved = rect(&mut f);
+    assert_eq!(moved["x"].as_i64(), before["x"].as_i64().map(|x| x - 10));
+
+    assert!(crate::command::execute(f.niri_state(), "move down 20 px")[0].success);
+    let moved = rect(&mut f);
+    assert_eq!(moved["y"].as_i64(), before["y"].as_i64().map(|y| y + 20));
+}
+
+#[test]
 fn floating_ipc_rect_uses_final_position_during_animation() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));

@@ -2194,6 +2194,12 @@ impl<W: LayoutElement> Workspace<W> {
         self.floating_is_active.get()
     }
 
+    pub fn active_floating_is_fullscreen(&self) -> bool {
+        self.tiling.active_tile().is_some_and(|tile| {
+            tile.restore_to_floating && tile.window().pending_sizing_mode().is_fullscreen()
+        })
+    }
+
     pub fn floating_logical_to_size_frac(
         &self,
         logical_pos: Point<f64, Logical>,

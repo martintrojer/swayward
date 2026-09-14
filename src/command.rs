@@ -114,22 +114,40 @@ fn execute_one(
         Command::FocusFloating => Some(Action::FocusFloating),
         Command::FocusTiling => Some(Action::FocusTiling),
         Command::FocusModeToggle => Some(Action::SwitchFocusBetweenFloatingAndTiling),
-        Command::MoveDirection {
-            direction,
-            pixels: None,
+        Command::MoveDirection { direction, pixels } => {
+            let Some(workspace) = state.swayward.layout.active_workspace() else {
+                return failure("Cannot move workspaces in a direction");
+            };
+            let fullscreen_floating = workspace.active_floating_is_fullscreen();
+            let floating = workspace.floating_is_active() || fullscreen_floating;
+            if floating {
+                if fullscreen_floating {
+                    return failure("Cannot move fullscreen floating container");
+                }
+                let pixels = f64::from(pixels.unwrap_or(10));
+                let (x, y) = match direction {
+                    Direction::Left => (-pixels, 0.),
+                    Direction::Right => (pixels, 0.),
+                    Direction::Up => (0., -pixels),
+                    Direction::Down => (0., pixels),
+                };
+                state.swayward.layout.move_floating_window(
+                    None,
+                    swayward_ipc::PositionChange::AdjustFixed(x),
+                    swayward_ipc::PositionChange::AdjustFixed(y),
+                    true,
+                );
+                state.swayward.queue_redraw_all();
+                None
+            } else {
+                Some(match direction {
+                    Direction::Left => Action::MoveColumnLeft,
+                    Direction::Right => Action::MoveColumnRight,
+                    Direction::Up => Action::MoveWindowUp,
+                    Direction::Down => Action::MoveWindowDown,
+                })
+            }
         }
-        | Command::MoveDirection {
-            direction,
-            pixels: Some(10),
-        } => Some(match direction {
-            Direction::Left => Action::MoveColumnLeft,
-            Direction::Right => Action::MoveColumnRight,
-            Direction::Up => Action::MoveWindowUp,
-            Direction::Down => Action::MoveWindowDown,
-        }),
-        Command::MoveDirection {
-            pixels: Some(_), ..
-        } => return failure("custom floating move distances are not implemented yet"),
         Command::MoveToWorkspace(target) => {
             if let Err(error) = state.swayward.layout.move_to_sway_workspace(target) {
                 return failure(error);
@@ -1304,6 +1322,36 @@ mod tests {
         for input in [r#"[bogus=\"x\"] nop"#, r#"[app_id=\"(\"] nop"#, "[] nop"] {
             let error = parse(input).into_iter().next().unwrap().unwrap_err();
             assert_eq!(error.parse_error, Some(true), "{input}");
+        }
+    }
+
+    #[test]
+    fn parses_sway_move_distances() {
+        for (input, pixels) in [
+            ("move left", None),
+            ("move left 20", Some(20)),
+            ("move left 20 px", Some(20)),
+            ("move left 20 PX", Some(20)),
+            ("move left 20px", Some(20)),
+            ("move left px", Some(0)),
+            ("move left -20px", Some(-20)),
+            ("move left 25 ppt", Some(25)),
+        ] {
+            assert_eq!(
+                command(input),
+                Command::MoveDirection {
+                    direction: Direction::Left,
+                    pixels,
+                },
+                "{input}"
+            );
+        }
+        for input in ["move left 20ppt", "move left 20wat"] {
+            assert_eq!(
+                parse(input)[0].as_ref().unwrap_err().error.as_deref(),
+                Some("Invalid distance specified"),
+                "{input}"
+            );
         }
     }
 

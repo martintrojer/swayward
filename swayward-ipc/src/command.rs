@@ -459,14 +459,10 @@ fn parse_move(args: &[&str]) -> Result<Command, String> {
         return Ok(Command::MoveScratchpad);
     }
     if let Some(direction) = args.first().and_then(|arg| parse_direction(arg)) {
-        let pixels = match &args[1..] {
-            [] => None,
-            [amount] => Some(parse_i32(amount, "move distance")?),
-            [amount, unit] if unit.eq_ignore_ascii_case("px") => {
-                Some(parse_i32(amount, "move distance")?)
-            }
-            _ => return Err("Expected 'move <left|right|up|down> [px]'".into()),
-        };
+        let pixels = args
+            .get(1)
+            .map(|amount| parse_move_distance(amount))
+            .transpose()?;
         return Ok(Command::MoveDirection { direction, pixels });
     }
     let target = match args {
@@ -688,6 +684,27 @@ fn parse_resize(args: &[&str]) -> Result<Command, String> {
         first,
         second,
     })
+}
+
+fn parse_move_distance(value: &str) -> Result<i32, String> {
+    let bytes = value.as_bytes();
+    let mut split = usize::from(
+        matches!(bytes.first(), Some(b'+' | b'-')) && bytes.get(1).is_some_and(u8::is_ascii_digit),
+    );
+    while bytes.get(split).is_some_and(u8::is_ascii_digit) {
+        split += 1;
+    }
+    let amount = if split == 0 {
+        0
+    } else {
+        parse_i32(&value[..split], "move distance")?
+    };
+    let suffix = &value[split..];
+    if suffix.is_empty() || suffix.eq_ignore_ascii_case("px") {
+        Ok(amount)
+    } else {
+        Err("Invalid distance specified".into())
+    }
 }
 
 fn parse_resize_amount(args: &[&str]) -> Result<(ResizeAmount, usize), String> {

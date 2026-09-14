@@ -961,6 +961,10 @@ impl<W: LayoutElement> TilingTree<W> {
         self.tile_mut(id).map(Tile::window_mut)
     }
 
+    pub fn active_tile(&self) -> Option<&Tile<W>> {
+        self.focus.and_then(|id| self.tile(id))
+    }
+
     pub fn active_tile_mut(&mut self) -> Option<&mut Tile<W>> {
         self.focus.and_then(|id| self.tile_mut(id))
     }
