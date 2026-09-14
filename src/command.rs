@@ -175,19 +175,7 @@ fn execute_one(
             None
         }
         Command::ScratchpadShow => {
-            let shown = state.swayward.layout.show_scratchpad(None);
-            if let Some(shown) = shown {
-                let id = state
-                    .swayward
-                    .layout
-                    .windows()
-                    .find_map(|(_, mapped)| (mapped.window == shown).then(|| mapped.id()));
-                if let (Some(server), Some(id)) = (&state.swayward.ipc_server, id) {
-                    server.send_event(swayward_ipc::legacy::Event::WindowMoved {
-                        id: crate::ipc::tree::window_id(id),
-                    });
-                }
-            }
+            state.swayward.layout.show_scratchpad(None);
             state.swayward.queue_redraw_all();
             None
         }
@@ -675,19 +663,7 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
             if !state.swayward.layout.is_scratchpad_window(&window) {
                 return failure("Container is not in scratchpad.");
             }
-            let shown = state.swayward.layout.show_scratchpad(Some(&window));
-            if let (Some(server), Some(shown)) = (&state.swayward.ipc_server, shown) {
-                let id = state
-                    .swayward
-                    .layout
-                    .windows()
-                    .find_map(|(_, mapped)| (mapped.window == shown).then(|| mapped.id()));
-                if let Some(id) = id {
-                    server.send_event(swayward_ipc::legacy::Event::WindowMoved {
-                        id: crate::ipc::tree::window_id(id),
-                    });
-                }
-            }
+            state.swayward.layout.show_scratchpad(Some(&window));
             state.swayward.queue_redraw_all();
         }
         Command::Fullscreen {

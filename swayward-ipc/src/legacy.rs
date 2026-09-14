@@ -1672,6 +1672,13 @@ pub enum Event {
         /// If the window is focused, all other windows are no longer focused.
         window: Window,
     },
+    /// A sway-compatible window event with its serialized tree node.
+    SwayWindowChanged {
+        /// Sway's window change name.
+        change: String,
+        /// The affected container.
+        container: serde_json::Value,
+    },
     /// A window moved to another workspace.
     WindowMoved {
         /// Id of the moved window.

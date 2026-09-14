@@ -24,6 +24,7 @@
 198-regression-scratchpad-crash.t
 204-regress-scratchpad-move.t
 208-regress-floating-criteria.t
+219-ipc-window-focus.t
 224-regress-resize-branch.t
 227-ipc-workspace-empty.t
 273-regress-focus-toggle.t

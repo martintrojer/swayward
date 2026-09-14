@@ -190,7 +190,7 @@ impl EventStreamStatePart for WindowsState {
             Event::WindowsChanged { windows } => {
                 self.windows = windows.into_iter().map(|win| (win.id, win)).collect();
             }
-            Event::WindowMoved { .. } => {}
+            Event::SwayWindowChanged { .. } | Event::WindowMoved { .. } => {}
             Event::WindowOpenedOrChanged { window } => {
                 let (id, is_focused) = match self.windows.entry(window.id) {
                     Entry::Occupied(mut entry) => {

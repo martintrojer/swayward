@@ -541,12 +541,26 @@ fn workspace_window_and_mode_events_match_sway_shapes() {
         .layout
         .focus()
         .map(|window| window.id().get());
-    fixture
-        .swayward()
-        .ipc_server
-        .as_ref()
-        .unwrap()
-        .send_event(swayward_ipc::legacy::Event::WindowFocusChanged { id: focused_id });
+    let swayward = fixture.swayward();
+    let tree = serde_json::to_value(crate::ipc::tree::describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &swayward.marks_by_window,
+        &swayward.marks_by_container,
+    ))
+    .unwrap();
+    let container = super::super::ipc::server::find_node_by_id(
+        &tree,
+        crate::ipc::tree::window_id_from_raw(focused_id.unwrap()),
+    )
+    .unwrap()
+    .clone();
+    fixture.swayward().ipc_server.as_ref().unwrap().send_event(
+        swayward_ipc::legacy::Event::SwayWindowChanged {
+            change: "focus".into(),
+            container,
+        },
+    );
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
     assert_eq!(event_type, (1 << 31) | 3);
     let expected: Value = serde_json::from_str(include_str!(
@@ -572,6 +586,48 @@ fn workspace_window_and_mode_events_match_sway_shapes() {
     ))
     .unwrap();
     assert_event_shape(&expected, &serde_json::from_str(&payload).unwrap(), "$mode");
+}
+
+#[test]
+fn niri_only_window_events_do_not_leak_onto_sway_subscriptions() {
+    let (mut fixture, socket) = ipc_fixture();
+    fixture.add_output(1, (1920, 1080));
+    let client = fixture.add_client();
+    let window = fixture.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    fixture.roundtrip(client);
+    let window = fixture.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    fixture.double_roundtrip(client);
+
+    let mut subscriber = UnixStream::connect(socket).unwrap();
+    subscriber
+        .write_all(&crate::ipc::wire::encode(
+            MessageType::Subscribe,
+            r#"["window","tick"]"#,
+        ))
+        .unwrap();
+    read_ipc_reply(&mut fixture, &mut subscriber);
+    fixture
+        .swayward()
+        .ipc_server
+        .as_ref()
+        .unwrap()
+        .send_event(swayward_ipc::legacy::Event::WindowLayoutsChanged { changes: vec![] });
+    fixture
+        .swayward()
+        .ipc_server
+        .as_ref()
+        .unwrap()
+        .send_event(swayward_ipc::legacy::Event::Tick {
+            payload: "barrier".into(),
+            first: false,
+        });
+
+    let (event_type, _) = read_ipc_reply(&mut fixture, &mut subscriber);
+    assert_eq!(event_type, (1 << 31) | 7);
 }
 
 #[test]

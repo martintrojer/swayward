@@ -699,7 +699,10 @@ pub(crate) fn container_id(id: NodeId) -> i64 {
     CONTAINER_ID_BASE + i64::try_from(id.0 % ID_NAMESPACE_SIZE as u64).unwrap_or_default()
 }
 pub(crate) fn window_id(id: MappedId) -> i64 {
-    WINDOW_ID_BASE + i64::try_from(id.get() % ID_NAMESPACE_SIZE as u64).unwrap_or_default()
+    window_id_from_raw(id.get())
+}
+pub(crate) fn window_id_from_raw(id: u64) -> i64 {
+    WINDOW_ID_BASE + i64::try_from(id % ID_NAMESPACE_SIZE as u64).unwrap_or_default()
 }
 fn stable_hash(value: &str) -> i64 {
     value.bytes().fold(0i64, |hash, byte| {

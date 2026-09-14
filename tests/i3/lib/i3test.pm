@@ -167,11 +167,13 @@ sub events_for {
     $callback->();
     _request(10, 'swayward-i3-flush');
 
+    my %event_types = (workspace => 0, window => 3);
     my @events;
     while (1) {
         my ($type, $payload) = _read_reply($socket);
         last if ($type & 0x7fffffff) == 7 && !$payload->{first};
-        push @events, $payload if ($type & 0x7fffffff) == 0;
+        push @events, $payload
+            if ($type & 0x7fffffff) == $event_types{$event};
     }
     @events;
 }

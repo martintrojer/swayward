@@ -355,7 +355,7 @@ fn serialize_outcomes(outcomes: &[CommandOutcome]) -> String {
         .unwrap_or_else(|_| r#"[{"success":false,"error":"serialization failed"}]"#.into())
 }
 
-fn find_node_by_id(value: &serde_json::Value, id: i64) -> Option<&serde_json::Value> {
+pub(crate) fn find_node_by_id(value: &serde_json::Value, id: i64) -> Option<&serde_json::Value> {
     if value.get("id").and_then(serde_json::Value::as_i64) == Some(id) {
         return Some(value);
     }
@@ -365,25 +365,6 @@ fn find_node_by_id(value: &serde_json::Value, id: i64) -> Option<&serde_json::Va
             .as_array()?
             .iter()
             .find_map(|child| find_node_by_id(child, id))
-    })
-}
-
-fn find_node<'a>(
-    value: &'a serde_json::Value,
-    node_type: &str,
-    focused: bool,
-) -> Option<&'a serde_json::Value> {
-    if value.get("type").and_then(serde_json::Value::as_str) == Some(node_type)
-        && (!focused || value.get("focused").and_then(serde_json::Value::as_bool) == Some(true))
-    {
-        return Some(value);
-    }
-    ["nodes", "floating_nodes"].into_iter().find_map(|key| {
-        value
-            .get(key)?
-            .as_array()?
-            .iter()
-            .find_map(|child| find_node(child, node_type, focused))
     })
 }
 
@@ -526,6 +507,10 @@ async fn handle_event_stream_client(client: EventStreamClient) -> anyhow::Result
                 (1 << 31) | 2,
                 serde_json::json!({"change":mode,"pango_markup":pango_markup}),
             ),
+            Event::SwayWindowChanged { change, container } if subscriptions.contains("window") => (
+                (1 << 31) | 3,
+                serde_json::json!({"change":change,"container":container}),
+            ),
             Event::WindowMoved { id } if subscriptions.contains("window") => {
                 let container =
                     serde_json::from_str::<serde_json::Value>(&query_state.borrow().tree)
@@ -545,14 +530,7 @@ async fn handle_event_stream_client(client: EventStreamClient) -> anyhow::Result
             | Event::WindowFocusChanged { .. }
                 if subscriptions.contains("window") =>
             {
-                let container =
-                    serde_json::from_str::<serde_json::Value>(&query_state.borrow().tree)
-                        .ok()
-                        .and_then(|tree| find_node(&tree, "con", true).cloned());
-                (
-                    (1 << 31) | 3,
-                    serde_json::json!({"change":"focus","container":container}),
-                )
+                continue
             }
             _ => continue,
         };
@@ -637,6 +615,11 @@ impl State {
     }
 
     pub fn ipc_refresh_layout(&mut self) {
+        let previous_tree = self
+            .swayward
+            .ipc_server
+            .as_ref()
+            .and_then(|server| serde_json::from_str(&server.query_state.borrow().tree).ok());
         self.ipc_refresh_workspaces();
         if let Some(server) = &self.swayward.ipc_server {
             refresh_query_state(
@@ -647,7 +630,7 @@ impl State {
                 &mut server.query_state.borrow_mut(),
             );
         }
-        self.ipc_refresh_windows();
+        self.ipc_refresh_windows(previous_tree.as_ref());
         self.ipc_refresh_overview();
     }
 
@@ -843,13 +826,20 @@ impl State {
         }
     }
 
-    fn ipc_refresh_windows(&mut self) {
+    fn ipc_refresh_windows(&mut self, previous_tree: Option<&serde_json::Value>) {
         let Some(server) = &self.swayward.ipc_server else {
             return;
         };
 
         let _span = tracy_client::span!("State::ipc_refresh_windows");
 
+        let current_tree = serde_json::to_value(crate::ipc::tree::describe_tree(
+            &self.swayward.layout,
+            &self.swayward.global_space,
+            &self.swayward.marks_by_window,
+            &self.swayward.marks_by_container,
+        ))
+        .unwrap_or_default();
         let mut state = server.event_stream_state.borrow_mut();
         let state = &mut state.windows;
 
@@ -869,24 +859,73 @@ impl State {
                 focused_id = Some(id);
             }
 
+            let node_id = crate::ipc::tree::window_id(mapped.id());
+            let current_node = find_node_by_id(&current_tree, node_id).cloned();
+            let previous_node = previous_tree.and_then(|tree| find_node_by_id(tree, node_id));
             let Some(ipc_win) = state.windows.get(&id) else {
-                let window = make_ipc_window(mapped, ws_id, window_layout);
-                events.push(Event::WindowOpenedOrChanged { window });
+                if let Some(container) = current_node.clone() {
+                    events.push(Event::SwayWindowChanged {
+                        change: "new".into(),
+                        container,
+                    });
+                }
+                events.push(Event::WindowOpenedOrChanged {
+                    window: make_ipc_window(mapped, ws_id, window_layout),
+                });
                 return;
             };
 
             let workspace_id = ws_id.map(|id| id.get());
-            let mut changed =
-                ipc_win.workspace_id != workspace_id || ipc_win.is_floating != mapped.is_floating();
+            let moved = ipc_win.workspace_id != workspace_id;
+            let shown_from_scratchpad =
+                moved && previous_node.is_some_and(|node| node["scratchpad_state"] == "fresh");
+            let floating_changed = ipc_win.is_floating != mapped.is_floating();
+            let title_changed =
+                with_toplevel_role(mapped.toplevel(), |role| ipc_win.title != role.title);
+            let fullscreen_changed = previous_node
+                .zip(current_node.as_ref())
+                .is_some_and(|(old, current)| old["fullscreen_mode"] != current["fullscreen_mode"]);
+            let marks_changed = previous_node
+                .zip(current_node.as_ref())
+                .is_some_and(|(old, current)| old["marks"] != current["marks"]);
 
-            changed |= with_toplevel_role(mapped.toplevel(), |role| {
-                ipc_win.title != role.title || ipc_win.app_id != role.app_id
-            });
-
-            if changed {
-                let window = make_ipc_window(mapped, ws_id, window_layout);
-                events.push(Event::WindowOpenedOrChanged { window });
-                return;
+            if let Some(container) = current_node.clone() {
+                for change in [
+                    moved.then_some("move"),
+                    (floating_changed
+                        && previous_node.is_some_and(|node| node["type"] != "floating_con"))
+                    .then_some("floating"),
+                    title_changed.then_some("title"),
+                    fullscreen_changed.then_some("fullscreen_mode"),
+                    marks_changed.then_some("mark"),
+                ]
+                .into_iter()
+                .flatten()
+                {
+                    let container = if change == "move" && shown_from_scratchpad {
+                        serde_json::json!({"nodes":[container]})
+                    } else {
+                        container.clone()
+                    };
+                    events.push(Event::SwayWindowChanged {
+                        change: change.into(),
+                        container,
+                    });
+                }
+            }
+            if moved || floating_changed || title_changed {
+                events.push(Event::WindowOpenedOrChanged {
+                    window: make_ipc_window(mapped, ws_id, window_layout.clone()),
+                });
+                if !shown_from_scratchpad {
+                    return;
+                }
+                if let Some(container) = current_node.clone() {
+                    events.push(Event::SwayWindowChanged {
+                        change: "focus".into(),
+                        container,
+                    });
+                }
             }
 
             if ipc_win.layout != window_layout {
@@ -894,6 +933,15 @@ impl State {
             }
 
             if mapped.is_focused() && !ipc_win.is_focused {
+                if let Some(container) =
+                    find_node_by_id(&current_tree, crate::ipc::tree::window_id(mapped.id()))
+                        .cloned()
+                {
+                    events.push(Event::SwayWindowChanged {
+                        change: "focus".into(),
+                        container,
+                    });
+                }
                 events.push(Event::WindowFocusChanged { id: Some(id) });
             }
 
@@ -907,6 +955,15 @@ impl State {
 
             let urgent = mapped.is_urgent();
             if urgent != ipc_win.is_urgent {
+                if let Some(container) =
+                    find_node_by_id(&current_tree, crate::ipc::tree::window_id(mapped.id()))
+                        .cloned()
+                {
+                    events.push(Event::SwayWindowChanged {
+                        change: "urgent".into(),
+                        container,
+                    });
+                }
                 events.push(Event::WindowUrgencyChanged { id, urgent })
             }
         });
@@ -926,6 +983,17 @@ impl State {
         let mut ipc_focused_id = None;
         for (id, ipc_win) in &state.windows {
             if !seen.contains(id) {
+                if let Some(container) = previous_tree
+                    .and_then(|tree| {
+                        find_node_by_id(tree, crate::ipc::tree::window_id_from_raw(*id))
+                    })
+                    .cloned()
+                {
+                    events.push(Event::SwayWindowChanged {
+                        change: "close".into(),
+                        container,
+                    });
+                }
                 events.push(Event::WindowClosed { id: *id });
             }
 
