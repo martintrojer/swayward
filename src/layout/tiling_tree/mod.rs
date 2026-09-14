@@ -499,21 +499,7 @@ impl<W: LayoutElement> TilingTree<W> {
         let Some(focus) = self.focus else {
             return false;
         };
-        let Some(TreeNode::Split { children, .. }) = self.nodes.get(&focus).map(|node| &node.value)
-        else {
-            return false;
-        };
-        let child = self
-            .focus_history
-            .iter()
-            .filter(|candidate| **candidate != focus)
-            .find_map(|candidate| {
-                children
-                    .iter()
-                    .copied()
-                    .find(|child| self.is_descendant(*candidate, *child))
-            })
-            .or_else(|| children.first().copied());
+        let child = self.focused_child_in(focus);
         if let Some(child) = child {
             self.set_focus_id(Some(child));
             true
@@ -704,7 +690,6 @@ impl<W: LayoutElement> TilingTree<W> {
         let old = self.compute_geometry();
         let changed = self.move_direction_inner(id, direction);
         if changed {
-            self.compact_tree();
             self.animate_geometry_changes(old, None);
         }
         changed
@@ -715,6 +700,11 @@ impl<W: LayoutElement> TilingTree<W> {
             return false;
         }
         self.interactive_resize = None;
+        let wanted_layout = match direction {
+            Direction::Left | Direction::Right => Layout::SplitH,
+            Direction::Up | Direction::Down => Layout::SplitV,
+        };
+        let backwards = matches!(direction, Direction::Left | Direction::Up);
         let mut branch = id;
         let mut parent = self.nodes.get(&id).and_then(|node| node.parent);
         let mut found_axis = false;
@@ -728,72 +718,44 @@ impl<W: LayoutElement> TilingTree<W> {
             else {
                 return false;
             };
-            let matching_axis = matches!(
-                (layout, direction),
-                (Layout::SplitH, Direction::Left | Direction::Right)
-                    | (Layout::SplitV, Direction::Up | Direction::Down)
-            );
-            if matching_axis {
+            if Self::layouts_parallel(*layout, wanted_layout) {
                 found_axis = true;
-                let index = children
-                    .iter()
-                    .position(|child| *child == branch)
-                    .unwrap_or(0);
-                let destination = match direction {
-                    Direction::Left | Direction::Up => {
-                        index.checked_sub(1).and_then(|index| children.get(index))
-                    }
-                    Direction::Right | Direction::Down => children.get(index + 1),
+                let Some(index) = children.iter().position(|child| *child == branch) else {
+                    return false;
+                };
+                let destination = if backwards {
+                    index.checked_sub(1).and_then(|index| children.get(index))
+                } else {
+                    children.get(index + 1)
                 }
                 .copied();
                 if let Some(destination) = destination {
-                    if branch == id {
-                        let new_index = match direction {
-                            Direction::Left | Direction::Up => index - 1,
-                            Direction::Right | Direction::Down => index + 1,
-                        };
+                    if branch == id
+                        && matches!(
+                            self.nodes.get(&destination).map(|node| &node.value),
+                            Some(TreeNode::Leaf { .. })
+                        )
+                    {
+                        let new_index = if backwards { index - 1 } else { index + 1 };
                         return self.move_subtree_to_index_inner(id, new_index);
                     }
-                    self.detach_subtree(id);
-                    let Some(destination_parent) =
-                        self.nodes.get(&destination).and_then(|node| node.parent)
-                    else {
-                        return false;
-                    };
-                    let Some(destination_index) = self.child_index(destination_parent, destination)
-                    else {
-                        return false;
-                    };
-                    let insert_index = match direction {
-                        Direction::Left | Direction::Up => destination_index,
-                        Direction::Right | Direction::Down => destination_index + 1,
-                    };
-                    self.insert_existing_child(destination_parent, id, insert_index, destination);
-                    self.set_focus_id(self.first_leaf_in(id).or(self.focus));
-                    self.request_window_sizes();
-                    return true;
+                    return self.move_into_directional_destination(id, destination, direction);
                 }
                 if parent_id == self.root && branch != id {
-                    self.detach_subtree(id);
-                    let Some(boundary) = (match &self.nodes.get(&self.root).unwrap().value {
-                        TreeNode::Split { children, .. } => match direction {
-                            Direction::Left | Direction::Up => children.first(),
-                            Direction::Right | Direction::Down => children.last(),
-                        },
-                        TreeNode::Leaf { .. } => None,
-                    })
-                    .copied() else {
+                    let Some(boundary) = children
+                        .get(if backwards { 0 } else { children.len() - 1 })
+                        .copied()
+                    else {
                         return false;
                     };
-                    let insert_index = match direction {
-                        Direction::Left | Direction::Up => 0,
-                        Direction::Right | Direction::Down => {
-                            self.split_len(self.root).unwrap_or(0)
-                        }
+                    let insert_index = if backwards { 0 } else { children.len() };
+                    let Some(old_parent) = self.detach_subtree_only(id) else {
+                        return false;
                     };
                     self.insert_existing_child(self.root, id, insert_index, boundary);
-                    self.set_focus_id(self.first_leaf_in(id).or(self.focus));
-                    self.request_window_sizes();
+                    self.reap_empty_from(old_parent);
+                    self.compact_tree();
+                    self.finish_directional_move(id);
                     return true;
                 }
             }
@@ -803,11 +765,88 @@ impl<W: LayoutElement> TilingTree<W> {
         if found_axis {
             return false;
         }
-        self.detach_subtree(id);
+        let Some(old_parent) = self.detach_subtree_only(id) else {
+            return false;
+        };
         self.wrap_root_for_direction(id, direction);
+        self.reap_empty_from(old_parent);
+        self.compact_tree();
+        self.finish_directional_move(id);
+        true
+    }
+
+    fn move_into_directional_destination(
+        &mut self,
+        id: NodeId,
+        destination: NodeId,
+        direction: Direction,
+    ) -> bool {
+        let wanted_layout = match direction {
+            Direction::Left | Direction::Right => Layout::SplitH,
+            Direction::Up | Direction::Down => Layout::SplitV,
+        };
+        let backwards = matches!(direction, Direction::Left | Direction::Up);
+        match self.nodes.get(&destination).map(|node| &node.value) {
+            Some(TreeNode::Leaf { .. }) => {
+                let Some(parent) = self.nodes.get(&destination).and_then(|node| node.parent) else {
+                    return false;
+                };
+                let Some(index) = self.child_index(parent, destination) else {
+                    return false;
+                };
+                let Some(old_parent) = self.detach_subtree_only(id) else {
+                    return false;
+                };
+                self.insert_existing_child(parent, id, index + usize::from(backwards), destination);
+                self.reap_empty_from(old_parent);
+            }
+            Some(TreeNode::Split {
+                layout, children, ..
+            }) if Self::layouts_parallel(*layout, wanted_layout) => {
+                let Some(split_share_of) = children
+                    .get(if backwards { children.len() - 1 } else { 0 })
+                    .copied()
+                else {
+                    return false;
+                };
+                let index = if backwards { children.len() } else { 0 };
+                let Some(old_parent) = self.detach_subtree_only(id) else {
+                    return false;
+                };
+                self.insert_existing_child(destination, id, index, split_share_of);
+                self.reap_empty_from(old_parent);
+            }
+            Some(TreeNode::Split { .. }) => {
+                let Some(child) = self.focused_child_in(destination) else {
+                    return false;
+                };
+                return self.move_into_directional_destination(id, child, direction);
+            }
+            None => return false,
+        }
+        self.compact_tree();
+        self.finish_directional_move(id);
+        true
+    }
+
+    fn focused_child_in(&self, parent: NodeId) -> Option<NodeId> {
+        let TreeNode::Split { children, .. } = &self.nodes.get(&parent)?.value else {
+            return None;
+        };
+        self.focus_history
+            .iter()
+            .find_map(|focused| {
+                children
+                    .iter()
+                    .copied()
+                    .find(|child| self.is_descendant(*focused, *child))
+            })
+            .or_else(|| children.first().copied())
+    }
+
+    fn finish_directional_move(&mut self, id: NodeId) {
         self.set_focus_id(self.first_leaf_in(id).or(self.focus));
         self.request_window_sizes();
-        true
     }
 
     pub fn move_subtree_to_first(&mut self, id: NodeId) -> bool {
@@ -2297,13 +2336,11 @@ impl<W: LayoutElement> TilingTree<W> {
         self.nodes.get_mut(&child).unwrap().parent = Some(parent);
     }
 
-    fn detach_subtree(&mut self, id: NodeId) {
-        let Some(parent) = self.nodes.get(&id).and_then(|node| node.parent) else {
-            return;
-        };
+    fn detach_subtree_only(&mut self, id: NodeId) -> Option<NodeId> {
+        let parent = self.nodes.get(&id).and_then(|node| node.parent)?;
         self.remove_child(parent, id);
-        self.nodes.get_mut(&id).unwrap().parent = None;
-        self.collapse_from(parent);
+        self.nodes.get_mut(&id)?.parent = None;
+        Some(parent)
     }
 
     fn wrap_root_for_direction(&mut self, id: NodeId, direction: Direction) {
@@ -2416,6 +2453,28 @@ impl<W: LayoutElement> TilingTree<W> {
                     *percent /= remaining;
                 }
             }
+        }
+    }
+
+    fn reap_empty_from(&mut self, mut id: NodeId) {
+        loop {
+            let (parent, empty) = match self.nodes.get(&id) {
+                Some(Node {
+                    parent,
+                    value: TreeNode::Split { children, .. },
+                }) => (*parent, children.is_empty()),
+                _ => return,
+            };
+            if id == self.root || !empty {
+                return;
+            }
+            let Some(parent) = parent else { return };
+            if self.focus == Some(id) {
+                self.set_focus_id(Some(parent));
+            }
+            self.remove_node(id);
+            self.remove_child(parent, id);
+            id = parent;
         }
     }
 

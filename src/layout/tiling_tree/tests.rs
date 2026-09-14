@@ -963,6 +963,66 @@ fn directional_move_reorders_siblings_and_stops_at_tree_edge() {
 }
 
 #[test]
+fn directional_move_preserves_a_nonsquashable_singleton_source() {
+    let mut t = tree((1200., 800.), 0.);
+    let top_left = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let right = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+    t.set_focus(top_left);
+    t.split(top_left, Layout::SplitV);
+    let bottom_left = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.set_focus(bottom_left);
+
+    assert!(t.move_direction(bottom_left, Direction::Right));
+
+    let IpcNode::Split { children, .. } = t.ipc_tree() else {
+        panic!("root must be a split");
+    };
+    assert!(matches!(
+        &children[..],
+        [
+            IpcNode::Split {
+                layout: Layout::SplitV,
+                children: source,
+                ..
+            },
+            IpcNode::Leaf { id, .. },
+            IpcNode::Leaf { id: last, .. },
+        ] if matches!(&source[..], [IpcNode::Leaf { id, .. }] if *id == top_left)
+            && *id == bottom_left && *last == right
+    ));
+    t.check_invariants();
+}
+
+#[test]
+fn directional_move_descends_into_a_neighboring_container() {
+    let mut t = tree((1200., 800.), 0.);
+    let left = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let top_right = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.split(top_right, Layout::SplitV);
+    let bottom_right = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+
+    assert!(t.move_direction(left, Direction::Right));
+
+    let IpcNode::Split { children, .. } = t.ipc_tree() else {
+        panic!("root must be a split");
+    };
+    assert_eq!(children.len(), 1);
+    assert!(matches!(
+        &children[0],
+        IpcNode::Split {
+            layout: Layout::SplitV,
+            children,
+            ..
+        } if matches!(&children[..], [
+            IpcNode::Leaf { id: top, .. },
+            IpcNode::Leaf { id, .. },
+            IpcNode::Leaf { id: bottom, .. },
+        ] if *top == top_right && *id == left && *bottom == bottom_right)
+    ));
+    t.check_invariants();
+}
+
+#[test]
 fn directional_move_crosses_and_collapses_containers() {
     let mut t = tree((1200., 800.), 0.);
     let a = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
@@ -971,9 +1031,9 @@ fn directional_move_crosses_and_collapses_containers() {
     let c = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
 
     assert!(t.move_direction(c, Direction::Left));
-    assert_eq!(t.geometry(c).unwrap().loc.x, 0.);
-    assert!(t.geometry(a).unwrap().loc.x > 0.);
-    assert!(t.geometry(b).unwrap().loc.x > t.geometry(a).unwrap().loc.x);
+    assert_eq!(t.geometry(a).unwrap().loc.x, 0.);
+    assert!(t.geometry(c).unwrap().loc.x > t.geometry(a).unwrap().loc.x);
+    assert!(t.geometry(b).unwrap().loc.x > t.geometry(c).unwrap().loc.x);
     t.check_invariants();
 }
 
