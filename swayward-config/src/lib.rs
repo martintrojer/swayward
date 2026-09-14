@@ -1665,6 +1665,7 @@ mod tests {
                 always_center_single_column: false,
                 empty_workspace_above_first: false,
                 default_column_display: Tabbed,
+                focus_wrapping: Yes,
                 gaps: 8.0,
                 struts: Struts {
                     left: FloatOrInt(

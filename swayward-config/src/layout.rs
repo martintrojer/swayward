@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use knuffel::errors::DecodeError;
 use swayward_ipc::{ColumnDisplay, SizeChange};
 
@@ -22,6 +24,7 @@ pub struct Layout {
     pub always_center_single_column: bool,
     pub empty_workspace_above_first: bool,
     pub default_column_display: ColumnDisplay,
+    pub focus_wrapping: FocusWrapping,
     pub gaps: f64,
     pub struts: Struts,
     pub background_color: Color,
@@ -46,6 +49,7 @@ impl Default for Layout {
             always_center_single_column: false,
             empty_workspace_above_first: false,
             default_column_display: ColumnDisplay::Normal,
+            focus_wrapping: FocusWrapping::Yes,
             gaps: 16.,
             struts: Struts::default(),
             preset_window_heights: vec![
@@ -79,6 +83,7 @@ impl MergeWith<LayoutPart> for Layout {
             preset_window_heights,
             center_focused_column,
             default_column_display,
+            focus_wrapping,
             struts,
             background_color,
         );
@@ -125,6 +130,8 @@ pub struct LayoutPart {
     pub empty_workspace_above_first: Option<Flag>,
     #[knuffel(child, unwrap(argument, str))]
     pub default_column_display: Option<ColumnDisplay>,
+    #[knuffel(child, unwrap(argument, str))]
+    pub focus_wrapping: Option<FocusWrapping>,
     #[knuffel(child, unwrap(argument))]
     pub gaps: Option<FloatOrInt<0, 65535>>,
     #[knuffel(child)]
@@ -150,6 +157,25 @@ impl From<PresetSize> for SizeChange {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DefaultPresetSize(pub Option<PresetSize>);
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum FocusWrapping {
+    #[default]
+    Yes,
+    Force,
+}
+
+impl FromStr for FocusWrapping {
+    type Err = miette::Error;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "yes" => Ok(Self::Yes),
+            "force" => Ok(Self::Force),
+            _ => Err(miette::miette!("unknown focus wrapping mode `{value}`")),
+        }
+    }
+}
 
 #[derive(knuffel::Decode, Debug, Default, Clone, Copy, PartialEq)]
 pub struct Struts {

@@ -559,12 +559,18 @@ impl<W: LayoutElement> TilingTree<W> {
                     self.set_focus_id(next);
                     return next.is_some();
                 }
-                if wrap.is_none() && children.len() > 1 {
-                    wrap = if backwards {
+                if children.len() > 1 {
+                    let candidate = if backwards {
                         children.last().copied()
                     } else {
                         children.first().copied()
                     };
+                    if self.options.layout.focus_wrapping == swayward_config::FocusWrapping::Force {
+                        let next = candidate.and_then(|id| self.focused_leaf_in(id));
+                        self.set_focus_id(next.or(self.focus));
+                        return next.is_some();
+                    }
+                    wrap.get_or_insert(candidate.unwrap());
                 }
             }
             if Some(parent) == barrier {

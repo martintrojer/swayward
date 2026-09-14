@@ -13,9 +13,11 @@
 140-focus-lost.t
 144-regress-floating-resize.t
 152-regress-level-up.t
+170-force_focus_wrapping.t
 173-get-marks.t
 178-regress-workspace-open.t
 179-regress-multiple-ws.t
+186-regress-assign-focus-parent.t
 190-scratchpad-diff-ws.t
 191-resize-levels.t
 192-layout.t
@@ -26,6 +28,7 @@
 219-ipc-window-focus.t
 224-regress-resize-branch.t
 227-ipc-workspace-empty.t
+237-regress-assign-focus.t
 273-regress-focus-toggle.t
 285-sticky.t
 292-regress-layout-toggle.t

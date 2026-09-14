@@ -121,6 +121,13 @@ class Translator:
                 self.layout_settings.append(f"    gaps {match.group(1)}")
             elif match := re.fullmatch(r"gaps\s+outer\s+(.+)", text):
                 self.outer_gaps = match.group(1)
+            elif match := re.fullmatch(r"force_focus_wrapping\s+(\S+)", text):
+                enabled = match.group(1).lower() in {
+                    "1", "yes", "on", "true", "enable", "enabled", "active"
+                }
+                self.layout_settings.append(
+                    f'    focus-wrapping "{"force" if enabled else "yes"}"'
+                )
             elif not self.translate_swayfx(path, line_no, text):
                 self.warn(path, line_no, text, "unhandled")
 
@@ -251,20 +258,21 @@ class Translator:
     def translate_assign(
         self, source: Path, line: int, criteria: str, workspace: str
     ) -> None:
-        app_id = self.translate_window_criteria(source, line, "assign", criteria)
-        if app_id is None:
+        match = self.translate_window_criteria(source, line, "assign", criteria)
+        if match is None:
             return
+        field, value = match
         self.sections += [
             "window-rule {",
-            f"    match app-id={self.quote(app_id)}",
+            f"    match {field}={self.quote(value)}",
             f"    open-on-workspace {self.quote(workspace.strip(chr(34)))}",
             "}",
         ]
 
     def translate_window_criteria(
         self, source: Path, line: int, directive: str, criteria: str
-    ) -> str | None:
-        match = re.fullmatch(r'\[(app_id|class)="([^"]+)"\]', criteria)
+    ) -> tuple[str, str] | None:
+        match = re.fullmatch(r'\[(app_id|class|title)="([^"]+)"\]', criteria)
         if match is None:
             self.warn(
                 source,
@@ -273,14 +281,16 @@ class Translator:
                 "criteria need manual conversion to a window-rule match",
             )
             return None
-        return match.group(2)
+        field = "title" if match.group(1) == "title" else "app-id"
+        return field, match.group(2)
 
     def translate_for_window(
         self, source: Path, line: int, criteria: str, command: str
     ) -> None:
-        app_id = self.translate_window_criteria(source, line, "for_window", criteria)
-        if app_id is None:
+        match = self.translate_window_criteria(source, line, "for_window", criteria)
+        if match is None:
             return
+        field, value = match
         effects: list[str] = []
         for directive in re.split(r"\s*,\s*|\s*;\s*", command):
             words = directive.split()
@@ -290,6 +300,10 @@ class Translator:
             elif words == ["floating", "disable"]:
                 effects = [effect for effect in effects if not effect.startswith("    open-floating ")]
                 effects.append("    open-floating false")
+            elif words == ["layout", "tabbed"]:
+                effects.append('    default-column-display "tabbed"')
+            elif words == ["focus"]:
+                effects.append("    open-focused true")
             elif words[:1] == ["dim_inactive"] and len(words) == 2:
                 effects.append(f"    opacity {1.0 - float(words[1]):g}")
             elif words[:1] == ["corner_radius"] and len(words) == 2:
@@ -319,7 +333,7 @@ class Translator:
                 return
         self.sections += [
             "window-rule {",
-            f"    match app-id={self.quote(app_id)}",
+            f"    match {field}={self.quote(value)}",
             *effects,
             "}",
         ]

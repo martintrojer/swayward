@@ -91,6 +91,96 @@ fn sway_titlebar_settings_translate_without_silently_dropping_colors() {
 }
 
 #[test]
+fn force_focus_wrapping_maps_to_swaywards_focus_wrapping_mode() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_owned();
+    for (source, expected) in [
+        ("force_focus_wrapping true\n", "focus-wrapping \"force\""),
+        ("force_focus_wrapping false\n", "focus-wrapping \"yes\""),
+    ] {
+        let fixture = std::env::temp_dir().join(format!(
+            "swayward-focus-wrapping-{}-{}.conf",
+            std::process::id(),
+            expected
+        ));
+        std::fs::write(&fixture, source).unwrap();
+        let output = Command::new("python3")
+            .arg(root.join("contrib/sway-to-kdl"))
+            .arg(&fixture)
+            .output()
+            .unwrap();
+        std::fs::remove_file(fixture).unwrap();
+
+        assert!(output.status.success());
+        let translated = String::from_utf8(output.stdout).unwrap();
+        assert!(translated.contains(expected), "{translated}");
+        assert_eq!(
+            String::from_utf8(output.stderr).unwrap(),
+            "manual attention: none\n"
+        );
+        Config::parse_mem(&translated).unwrap();
+    }
+}
+
+#[test]
+fn title_criteria_preserve_regex_escapes_and_translate_window_actions() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_owned();
+    let fixture = std::env::temp_dir().join(format!(
+        "swayward-title-rules-{}-{}.conf",
+        std::process::id(),
+        std::thread::current().name().unwrap_or("test")
+    ));
+    std::fs::write(
+        &fixture,
+        r#"assign [title="^test\w+$"] targetws
+for_window [title="^test\w+$"] layout tabbed, focus
+"#,
+    )
+    .unwrap();
+    let output = Command::new("python3")
+        .arg(root.join("contrib/sway-to-kdl"))
+        .arg(&fixture)
+        .output()
+        .unwrap();
+    std::fs::remove_file(fixture).unwrap();
+
+    assert!(output.status.success());
+    let translated = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        translated.contains(r#"match title="^test\\w+$""#),
+        "{translated}"
+    );
+    assert!(
+        translated.contains("open-on-workspace \"targetws\""),
+        "{translated}"
+    );
+    assert!(
+        translated.contains("default-column-display \"tabbed\""),
+        "{translated}"
+    );
+    assert!(translated.contains("open-focused true"), "{translated}");
+    assert_eq!(
+        String::from_utf8(output.stderr).unwrap(),
+        "manual attention: none\n"
+    );
+    let config = Config::parse_mem(&translated).unwrap();
+    assert_eq!(
+        config.window_rules[0].matches[0]
+            .title
+            .as_ref()
+            .unwrap()
+            .0
+            .as_str(),
+        r"^test\w+$"
+    );
+}
+
+#[test]
 fn sway_workspace_output_uses_first_preference() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
