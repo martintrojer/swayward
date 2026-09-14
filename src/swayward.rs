@@ -1304,19 +1304,15 @@ impl State {
                 {
                     mapped.set_is_focused(true);
 
-                    // If `mapped` does not have a focus timestamp, then the window is newly
-                    // created/mapped and a timestamp is unconditionally created.
-                    //
-                    // If `mapped` already has a timestamp only update it after the focus lock-in
-                    // period has gone by without the focus having elsewhere.
+                    // Structural focus fallback follows sway's seat-wide stack immediately. The
+                    // recent-windows UI still uses the debounce below before committing its order.
                     let stamp = get_monotonic_time();
+                    mapped.set_focus_timestamp(stamp);
 
                     let debounce = self.swayward.config.borrow().recent_windows.debounce_ms;
                     let debounce = Duration::from_millis(u64::from(debounce));
 
-                    if mapped.get_focus_timestamp().is_none() || debounce.is_zero() {
-                        mapped.set_focus_timestamp(stamp);
-                    } else {
+                    if !debounce.is_zero() {
                         let timer = Timer::from_duration(debounce);
 
                         let focus_token = self

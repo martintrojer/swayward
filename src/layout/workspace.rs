@@ -883,16 +883,44 @@ impl<W: LayoutElement> Workspace<W> {
     }
 
     fn update_focus_floating_tiling_after_removing(&mut self, removed_from_floating: bool) {
-        if removed_from_floating {
-            if self.floating.is_empty() {
-                self.floating_is_active = FloatingActive::No;
-            }
-        } else {
-            // Scrolling should remain focused if both are empty.
-            if self.tiling.is_empty() && !self.floating.is_empty() {
-                self.floating_is_active = FloatingActive::Yes;
-            }
+        let floating = self
+            .floating
+            .tiles()
+            .filter_map(|tile| {
+                tile.window()
+                    .focus_timestamp()
+                    .map(|stamp| (stamp, tile.window().id().clone()))
+            })
+            .max_by_key(|(stamp, _)| *stamp);
+        if let Some((_, id)) = &floating {
+            self.floating.activate_window_without_raising(id);
         }
+        let tiling = self.tiling.active_window().and_then(|window| {
+            window
+                .focus_timestamp()
+                .map(|stamp| (stamp, window.id().clone()))
+        });
+        self.floating_is_active = match (floating, tiling) {
+            (None, _) => FloatingActive::No,
+            (Some(_), None) => FloatingActive::Yes,
+            (Some((floating, _)), Some((tiling, _))) => match floating.cmp(&tiling) {
+                std::cmp::Ordering::Greater => FloatingActive::Yes,
+                std::cmp::Ordering::Less => {
+                    if removed_from_floating {
+                        FloatingActive::No
+                    } else {
+                        FloatingActive::NoButRaised
+                    }
+                }
+                std::cmp::Ordering::Equal => {
+                    if removed_from_floating {
+                        FloatingActive::No
+                    } else {
+                        FloatingActive::Yes
+                    }
+                }
+            },
+        };
     }
 
     pub fn remove_tile(&mut self, id: &W::Id, transaction: Transaction) -> RemovedTile<W> {
@@ -1901,14 +1929,36 @@ impl<W: LayoutElement> Workspace<W> {
     }
 
     pub fn focus_floating(&mut self) {
-        if !self.floating_is_active.get() {
-            self.switch_focus_floating_tiling();
+        let recent = self
+            .floating
+            .tiles()
+            .filter_map(|tile| {
+                tile.window()
+                    .focus_timestamp()
+                    .map(|stamp| (stamp, tile.window().id().clone()))
+            })
+            .max_by_key(|(stamp, _)| *stamp)
+            .map(|(_, id)| id);
+        if let Some(recent) = recent {
+            self.floating.activate_window_without_raising(&recent);
+            self.floating_is_active = FloatingActive::Yes;
         }
     }
 
     pub fn focus_tiling(&mut self) {
-        if self.floating_is_active.get() {
-            self.switch_focus_floating_tiling();
+        let recent = self
+            .tiling
+            .tiles()
+            .filter_map(|tile| {
+                tile.window()
+                    .focus_timestamp()
+                    .map(|stamp| (stamp, tile.window().id().clone()))
+            })
+            .max_by_key(|(stamp, _)| *stamp)
+            .map(|(_, id)| id);
+        if let Some(recent) = recent {
+            self.tiling.activate_window(&recent);
+            self.floating_is_active = FloatingActive::No;
         }
     }
 

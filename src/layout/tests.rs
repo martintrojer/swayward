@@ -40,6 +40,7 @@ struct TestWindowInner {
     animate_next_configure: Cell<bool>,
     animation_snapshot: RefCell<Option<LayoutElementRenderSnapshot>>,
     rules: ResolvedWindowRules,
+    focus_timestamp: Cell<Option<Duration>>,
 }
 
 #[derive(Debug, Clone)]
@@ -92,6 +93,7 @@ impl TestWindow {
             animate_next_configure: Cell::new(false),
             animation_snapshot: RefCell::new(None),
             rules: params.rules.unwrap_or_default(),
+            focus_timestamp: Cell::new(None),
         }))
     }
 
@@ -153,6 +155,10 @@ impl LayoutElement for TestWindow {
 
     fn id(&self) -> &Self::Id {
         &self.0.id
+    }
+
+    fn focus_timestamp(&self) -> Option<Duration> {
+        self.0.focus_timestamp.get()
     }
 
     fn size(&self) -> Size<i32, Logical> {
@@ -2837,6 +2843,66 @@ fn move_window_to_different_output() {
         ..Default::default()
     };
     check_ops_with_options(options, ops);
+}
+
+#[test]
+fn mixed_layer_selection_filters_one_global_focus_order() {
+    let output = Output::new(
+        "output".into(),
+        PhysicalProperties {
+            size: Size::from((1280, 720)),
+            subpixel: Subpixel::Unknown,
+            make: String::new(),
+            model: String::new(),
+            serial_number: String::new(),
+        },
+    );
+    output.change_current_state(
+        Some(Mode {
+            size: Size::from((1280, 720)),
+            refresh: 60000,
+        }),
+        None,
+        None,
+        None,
+    );
+    output.user_data().insert_if_missing(|| OutputName {
+        connector: "output".into(),
+        make: None,
+        model: None,
+        serial: None,
+    });
+    let mut workspace = Workspace::new(
+        output,
+        Clock::with_time(Duration::ZERO),
+        Rc::new(Options::default()),
+    );
+    for (id, timestamp) in [(1, 4), (2, 3), (3, 2), (4, 1)] {
+        let window = TestWindow::new(TestWindowParams::new(id));
+        window
+            .0
+            .focus_timestamp
+            .set(Some(Duration::from_secs(timestamp)));
+        let tile = workspace.make_tile(window);
+        workspace.add_tile(
+            tile,
+            WorkspaceAddWindowTarget::Auto,
+            ActivateWindow::Yes,
+            ColumnWidth::Proportion(0.5),
+            false,
+            false,
+            None,
+        );
+        if id >= 3 {
+            workspace.toggle_window_floating(Some(&id));
+        }
+    }
+
+    workspace.activate_window(&1);
+    for expected in [1, 2, 3, 4] {
+        assert_eq!(workspace.active_window().unwrap().id(), &expected);
+        workspace.remove_tile(&expected, Transaction::new());
+    }
 }
 
 #[test]
