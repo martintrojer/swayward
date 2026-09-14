@@ -115,6 +115,7 @@ pub enum Command {
     MoveScratchpad,
     ScratchpadShow,
     Layout(Layout),
+    LayoutDefault,
     LayoutToggle(LayoutToggle),
     Split(Option<Layout>),
     Fullscreen {
@@ -572,6 +573,9 @@ fn parse_layout(args: &[&str]) -> Result<Command, String> {
     if let [layout] = args {
         if let Some(layout) = direct(layout) {
             return Ok(Command::Layout(layout));
+        }
+        if layout.eq_ignore_ascii_case("default") {
+            return Ok(Command::LayoutDefault);
         }
     }
     let [toggle, rest @ ..] = args else {

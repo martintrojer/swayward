@@ -2914,6 +2914,12 @@ impl<W: LayoutElement> Layout<W> {
         }
     }
 
+    pub fn restore_focused_split_layout(&mut self) {
+        if let Some(workspace) = self.active_workspace_mut() {
+            workspace.restore_focused_split_layout();
+        }
+    }
+
     pub fn toggle_focused_layout_split(&mut self) {
         if let Some(workspace) = self.active_workspace_mut() {
             workspace.toggle_focused_layout_split();

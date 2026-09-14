@@ -1284,6 +1284,12 @@ impl<W: LayoutElement> Workspace<W> {
         }
     }
 
+    pub fn restore_focused_split_layout(&mut self) {
+        if !self.floating_is_active.get() {
+            self.tiling.restore_focused_split_layout();
+        }
+    }
+
     pub fn toggle_focused_layout_split(&mut self) {
         if !self.floating_is_active.get() {
             self.tiling.toggle_focused_layout_split();

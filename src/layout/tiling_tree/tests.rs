@@ -764,6 +764,32 @@ fn split_parent_preserves_stacked_child_focus_axis() {
 }
 
 #[test]
+fn layout_default_restores_the_same_previous_split_as_toggle() {
+    for previous in [Layout::SplitH, Layout::SplitV] {
+        let setup = || {
+            let mut tree = tree((1200., 800.), 0.);
+            tree.add_tile(tile(1, tree.view_size()), InsertTarget::Focused);
+            tree.add_tile(tile(2, tree.view_size()), InsertTarget::Focused);
+            tree.set_layout(tree.root, previous);
+            tree.set_focused_layout(Layout::Tabbed);
+            tree
+        };
+        let mut direct = setup();
+        let mut toggle = setup();
+
+        direct.restore_focused_split_layout();
+        toggle.toggle_focused_layout_split();
+
+        assert_eq!(direct.ipc_tree(), toggle.ipc_tree());
+        assert!(matches!(
+            direct.nodes[&direct.root].value,
+            TreeNode::Split { layout, .. } if layout == previous
+        ));
+        direct.check_invariants();
+    }
+}
+
+#[test]
 fn layout_toggle_restores_the_previous_split_axis() {
     for previous in [Layout::SplitH, Layout::SplitV] {
         let mut t = tree((1200., 800.), 0.);

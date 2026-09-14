@@ -240,6 +240,19 @@ fn execute_one(
             state.swayward.queue_redraw_all();
             None
         }
+        Command::LayoutDefault => {
+            if state
+                .swayward
+                .layout
+                .active_workspace()
+                .is_some_and(|workspace| workspace.floating_is_active())
+            {
+                return failure("Unable to change layout of floating windows");
+            }
+            state.swayward.layout.restore_focused_split_layout();
+            state.swayward.queue_redraw_all();
+            None
+        }
         Command::LayoutToggle(cycle) => {
             if state
                 .swayward
@@ -1431,6 +1444,7 @@ mod tests {
         assert_eq!(command("move to scratchpad"), Command::MoveScratchpad);
         assert_eq!(command("scratchpad show"), Command::ScratchpadShow);
         assert_eq!(command("layout stacked"), Command::Layout(Layout::Stacked));
+        assert_eq!(command("layout default"), Command::LayoutDefault);
         assert_eq!(
             command("layout toggle split"),
             Command::LayoutToggle(LayoutToggle::Split)

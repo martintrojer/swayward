@@ -29,11 +29,6 @@ struct AllowedRejection {
 const ALLOWED_REJECTIONS: &[AllowedRejection] = &[
     AllowedRejection {
         test: "101-focus.t",
-        command: "layout default",
-        reason: "known parser gap tracked by m6_fix_layout_default_command",
-    },
-    AllowedRejection {
-        test: "101-focus.t",
         command: "[con_mark=__does_not_exist] focus",
         reason: "the assertion expects this unmatched criterion to fail",
     },
@@ -404,8 +399,7 @@ const PASSING: &str = include_str!("../../tests/i3/passing.txt");
 
 #[test]
 fn rejection_allowlist_is_keyed_by_file_and_exact_command() {
-    let stderr = "# swayward rejected `layout default`: error\n\
-                  # swayward rejected `[con_mark=__does_not_exist] focus`: error\n";
+    let stderr = "# swayward rejected `[con_mark=__does_not_exist] focus`: error\n";
     assert_eq!(
         rejected_commands(stderr).collect::<Vec<_>>(),
         allowed_rejections("101-focus.t")

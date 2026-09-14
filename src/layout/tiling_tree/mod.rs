@@ -1331,6 +1331,16 @@ impl<W: LayoutElement> TilingTree<W> {
         self.set_layout_for_command(target, next);
     }
 
+    pub fn restore_focused_split_layout(&mut self) {
+        let Some(target) = self.focused_layout_target() else {
+            return;
+        };
+        let Some(layout) = self.previous_split_layouts.get(&target).copied() else {
+            return;
+        };
+        self.set_layout_for_command(target, layout);
+    }
+
     pub fn toggle_focused_layout_split(&mut self) {
         let Some(target) = self.focused_layout_target() else {
             return;
