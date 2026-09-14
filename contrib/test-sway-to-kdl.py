@@ -111,6 +111,45 @@ bindsym $missing+x nop
         self.assertIn("open-floating false", result.stdout)
         self.assertIn("manual attention: none", result.stderr)
 
+    def test_for_window_combines_class_and_title_without_losing_regex_escapes(self):
+        result = self.translate(
+            r'''for_window [class="^foo\\w+$" title="^bar\\d+$"] border none
+'''
+        )
+        self.assertIn(r'match app-id="^foo\\\\w+$" title="^bar\\\\d+$"', result.stdout)
+        self.assertIn("border {", result.stdout)
+        self.assertIn("off", result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
+    def test_for_window_translates_pixel_border(self):
+        result = self.translate('for_window [class="foo"] border 1pixel\n')
+        self.assertIn("border {", result.stdout)
+        self.assertIn("on", result.stdout)
+        self.assertIn("width 1", result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
+    def test_for_window_refuses_x11_only_criteria(self):
+        for criterion in ["instance", "id", "window_role", "window_type"]:
+            with self.subTest(criterion=criterion):
+                result = self.translate(
+                    f'for_window [{criterion}="value"] floating enable\n'
+                )
+                self.assertNotIn("window-rule {", result.stdout)
+                self.assertIn("X11-only criterion", result.stdout)
+                self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
+    def test_for_window_refuses_missing_rule_surfaces(self):
+        for source, reason in [
+            ('for_window [workspace="web"] floating enable\n', "workspace criterion"),
+            ('for_window [class="foo"] mark tagged\n', "command needs manual conversion"),
+            ('for_window [class="foo"] exec notify-send mapped\n', "command needs manual conversion"),
+        ]:
+            with self.subTest(source=source):
+                result = self.translate(source)
+                self.assertNotIn("window-rule {", result.stdout)
+                self.assertIn(reason, result.stdout)
+                self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
     def test_duplicate_bind_is_reported_instead_of_silently_overwritten(self):
         result = self.translate("bindsym Mod4+h focus left\nbindsym Mod4+h focus right\n")
         self.assertIn('Super+h { command "focus left"; }', result.stdout)

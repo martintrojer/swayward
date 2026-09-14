@@ -277,19 +277,20 @@ class Translator:
             return
         elif target.startswith("workspace "):
             target = target.removeprefix("workspace ").strip()
-        field, value = match
         self.sections += [
             "window-rule {",
-            f"    match {field}={self.quote(value)}",
+            "    match " + " ".join(
+                f"{field}={self.quote(value)}" for field, value in match
+            ),
             f"    {property_name} {self.quote(target.strip(chr(34)))}",
             "}",
         ]
 
     def translate_window_criteria(
         self, source: Path, line: int, directive: str, criteria: str
-    ) -> tuple[str, str] | None:
-        match = re.fullmatch(r'\[(app_id|class|title)="([^"]+)"\]', criteria)
-        if match is None:
+    ) -> list[tuple[str, str]] | None:
+        pairs = re.findall(r'(\w+)="((?:\\.|[^"])*)"', criteria)
+        if not pairs or " ".join(f'{key}="{value}"' for key, value in pairs) != criteria[1:-1]:
             self.warn(
                 source,
                 line,
@@ -297,8 +298,34 @@ class Translator:
                 "criteria need manual conversion to a window-rule match",
             )
             return None
-        field = "title" if match.group(1) == "title" else "app-id"
-        return field, match.group(2)
+        translated = []
+        for key, value in pairs:
+            if key in {"instance", "id", "window_role", "window_type"}:
+                self.warn(
+                    source,
+                    line,
+                    f"{directive} {criteria}",
+                    f"X11-only criterion {key} has no native Wayland equivalent",
+                )
+                return None
+            if key == "workspace":
+                self.warn(
+                    source,
+                    line,
+                    f"{directive} {criteria}",
+                    "workspace criterion has no window-rule equivalent",
+                )
+                return None
+            if key not in {"app_id", "class", "title"}:
+                self.warn(
+                    source,
+                    line,
+                    f"{directive} {criteria}",
+                    "criteria need manual conversion to a window-rule match",
+                )
+                return None
+            translated.append(("title" if key == "title" else "app-id", value))
+        return translated
 
     def translate_for_window(
         self, source: Path, line: int, criteria: str, command: str
@@ -306,11 +333,28 @@ class Translator:
         match = self.translate_window_criteria(source, line, "for_window", criteria)
         if match is None:
             return
-        field, value = match
         effects: list[str] = []
         for directive in re.split(r"\s*,\s*|\s*;\s*", command):
             words = directive.split()
-            if words == ["floating", "enable"]:
+            if words[:1] == ["border"] and len(words) == 2:
+                if words[1] == "none":
+                    effects += ["    border {", "        off", "    }"]
+                elif pixels := re.fullmatch(r"(\d+)pixel", words[1]):
+                    effects += [
+                        "    border {",
+                        "        on",
+                        f"        width {pixels.group(1)}",
+                        "    }",
+                    ]
+                else:
+                    self.warn(
+                        source,
+                        line,
+                        f"for_window {criteria} {command}",
+                        "border style needs manual conversion",
+                    )
+                    return
+            elif words == ["floating", "enable"]:
                 effects = [effect for effect in effects if not effect.startswith("    open-floating ")]
                 effects.append("    open-floating true")
             elif words == ["floating", "disable"]:
@@ -349,7 +393,9 @@ class Translator:
                 return
         self.sections += [
             "window-rule {",
-            f"    match {field}={self.quote(value)}",
+            "    match " + " ".join(
+                f"{field}={self.quote(value)}" for field, value in match
+            ),
             *effects,
             "}",
         ]
