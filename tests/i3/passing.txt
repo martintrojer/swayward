@@ -58,3 +58,4 @@
 138-floating-attach.t
 240-focus-on-window-activation.t
 233-regress-manage-focus-unmapped.t
+225-ipc-window-fullscreen.t

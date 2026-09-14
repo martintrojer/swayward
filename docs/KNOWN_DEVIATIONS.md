@@ -80,6 +80,20 @@ Swayward has no scrollable-tiling mode. It uses an i3-style nested container tre
 Niri's horizontal viewport and overview animations were retired because their
 layout no longer exists.
 
+### Layout restoration
+
+Sway does not implement i3's `append_layout` command or JSON placeholder
+containers. The command is absent from sway's complete general,
+configuration-only, and runtime-only command tables
+(`sway/sway/commands.c:44-144`) and from its runtime command reference
+(`sway/sway/sway.5.scd:102-415`). The similarly named `client.placeholder`
+entry only accepts an obsolete color setting as a no-op
+(`sway/sway/commands.c:55`).
+
+Swayward follows sway and rejects `append_layout`. The i3 layout-restore family
+(`213`–`216`) is therefore skipped rather than gaining an engine that sway does
+not expose.
+
 ### The i3 `open` command and empty containers
 
 i3's `open` command creates and focuses an empty container
