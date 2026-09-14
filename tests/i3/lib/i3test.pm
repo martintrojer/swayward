@@ -34,6 +34,7 @@ our @EXPORT = qw(
     focused_ws
     get_dock_clients
     get_focused
+    get_output_for_workspace
     get_socket_path
     get_unused_workspace
     get_workspace_names
@@ -338,6 +339,11 @@ sub _workspace_nodes {
 }
 
 sub get_workspace_names { [map { $_->{name} } _workspace_nodes()] }
+sub get_output_for_workspace {
+    my ($name) = @_;
+    my ($workspace) = grep { $_->{name} eq $name } @{_request(1)};
+    return $workspace ? $workspace->{output} : undef;
+}
 sub get_dock_clients { () }
 
 sub get_unused_workspace {
