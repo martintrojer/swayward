@@ -42,6 +42,7 @@ src/layout/mod.rs, src/layout/workspace.rs — fall back to normal placement for
 swayward-ipc/src/command.rs, src/command.rs, src/layout/mod.rs, src/layout/monitor.rs, src/layout/tile.rs, src/layout/workspace.rs, src/ipc/tree.rs — implement sway sticky commands and move sticky floating windows with workspace focus on their output.
 swayward-ipc/src/command.rs, src/command.rs — parse and execute sway's container and workspace move-to-output forms by output name or direction.
 swayward-ipc/src/command.rs, src/command.rs — parse and execute sway's focus-output command, including multi-word names and directional output lookup.
+swayward-ipc/src/command.rs — map sway's zero-argument `splith`, `splitv`, and `splitt` aliases to the existing split commands.
 (workspace-wide) — run `cargo fmt --all` after the rename changed identifier sort order; no behavioural change.
 
 ## Deliberate behavioural deviations from sway

@@ -343,6 +343,9 @@ fn parse_one(input: &str) -> Result<Command, String> {
         "move" => parse_move(rest),
         "layout" => parse_layout(rest),
         "split" => parse_split(rest),
+        "splith" => no_args(rest, "splith").map(|()| Command::Split(Some(Layout::SplitH))),
+        "splitv" => no_args(rest, "splitv").map(|()| Command::Split(Some(Layout::SplitV))),
+        "splitt" => no_args(rest, "splitt").map(|()| Command::Split(Some(Layout::ToggleSplit))),
         "fullscreen" => parse_fullscreen(rest),
         "floating" => one(rest, "floating <enable|disable|toggle>")
             .and_then(parse_toggle)

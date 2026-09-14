@@ -1403,6 +1403,18 @@ mod tests {
     }
 
     #[test]
+    fn parses_standalone_split_aliases_with_no_arguments() {
+        for (alias, layout) in [
+            ("splith", Layout::SplitH),
+            ("splitv", Layout::SplitV),
+            ("splitt", Layout::ToggleSplit),
+        ] {
+            assert_eq!(command(alias), Command::Split(Some(layout)));
+            assert!(parse(&format!("{alias} extra"))[0].is_err());
+        }
+    }
+
+    #[test]
     fn parses_sticky_with_exactly_one_argument() {
         assert_eq!(command("sticky enabled"), Command::Sticky("enabled".into()));
         for input in ["sticky", "sticky enable extra"] {
