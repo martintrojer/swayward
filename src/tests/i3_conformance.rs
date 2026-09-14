@@ -30,7 +30,9 @@ impl AllowedRejection {
             && (self.command == command
                 || (self.command == "[con_mark=\"*\"] focus"
                     && command.starts_with("[con_mark=\"")
-                    && command.ends_with("\"] focus")))
+                    && command.ends_with("\"] focus"))
+                || (self.command == "[con_mark=a] move to workspace *"
+                    && command.starts_with("[con_mark=a] move to workspace ")))
     }
 }
 
@@ -41,6 +43,11 @@ const ALLOWED_REJECTIONS: &[AllowedRejection] = &[
         test: "111-goto.t",
         command: "[con_mark=\"*\"] focus",
         reason: "test asserts that an unknown mark leaves focus unchanged",
+    },
+    AllowedRejection {
+        test: "132-move-workspace.t",
+        command: "[con_mark=a] move to workspace *",
+        reason: "the test expects moving an empty workspace by criteria to be a no-op",
     },
     AllowedRejection {
         test: "120-multiple-cmds.t",

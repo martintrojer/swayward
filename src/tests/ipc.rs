@@ -1313,6 +1313,73 @@ fn focused_container_can_be_marked_and_targeted_by_con_id() {
 }
 
 #[test]
+fn marks_are_globally_unique_across_windows_and_containers() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    for _ in 0..2 {
+        let window = f.client(client).create_window();
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+
+    assert!(crate::command::execute(f.niri_state(), "layout tabbed")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "focus parent")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "mark keep")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "mark --add unique")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "workspace second")[0].success);
+    for _ in 0..2 {
+        let window = f.client(client).create_window();
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+    assert!(crate::command::execute(f.niri_state(), "layout tabbed")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "focus parent")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "mark --toggle unique")[0].success);
+
+    fn mark_count(state: &crate::swayward::State, expected: &str) -> usize {
+        state
+            .swayward
+            .marks_by_window
+            .values()
+            .chain(state.swayward.marks_by_container.values())
+            .flatten()
+            .filter(|mark| mark.as_str() == expected)
+            .count()
+    }
+    assert_eq!(mark_count(f.niri_state(), "unique"), 1);
+    assert_eq!(mark_count(f.niri_state(), "keep"), 1);
+
+    assert!(crate::command::execute(f.niri_state(), "mark --toggle unique")[0].success);
+    assert_eq!(mark_count(f.niri_state(), "unique"), 0);
+    assert_eq!(mark_count(f.niri_state(), "keep"), 1);
+
+    assert!(crate::command::execute(f.niri_state(), "mark unique")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "focus child")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "mark unique")[0].success);
+    assert_eq!(mark_count(f.niri_state(), "unique"), 1);
+    assert!(f
+        .swayward()
+        .marks_by_container
+        .values()
+        .all(|marks| !marks.iter().any(|mark| mark == "unique")));
+
+    assert!(crate::command::execute(f.niri_state(), "workspace empty")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "mark unique")[0].success);
+    assert_eq!(mark_count(f.niri_state(), "unique"), 0);
+}
+
+#[test]
 fn scratchpad_hides_focused_window_and_show_cycles_windows() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));

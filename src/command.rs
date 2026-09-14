@@ -79,7 +79,17 @@ fn execute_one(
         return success();
     }
 
-    if matches!(parsed.command, Command::Mark { .. }) && focused_target(state).is_none() {
+    if let Command::Mark {
+        add,
+        toggle,
+        identifier,
+    } = &parsed.command
+    {
+        let Some(target) = focused_target(state) else {
+            unmark_globally(state, Some(identifier));
+            return success();
+        };
+        mark_target(state, target, identifier, *add, *toggle);
         return success();
     }
 
@@ -529,23 +539,14 @@ fn execute_one(
             spawn_sh(command, Some(token.clone()));
             None
         }
-        Command::Mark {
-            add,
-            toggle,
-            identifier,
-        } => {
-            if let Some(target) = focused_target(state) {
-                mark_target(state, target, &identifier, add, toggle);
-            }
-            None
-        }
+        Command::Mark { .. } => unreachable!(),
         Command::Unmark(identifier) => {
             if parsed.criteria.is_some() {
                 for target in targets {
                     unmark_target(state, target, identifier.as_deref());
                 }
             } else {
-                state.swayward.unmark(None, identifier.as_deref());
+                unmark_globally(state, identifier.as_deref());
             }
             None
         }
@@ -1382,10 +1383,7 @@ fn mark_target(state: &mut State, target: CommandTarget, mark: &str, add: bool, 
     if !add {
         unmark_target(state, target, None);
     }
-    state.swayward.unmark(None, Some(mark));
-    for marks in state.swayward.marks_by_container.values_mut() {
-        marks.retain(|existing| existing != mark);
-    }
+    unmark_globally(state, Some(mark));
     if toggle && had_mark {
         return;
     }
@@ -1397,6 +1395,17 @@ fn mark_target(state: &mut State, target: CommandTarget, mark: &str, add: bool, 
             .entry((workspace, node))
             .or_default()
             .push(mark.to_owned()),
+    }
+}
+
+fn unmark_globally(state: &mut State, mark: Option<&str>) {
+    state.swayward.unmark(None, mark);
+    if let Some(mark) = mark {
+        for marks in state.swayward.marks_by_container.values_mut() {
+            marks.retain(|existing| existing != mark);
+        }
+    } else {
+        state.swayward.marks_by_container.clear();
     }
 }
 
