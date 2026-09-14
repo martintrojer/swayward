@@ -1631,6 +1631,103 @@ fn criteria_targeted_scratchpad_commands_move_only_the_matching_window() {
     );
 }
 
+fn dialog_rect_after_parent_move(animations_off: bool) -> Value {
+    let mut config = swayward_config::Config::default();
+    config.animations.off = animations_off;
+    let mut f = Fixture::with_config(config);
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let first = f.client(client).create_window();
+    first.commit();
+    let first_surface = first.surface.clone();
+    f.roundtrip(client);
+    let first = f.client(client).window(&first_surface);
+    first.attach_new_buffer();
+    first.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    let parent = f.client(client).create_window();
+    parent.xdg_toplevel.set_app_id("parent".into());
+    let parent_surface = parent.surface.clone();
+    let parent_toplevel = parent.xdg_toplevel.clone();
+    parent.commit();
+    f.roundtrip(client);
+    let parent = f.client(client).window(&parent_surface);
+    parent.attach_new_buffer();
+    parent.ack_last_and_commit();
+    f.double_roundtrip(client);
+    assert!(crate::command::execute(f.niri_state(), "move left")[0].success);
+    if !animations_off {
+        assert!(f.swayward().layout.are_animations_ongoing(None));
+    }
+
+    let child = f.client(client).create_window();
+    child.xdg_toplevel.set_app_id("dialog".into());
+    child.set_parent(Some(&parent_toplevel));
+    let child_surface = child.surface.clone();
+    child.commit();
+    f.roundtrip(client);
+    let child = f.client(client).window(&child_surface);
+    child.attach_new_buffer();
+    child.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &Default::default(),
+        &Default::default(),
+    ))
+    .unwrap();
+    fn find_app(value: &Value) -> Option<&Value> {
+        if value["app_id"] == "dialog" {
+            return Some(value);
+        }
+        ["nodes", "floating_nodes"]
+            .into_iter()
+            .find_map(|key| value[key].as_array()?.iter().find_map(find_app))
+    }
+    find_app(&tree).unwrap()["rect"].clone()
+}
+
+#[test]
+fn dialog_placement_uses_parent_layout_position_during_animation() {
+    assert_eq!(
+        dialog_rect_after_parent_move(false),
+        dialog_rect_after_parent_move(true)
+    );
+}
+
+#[test]
+fn dialog_with_hidden_scratchpad_parent_does_not_panic() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let parent = f.client(client).create_window();
+    let parent_surface = parent.surface.clone();
+    let parent_toplevel = parent.xdg_toplevel.clone();
+    parent.commit();
+    f.roundtrip(client);
+    let parent = f.client(client).window(&parent_surface);
+    parent.attach_new_buffer();
+    parent.ack_last_and_commit();
+    f.double_roundtrip(client);
+    assert!(crate::command::execute(f.niri_state(), "move scratchpad")[0].success);
+
+    let child = f.client(client).create_window();
+    child.set_parent(Some(&parent_toplevel));
+    let child_surface = child.surface.clone();
+    child.commit();
+    f.roundtrip(client);
+    let child = f.client(client).window(&child_surface);
+    child.attach_new_buffer();
+    child.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    assert_eq!(f.swayward().layout.windows().count(), 2);
+}
+
 #[test]
 fn floating_rejects_hidden_scratchpad_window_without_panicking() {
     let mut f = Fixture::new();

@@ -710,17 +710,18 @@ impl<W: LayoutElement> Workspace<W> {
                     if floating_has_window {
                         self.floating.add_tile_above(next_to, tile, activate);
                     } else {
-                        // FIXME: use static pos
-                        let (next_to_tile, render_pos, _visible) = self
+                        let (next_to_tile, layout) = self
                             .tiling
-                            .tiles_with_render_positions()
-                            .find(|(tile, _, _)| tile.window().id() == next_to)
-                            .unwrap();
+                            .tiles_with_ipc_layouts()
+                            .find(|(tile, _)| tile.window().id() == next_to)
+                            .expect("NextTo parent must be in this workspace's tiling tree");
+                        let layout_pos: Point<f64, Logical> =
+                            layout.tile_pos_in_workspace_view.unwrap_or_default().into();
 
                         // Position the new tile in the center above the next_to tile. Think a
                         // dialog opening on top of a window.
                         let tile_size = tile.tile_size();
-                        let pos = render_pos
+                        let pos = layout_pos
                             + (next_to_tile.tile_size().to_point() - tile_size.to_point())
                                 .downscale(2.);
                         let pos = self.floating.clamp_within_working_area(pos, tile_size);
