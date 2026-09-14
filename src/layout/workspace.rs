@@ -549,10 +549,12 @@ impl<W: LayoutElement> Workspace<W> {
         &mut self,
         mode: Option<crate::layout::tiling_tree::FullscreenMode>,
     ) -> bool {
+        if let Some(window) = self.active_window().map(LayoutElement::id).cloned() {
+            self.set_fullscreen(&window, mode.is_some());
+        }
         let Some(id) = self.tiling.focus() else {
             return false;
         };
-        self.floating_is_active = FloatingActive::No;
         self.tiling.set_node_fullscreen(id, mode)
     }
 
