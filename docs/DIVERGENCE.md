@@ -17,6 +17,7 @@ src/layout/mod.rs, src/window/mapped.rs — expose window titles to the tree ren
 src/swayward.rs, src/layout/mod.rs, src/layout/workspace.rs, src/layout/tiling_tree/mod.rs — resolve pointer hits on tabbed and stacked titlebars to the represented branch's focused descendant before applying focus-follows-mouse.
 src/layout/mod.rs, src/layout/monitor.rs, src/layout/workspace.rs — give workspaces stable global sway names/numbers, sparse creation, switching, movement, output assignment, rename sorting, map-time assignment creation, and sway-compatible inactive-workspace cleanup while retaining monitor animations.
 src/layout/mod.rs — resolve relative move-to-workspace targets with sway's global numbered and per-output workspace ordering.
+src/layout/mod.rs, src/layout/monitor.rs — retain the previous sway workspace name alongside its live ID so `workspace back_and_forth` can recreate a workspace removed by cleanup, matching sway's seat state.
 src/ipc/server.rs — include the Wayland socket name in IPC socket paths so parallel headless tests do not collide.
 src/tests/mod.rs — run vendored i3 Perl assertions against the existing headless compositor and real sway IPC socket.
 contrib/sway-to-kdl — translate sway workspace output preferences to named-workspace initial output configuration.

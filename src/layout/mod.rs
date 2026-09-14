@@ -2474,11 +2474,15 @@ impl<W: LayoutElement> Layout<W> {
                 let Some(monitor) = self.active_monitor() else {
                     return Err("cannot switch workspaces without an output".into());
                 };
-                let Some(previous) = monitor.previous_workspace_idx() else {
-                    return Err("No workspace was previously active.".into());
+                if let Some(previous) = monitor.previous_workspace_idx() {
+                    self.switch_workspace(previous);
+                    return Ok(());
+                }
+                let Some(previous_name) = monitor.previous_workspace_name().map(str::to_owned)
+                else {
+                    return Err("There is no previous workspace".into());
                 };
-                self.switch_workspace(previous);
-                return Ok(());
+                return self.activate_sway_workspace(WorkspaceTarget::Name(previous_name));
             }
             WorkspaceTarget::NextOnOutput => {
                 self.switch_workspace_down();

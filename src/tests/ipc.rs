@@ -2782,6 +2782,61 @@ fn targeted_focus_selects_the_requested_unfocused_window() {
 }
 
 #[test]
+fn workspace_back_and_forth_without_history_uses_sway_error() {
+    let (mut f, socket) = ipc_fixture();
+    f.add_output(1, (1920, 1080));
+    let mut stream = UnixStream::connect(socket).unwrap();
+    stream
+        .write_all(&crate::ipc::wire::encode(
+            MessageType::RunCommand,
+            "workspace back_and_forth",
+        ))
+        .unwrap();
+    let (_, reply) = read_ipc_reply(&mut f, &mut stream);
+    assert_eq!(
+        reply,
+        r#"[{"success":false,"error":"There is no previous workspace"}]"#
+    );
+}
+
+#[test]
+fn workspace_back_and_forth_recreates_a_reaped_previous_workspace() {
+    let (mut f, socket) = ipc_fixture();
+    f.add_output(1, (1920, 1080));
+    let mut stream = UnixStream::connect(socket).unwrap();
+
+    for command in ["workspace 1", "workspace 2"] {
+        stream
+            .write_all(&crate::ipc::wire::encode(MessageType::RunCommand, command))
+            .unwrap();
+        let (_, reply) = read_ipc_reply(&mut f, &mut stream);
+        assert_eq!(reply, r#"[{"success":true}]"#);
+    }
+
+    f.swayward().clock.set_complete_instantly(true);
+    f.swayward().layout.advance_animations();
+    f.swayward().clock.set_complete_instantly(false);
+    assert!(f
+        .swayward()
+        .layout
+        .workspaces()
+        .all(|(_, _, workspace)| workspace.number() != Some(1)));
+
+    stream
+        .write_all(&crate::ipc::wire::encode(
+            MessageType::RunCommand,
+            "workspace back_and_forth",
+        ))
+        .unwrap();
+    let (_, reply) = read_ipc_reply(&mut f, &mut stream);
+    assert_eq!(reply, r#"[{"success":true}]"#);
+    assert_eq!(
+        f.swayward().layout.active_workspace().unwrap().number(),
+        Some(1)
+    );
+}
+
+#[test]
 fn move_workspace_back_and_forth_targets_the_previous_workspace() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));
