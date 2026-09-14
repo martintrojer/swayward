@@ -1011,12 +1011,13 @@ impl State {
         let mut ipc_focused_id = None;
         for (id, ipc_win) in &state.windows {
             if !seen.contains(id) {
-                if let Some(container) = previous_tree
+                if let Some(mut container) = previous_tree
                     .and_then(|tree| {
                         find_node_by_id(tree, crate::ipc::tree::window_id_from_raw(*id))
                     })
                     .cloned()
                 {
+                    container["foreign_toplevel_identifier"] = serde_json::Value::Null;
                     events.push(Event::SwayWindowChanged {
                         change: "close".into(),
                         container,

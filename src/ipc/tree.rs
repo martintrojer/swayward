@@ -359,7 +359,7 @@ fn describe_workspace_node(
                 rect_from(x, y, layout.tile_size.0, layout.tile_size.1),
                 NodeType::FloatingCon,
                 "user_on",
-                None,
+                Some(rect),
                 marks,
                 compositor_layout.is_scratchpad_window(&tile.window().window),
                 true,

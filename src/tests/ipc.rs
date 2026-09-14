@@ -765,6 +765,61 @@ fn mark_event_matches_captured_sway_schema() {
 }
 
 #[test]
+fn close_event_matches_captured_sway_schema_before_removal() {
+    let (mut fixture, socket) = ipc_fixture();
+    fixture.add_output(1, (800, 600));
+    let client = fixture.add_client();
+    let window = fixture.client(client).create_window();
+    window.xdg_toplevel.set_app_id("event-one".into());
+    window.set_title("event-one");
+    window.commit();
+    let surface = window.surface.clone();
+    fixture.roundtrip(client);
+    let window = fixture.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    fixture.double_roundtrip(client);
+
+    assert!(crate::command::execute(fixture.niri_state(), "floating enable")[0].success);
+    fixture.niri_state().ipc_refresh_layout();
+    let mapped = fixture
+        .swayward()
+        .layout
+        .windows()
+        .find_map(|(_, mapped)| {
+            (mapped.toplevel().wl_surface().id().protocol_id() == surface.id().protocol_id())
+                .then(|| mapped.window.clone())
+        })
+        .unwrap();
+
+    let mut subscriber = UnixStream::connect(socket).unwrap();
+    subscriber
+        .write_all(&crate::ipc::wire::encode(
+            MessageType::Subscribe,
+            r#"["window"]"#,
+        ))
+        .unwrap();
+    let _ = read_ipc_reply(&mut fixture, &mut subscriber);
+
+    fixture
+        .swayward()
+        .layout
+        .remove_window(&mapped, crate::utils::transaction::Transaction::new());
+    fixture.niri_state().ipc_refresh_layout();
+    let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
+    assert_eq!(event_type, (1 << 31) | 3);
+    let expected: Value = serde_json::from_str(include_str!(
+        "../../tests/fixtures/sway/events/window.close.json"
+    ))
+    .unwrap();
+    assert_event_shape(
+        &expected,
+        &serde_json::from_str(&payload).unwrap(),
+        "$window",
+    );
+}
+
+#[test]
 fn marks_round_trip_through_commands_get_marks_and_tree() {
     let (mut fixture, socket) = ipc_fixture();
     fixture.add_output(1, (1920, 1080));
