@@ -72,3 +72,5 @@
 282-tabbed-floating-disable-crash.t
 255-multiple-marks.t
 261-match-con_id-con_mark-combinations.t
+293-sticky-output-crash.t
+241-consistent-center.t
