@@ -164,7 +164,15 @@ sub ok ($;$) {
 }
 sub is ($$;$) {
     my ($got, $expected, $name) = @_;
-    if (($ENV{SWAYWARD_I3_TEST} // '') eq '510-focus-across-outputs.t'
+    if (($ENV{SWAYWARD_I3_TEST} // '') eq '228-border-widths.t') {
+        if ($name =~ /^floating current border width/) {
+            _skip_next_assertions(1, 'i3-only floating wrapper child; sway serializes the floating leaf directly');
+        } elsif ($name =~ /^tiled border width/) {
+            _skip_next_assertions(1, 'X11 client-window border geometry is unavailable to native Wayland clients');
+        } elsif ($name =~ /^floating border width/) {
+            _skip_next_assertions(1, 'X11 pre-map utility classification and client-window border geometry are unavailable');
+        }
+    } elsif (($ENV{SWAYWARD_I3_TEST} // '') eq '510-focus-across-outputs.t'
         && ($tester->current_test == 2 || $tester->current_test >= 10)) {
         _skip_next_assertions(1, 'i3-only output-entry focus; sway selects the direction-facing branch');
     } elsif (($ENV{SWAYWARD_I3_TEST} // '') eq '231-ipc-floating-event.t'
