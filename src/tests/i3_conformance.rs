@@ -87,6 +87,21 @@ const ALLOWED_REJECTIONS: &[AllowedRejection] = &[
         reason: "the test verifies that an unmatched criterion leaves the window alive",
     },
     AllowedRejection {
+        test: "260-invalid-criteria.t",
+        command: "[con_id=foobar] kill",
+        reason: "the test intentionally sends a malformed con_id criterion",
+    },
+    AllowedRejection {
+        test: "261-match-con_id-con_mark-combinations.t",
+        command: "[con_id=__focused__ app_id=doesnotmatch] kill",
+        reason: "the test expects the combined criterion not to match",
+    },
+    AllowedRejection {
+        test: "261-match-con_id-con_mark-combinations.t",
+        command: "[con_mark=marked app_id=doesnotmatch] kill",
+        reason: "the test expects the combined criterion not to match",
+    },
+    AllowedRejection {
         test: "502-focus-output.t",
         command: "[con_mark=doesnotexist] focus output right",
         reason: "the assertion expects the unmatched criterion to leave output focus unchanged",

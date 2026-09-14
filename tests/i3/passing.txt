@@ -65,3 +65,4 @@
 502-focus-output.t
 
 220-ipc-window-title.t
+265-ipc-mark.t
