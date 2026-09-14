@@ -179,8 +179,8 @@ fn execute_one(
                 None
             } else {
                 Some(match direction {
-                    Direction::Left => Action::MoveColumnLeftOrToMonitorLeft,
-                    Direction::Right => Action::MoveColumnRightOrToMonitorRight,
+                    Direction::Left => Action::MoveColumnLeft,
+                    Direction::Right => Action::MoveColumnRight,
                     Direction::Up => Action::MoveWindowUp,
                     Direction::Down => Action::MoveWindowDown,
                 })

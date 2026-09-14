@@ -455,6 +455,24 @@ fn captured_workspace_event_sequences_pin_order_and_multiplicity() {
             include_str!("../../tests/fixtures/sway/events/workspace-rename.sequence.json"),
             &["rename"][..],
         ),
+        (
+            include_str!(
+                "../../tests/fixtures/sway/events/workspace-move-right-empty-destination.sequence.json"
+            ),
+            &[][..],
+        ),
+        (
+            include_str!(
+                "../../tests/fixtures/sway/events/workspace-move-right-occupied-destination.sequence.json"
+            ),
+            &[][..],
+        ),
+        (
+            include_str!(
+                "../../tests/fixtures/sway/events/workspace-move-right-last-source.sequence.json"
+            ),
+            &[][..],
+        ),
     ] {
         let events = serde_json::from_str::<Vec<Value>>(fixture).unwrap();
         let changes = events

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if (( $# < 1 || $# > 2 )); then
-    echo "usage: $0 /path/to/nested-sway-ipc.sock [multi-floating|event-sequences]" >&2
+    echo "usage: $0 /path/to/nested-sway-ipc.sock [multi-floating|event-sequences|cross-output-events]" >&2
     exit 2
 fi
 
@@ -126,6 +126,56 @@ close_last_window_events() {
 rename_events() {
     reset_state
     capture_event_sequence workspace-rename run_command 'rename workspace 1 to fixture-renamed'
+}
+
+prepare_cross_output_events() {
+    reset_state
+    run_command create_output
+    run_command 'output HEADLESS-1 pos 0 0 mode 800x600'
+    run_command 'output HEADLESS-2 pos 800 0 mode 800x600'
+    run_command 'workspace __fixture_dst output HEADLESS-2'
+}
+
+move_right_empty_destination_events() {
+    kill_fixture_windows
+    run_command 'focus output HEADLESS-1'
+    run_command workspace __fixture_src
+    spawn_window fixture-source-1
+    spawn_window fixture-source-2
+    wait_for_windows 2
+    capture_event_sequence workspace-move-right-empty-destination run_command 'move right'
+}
+
+move_right_occupied_destination_events() {
+    kill_fixture_windows
+    run_command workspace __fixture_dst
+    spawn_window fixture-destination
+    wait_for_windows 1
+    run_command 'focus output HEADLESS-1'
+    run_command workspace __fixture_src
+    spawn_window fixture-source-1
+    spawn_window fixture-source-2
+    wait_for_windows 3
+    capture_event_sequence workspace-move-right-occupied-destination run_command 'move right'
+}
+
+move_right_last_source_events() {
+    kill_fixture_windows
+    run_command workspace __fixture_dst
+    spawn_window fixture-destination
+    wait_for_windows 1
+    run_command 'focus output HEADLESS-1'
+    run_command workspace __fixture_last_source
+    spawn_window fixture-source-last
+    wait_for_windows 2
+    capture_event_sequence workspace-move-right-last-source run_command 'move right'
+}
+
+cross_output_events() {
+    prepare_cross_output_events
+    move_right_empty_destination_events
+    move_right_occupied_destination_events
+    move_right_last_source_events
 }
 
 capture() {
@@ -319,6 +369,12 @@ main() {
         switch_empty_events
         close_last_window_events
         rename_events
+        reset_state
+        return
+    fi
+    if [[ $SCENARIO == cross-output-events ]]; then
+        mkdir -p "$OUT/events"
+        cross_output_events
         reset_state
         return
     fi

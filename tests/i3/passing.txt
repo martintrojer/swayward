@@ -45,7 +45,6 @@
 296-regress-focus-behind-fullscreen-floating.t
 299-regress-scratchpad-focus.t
 303-regress-move-floating.t
-517-regress-move-direction-ipc.t
 520-regress-focus-direction-floating.t
 # Add a file here as soon as a conformance slice makes it green, and never
 # list and run via SWAYWARD_I3_TEST, so the findings remain executable.

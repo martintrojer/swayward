@@ -49,9 +49,15 @@ captured payload for each `change` value, formatted only with `jq -S .`.
 The `*.sequence.json` files preserve complete ordered workspace event lists from
 the same sway 1.11 installation. `workspace-switch-empty` captures a switch to
 an empty workspace and back. `workspace-close-last` captures closing the final
-window on an inactive workspace. `workspace-rename` captures a rename. Run
-`contrib/capture-sway-fixtures.sh <nested-SWAYSOCK> event-sequences` to replace
-them. The script uses a sway `SEND_TICK` request as the end-of-stream barrier.
+window on an inactive workspace. `workspace-rename` captures a rename. The
+`workspace-move-right-*` files capture a focused window moving across two
+headless outputs into an empty workspace, into an occupied workspace, and away
+from its source workspace's last window. Real sway 1.11 emits no workspace
+events in all three cases; each file is therefore an empty JSON array. Run
+`contrib/capture-sway-fixtures.sh <nested-SWAYSOCK> event-sequences` or
+`contrib/capture-sway-fixtures.sh <nested-SWAYSOCK> cross-output-events` to
+replace the corresponding set. The script uses a sway `SEND_TICK` request as
+the end-of-stream barrier.
 
 The capture produced all requested workspace changes: `init`, `empty`, `focus`,
 `move`, `rename`, `urgent`, and `reload`. It also produced all requested window
