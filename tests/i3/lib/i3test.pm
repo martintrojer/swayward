@@ -17,6 +17,7 @@ package i3test;
 our @ISA = qw(Exporter);
 our @EXPORT = qw(
     $x
+    BAIL_OUT
     cmd
     cmd_nosync
     cmp_float
@@ -129,6 +130,7 @@ sub _control {
     decode_json($reply);
 }
 
+sub BAIL_OUT ($) { $tester->BAIL_OUT(@_) }
 sub _skip_assertion {
     return 0 unless $skip_assertions;
     $tester->skip($skip_reason);

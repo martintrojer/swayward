@@ -56,6 +56,16 @@ The adapter also preserves `open_window(dont_map => 1)`: it creates the
 `xdg_toplevel` without committing the surface, and the test's later `map` call
 performs the initial commit, configure acknowledgment, and buffer attachment.
 
+Upstream has 49 test files that reference `X11::XCB`; all 49 are among the 68
+files classified as X11-touching, so none belongs wholly to the 217 portable
+set. Some contain useful portable prefixes. The local `X11::XCB` module exports
+only numeric constants needed to compile such files. Constants and `Rect` are
+inert values, not simulated X11 state. `X11::XCB::Window` is only a loadable
+package for the adapter's existing Wayland-backed window object. Constructors
+that imply a real X connection or X11 size-hint state die loudly; all other X11
+operations remain absent and likewise fail at their call sites. The stubs do not
+fabricate X11 window identity, properties, events, or protocol behavior.
+
 Sway sorts its stored workspace list when it creates or moves a workspace
 (`sway/sway/tree/workspace.c:255-259`; `sway/sway/tree/output.c:387-404`). The
 IPC serializer preserves that stored order. Swayward instead inherits niri's
@@ -180,7 +190,7 @@ without fabricating a tree that real sway clients do not see. See
 | `134-invalid-command.t` | 1 | pass | An unknown command returns a failure without terminating the compositor. Its expected `blargh!` rejection is listed in the runner's per-file allowlist. |
 | `140-focus-lost.t` | 3 | pass | Focus survives a layout change. |
 | `156-fullscreen-focus.t` | 64 | finished: 60 pass; 4 unproven | Fullscreen focus barriers, nested-container traversal, floating-origin restoration, direct focus unfullscreening, and global mode match sway (`sway/commands/focus.c:88-220,405-412`; `sway/tree/container.c:587-605,1200-1339`). Assertions 40–43 inspect the child count below i3's fullscreen split after workspace moves. See [Floating container wrappers](../../docs/KNOWN_DEVIATIONS.md#floating-container-wrappers). |
-| `165-for_window.t` | 0 | unproven | The unchanged file cannot compile without `X11::XCB::PROP_MODE_REPLACE`; later sections also require X11 property mutation, window types, and `$I3_WINDOW_ID`. Of the original 23 translation blockers, portable border actions and combined class-plus-title criteria now translate. Five static directives remain fail-loud: three X11-only criteria (`instance`, `id`, and `window_role`), one missing workspace criterion, and one missing map-time `mark` action. Loop-generated `window_type` rules and map-time `exec` also remain unsupported. |
+| `165-for_window.t` | 0 | unproven | The constant-only `X11::XCB` stub now lets the unchanged file compile and reach configuration translation, where it fails loud before assertions on 16 unsupported directives. Portable border actions and combined class-plus-title criteria translate. Remaining blockers are X11-only `instance`, `id`, `window_role`, and generated `window_type` criteria, plus missing workspace criteria and map-time `mark`/`exec` actions. |
 | `166-assign.t` | 106 | 71 pass; 3 skip; 32 fail before target fix | All assertions run after adapter lifecycle and X11-stub additions. The translator now strips the optional `workspace` keyword and maps named output assignments to `open-on-output`. Workspace-number assignments fail loudly because window rules have no workspace-number target; silently treating the number as a workspace name would differ when an existing workspace such as `2: targetws` has that number. Sway records distinct assignment types and resolves them with `workspace_by_number` or `output_by_name_or_id` (`sway/commands/assign.c:31-49`; `sway/tree/view.c:631-659`). Relative and primary/nonprimary output assertions are i3-only: sway’s `output_by_name_or_id` matches only `*`, output identifiers, and names (`sway/desktop/output.c:42-63`). The three dock-state assertions are skipped because native Wayland clients cannot create X11 dock windows. |
 | `170-force_focus_wrapping.t` | 12 | pass | The translator maps the deprecated directive to sway’s modern modes: true becomes `focus_wrapping force`, while false becomes `yes` (`sway/commands/force_focus_wrapping.c:6-23`; `sway.5.scd:743-750`). |
 | `186-regress-assign-focus-parent.t` | 6 | pass | Title-regex assignment places each window on the destination workspace while preserving parent-focused insertion (`sway/criteria.c:203-217,601-650`; `sway/tree/view.c:631-664`). |
