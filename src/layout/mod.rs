@@ -3120,6 +3120,9 @@ impl<W: LayoutElement> Layout<W> {
         {
             return;
         }
+        if let Some(workspace) = self.workspaces_mut().find(|ws| ws.has_window(&window)) {
+            workspace.prepare_tiled_window_for_scratchpad(&window);
+        }
         let Some(removed) = self.remove_window(&window, Transaction::new()) else {
             return;
         };

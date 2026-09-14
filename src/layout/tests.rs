@@ -2169,6 +2169,73 @@ fn large_negative_height_change() {
 }
 
 #[test]
+fn tiled_window_gets_sway_default_size_when_first_moved_to_scratchpad() {
+    let mut options = Options::default();
+    options.layout.border.off = true;
+    let mut layout = check_ops_with_options(
+        options,
+        [
+            Op::AddOutput(1),
+            Op::AddWindow {
+                params: TestWindowParams::new(1),
+            },
+        ],
+    );
+
+    layout.move_to_scratchpad(Some(&1));
+    layout.show_scratchpad(Some(&1));
+
+    let window = layout
+        .windows()
+        .find(|(_, window)| window.id() == &1)
+        .unwrap()
+        .1;
+    assert_eq!(window.0.requested_size.get(), Some(Size::from((640, 540))));
+    let workspace = layout.active_workspace().unwrap();
+    let (_, pos) = workspace
+        .floating()
+        .tiles_with_ipc_layouts()
+        .find(|(tile, _)| tile.window().id() == &1)
+        .unwrap();
+    assert_eq!(pos.tile_pos_in_workspace_view, Some((320., 90.)));
+}
+
+#[test]
+fn scratchpad_default_size_honors_client_size_hints() {
+    let mut options = Options::default();
+    options.layout.border.off = true;
+    let mut layout = check_ops_with_options(
+        options,
+        [
+            Op::AddOutput(1),
+            Op::AddWindow {
+                params: TestWindowParams {
+                    min_max_size: (Size::from((700, 100)), Size::from((800, 400))),
+                    ..TestWindowParams::new(1)
+                },
+            },
+        ],
+    );
+
+    layout.move_to_scratchpad(Some(&1));
+    layout.show_scratchpad(Some(&1));
+
+    let window = layout
+        .windows()
+        .find(|(_, window)| window.id() == &1)
+        .unwrap()
+        .1;
+    assert_eq!(window.0.requested_size.get(), Some(Size::from((700, 400))));
+    let workspace = layout.active_workspace().unwrap();
+    let (_, layout) = workspace
+        .floating()
+        .tiles_with_ipc_layouts()
+        .find(|(tile, _)| tile.window().id() == &1)
+        .unwrap();
+    assert_eq!(layout.tile_pos_in_workspace_view, Some((290., 160.)));
+}
+
+#[test]
 fn large_max_size() {
     let ops = [
         Op::AddOutput(1),
