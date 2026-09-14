@@ -69,3 +69,5 @@
 265-ipc-mark.t
 275-ipc-window-close.t
 282-tabbed-floating-disable-crash.t
+255-multiple-marks.t
+261-match-con_id-con_mark-combinations.t

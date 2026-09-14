@@ -1467,6 +1467,72 @@ fn focused_container_can_be_marked_and_targeted_by_con_id() {
         find_json_node(&tree, "con", true).unwrap()["layout"],
         "tabbed"
     );
+
+    let outcome = crate::command::execute(f.niri_state(), "[con_id=__focused__] layout stacked");
+    assert!(outcome[0].success);
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &swayward.marks_by_window,
+        &swayward.marks_by_container,
+    ))
+    .unwrap();
+    assert_eq!(
+        find_json_node(&tree, "con", true).unwrap()["layout"],
+        "stacked"
+    );
+}
+
+#[test]
+fn focused_leaf_con_id_matches_get_tree_and_focused_criteria() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.xdg_toplevel.set_app_id("focused-leaf".into());
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &swayward.marks_by_window,
+        &swayward.marks_by_container,
+    ))
+    .unwrap();
+    let focused_id = find_json_node(&tree, "con", true).unwrap()["id"]
+        .as_i64()
+        .unwrap();
+
+    for (criterion, mark) in [
+        (format!(r#"con_id={focused_id}"#), "numeric"),
+        ("con_id=__focused__".to_owned(), "focused"),
+    ] {
+        let result = crate::command::execute(
+            f.niri_state(),
+            &format!(r#"[{criterion} app_id="focused-leaf"] mark {mark}"#),
+        );
+        assert!(result[0].success, "{criterion}: {result:?}");
+    }
+    let focused = f.swayward().layout.focus().unwrap().id();
+    assert_eq!(
+        f.swayward().marks_by_window.get(&focused).unwrap(),
+        &["focused".to_owned()]
+    );
+
+    let result = crate::command::execute(f.niri_state(), "[con_id=not-a-number] nop");
+    assert_eq!(result[0].parse_error, Some(true));
+    assert_eq!(
+        result[0].error.as_deref(),
+        Some("The value for 'con_id' should be '__focused__' or numeric")
+    );
 }
 
 #[test]

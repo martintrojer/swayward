@@ -796,12 +796,10 @@ fn focused_id(state: &State) -> Option<crate::window::mapped::MappedId> {
 }
 
 fn focused_con_id(state: &State) -> Option<u64> {
-    state
-        .swayward
-        .layout
-        .focused_tiling_node()
-        .map(|id| crate::ipc::tree::container_id(id) as u64)
-        .or_else(|| focused_id(state).map(|id| crate::ipc::tree::window_id(id) as u64))
+    match focused_target(state)? {
+        CommandTarget::Container(_, node) => Some(crate::ipc::tree::container_id(node) as u64),
+        CommandTarget::Window(window) => Some(crate::ipc::tree::window_id(window) as u64),
+    }
 }
 
 type WindowSnapshot = (
