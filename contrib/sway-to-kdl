@@ -256,16 +256,32 @@ class Translator:
         return command
 
     def translate_assign(
-        self, source: Path, line: int, criteria: str, workspace: str
+        self, source: Path, line: int, criteria: str, target: str
     ) -> None:
         match = self.translate_window_criteria(source, line, "assign", criteria)
         if match is None:
             return
+        target = target.strip()
+        property_name = "open-on-workspace"
+        if target.startswith("output "):
+            property_name = "open-on-output"
+            target = target.removeprefix("output ").strip()
+        elif target.startswith("workspace number "):
+            number = target.removeprefix("workspace number ").strip().strip(chr(34))
+            reason = (
+                f"invalid workspace number {number!r}"
+                if not number or not number[0].isdigit()
+                else "workspace-number assignments are unsupported"
+            )
+            self.warn(source, line, f"assign {criteria} {target}", reason)
+            return
+        elif target.startswith("workspace "):
+            target = target.removeprefix("workspace ").strip()
         field, value = match
         self.sections += [
             "window-rule {",
             f"    match {field}={self.quote(value)}",
-            f"    open-on-workspace {self.quote(workspace.strip(chr(34)))}",
+            f"    {property_name} {self.quote(target.strip(chr(34)))}",
             "}",
         ]
 

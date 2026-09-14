@@ -79,6 +79,29 @@ bindsym $missing+x nop
         for item in result.stderr.splitlines()[1:]:
             self.assertIn(item.strip(), result.stdout)
 
+    def test_assign_workspace_target_is_preserved(self):
+        result = self.translate('assign [class="special"] workspace targetws\n')
+        self.assertIn('open-on-workspace "targetws"', result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
+    def test_assign_output_target_uses_open_on_output(self):
+        result = self.translate('assign [class="special"] output DP-1\n')
+        self.assertIn('open-on-output "DP-1"', result.stdout)
+        self.assertNotIn("open-on-workspace", result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
+    def test_assign_workspace_number_requires_manual_conversion(self):
+        result = self.translate('assign [class="special"] workspace number 2\n')
+        self.assertNotIn("open-on-workspace", result.stdout)
+        self.assertIn("workspace-number assignments are unsupported", result.stdout)
+        self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
+    def test_assign_rejects_invalid_workspace_number(self):
+        result = self.translate('assign [class="special"] workspace number nope\n')
+        self.assertNotIn("open-on-workspace", result.stdout)
+        self.assertIn("invalid workspace number 'nope'", result.stdout)
+        self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
     def test_x11_class_translates_to_wayland_app_id_without_treating_regex_anchors_as_variables(self):
         result = self.translate(
             'for_window [class="^special$"] floating enable, floating disable\n'
