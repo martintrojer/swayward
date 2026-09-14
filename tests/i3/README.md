@@ -26,7 +26,9 @@ create an empty container through IPC.
 
 The adapter gives each `open_window` object the real swayward container id and
 translates a test-side `node.window` read for a native `xdg_shell` node to that
-same `node.id`. It does not add `window` to the IPC object: key iteration and
+same `node.id`. Its X11 `mapped` compatibility check reads workspace visibility
+from `GET_WORKSPACES`; sway's `GET_TREE` `focused` flag identifies only the
+single default-seat focus node, not every visible workspace. It does not add `window` to the IPC object: key iteration and
 `exists` still expose sway's native Wayland schema, which omits `window`
 (`sway/sway/ipc-json.c:670-683`). These comparisons prove container identity and
 the behavior addressed through it, but do not prove X11 window identity or

@@ -264,7 +264,7 @@ fn describe_output_node(
         workspaces,
         vec![],
         focus,
-        output.focused,
+        false,
         NodeProperties::Output(OutputProperties {
             active: output.active,
             adaptive_sync_status: output.adaptive_sync_status,
@@ -307,6 +307,14 @@ fn describe_workspace_node(
         workspace.id(),
     )
     .unwrap_or_else(|| empty_tiling_node(rect));
+    let workspace_focused = compositor_layout
+        .active_monitor_ref()
+        .is_some_and(|monitor| {
+            monitor.output_name() == output && monitor.active_workspace_ref().id() == workspace.id()
+        });
+    if !workspace_focused || workspace.floating_is_active() {
+        clear_focused(&mut tiled);
+    }
     let Node {
         layout,
         orientation,
@@ -315,23 +323,16 @@ fn describe_workspace_node(
         focused,
         ..
     } = &mut tiled;
-    let (layout, orientation, nodes, mut focus, container_focused) = (
+    let (layout, orientation, nodes, mut focus, focused) = (
         *layout,
         orientation.clone(),
         std::mem::take(nodes),
         std::mem::take(focus),
-        *focused,
+        *focused || workspace_focused && workspace.active_window().is_none(),
     );
-    let workspace_focused = compositor_layout
-        .active_monitor_ref()
-        .is_some_and(|monitor| {
-            monitor.output_name() == output && monitor.active_workspace_ref().id() == workspace.id()
-        });
-    let focused = workspace_focused
-        || container_focused
-        || workspace
-            .active_window()
-            .is_some_and(|window| window.is_focused());
+    let active_window = workspace_focused
+        .then(|| workspace.active_window().map(|window| window.id()))
+        .flatten();
     let mut floating_nodes = workspace
         .tiles_with_ipc_layouts()
         .filter(|(tile, _)| workspace.is_floating_for_ipc(&tile.window().window))
@@ -347,6 +348,8 @@ fn describe_workspace_node(
                 compositor_layout.is_scratchpad_window(&tile.window().window),
                 true,
             );
+            node.focused =
+                workspace.floating_is_active() && active_window == Some(tile.window().id());
             let border = tile.sway_border();
             node.border = ipc_border(border.0);
             node.current_border_width = i32::from(border.1);
@@ -388,6 +391,13 @@ fn describe_workspace_node(
             representation,
         }),
     )
+}
+
+fn clear_focused(node: &mut Node) {
+    node.focused = false;
+    for child in node.nodes.iter_mut().chain(&mut node.floating_nodes) {
+        clear_focused(child);
+    }
 }
 
 pub(crate) fn describe_tiling<'a, I>(

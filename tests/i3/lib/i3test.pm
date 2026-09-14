@@ -62,6 +62,7 @@ my $tester = Test::Builder->new;
 my $window_count = 0;
 my $skip_assertions = 0;
 my $skip_reason;
+my %visible_workspaces;
 our $x = bless {}, 'i3test::X';
 
 package AnyEvent;
@@ -105,7 +106,10 @@ sub _request {
     my $decoded = decode_json($reply);
     # Let unchanged i3 tests use their X11 `node.window` lookup against the
     # Wayland node id. Iteration and `exists` still expose sway's real schema.
-    _translate_wayland_identity($decoded) if $type == 4;
+    if ($type == 4) {
+        %visible_workspaces = map { $_->{name} => $_->{visible} } @{_request(1)};
+        _translate_wayland_identity($decoded);
+    }
     return $decoded;
 }
 
@@ -462,7 +466,7 @@ sub height { $_[0]->{height} }
 package i3test;
 sub _find_window {
     my ($node, $id, $visible) = @_;
-    $visible = $node->{focused} if $node->{type} eq 'workspace';
+    $visible = $visible_workspaces{$node->{name}} if $node->{type} eq 'workspace';
     return ($node, $visible)
         if $node->{type} =~ /^(?:con|floating_con)$/
         && (($node->{id} // -1) == $id || ($node->{window} // -1) == $id);
