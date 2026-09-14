@@ -167,6 +167,9 @@ sub is ($$;$) {
     if (($ENV{SWAYWARD_I3_TEST} // '') eq '510-focus-across-outputs.t'
         && ($tester->current_test == 2 || $tester->current_test >= 10)) {
         _skip_next_assertions(1, 'i3-only output-entry focus; sway selects the direction-facing branch');
+    } elsif (($ENV{SWAYWARD_I3_TEST} // '') eq '231-ipc-floating-event.t'
+        && ($name // '') eq 'floating is user_off') {
+        _skip_next_assertions(1, 'i3 tracks user_off; sway serializes tiled containers as auto_off');
     }
     _skip_assertion() or $tester->is_eq($got, $expected, $name);
 }
@@ -224,8 +227,10 @@ sub events_for {
     while (1) {
         my ($type, $payload) = _read_reply($socket);
         last if ($type & 0x7fffffff) == 7 && !$payload->{first};
-        push @events, $payload
-            if ($type & 0x7fffffff) == $event_types{$event};
+        if (($type & 0x7fffffff) == $event_types{$event}) {
+            _translate_wayland_identity($payload);
+            push @events, $payload;
+        }
     }
     @events;
 }

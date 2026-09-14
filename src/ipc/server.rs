@@ -880,6 +880,9 @@ impl State {
             let shown_from_scratchpad =
                 moved && previous_node.is_some_and(|node| node["scratchpad_state"] == "fresh");
             let floating_changed = ipc_win.is_floating != mapped.is_floating();
+            let sway_floating_changed = previous_node
+                .zip(current_node.as_ref())
+                .is_some_and(|(old, current)| old["type"] != current["type"]);
             let title_changed =
                 with_toplevel_role(mapped.toplevel(), |role| ipc_win.title != role.title);
             let fullscreen_changed = previous_node
@@ -892,9 +895,7 @@ impl State {
             if let Some(container) = current_node.clone() {
                 for change in [
                     moved.then_some("move"),
-                    (floating_changed
-                        && previous_node.is_some_and(|node| node["type"] != "floating_con"))
-                    .then_some("floating"),
+                    sway_floating_changed.then_some("floating"),
                     title_changed.then_some("title"),
                     fullscreen_changed.then_some("fullscreen_mode"),
                     marks_changed.then_some("mark"),
