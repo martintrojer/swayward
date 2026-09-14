@@ -28,4 +28,10 @@ sub ICCCM_WM_STATE_WITHDRAWN () { 0 }
 sub PROP_MODE_REPLACE () { 0 }
 sub STACK_MODE_ABOVE () { 0 }
 
+package X11::XCB::Connection;
+sub new { die "X11::XCB::Connection is unavailable in the Wayland test adapter\n" }
+
+package X11::XCB::Sizehints::Aspect;
+sub new { die "X11::XCB::Sizehints::Aspect is unavailable in the Wayland test adapter\n" }
+
 1;

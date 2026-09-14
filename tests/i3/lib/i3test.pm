@@ -6,6 +6,7 @@ use Exporter ();
 use File::Temp qw(tmpnam);
 use IO::Socket::UNIX;
 use JSON::PP qw(decode_json encode_json);
+use X11::XCB::Rect;
 use Test::Builder;
 use Test::More ();
 
@@ -432,6 +433,7 @@ sub map {
 }
 sub _node { (i3test::_find_window(i3test::_request(4), $_[0]->{id}, 0))[0] }
 sub rect {
+    die "X11 window geometry mutation is unavailable in the Wayland test adapter\n" if @_ > 1;
     my $node = $_[0]->_node;
     return (
         bless({ %{$node->{rect}} }, 'i3test::Rect'),
