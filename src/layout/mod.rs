@@ -3162,13 +3162,25 @@ impl<W: LayoutElement> Layout<W> {
         }
 
         let index = target_index.unwrap_or(0);
+        self.scratchpad.get(index)?;
+        let active_workspace = self.active_workspace()?.id();
+        for workspace in self.workspaces_mut() {
+            let disables_fullscreen = workspace.id() == active_workspace
+                || workspace.fullscreen_mode() == Some(tiling_tree::FullscreenMode::Global);
+            if disables_fullscreen {
+                if let Some(window) = workspace.fullscreen_window().cloned() {
+                    workspace.set_fullscreen(&window, false);
+                }
+            }
+        }
+
         let mut removed = self.scratchpad.remove(index)?;
         removed.is_floating = true;
         let shown = removed.tile.window().id().clone();
-        let Some(workspace) = self.active_workspace_mut() else {
-            self.scratchpad.push_front(removed);
-            return None;
-        };
+        let workspace = self
+            .workspaces_mut()
+            .find(|workspace| workspace.id() == active_workspace)
+            .unwrap();
         workspace.add_tile(
             removed.tile,
             WorkspaceAddWindowTarget::Auto,

@@ -1595,6 +1595,52 @@ fn scratchpad_show_moves_visible_window_to_current_workspace_and_focuses_it() {
 }
 
 #[test]
+fn scratchpad_show_disables_target_workspace_and_global_fullscreen() {
+    for fullscreen in ["fullscreen enable", "fullscreen enable global"] {
+        let mut f = Fixture::new();
+        f.add_output(1, (1920, 1080));
+        let client = f.add_client();
+        let mut ids = Vec::new();
+
+        for _ in 0..2 {
+            let window = f.client(client).create_window();
+            window.commit();
+            let surface = window.surface.clone();
+            f.roundtrip(client);
+            let window = f.client(client).window(&surface);
+            window.attach_new_buffer();
+            window.ack_last_and_commit();
+            f.double_roundtrip(client);
+            ids.push(f.swayward().layout.focus().unwrap().id());
+        }
+
+        assert!(crate::command::execute(f.niri_state(), fullscreen)[0].success);
+        assert!(f.swayward().layout.focused_fullscreen_mode().is_some());
+        let first = crate::ipc::tree::window_id(ids[0]);
+        assert!(
+            crate::command::execute(f.niri_state(), &format!("[con_id={first}] move scratchpad"))
+                [0]
+            .success
+        );
+        assert!(
+            crate::command::execute(f.niri_state(), &format!("[con_id={first}] scratchpad show"))
+                [0]
+            .success
+        );
+
+        assert_eq!(
+            f.swayward().layout.focused_fullscreen_mode(),
+            None,
+            "{fullscreen}"
+        );
+        assert!(
+            !f.swayward().layout.global_fullscreen_active(),
+            "{fullscreen}"
+        );
+    }
+}
+
+#[test]
 fn scratchpad_show_toggles_the_only_window() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));
