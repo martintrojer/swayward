@@ -45,3 +45,5 @@
 146-floating-reinsert.t
 145-flattening.t
 132-move-workspace.t
+
+138-floating-attach.t
