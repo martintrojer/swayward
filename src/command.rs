@@ -1848,6 +1848,8 @@ mod tests {
             Command::Workspace(WorkspaceTarget::Number("2:chat".into()))
         );
         assert_eq!(command("kill"), Command::Kill);
+        assert_eq!(command("kill window"), Command::Kill);
+        assert_eq!(command("kill client extra arguments"), Command::Kill);
         assert_eq!(
             command("resize shrink height 10 ppt"),
             Command::Resize {

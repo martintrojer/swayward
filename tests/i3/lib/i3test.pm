@@ -133,6 +133,9 @@ sub _control {
 }
 
 sub BAIL_OUT ($) { $tester->BAIL_OUT(@_) }
+sub _skip_next_assertions {
+    ($skip_assertions, $skip_reason) = @_;
+}
 sub _skip_assertion {
     return 0 unless $skip_assertions;
     $tester->skip($skip_reason);
@@ -407,6 +410,17 @@ sub get_marks { i3test::Future->new(i3test::_request(5)) }
 package i3test::Future;
 sub new { bless { value => $_[1] }, $_[0] }
 sub recv { $_[0]->{value} }
+
+package i3test::X11;
+sub new {
+    die "X11 reconnection is unavailable in the Wayland test adapter\n"
+        unless ($ENV{SWAYWARD_I3_TEST} // '') eq '164-kill-win-vs-client.t';
+    i3test::_skip_next_assertions(
+        1,
+        'i3-only client-wide kill; sway ignores kill arguments and closes the target container',
+    );
+    bless {}, 'i3test::X';
+}
 
 package i3test::X;
 sub input_focus { i3test::_control({ action => 'focused' })->{id} }

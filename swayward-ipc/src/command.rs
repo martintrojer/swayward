@@ -391,7 +391,7 @@ fn parse_one(input: &str) -> Result<Command, String> {
             [show] if show.eq_ignore_ascii_case("show") => Ok(Command::ScratchpadShow),
             _ => Err("Expected 'scratchpad show'".into()),
         },
-        "kill" => no_args(rest, "kill").map(|()| Command::Kill),
+        "kill" => Ok(Command::Kill),
         "resize" => parse_resize(rest),
         "reload" => no_args(rest, "reload").map(|()| Command::Reload),
         "mode" => one(rest, "mode <name>").map(|name| Command::Mode(join_words(&[name]))),
