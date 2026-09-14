@@ -157,7 +157,10 @@ pub enum Command {
     Floating(Toggle),
     Border(Border),
     Sticky(String),
-    Workspace(WorkspaceTarget),
+    Workspace {
+        target: WorkspaceTarget,
+        auto_back_and_forth: bool,
+    },
     AssignWorkspace {
         target: WorkspaceTarget,
         output: String,
@@ -753,7 +756,16 @@ fn parse_workspace_command(args: &[&str]) -> Result<Command, String> {
             output: join_words(&args[index + 1..]),
         });
     }
-    parse_workspace(args).map(Command::Workspace)
+    let (auto_back_and_forth, args) = match args {
+        [option, rest @ ..] if option.eq_ignore_ascii_case("--no-auto-back-and-forth") => {
+            (false, rest)
+        }
+        _ => (true, args),
+    };
+    parse_workspace(args).map(|target| Command::Workspace {
+        target,
+        auto_back_and_forth,
+    })
 }
 
 fn parse_workspace(args: &[&str]) -> Result<WorkspaceTarget, String> {

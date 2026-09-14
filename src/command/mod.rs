@@ -320,13 +320,17 @@ fn execute_one(
             state.swayward.queue_redraw_all();
             None
         }
-        Command::Workspace(target) => {
-            let auto_back_and_forth = state
-                .swayward
-                .config
-                .borrow()
-                .input
-                .workspace_auto_back_and_forth;
+        Command::Workspace {
+            target,
+            auto_back_and_forth,
+        } => {
+            let auto_back_and_forth = auto_back_and_forth
+                && state
+                    .swayward
+                    .config
+                    .borrow()
+                    .input
+                    .workspace_auto_back_and_forth;
             let result = if auto_back_and_forth {
                 state
                     .swayward
@@ -1155,11 +1159,17 @@ mod tests {
         );
         assert_eq!(
             command("workspace next_on_output"),
-            Command::Workspace(WorkspaceTarget::NextOnOutput)
+            Command::Workspace {
+                target: WorkspaceTarget::NextOnOutput,
+                auto_back_and_forth: true,
+            }
         );
         assert_eq!(
             command("workspace number 2:chat"),
-            Command::Workspace(WorkspaceTarget::Number("2:chat".into()))
+            Command::Workspace {
+                target: WorkspaceTarget::Number("2:chat".into()),
+                auto_back_and_forth: true,
+            }
         );
         assert_eq!(command("kill"), Command::Kill);
         assert_eq!(command("kill window"), Command::Kill);
@@ -1382,11 +1392,17 @@ mod tests {
     fn parses_workspace_names_with_spaces() {
         assert_eq!(
             command("workspace number 3: web browser"),
-            Command::Workspace(WorkspaceTarget::Number("3: web browser".into()))
+            Command::Workspace {
+                target: WorkspaceTarget::Number("3: web browser".into()),
+                auto_back_and_forth: true,
+            }
         );
         assert_eq!(
             command("workspace 'mail and chat'"),
-            Command::Workspace(WorkspaceTarget::Name("mail and chat".into()))
+            Command::Workspace {
+                target: WorkspaceTarget::Name("mail and chat".into()),
+                auto_back_and_forth: true,
+            }
         );
     }
 

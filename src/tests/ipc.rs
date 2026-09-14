@@ -3082,6 +3082,59 @@ fn targeted_focus_selects_the_requested_unfocused_window() {
 }
 
 #[test]
+fn workspace_auto_back_and_forth_honors_global_and_command_settings() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    f.swayward()
+        .config
+        .borrow_mut()
+        .input
+        .workspace_auto_back_and_forth = true;
+
+    for workspace in ["1", "2"] {
+        assert!(
+            crate::command::execute(f.niri_state(), &format!("workspace {workspace}"))[0].success
+        );
+    }
+
+    // Enabled + active target + previous workspace: bounce.
+    assert!(crate::command::execute(f.niri_state(), "workspace 2")[0].success);
+    assert_eq!(
+        f.swayward().layout.active_workspace().unwrap().number(),
+        Some(1)
+    );
+
+    // A different target switches normally instead of bouncing.
+    assert!(crate::command::execute(f.niri_state(), "workspace 2")[0].success);
+    assert_eq!(
+        f.swayward().layout.active_workspace().unwrap().number(),
+        Some(2)
+    );
+
+    // The command-level override suppresses the enabled global option.
+    assert!(
+        crate::command::execute(f.niri_state(), "workspace --no-auto-back-and-forth 2",)[0].success
+    );
+    assert_eq!(
+        f.swayward().layout.active_workspace().unwrap().number(),
+        Some(2)
+    );
+
+    // With the option disabled, selecting the active workspace remains there.
+    f.swayward()
+        .config
+        .borrow_mut()
+        .input
+        .workspace_auto_back_and_forth = false;
+    assert!(crate::command::execute(f.niri_state(), "workspace 1")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "workspace 1")[0].success);
+    assert_eq!(
+        f.swayward().layout.active_workspace().unwrap().number(),
+        Some(1)
+    );
+}
+
+#[test]
 fn workspace_back_and_forth_without_history_uses_sway_error() {
     let (mut f, socket) = ipc_fixture();
     f.add_output(1, (1920, 1080));
