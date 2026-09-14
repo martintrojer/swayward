@@ -162,6 +162,61 @@ impl fmt::Display for DefaultSize {
 }
 
 #[test]
+fn assigned_window_on_another_output_does_not_steal_focus() {
+    let config = Config::parse_mem(
+        r#"
+window-rule {
+    match app-id="assigned"
+    open-on-output "headless-2"
+}
+"#,
+    )
+    .unwrap();
+    let mut f = Fixture::with_config(config);
+    f.add_output(1, (1280, 720));
+    f.add_output(2, (1280, 720));
+    f.niri_focus_output(1);
+    let client = f.add_client();
+
+    let focused = f.client(client).create_window();
+    focused.xdg_toplevel.set_app_id("focused".into());
+    focused.xdg_toplevel.set_title("focused".into());
+    focused.commit();
+    let focused_surface = focused.surface.clone();
+    f.roundtrip(client);
+    let focused = f.client(client).window(&focused_surface);
+    focused.attach_new_buffer();
+    focused.ack_last_and_commit();
+    f.double_roundtrip(client);
+    let focused = f.swayward().layout.focus().unwrap().id();
+
+    let assigned = f.client(client).create_window();
+    assigned.xdg_toplevel.set_app_id("assigned".into());
+    assigned.xdg_toplevel.set_title("assigned".into());
+    assigned.commit();
+    let assigned_surface = assigned.surface.clone();
+    f.roundtrip(client);
+    let assigned = f.client(client).window(&assigned_surface);
+    assigned.attach_new_buffer();
+    assigned.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    assert_eq!(f.swayward().layout.focus().unwrap().id(), focused);
+    assert_eq!(
+        f.swayward().layout.active_output().unwrap().name(),
+        "headless-1"
+    );
+    let assigned_output = f
+        .swayward()
+        .layout
+        .windows()
+        .find(|(_, mapped)| mapped.id() != focused)
+        .and_then(|(monitor, _)| monitor)
+        .unwrap();
+    assert_eq!(assigned_output.output_name(), "headless-2");
+}
+
+#[test]
 fn target_output_and_workspaces() {
     store_and_increase_nofile_rlimit();
 
