@@ -1646,6 +1646,38 @@ fn empty_scratch_workspace_is_always_serialized() {
 }
 
 #[test]
+fn get_workspaces_distinguishes_seat_focus_from_output_visibility() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    f.add_output(2, (1920, 1080));
+    f.niri_focus_output(2);
+
+    let swayward = f.swayward();
+    let workspaces = describe_workspaces(&swayward.layout, &swayward.global_space);
+    assert_eq!(
+        workspaces
+            .iter()
+            .filter(|workspace| workspace.focused)
+            .count(),
+        1
+    );
+    assert_eq!(
+        workspaces
+            .iter()
+            .filter(|workspace| workspace.visible)
+            .count(),
+        2
+    );
+    assert!(
+        workspaces
+            .iter()
+            .find(|workspace| workspace.focused)
+            .unwrap()
+            .visible
+    );
+}
+
+#[test]
 fn workspace_commands_create_sparse_global_identities() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));

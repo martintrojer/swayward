@@ -78,7 +78,11 @@ pub fn describe_workspaces(
                 .sway_name()
                 .unwrap_or_else(|| (index + 1).to_string());
             let rect = output_rect(global_space, monitor.output());
-            let focused = monitor.active_workspace_idx() == index;
+            let visible = monitor.active_workspace_idx() == index;
+            let focused = visible
+                && layout
+                    .active_monitor_ref()
+                    .is_some_and(|active| active.output() == monitor.output());
             let focus = workspace
                 .active_window()
                 .map(|window| window_id(window.id()))
@@ -128,7 +132,7 @@ pub fn describe_workspaces(
                 sticky: false,
                 node_type: NodeType::Workspace,
                 urgent: workspace.is_urgent(),
-                visible: focused,
+                visible,
                 window: None,
                 window_rect: Rect::default(),
             })
