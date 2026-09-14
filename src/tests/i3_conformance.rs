@@ -18,6 +18,72 @@ use crate::utils::transaction::Transaction;
 
 static NEXT_SOCKET: AtomicU64 = AtomicU64::new(0);
 
+struct AllowedRejection {
+    test: &'static str,
+    command: &'static str,
+    reason: &'static str,
+}
+
+// Every rejection from a passing conformance file must be reviewed here. Keying by both file and
+// exact command prevents a new rejected setup command from hiding behind an unrelated exception.
+const ALLOWED_REJECTIONS: &[AllowedRejection] = &[
+    AllowedRejection {
+        test: "101-focus.t",
+        command: "layout default",
+        reason: "known parser gap tracked by m6_fix_layout_default_command",
+    },
+    AllowedRejection {
+        test: "101-focus.t",
+        command: "[con_mark=__does_not_exist] focus",
+        reason: "the assertion expects this unmatched criterion to fail",
+    },
+    AllowedRejection {
+        test: "119-match.t",
+        command: "[con_id=\"99999\"] kill",
+        reason: "the test verifies that an unmatched criterion leaves the window alive",
+    },
+    AllowedRejection {
+        test: "126-regress-close.t",
+        command: "mode toggle",
+        reason: "stale i3 floating setup; mode now selects a binding mode",
+    },
+    AllowedRejection {
+        test: "144-regress-floating-resize.t",
+        command: "mode toggle",
+        reason: "stale i3 floating setup; mode now selects a binding mode",
+    },
+    AllowedRejection {
+        test: "152-regress-level-up.t",
+        command: "mode toggle",
+        reason: "stale i3 floating setup; mode now selects a binding mode",
+    },
+    AllowedRejection {
+        test: "192-layout.t",
+        command: "layout toggle stacked",
+        reason: "documented i3/sway layout-toggle divergence",
+    },
+    AllowedRejection {
+        test: "292-regress-layout-toggle.t",
+        command: "layout toggle 1337 1337",
+        reason: "the regression intentionally sends invalid layout names",
+    },
+];
+
+fn rejected_commands(stderr: &str) -> impl Iterator<Item = &str> {
+    stderr.lines().filter_map(|line| {
+        line.strip_prefix("# swayward rejected `")
+            .and_then(|line| line.split_once("`: "))
+            .map(|(command, _)| command)
+    })
+}
+
+fn allowed_rejections(test: &str) -> Vec<&'static AllowedRejection> {
+    ALLOWED_REJECTIONS
+        .iter()
+        .filter(|allowed| allowed.test == test)
+        .collect()
+}
+
 fn socket_path(kind: &str) -> PathBuf {
     std::env::temp_dir().join(format!(
         "swayward-i3-{kind}-{}-{}.sock",
@@ -310,11 +376,17 @@ fn run_i3_test(test: &str) {
         }
         if let Some(status) = child.try_wait().unwrap() {
             let output = child.wait_with_output().unwrap();
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if !stderr.is_empty() {
+                eprint!("{stderr}");
+            }
+            let rejected = rejected_commands(&stderr).collect::<Vec<_>>();
+            let allowed = allowed_rejections(test);
+            let expected = allowed.iter().map(|item| item.command).collect::<Vec<_>>();
             assert!(
-                status.success(),
-                "i3 test {test} failed\nstdout:\n{}\nstderr:\n{}",
-                String::from_utf8_lossy(&output.stdout),
-                String::from_utf8_lossy(&output.stderr)
+                status.success() && rejected == expected,
+                "i3 test {test} failed or its rejected commands changed\nexpected rejections: {expected:?}\nactual rejections: {rejected:?}\nstdout:\n{stdout}\nstderr:\n{stderr}"
             );
             break;
         }
@@ -329,6 +401,25 @@ fn run_i3_test(test: &str) {
 /// list in its own file rather than in this runner lets slices land in
 /// parallel without editing the same Rust source.
 const PASSING: &str = include_str!("../../tests/i3/passing.txt");
+
+#[test]
+fn rejection_allowlist_is_keyed_by_file_and_exact_command() {
+    let stderr = "# swayward rejected `layout default`: error\n\
+                  # swayward rejected `[con_mark=__does_not_exist] focus`: error\n";
+    assert_eq!(
+        rejected_commands(stderr).collect::<Vec<_>>(),
+        allowed_rejections("101-focus.t")
+            .iter()
+            .map(|item| item.command)
+            .collect::<Vec<_>>()
+    );
+    assert!(allowed_rejections("119-match.t")
+        .iter()
+        .all(|item| !rejected_commands(stderr).any(|command| command == item.command)));
+    assert!(ALLOWED_REJECTIONS
+        .iter()
+        .all(|rejection| !rejection.reason.is_empty()));
+}
 
 #[test]
 fn fake_outputs_create_real_outputs_with_requested_geometry() {
