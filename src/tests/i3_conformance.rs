@@ -1,5 +1,6 @@
 //! Runner for unmodified layout tests from i3's Perl testsuite.
 
+use std::any::Any;
 use std::ffi::OsStr;
 use std::io::{BufRead as _, BufReader, Write as _};
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -498,6 +499,27 @@ fn tap_failure_summary(stdout: &str, stderr: &str) -> String {
         .join("\n")
 }
 
+fn panic_message(payload: &(dyn Any + Send)) -> &str {
+    payload
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .or_else(|| payload.downcast_ref::<&str>().copied())
+        .unwrap_or("non-string panic payload")
+}
+
+fn with_test_context(test: &str, run: impl FnOnce()) {
+    if let Err(payload) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(run)) {
+        panic!(
+            "i3 test {test} panicked: {}",
+            panic_message(payload.as_ref())
+        );
+    }
+}
+
+fn run_i3_test_with_context(test: &str) {
+    with_test_context(test, || run_i3_test(test));
+}
+
 fn run_i3_test(test: &str) {
     let mut config = swayward_config::Config::default();
     config.layout.gaps = 0.;
@@ -535,7 +557,8 @@ fn run_i3_test(test: &str) {
         .spawn()
         .unwrap();
 
-    let deadline = Instant::now() + Duration::from_secs(30);
+    let started = Instant::now();
+    let deadline = started + Duration::from_secs(30);
     loop {
         fixture.dispatch();
         match control.accept() {
@@ -563,7 +586,17 @@ fn run_i3_test(test: &str) {
             );
             break;
         }
-        assert!(Instant::now() < deadline, "i3 test {test} timed out");
+        if Instant::now() >= deadline {
+            child.kill().unwrap();
+            let output = child.wait_with_output().unwrap();
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            panic!(
+                "i3 test {test} timed out after {:?}\nTAP failures:\n{}\nstdout:\n{stdout}\nstderr:\n{stderr}",
+                started.elapsed(),
+                tap_failure_summary(&stdout, &stderr),
+            );
+        }
         thread::yield_now();
     }
 }
@@ -576,7 +609,16 @@ fn run_i3_test(test: &str) {
 const PASSING: &str = include_str!("../../tests/i3/passing.txt");
 
 #[test]
-fn tap_failure_summary_names_assertions() {
+fn failure_diagnostics_name_assertions_and_non_tap_panics() {
+    let payload = std::panic::catch_unwind(|| {
+        with_test_context("setup-failure.t", || panic!("setup failed"));
+    })
+    .unwrap_err();
+    assert_eq!(
+        panic_message(payload.as_ref()),
+        "i3 test setup-failure.t panicked: setup failed"
+    );
+
     let stdout = "ok 159 - setup\nnot ok 160 - No empty workspace created\n1..160\n";
     let stderr = "#   Failed test 'No empty workspace created'\n#   at test.t line 398.\n";
     assert_eq!(
@@ -668,13 +710,13 @@ fn i3_conformance_runner() {
     // failures, so conformance findings stay executable without turning the
     // default gate red.
     if let Ok(selected) = std::env::var("SWAYWARD_I3_TEST") {
-        run_i3_test(&selected);
+        run_i3_test_with_context(&selected);
         return;
     }
 
     let mut count = 0;
     for test in passing_tests() {
-        run_i3_test(test);
+        run_i3_test_with_context(test);
         count += 1;
     }
     assert!(count > 0, "tests/i3/passing.txt lists no conformance files");

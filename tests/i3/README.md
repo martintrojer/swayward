@@ -154,6 +154,16 @@ files intentionally retain their failing assertions: those failures are
 conformance findings, not expectations to bless or silently skip. See the task
 report for assertion-level results.
 
+The manifest runner wraps every file with its filename, including setup,
+configuration, control-socket, rejected-command allow-list, and timeout panics;
+TAP failures additionally retain their assertion and source-line summary. A
+residual full-suite failure observed after the duplicate-mark fix could not be
+reproduced in 10 isolated manifest runs or 10 full-suite runs under the required
+2 GiB memory cap. Isolated manifest runs took 36.27–36.64 seconds after warm-up;
+full-suite runs took 42.15–43.08 seconds for the swayward test binary. The
+original 62-second failure remains unexplained, so the timeout remains 30
+seconds per vendored file rather than being raised without evidence.
+
 ## Coverage
 
 The status `skip: i3-only tree structure` applies when a test requires the i3
