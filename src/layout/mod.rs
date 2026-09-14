@@ -249,7 +249,7 @@ pub trait LayoutElement {
     fn set_activated(&mut self, active: bool);
     fn set_active_in_column(&mut self, active: bool);
     fn set_floating(&mut self, floating: bool);
-    fn supports_server_decoration_control(&self) -> bool {
+    fn has_xdg_decoration(&self) -> bool {
         false
     }
     fn request_server_decoration(&mut self, server_side: bool) {

@@ -6,6 +6,7 @@ use proptest::prelude::*;
 use smithay::output::{self, Output};
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Point, Serial, Transform};
+use swayward_ipc::command::BorderStyle;
 
 use super::*;
 use crate::animation::Clock;
@@ -27,6 +28,8 @@ struct TestWindowInner {
     configure_count: Cell<usize>,
     received_transaction: Cell<bool>,
     interactive_resize: Cell<Option<InteractiveResizeData>>,
+    has_xdg_decoration: Cell<bool>,
+    server_side_decoration_requested: Cell<Option<bool>>,
     rules: ResolvedWindowRules,
 }
 
@@ -43,6 +46,8 @@ impl TestWindow {
             configure_count: Cell::new(0),
             received_transaction: Cell::new(false),
             interactive_resize: Cell::new(None),
+            has_xdg_decoration: Cell::new(false),
+            server_side_decoration_requested: Cell::new(None),
             rules: ResolvedWindowRules::default(),
         }))
     }
@@ -118,6 +123,14 @@ impl LayoutElement for TestWindow {
     fn output_enter(&self, _: &Output) {}
     fn output_leave(&self, _: &Output) {}
     fn set_offscreen_data(&self, _: Option<OffscreenData>) {}
+    fn has_xdg_decoration(&self) -> bool {
+        self.0.has_xdg_decoration.get()
+    }
+    fn request_server_decoration(&mut self, server_side: bool) {
+        self.0
+            .server_side_decoration_requested
+            .set(Some(server_side));
+    }
     fn set_activated(&mut self, _: bool) {}
     fn set_bounds(&self, _: Size<i32, Logical>) {}
     fn is_ignoring_opacity_window_rule(&self) -> bool {
@@ -350,6 +363,37 @@ fn shipped_config_preserves_the_default_titlebar_geometry() {
     let config = swayward_config::Config::load_default();
     assert_eq!(config.layout.titlebar, swayward_config::Titlebar::default());
     assert_eq!(titlebar::height(1., &config.layout.titlebar), 22.);
+}
+
+#[test]
+fn border_toggle_enters_csd_when_xdg_decoration_is_present() {
+    let window = TestWindow::new(1);
+    window.0.has_xdg_decoration.set(true);
+    let mut tile = Tile::new(
+        window.clone(),
+        Size::from((100., 200.)),
+        1.,
+        Clock::with_time(Duration::ZERO),
+        Rc::new(Options::default()),
+    );
+
+    tile.set_sway_border(BorderStyle::None, None, true).unwrap();
+    tile.set_sway_border(BorderStyle::Toggle, None, true)
+        .unwrap();
+    tile.set_sway_border(BorderStyle::Toggle, None, true)
+        .unwrap();
+    tile.set_sway_border(BorderStyle::Toggle, None, true)
+        .unwrap();
+
+    assert_eq!(tile.sway_border(), (BorderStyle::Csd, 2));
+    assert_eq!(window.0.server_side_decoration_requested.get(), Some(false));
+    assert!(!tile.has_sway_titlebar());
+    assert_eq!(tile.effective_border_width(), None);
+
+    tile.set_sway_border(BorderStyle::Toggle, None, true)
+        .unwrap();
+    assert_eq!(tile.sway_border(), (BorderStyle::None, 0));
+    assert_eq!(window.0.server_side_decoration_requested.get(), Some(true));
 }
 
 #[test]

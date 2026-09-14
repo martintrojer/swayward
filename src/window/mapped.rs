@@ -97,6 +97,9 @@ pub struct Mapped {
     /// Whether this window is floating.
     is_floating: bool,
 
+    /// Whether the client created an xdg-decoration object for this toplevel.
+    has_xdg_decoration: bool,
+
     /// Whether this window is a target of a window cast.
     is_window_cast_target: bool,
 
@@ -275,6 +278,9 @@ impl Mapped {
     pub fn new(window: Window, rules: ResolvedWindowRules, hook: HookId, config: &Config) -> Self {
         let surface = window.wl_surface().expect("no X11 support");
         let credentials = get_credentials_for_surface(&surface);
+        let has_xdg_decoration = window.toplevel().is_some_and(|toplevel| {
+            toplevel.with_pending_state(|state| state.decoration_mode.is_some())
+        });
         let mut rv = Self {
             window,
             id: MappedId::next(),
@@ -289,6 +295,7 @@ impl Mapped {
             is_focused: false,
             is_active_in_column: true,
             is_floating: false,
+            has_xdg_decoration,
             is_window_cast_target: false,
             ignore_opacity_window_rule: false,
             block_out_buffer: RefCell::new(SolidColorBuffer::new((0., 0.), [0., 0., 0., 1.])),
@@ -1005,9 +1012,8 @@ impl LayoutElement for Mapped {
         self.need_to_recompute_rules |= changed;
     }
 
-    fn supports_server_decoration_control(&self) -> bool {
-        self.toplevel()
-            .with_pending_state(|state| state.decoration_mode.is_some())
+    fn has_xdg_decoration(&self) -> bool {
+        self.has_xdg_decoration
     }
 
     fn request_server_decoration(&mut self, server_side: bool) {

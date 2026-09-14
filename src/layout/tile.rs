@@ -1616,12 +1616,12 @@ impl<W: LayoutElement> Tile<W> {
             BorderStyle::Toggle => match current_style {
                 BorderStyle::None => BorderStyle::Pixel,
                 BorderStyle::Pixel => BorderStyle::Normal,
-                BorderStyle::Normal => BorderStyle::None,
-                BorderStyle::Csd | BorderStyle::Toggle => unreachable!(),
+                BorderStyle::Normal if self.window.has_xdg_decoration() => BorderStyle::Csd,
+                BorderStyle::Normal | BorderStyle::Csd | BorderStyle::Toggle => BorderStyle::None,
             },
             style => style,
         };
-        if style == BorderStyle::Csd && !self.window.supports_server_decoration_control() {
+        if style == BorderStyle::Csd && !self.window.has_xdg_decoration() {
             return Err("This window doesn't support client side decorations");
         }
         self.window
@@ -1632,11 +1632,10 @@ impl<W: LayoutElement> Tile<W> {
         } else {
             style
         };
-        let width = width.unwrap_or_else(|| match style {
+        let width = width.unwrap_or(match style {
             BorderStyle::Normal => 2,
             BorderStyle::Pixel => 1,
-            BorderStyle::None => current_width,
-            BorderStyle::Csd | BorderStyle::Toggle => unreachable!(),
+            BorderStyle::None | BorderStyle::Csd | BorderStyle::Toggle => current_width,
         });
         self.sway_border = Some((style, width));
         self.update_border_config();
