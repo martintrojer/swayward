@@ -751,6 +751,19 @@ impl<W: LayoutElement> FloatingSpace<W> {
         self.interactive_resize_end(Some(&id));
     }
 
+    pub fn set_window_border(
+        &mut self,
+        id: &W::Id,
+        style: swayward_ipc::command::BorderStyle,
+        width: Option<u16>,
+    ) -> bool {
+        let Some(index) = self.idx_of(id) else {
+            return false;
+        };
+        let tile = &mut self.tiles[index];
+        tile.set_sway_border(style, width, true).is_ok()
+    }
+
     pub fn set_window_width(&mut self, id: Option<&W::Id>, change: SizeChange, animate: bool) {
         let Some(id) = id.or(self.active_window_id.as_ref()) else {
             return;

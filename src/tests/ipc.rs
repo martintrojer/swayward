@@ -1644,6 +1644,109 @@ fn rename_workspace_updates_name_number_and_rejects_collisions() {
 }
 
 #[test]
+fn border_command_updates_rendering_and_tree_metadata() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    for (command, style, width, has_titlebar, rendered_width) in [
+        ("border none", "none", 0, false, None),
+        ("border pixel 3", "pixel", 3, false, Some(3.)),
+        ("border normal 5", "normal", 5, true, Some(5.)),
+        ("border toggle", "none", 0, false, None),
+        ("border toggle", "pixel", 1, false, Some(1.)),
+        ("border toggle", "normal", 2, true, Some(2.)),
+    ] {
+        let outcome = crate::command::execute(f.niri_state(), command);
+        assert!(outcome[0].success, "{command}: {outcome:?}");
+        let swayward = f.swayward();
+        let mapped = swayward.layout.focus().unwrap();
+        assert_eq!(
+            swayward.layout.window_border(&mapped.window),
+            Some((
+                match style {
+                    "none" => swayward_ipc::command::BorderStyle::None,
+                    "pixel" => swayward_ipc::command::BorderStyle::Pixel,
+                    "normal" => swayward_ipc::command::BorderStyle::Normal,
+                    _ => unreachable!(),
+                },
+                width
+            ))
+        );
+        let tile = swayward
+            .layout
+            .active_workspace()
+            .unwrap()
+            .tiles()
+            .next()
+            .unwrap();
+        assert_eq!(tile.effective_border_width(), rendered_width);
+        assert_eq!(tile.has_sway_titlebar(), has_titlebar);
+        let tree = describe_tree(
+            &swayward.layout,
+            &swayward.global_space,
+            &swayward.marks_by_window,
+            &swayward.marks_by_container,
+        );
+        let node = tree
+            .nodes
+            .iter()
+            .flat_map(|output| &output.nodes)
+            .flat_map(|workspace| workspace.nodes.iter().chain(&workspace.floating_nodes))
+            .next()
+            .unwrap();
+        assert_eq!(format!("{:?}", node.border).to_ascii_lowercase(), style);
+        assert_eq!(node.current_border_width, i32::from(width));
+    }
+
+    assert!(crate::command::execute(f.niri_state(), "floating enable")[0].success);
+    for (command, style, width) in [("border none", "none", 0), ("border pixel 7", "pixel", 7)] {
+        assert!(crate::command::execute(f.niri_state(), command)[0].success);
+        let swayward = f.swayward();
+        let tree = serde_json::to_value(describe_tree(
+            &swayward.layout,
+            &swayward.global_space,
+            &swayward.marks_by_window,
+            &swayward.marks_by_container,
+        ))
+        .unwrap();
+        let node = find_json_node(&tree, "floating_con", false).unwrap();
+        assert_eq!(node["border"], style, "{command}");
+        assert_eq!(node["current_border_width"], width, "{command}");
+    }
+}
+
+#[test]
+fn border_csd_fails_without_client_decoration_support() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    let outcome = crate::command::execute(f.niri_state(), "border csd");
+    assert!(!outcome[0].success);
+    assert_eq!(
+        outcome[0].error.as_deref(),
+        Some("This window doesn't support client side decorations")
+    );
+}
+
+#[test]
 fn criteria_targeted_move_workspace_moves_all_matches_without_changing_focus() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));
@@ -2686,6 +2789,7 @@ fn stale_tree_leaf_is_omitted_without_panicking() {
         focused: false,
         rect: Default::default(),
         deco_rect: None,
+        border: (swayward_ipc::command::BorderStyle::Normal, 2),
     };
     assert!(crate::ipc::tree::describe_tiling(
         tree,
@@ -2711,6 +2815,7 @@ fn stale_tree_leaf_is_omitted_without_panicking() {
             focused: false,
             rect: Default::default(),
             deco_rect: None,
+            border: (swayward_ipc::command::BorderStyle::Normal, 2),
         }],
     };
     let node = crate::ipc::tree::describe_tiling(

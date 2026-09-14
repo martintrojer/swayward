@@ -16,6 +16,36 @@ pub enum Toggle {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BorderStyle {
+    Normal,
+    None,
+    Pixel,
+    Csd,
+    Toggle,
+}
+
+impl std::str::FromStr for BorderStyle {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.to_ascii_lowercase().as_str() {
+            "normal" => Ok(Self::Normal),
+            "none" => Ok(Self::None),
+            "pixel" => Ok(Self::Pixel),
+            "csd" => Ok(Self::Csd),
+            "toggle" => Ok(Self::Toggle),
+            _ => Err(format!("unknown border style `{value}`")),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Border {
+    pub style: BorderStyle,
+    pub width: Option<u16>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Layout {
     SplitH,
     SplitV,
@@ -124,6 +154,7 @@ pub enum Command {
         global: bool,
     },
     Floating(Toggle),
+    Border(Border),
     Sticky(String),
     Workspace(WorkspaceTarget),
     AssignWorkspace {
@@ -351,6 +382,7 @@ fn parse_one(input: &str) -> Result<Command, String> {
         "floating" => one(rest, "floating <enable|disable|toggle>")
             .and_then(parse_toggle)
             .map(Command::Floating),
+        "border" => parse_border(rest).map(Command::Border),
         "sticky" => one(rest, "sticky <enable|disable|toggle>")
             .map(|value| Command::Sticky(value.to_owned())),
         "workspace" => parse_workspace_command(rest),
@@ -415,6 +447,30 @@ pub fn parse_boolean(value: &str, current: bool) -> bool {
         "toggle" => !current,
         _ => false,
     }
+}
+
+fn parse_border(args: &[&str]) -> Result<Border, String> {
+    const SYNTAX: &str =
+        "Expected 'border <none|normal|pixel|csd|toggle>' or 'border <normal|pixel|toggle> <px>'";
+    let Some(style) = args.first() else {
+        return Err(SYNTAX.into());
+    };
+    let (style, mut width) = match style.to_ascii_lowercase().as_str() {
+        "normal" => (BorderStyle::Normal, None),
+        "none" => (BorderStyle::None, None),
+        "pixel" => (BorderStyle::Pixel, None),
+        "csd" => (BorderStyle::Csd, None),
+        "toggle" => (BorderStyle::Toggle, None),
+        _ => return Err(SYNTAX.into()),
+    };
+    match args {
+        [_] => {}
+        [_, value] if !matches!(style, BorderStyle::None | BorderStyle::Csd) => {
+            width = Some(value.parse().map_err(|_| SYNTAX.to_owned())?);
+        }
+        _ => return Err(SYNTAX.into()),
+    }
+    Ok(Border { style, width })
 }
 
 fn parse_focus(args: &[&str]) -> Result<Command, String> {

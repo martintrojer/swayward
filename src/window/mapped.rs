@@ -1005,6 +1005,22 @@ impl LayoutElement for Mapped {
         self.need_to_recompute_rules |= changed;
     }
 
+    fn supports_server_decoration_control(&self) -> bool {
+        self.toplevel()
+            .with_pending_state(|state| state.decoration_mode.is_some())
+    }
+
+    fn request_server_decoration(&mut self, server_side: bool) {
+        self.toplevel().with_pending_state(|state| {
+            state.decoration_mode = Some(if server_side {
+                zxdg_toplevel_decoration_v1::Mode::ServerSide
+            } else {
+                zxdg_toplevel_decoration_v1::Mode::ClientSide
+            });
+        });
+        self.set_needs_configure();
+    }
+
     fn set_bounds(&self, bounds: Size<i32, Logical>) {
         self.toplevel().with_pending_state(|state| {
             state.bounds = Some(bounds);

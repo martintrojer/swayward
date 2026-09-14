@@ -341,6 +341,9 @@ fn describe_workspace_node(
                 compositor_layout.is_scratchpad_window(&tile.window().window),
                 true,
             );
+            let border = tile.sway_border();
+            node.border = ipc_border(border.0);
+            node.current_border_width = i32::from(border.1);
             node.sticky = workspace.is_window_sticky(&tile.window().window);
             node
         })
@@ -452,6 +455,7 @@ pub(crate) fn describe_tiling<'a, I>(
             focused,
             rect,
             deco_rect,
+            border,
             ..
         } => {
             let Some(mapped) = find_window(&window) else {
@@ -468,6 +472,8 @@ pub(crate) fn describe_tiling<'a, I>(
                 false,
                 true,
             );
+            node.border = ipc_border(border.0);
+            node.current_border_width = i32::from(border.1);
             node.percent = percent;
             node.focused = focused;
             node.deco_rect =
@@ -493,10 +499,18 @@ fn empty_tiling_node(rect: Rect) -> Node {
     )
 }
 
-// Serialising a sway tree node genuinely needs this much context: the window, its
-// rect, its node type, its floating string, its parent rect for percent, the marks
-// table, and whether it is hidden in the scratchpad. Bundling them into a struct
-// would only move the argument list.
+fn ipc_border(style: swayward_ipc::command::BorderStyle) -> NodeBorder {
+    match style {
+        swayward_ipc::command::BorderStyle::Normal => NodeBorder::Normal,
+        swayward_ipc::command::BorderStyle::None => NodeBorder::None,
+        swayward_ipc::command::BorderStyle::Pixel => NodeBorder::Pixel,
+        swayward_ipc::command::BorderStyle::Csd => NodeBorder::Csd,
+        swayward_ipc::command::BorderStyle::Toggle => unreachable!(),
+    }
+}
+
+// Serialising a sway tree node genuinely needs this much context. Bundling it
+// into a struct would only move the argument list.
 #[allow(clippy::too_many_arguments)]
 fn describe_window(
     mapped: &Mapped,
@@ -636,7 +650,7 @@ fn scratch_output(
     let floating_nodes = layout
         .scratchpad_windows()
         .map(|mapped| {
-            describe_window(
+            let mut node = describe_window(
                 mapped,
                 Rect::default(),
                 NodeType::FloatingCon,
@@ -645,7 +659,12 @@ fn scratch_output(
                 marks,
                 true,
                 false,
-            )
+            );
+            if let Some(border) = layout.window_border(&mapped.window) {
+                node.border = ipc_border(border.0);
+                node.current_border_width = i32::from(border.1);
+            }
+            node
         })
         .collect();
     let workspace = common_node(

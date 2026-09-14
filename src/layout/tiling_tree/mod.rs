@@ -144,6 +144,7 @@ pub enum IpcNode<I> {
         focused: bool,
         rect: Rectangle<f64, Logical>,
         deco_rect: Option<Rectangle<f64, Logical>>,
+        border: (swayward_ipc::command::BorderStyle, u16),
     },
 }
 
@@ -1727,6 +1728,25 @@ impl<W: LayoutElement> TilingTree<W> {
         );
     }
 
+    pub fn set_window_border(
+        &mut self,
+        window: &W::Id,
+        style: swayward_ipc::command::BorderStyle,
+        width: Option<u16>,
+    ) -> bool {
+        let Some(id) = self.node_for_window(window) else {
+            return false;
+        };
+        let Some(tile) = self.tile_mut(id) else {
+            return false;
+        };
+        if tile.set_sway_border(style, width, false).is_err() {
+            return false;
+        }
+        self.request_window_sizes();
+        true
+    }
+
     pub fn set_window_width(&mut self, window: Option<&W::Id>, change: SizeChange) {
         if let Some(id) = self.resolve_node(window) {
             self.resize_node_dimension(id, true, change);
@@ -2489,6 +2509,7 @@ impl<W: LayoutElement> TilingTree<W> {
                     focused: tree.focus == Some(id),
                     rect: geometries.nodes.get(&id).copied().unwrap_or_default(),
                     deco_rect: geometries.titlebars.get(&id).map(|bar| bar.ipc_rect),
+                    border: tile.sway_border(),
                 },
             }
         }

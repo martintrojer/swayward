@@ -17,6 +17,7 @@
 140-focus-lost.t
 144-regress-floating-resize.t
 152-regress-level-up.t
+169-border-toggle.t
 170-force_focus_wrapping.t
 173-get-marks.t
 178-regress-workspace-open.t

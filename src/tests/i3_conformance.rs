@@ -53,6 +53,11 @@ const ALLOWED_REJECTIONS: &[AllowedRejection] = &[
         reason: "the test asserts that this invalid command returns an error",
     },
     AllowedRejection {
+        test: "169-border-toggle.t",
+        command: "border 1pixel",
+        reason: "i3-only alias; sway accepts the equivalent border pixel 1",
+    },
+    AllowedRejection {
         test: "134-invalid-command.t",
         command: "blargh!",
         reason: "the regression intentionally sends an invalid command",

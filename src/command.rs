@@ -1,7 +1,7 @@
 use swayward_config::Action;
 use swayward_ipc::command::parse_error;
 pub use swayward_ipc::command::{
-    parse, parse_boolean, Command, Direction, Layout, LayoutToggle, LayoutToggleEntry,
+    parse, parse_boolean, BorderStyle, Command, Direction, Layout, LayoutToggle, LayoutToggleEntry,
     MovePosition, OutputTarget, ParsedCommand, ResizeAmount, ResizeAxis, ResizeUnit, Toggle,
     WorkspaceTarget,
 };
@@ -368,6 +368,26 @@ fn execute_one(
             }
             if !state.swayward.layout.set_window_sticky(&window, &value) {
                 return failure("Expected output to have a workspace");
+            }
+            state.swayward.queue_redraw_all();
+            None
+        }
+        Command::Border(border) => {
+            let Some(window) = state
+                .swayward
+                .layout
+                .focus()
+                .map(|mapped| mapped.window.clone())
+            else {
+                return failure("Only views can have borders");
+            };
+            if let Err(error) =
+                state
+                    .swayward
+                    .layout
+                    .set_window_border(&window, border.style, border.width)
+            {
+                return failure(error);
             }
             state.swayward.queue_redraw_all();
             None
@@ -1145,6 +1165,28 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
             }
             state.swayward.queue_redraw_all();
         }
+        Command::Border(border) => {
+            let CommandTarget::Window(target) = target else {
+                return failure("Only views can have borders");
+            };
+            let window = state
+                .swayward
+                .layout
+                .windows()
+                .find_map(|(_, mapped)| (mapped.id() == target).then(|| mapped.window.clone()));
+            let Some(window) = window else {
+                return failure("No matching node.");
+            };
+            if let Err(error) =
+                state
+                    .swayward
+                    .layout
+                    .set_window_border(&window, border.style, border.width)
+            {
+                return failure(error);
+            }
+            state.swayward.queue_redraw_all();
+        }
         Command::Floating(mode) => {
             let CommandTarget::Window(target) = target else {
                 return failure("command requires a window target");
@@ -1750,6 +1792,13 @@ mod tests {
         assert_eq!(
             command("floating toggle"),
             Command::Floating(Toggle::Toggle)
+        );
+        assert_eq!(
+            command("border toggle 10"),
+            Command::Border(swayward_ipc::command::Border {
+                style: BorderStyle::Toggle,
+                width: Some(10)
+            })
         );
         assert_eq!(
             command("workspace next_on_output"),

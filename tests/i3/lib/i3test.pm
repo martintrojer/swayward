@@ -235,6 +235,10 @@ sub cmd_nosync {
         && $command =~ /^kill\s*;\s*kill$/) {
         $skip_assertions = 1;
         $skip_reason = 'i3-only synchronous X11 close; sway repeats the Wayland close request';
+    } elsif (($ENV{SWAYWARD_I3_TEST} // '') eq '169-border-toggle.t'
+        && $command eq 'border 1pixel') {
+        $skip_assertions = 2;
+        $skip_reason = 'i3-only border 1pixel alias; sway accepts border pixel 1';
     }
     $reply;
 }

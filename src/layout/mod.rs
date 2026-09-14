@@ -249,6 +249,12 @@ pub trait LayoutElement {
     fn set_activated(&mut self, active: bool);
     fn set_active_in_column(&mut self, active: bool);
     fn set_floating(&mut self, floating: bool);
+    fn supports_server_decoration_control(&self) -> bool {
+        false
+    }
+    fn request_server_decoration(&mut self, server_side: bool) {
+        let _ = server_side;
+    }
     fn set_bounds(&self, bounds: Size<i32, Logical>);
     fn is_ignoring_opacity_window_rule(&self) -> bool;
 
@@ -2959,6 +2965,54 @@ impl<W: LayoutElement> Layout<W> {
             self.move_to_workspace(window, target_index, ActivateWindow::No);
         }
         Ok(())
+    }
+
+    pub fn window_border(
+        &self,
+        window: &W::Id,
+    ) -> Option<(swayward_ipc::command::BorderStyle, u16)> {
+        if let Some(InteractiveMoveState::Moving(move_)) = &self.interactive_move {
+            if move_.tile.window().id() == window {
+                return Some(move_.tile.sway_border());
+            }
+        }
+        if let Some(removed) = self
+            .scratchpad
+            .iter()
+            .find(|removed| removed.tile.window().id() == window)
+        {
+            return Some(removed.tile.sway_border());
+        }
+        self.workspaces()
+            .find(|(_, _, workspace)| workspace.has_window(window))
+            .and_then(|(_, _, workspace)| workspace.window_border(window))
+    }
+
+    pub fn set_window_border(
+        &mut self,
+        window: &W::Id,
+        style: swayward_ipc::command::BorderStyle,
+        width: Option<u16>,
+    ) -> Result<(), &'static str> {
+        if let Some(InteractiveMoveState::Moving(move_)) = &mut self.interactive_move {
+            if move_.tile.window().id() == window {
+                return move_
+                    .tile
+                    .set_sway_border(style, width, move_.is_floating)
+                    .map(|_| ());
+            }
+        }
+        if let Some(removed) = self
+            .scratchpad
+            .iter_mut()
+            .find(|removed| removed.tile.window().id() == window)
+        {
+            return removed.tile.set_sway_border(style, width, true).map(|_| ());
+        }
+        self.workspaces_mut()
+            .find(|workspace| workspace.has_window(window))
+            .ok_or("Only views can have borders")?
+            .set_window_border(window, style, width)
     }
 
     pub fn set_window_sticky(&mut self, window: &W::Id, value: &str) -> bool {

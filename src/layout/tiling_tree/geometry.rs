@@ -104,10 +104,7 @@ fn assign<W: LayoutElement>(
     let Some(node) = nodes.get(&id) else { return };
     match &node.value {
         TreeNode::Leaf { tile } => {
-            if !decorated_by_parent
-                && !fullscreen.contains(&id)
-                && tile.effective_border_width().is_some()
-            {
+            if !decorated_by_parent && !fullscreen.contains(&id) && tile.has_sway_titlebar() {
                 let titlebar = Rectangle::new(rect.loc, (rect.size.w, titlebar_height).into());
                 result.titlebars.insert(
                     id,
