@@ -1148,8 +1148,12 @@ impl Op {
             Op::FocusWindowBottom => layout.focus_window_bottom(),
             Op::FocusWindowDownOrTop => layout.focus_window_down_or_top(),
             Op::FocusWindowUpOrBottom => layout.focus_window_up_or_bottom(),
-            Op::MoveColumnLeft => layout.move_left(),
-            Op::MoveColumnRight => layout.move_right(),
+            Op::MoveColumnLeft => {
+                layout.move_left();
+            }
+            Op::MoveColumnRight => {
+                layout.move_right();
+            }
             Op::MoveColumnToFirst => layout.move_column_to_first(),
             Op::MoveColumnToLast => layout.move_column_to_last(),
             Op::MoveColumnLeftOrToMonitorLeft(id) => {
@@ -1169,8 +1173,12 @@ impl Op {
                 layout.move_column_right_or_to_output(&output);
             }
             Op::MoveColumnToIndex(index) => layout.move_column_to_index(index),
-            Op::MoveWindowDown => layout.move_down(),
-            Op::MoveWindowUp => layout.move_up(),
+            Op::MoveWindowDown => {
+                layout.move_down();
+            }
+            Op::MoveWindowUp => {
+                layout.move_up();
+            }
             Op::MoveWindowDownOrToWorkspaceDown => layout.move_down_or_to_workspace_down(),
             Op::MoveWindowUpOrToWorkspaceUp => layout.move_up_or_to_workspace_up(),
             Op::ConsumeOrExpelWindowLeft { id } => {

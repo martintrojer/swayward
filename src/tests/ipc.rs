@@ -1851,6 +1851,67 @@ fn scratchpad_hides_focused_window_and_show_cycles_windows() {
 }
 
 #[test]
+fn directional_move_emits_one_settled_sway_move_event() {
+    let (mut f, socket) = ipc_fixture();
+    f.add_output(1, (1280, 800));
+    let client = f.add_client();
+    for app_id in ["left", "moved"] {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.set_title(app_id);
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+
+    let moved_id = f.swayward().layout.focus().unwrap().id();
+    let before = {
+        let swayward = f.swayward();
+        serde_json::to_value(crate::ipc::tree::describe_tree(
+            &swayward.layout,
+            &swayward.global_space,
+            &swayward.marks_by_window,
+            &swayward.marks_by_container,
+        ))
+        .unwrap()
+    };
+    let before =
+        super::super::ipc::server::find_node_by_id(&before, crate::ipc::tree::window_id(moved_id))
+            .unwrap()["rect"]["x"]
+            .as_i64()
+            .unwrap();
+
+    let mut subscriber = UnixStream::connect(socket).unwrap();
+    subscriber
+        .write_all(&crate::ipc::wire::encode(
+            MessageType::Subscribe,
+            r#"["window"]"#,
+        ))
+        .unwrap();
+    let _ = read_ipc_reply(&mut f, &mut subscriber);
+
+    assert!(crate::command::execute(f.niri_state(), "move left")[0].success);
+    let (event_type, payload) = read_ipc_reply(&mut f, &mut subscriber);
+    assert_eq!(event_type, (1 << 31) | 3);
+    let event = serde_json::from_str::<Value>(&payload).unwrap();
+    assert_eq!(event["change"], "move");
+    assert_eq!(
+        event["container"]["id"],
+        crate::ipc::tree::window_id(moved_id)
+    );
+    assert!(event["container"]["rect"]["x"].as_i64().unwrap() < before);
+    let expected: Value = serde_json::from_str(include_str!(
+        "../../tests/fixtures/sway/events/window.move.json"
+    ))
+    .unwrap();
+    assert_event_shape(&expected, &event, "$window");
+}
+
+#[test]
 fn scratchpad_show_moves_visible_window_to_current_workspace_and_focuses_it() {
     let (mut f, socket) = ipc_fixture();
     f.add_output(1, (1920, 1080));

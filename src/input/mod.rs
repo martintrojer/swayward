@@ -726,6 +726,30 @@ impl State {
         }
     }
 
+    fn focused_view_id(&self) -> Option<i64> {
+        let workspace = self.swayward.layout.active_workspace()?;
+        if workspace
+            .focused_container_node()
+            .is_some_and(|node| workspace.is_tiling_split(node))
+        {
+            return None;
+        }
+        self.swayward
+            .layout
+            .focus()
+            .map(|window| crate::ipc::tree::window_id(window.id()))
+    }
+
+    fn emit_window_move(&mut self, moved: bool, id: Option<i64>) {
+        if !moved {
+            return;
+        }
+        self.ipc_refresh_layout();
+        if let (Some(server), Some(id)) = (&self.swayward.ipc_server, id) {
+            server.send_event(swayward_ipc::legacy::Event::WindowMoved { id });
+        }
+    }
+
     pub fn do_action(&mut self, action: Action, allow_when_locked: bool) {
         if self.swayward.is_locked() && !(allow_when_locked || allowed_when_locked(&action)) {
             return;
@@ -993,8 +1017,10 @@ impl State {
                 if self.swayward.screenshot_ui.is_open() {
                     self.swayward.screenshot_ui.move_left();
                 } else {
-                    self.swayward.layout.move_left();
+                    let id = self.focused_view_id();
+                    let moved = self.swayward.layout.move_left();
                     self.maybe_warp_cursor_to_focus();
+                    self.emit_window_move(moved, id);
                 }
 
                 // FIXME: granular
@@ -1004,8 +1030,10 @@ impl State {
                 if self.swayward.screenshot_ui.is_open() {
                     self.swayward.screenshot_ui.move_right();
                 } else {
-                    self.swayward.layout.move_right();
+                    let id = self.focused_view_id();
+                    let moved = self.swayward.layout.move_right();
                     self.maybe_warp_cursor_to_focus();
+                    self.emit_window_move(moved, id);
                 }
 
                 // FIXME: granular
@@ -1065,8 +1093,10 @@ impl State {
                 if self.swayward.screenshot_ui.is_open() {
                     self.swayward.screenshot_ui.move_down();
                 } else {
-                    self.swayward.layout.move_down();
+                    let id = self.focused_view_id();
+                    let moved = self.swayward.layout.move_down();
                     self.maybe_warp_cursor_to_focus();
+                    self.emit_window_move(moved, id);
                 }
 
                 // FIXME: granular
@@ -1076,8 +1106,10 @@ impl State {
                 if self.swayward.screenshot_ui.is_open() {
                     self.swayward.screenshot_ui.move_up();
                 } else {
-                    self.swayward.layout.move_up();
+                    let id = self.focused_view_id();
+                    let moved = self.swayward.layout.move_up();
                     self.maybe_warp_cursor_to_focus();
+                    self.emit_window_move(moved, id);
                 }
 
                 // FIXME: granular

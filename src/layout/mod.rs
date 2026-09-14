@@ -2003,18 +2003,18 @@ impl<W: LayoutElement> Layout<W> {
         self.monitors().map(|mon| &mon.output)
     }
 
-    pub fn move_left(&mut self) {
+    pub fn move_left(&mut self) -> bool {
         let Some(workspace) = self.active_workspace_mut() else {
-            return;
+            return false;
         };
-        workspace.move_left();
+        workspace.move_left()
     }
 
-    pub fn move_right(&mut self) {
+    pub fn move_right(&mut self) -> bool {
         let Some(workspace) = self.active_workspace_mut() else {
-            return;
+            return false;
         };
-        workspace.move_right();
+        workspace.move_right()
     }
 
     pub fn move_window_in_direction(
@@ -2082,18 +2082,18 @@ impl<W: LayoutElement> Layout<W> {
         workspace.move_column_to_index(index);
     }
 
-    pub fn move_down(&mut self) {
+    pub fn move_down(&mut self) -> bool {
         let Some(workspace) = self.active_workspace_mut() else {
-            return;
+            return false;
         };
-        workspace.move_down();
+        workspace.move_down()
     }
 
-    pub fn move_up(&mut self) {
+    pub fn move_up(&mut self) -> bool {
         let Some(workspace) = self.active_workspace_mut() else {
-            return;
+            return false;
         };
-        workspace.move_up();
+        workspace.move_up()
     }
 
     pub fn move_down_or_to_workspace_down(&mut self) {
