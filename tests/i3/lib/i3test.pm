@@ -413,7 +413,11 @@ sub atom {
 
 package i3test::Root;
 sub rect { bless({ %{i3test::_request(4)->{rect}} }, 'i3test::Rect') }
-sub warp_pointer { }
+sub warp_pointer {
+    my ($self, $x, $y) = @_;
+    my $reply = i3test::_control({ action => 'warp_pointer', x => $x, y => $y });
+    $reply->{success} or die "pointer warp failed: " . ($reply->{error} // 'unknown error');
+}
 
 package i3test::Rect;
 sub x { $_[0]->{x} }

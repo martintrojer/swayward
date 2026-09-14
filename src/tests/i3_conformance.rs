@@ -355,7 +355,13 @@ fn handle_control(fixture: &mut Fixture, client: super::client::ClientId, stream
         "config" => {
             let source = request["config"].as_str().unwrap();
             match (fake_outputs(source), translate_config(source)) {
-                (Ok(outputs), Ok(config)) => {
+                (Ok(outputs), Ok(mut config)) => {
+                    config.layout.border.off = false;
+                    config.input.focus_follows_mouse.get_or_insert(
+                        swayward_config::input::FocusFollowsMouse {
+                            max_scroll_amount: None,
+                        },
+                    );
                     fixture.niri_state().reload_config(Ok(config));
                     if let Some(outputs) = outputs {
                         fixture.replace_outputs(outputs);
@@ -383,6 +389,17 @@ fn handle_control(fixture: &mut Fixture, client: super::client::ClientId, stream
                 .focus()
                 .map(|mapped| crate::ipc::tree::window_id(mapped.id()))
         }),
+        "warp_pointer" => match (request["x"].as_f64(), request["y"].as_f64()) {
+            (Some(x), Some(y)) => {
+                settle_configures(fixture, client);
+                let location = (x, y).into();
+                let under = fixture.swayward().contents_under(location);
+                fixture.swayward().handle_focus_follows_mouse(&under);
+                fixture.niri_state().move_cursor(location);
+                json!({ "success": true })
+            }
+            _ => json!({ "success": false, "error": "pointer coordinates must be numeric" }),
+        },
         "prepare_resize" => {
             settle_configures(fixture, client);
             json!({ "success": true })
@@ -420,6 +437,10 @@ fn tap_failure_summary(stdout: &str, stderr: &str) -> String {
 fn run_i3_test(test: &str) {
     let mut config = swayward_config::Config::default();
     config.layout.gaps = 0.;
+    config.layout.border.off = false;
+    config.input.focus_follows_mouse = Some(swayward_config::input::FocusFollowsMouse {
+        max_scroll_amount: None,
+    });
     config.animations.window_movement.0.off = true;
     config.animations.window_resize.anim.off = true;
     let mut fixture = Fixture::with_config(config);

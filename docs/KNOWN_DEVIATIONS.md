@@ -22,6 +22,13 @@ binds {
 Swayward also retains typed niri actions for features outside the current sway
 command subset.
 
+### Pointer focus default
+
+Sway enables `focus_follows_mouse` by default (`sway/sway/config.c:272`).
+Swayward retains niri's opt-in setting, so the shipped configuration leaves
+`focus-follows-mouse` commented out (`resources/default-config.kdl:68`). Enable
+that setting to use sway's default pointer-focus behavior.
+
 ## Bars
 
 Swayward has no `bar {}` configuration block and does not launch swaybar.
