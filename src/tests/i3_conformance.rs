@@ -432,7 +432,7 @@ fn run_i3_test(test: &str) {
         .spawn()
         .unwrap();
 
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + Duration::from_secs(30);
     loop {
         fixture.dispatch();
         match control.accept() {

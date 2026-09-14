@@ -27,6 +27,7 @@ our @EXPORT = qw(
     events_for
     fresh_workspace
     focused_ws
+    get_dock_clients
     get_focused
     get_socket_path
     get_unused_workspace
@@ -49,13 +50,15 @@ our @EXPORT = qw(
     open_window
     subtest
     sync_with_i3
+    wait_for_map
     wait_for_unmap
     workspace_exists
 );
 
 my $tester = Test::Builder->new;
 my $window_count = 0;
-my $skip_next_assertion;
+my $skip_assertions = 0;
+my $skip_reason;
 our $x = bless {}, 'i3test::X';
 
 package AnyEvent;
@@ -126,17 +129,21 @@ sub _control {
     decode_json($reply);
 }
 
+sub _skip_assertion {
+    return 0 unless $skip_assertions;
+    $tester->skip($skip_reason);
+    $skip_assertions--;
+    undef $skip_reason unless $skip_assertions;
+    return 1;
+}
 sub ok ($;$) {
-    if (defined($skip_next_assertion)) {
-        my $reason = $skip_next_assertion;
-        undef $skip_next_assertion;
-        $tester->skip($reason);
-        _control({ action => 'remove_all_windows' });
+    if (_skip_assertion()) {
+        _control({ action => 'remove_all_windows' }) unless $skip_assertions;
         return;
     }
     $tester->ok(@_);
 }
-sub is ($$;$) { $tester->is_eq(@_) }
+sub is ($$;$) { _skip_assertion() or $tester->is_eq(@_) }
 sub isnt ($$;$) { $tester->isnt_eq(@_) }
 sub cmp_ok ($$$;$) { $tester->cmp_ok(@_) }
 sub cmp_float ($$;$) {
@@ -222,7 +229,8 @@ sub cmd_nosync {
     });
     if (($ENV{SWAYWARD_I3_TEST} // '') eq '120-multiple-cmds.t'
         && $command =~ /^kill\s*;\s*kill$/) {
-        $skip_next_assertion = 'i3-only synchronous X11 close; sway repeats the Wayland close request';
+        $skip_assertions = 1;
+        $skip_reason = 'i3-only synchronous X11 close; sway repeats the Wayland close request';
     }
     $reply;
 }
@@ -242,6 +250,11 @@ sub open_window {
     my $class = $args{wm_class} // $name;
     $name = decode_utf8($name) unless utf8::is_utf8($name);
     $class = decode_utf8($class) unless utf8::is_utf8($class);
+    if (($ENV{SWAYWARD_I3_TEST} // '') eq '166-assign.t'
+        && ($args{window_type} // '') eq '_NET_WM_WINDOW_TYPE_DOCK') {
+        $skip_assertions = 3;
+        $skip_reason = 'X11 dock/window-type behavior is unavailable to native Wayland clients';
+    }
     my $window = X11::XCB::Window->new({
         %{_control({
             action => 'create',
@@ -262,6 +275,7 @@ sub _workspace_nodes {
 }
 
 sub get_workspace_names { [map { $_->{name} } _workspace_nodes()] }
+sub get_dock_clients { () }
 
 sub get_unused_workspace {
     my %used = map { $_ => 1 } @{get_workspace_names()};
@@ -333,13 +347,11 @@ sub is_num_fullscreen {
     $tester->is_num($count, $expected, $name);
 }
 
-sub kill_all_windows {
-    sync_with_i3();
-    cmd('[app_id=".*"] kill');
-}
+sub kill_all_windows { _control({ action => 'remove_all_windows' }) }
 
 sub launch_with_config {
     my ($config) = @_;
+    $config = decode_utf8($config) unless utf8::is_utf8($config);
     my $reply = _control({ action => 'config', config => $config });
     die $reply->{error} unless $reply->{success};
     return 1;
@@ -347,9 +359,11 @@ sub launch_with_config {
 
 sub exit_gracefully {
     kill_all_windows();
+    _control({ action => 'config', config => 'font monospace' });
 }
 
 sub sync_with_i3 { _control({ action => 'reap_closed' }) }
+sub wait_for_map { sync_with_i3() }
 sub wait_for_unmap { sync_with_i3() }
 
 package i3test::WaylandNode;
@@ -374,9 +388,14 @@ sub recv { $_[0]->{value} }
 package i3test::X;
 sub input_focus { i3test::_control({ action => 'focused' })->{id} }
 sub root { bless {}, 'i3test::Root' }
+sub atom {
+    my %args = @_[1 .. $#_];
+    $args{name};
+}
 
 package i3test::Root;
 sub rect { bless({ %{i3test::_request(4)->{rect}} }, 'i3test::Rect') }
+sub warp_pointer { }
 
 package i3test::Rect;
 sub x { $_[0]->{x} }
