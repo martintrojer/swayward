@@ -22,6 +22,10 @@ binds {
 Swayward also retains typed niri actions for features outside the current sway
 command subset.
 
+### Focus wrapping modes
+
+Sway accepts `focus_wrapping yes|no|force|workspace`; its parser also treats the seven true boolean words as `yes`, compares `force` and `workspace` case-insensitively, and treats every other value as `no` (`sway/commands/focus_wrapping.c:6-22`; `common/util.c:40-52`). Swayward currently represents only `yes` and `force`. The config translator maps those exact modes, including the seven true words, and reports `no`, `workspace`, `toggle`, and other false-valued forms for manual conversion rather than changing their behavior. Both compositors default to `yes` (`sway/config.c:274`; `swayward-config/src/layout.rs`).
+
 ### Pointer focus and warping defaults
 
 Sway enables `focus_follows_mouse` by default (`sway/sway/config.c:272`).

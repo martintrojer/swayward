@@ -145,6 +145,19 @@ class Translator:
                     "workspace-auto-back-and-forth" if enabled
                     else "workspace-auto-back-and-forth false"
                 )
+            elif match := re.fullmatch(r"focus_wrapping\s+(\S+)", text, re.IGNORECASE):
+                value = match.group(1).lower()
+                if value in {"1", "yes", "on", "true", "enable", "enabled", "active"}:
+                    self.layout_settings.append('    focus-wrapping "yes"')
+                elif value == "force":
+                    self.layout_settings.append('    focus-wrapping "force"')
+                else:
+                    self.warn(
+                        path,
+                        line_no,
+                        text,
+                        "focus wrapping mode has no exact swayward equivalent",
+                    )
             elif match := re.fullmatch(r"focus_on_window_activation\s+(\S+)", text):
                 actions = {"urgent": "set-urgent", "focus": "focus", "none": "ignore"}
                 if action := actions.get(match.group(1)):

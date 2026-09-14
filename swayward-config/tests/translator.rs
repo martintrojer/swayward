@@ -125,6 +125,59 @@ fn force_focus_wrapping_maps_to_swaywards_focus_wrapping_mode() {
 }
 
 #[test]
+fn focus_wrapping_maps_exact_modes_and_refuses_unrepresentable_modes() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_owned();
+    for (directive, value, expected) in [
+        ("focus_wrapping", "1", Some("yes")),
+        ("FoCuS_WrApPiNg", "YeS", Some("yes")),
+        ("focus_wrapping", "ON", Some("yes")),
+        ("focus_wrapping", "true", Some("yes")),
+        ("focus_wrapping", "Enable", Some("yes")),
+        ("focus_wrapping", "ENABLED", Some("yes")),
+        ("focus_wrapping", "active", Some("yes")),
+        ("focus_wrapping", "FoRcE", Some("force")),
+        ("focus_wrapping", "no", None),
+        ("focus_wrapping", "workspace", None),
+        ("focus_wrapping", "toggle", None),
+        ("focus_wrapping", "false", None),
+    ] {
+        let fixture = std::env::temp_dir().join(format!(
+            "swayward-modern-focus-wrapping-{}-{value}.conf",
+            std::process::id()
+        ));
+        std::fs::write(&fixture, format!("{directive} {value}\n")).unwrap();
+        let output = Command::new("python3")
+            .arg(root.join("contrib/sway-to-kdl"))
+            .arg(&fixture)
+            .output()
+            .unwrap();
+        std::fs::remove_file(fixture).unwrap();
+
+        assert!(output.status.success());
+        let translated = String::from_utf8(output.stdout).unwrap();
+        let summary = String::from_utf8(output.stderr).unwrap();
+        if let Some(expected) = expected {
+            assert!(
+                translated.contains(&format!("focus-wrapping \"{expected}\"")),
+                "{translated}"
+            );
+            assert_eq!(summary, "manual attention: none\n");
+            Config::parse_mem(&translated).unwrap();
+        } else {
+            assert!(!translated.contains("    focus-wrapping"), "{translated}");
+            assert!(
+                translated.contains("focus wrapping mode has no exact swayward equivalent"),
+                "{translated}"
+            );
+            assert!(summary.starts_with("manual attention: 1 directive(s)"));
+        }
+    }
+}
+
+#[test]
 fn title_criteria_preserve_regex_escapes_and_translate_window_actions() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
