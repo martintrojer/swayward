@@ -2684,11 +2684,82 @@ impl<W: LayoutElement> Layout<W> {
         self.move_to_sway_workspace_inner(None, target)
     }
 
-    fn move_to_sway_workspace_inner(
+    pub fn move_tiling_subtree_to_sway_workspace(
         &mut self,
-        window: Option<&W::Id>,
+        source_workspace: WorkspaceId,
+        node: tiling_tree::NodeId,
         target: crate::command::WorkspaceTarget,
-    ) -> Result<(), String> {
+        preserve_empty_workspace: bool,
+    ) -> Result<(WorkspaceId, Vec<(tiling_tree::NodeId, tiling_tree::NodeId)>), String> {
+        let (target_output, target_index) = self.resolve_sway_workspace_target(target)?;
+        let target_workspace = match target_output.as_ref() {
+            Some(output) => self
+                .monitor_for_output(output)
+                .and_then(|monitor| monitor.workspaces.get(target_index))
+                .map(Workspace::id),
+            None => self
+                .workspaces()
+                .nth(target_index)
+                .map(|(_, _, workspace)| workspace.id()),
+        }
+        .ok_or_else(|| "target workspace does not exist".to_owned())?;
+        if source_workspace == target_workspace {
+            return Ok((target_workspace, Vec::new()));
+        }
+
+        let MonitorSet::Normal { monitors, .. } = &mut self.monitor_set else {
+            return Err("cannot move a container without an output".into());
+        };
+        let source_monitor = monitors
+            .iter()
+            .position(|monitor| monitor.has_ws(source_workspace))
+            .ok_or_else(|| "No matching node.".to_owned())?;
+        let target_monitor = monitors
+            .iter()
+            .position(|monitor| monitor.has_ws(target_workspace))
+            .ok_or_else(|| "target workspace does not exist".to_owned())?;
+        if source_monitor == target_monitor {
+            return monitors[source_monitor]
+                .move_tiling_subtree_to_workspace(
+                    source_workspace,
+                    node,
+                    target_workspace,
+                    preserve_empty_workspace,
+                )
+                .map(|remapped| (target_workspace, remapped))
+                .ok_or_else(|| "No matching node.".to_owned());
+        }
+
+        let (source, target) = if source_monitor < target_monitor {
+            let (before_target, target_and_after) = monitors.split_at_mut(target_monitor);
+            (&mut before_target[source_monitor], &mut target_and_after[0])
+        } else {
+            let (before_source, source_and_after) = monitors.split_at_mut(source_monitor);
+            (&mut source_and_after[0], &mut before_source[target_monitor])
+        };
+        let source_idx = source
+            .idx_of_ws(source_workspace)
+            .ok_or_else(|| "No matching node.".to_owned())?;
+        let target_idx = target
+            .idx_of_ws(target_workspace)
+            .ok_or_else(|| "target workspace does not exist".to_owned())?;
+        let (subtree, old_parent) = source.workspaces[source_idx]
+            .detach_tiling_subtree(node)
+            .ok_or_else(|| "No matching node.".to_owned())?;
+        let remapped = target.workspaces[target_idx]
+            .attach_tiling_subtree(subtree)
+            .1;
+        source.workspaces[source_idx].finish_tiling_subtree_detach(old_parent);
+        if !preserve_empty_workspace && source.workspace_switch.is_none() {
+            source.clean_up_workspaces();
+        }
+        Ok((target_workspace, remapped))
+    }
+
+    fn resolve_sway_workspace_target(
+        &mut self,
+        target: crate::command::WorkspaceTarget,
+    ) -> Result<(Option<Output>, usize), String> {
         use crate::command::WorkspaceTarget;
 
         let target_position = match target {
@@ -2707,8 +2778,8 @@ impl<W: LayoutElement> Layout<W> {
                     .then(|| (monitor.map(|monitor| monitor.output().clone()), index))
             }),
         };
-        let (target_output, target_index) = if let Some(position) = target_position {
-            position
+        if let Some(position) = target_position {
+            Ok(position)
         } else {
             let (name, number) = sway_workspace_identity(target)?;
             let MonitorSet::Normal {
@@ -2722,9 +2793,16 @@ impl<W: LayoutElement> Layout<W> {
             let monitor = &mut monitors[*active_monitor_idx];
             let index = monitor.workspaces.len().saturating_sub(1);
             monitor.add_sway_workspace_at(index, name, number);
-            (Some(monitor.output().clone()), index)
-        };
+            Ok((Some(monitor.output().clone()), index))
+        }
+    }
 
+    fn move_to_sway_workspace_inner(
+        &mut self,
+        window: Option<&W::Id>,
+        target: crate::command::WorkspaceTarget,
+    ) -> Result<(), String> {
+        let (target_output, target_index) = self.resolve_sway_workspace_target(target)?;
         let source_output = window
             .and_then(|window| {
                 self.workspaces()

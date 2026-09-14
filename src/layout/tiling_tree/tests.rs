@@ -640,6 +640,36 @@ fn split_wraps_a_leaf_with_multiple_or_tabbed_siblings() {
 }
 
 #[test]
+fn detached_subtree_attaches_with_shape_and_internal_focus() {
+    let mut source = tree((1200., 800.), 0.);
+    let first = source.add_tile(tile(1, source.view_size()), InsertTarget::Focused);
+    source.split(first, Layout::SplitV);
+    source.add_tile(tile(2, source.view_size()), InsertTarget::Focused);
+    source.set_focus(first);
+    let subtree = source.nodes[&first].parent.unwrap();
+    let mut destination = tree((1200., 800.), 0.);
+    destination.add_tile(tile(3, destination.view_size()), InsertTarget::Focused);
+
+    let (detached, old_parent) = source.detach_subtree(subtree).unwrap();
+    destination.attach_subtree(detached);
+    source.finish_subtree_detach(old_parent);
+
+    assert_eq!(source.windows().count(), 0);
+    let moved = destination
+        .iter_depth_first()
+        .filter_map(|(id, node)| matches!(node, TreeNode::Split { .. }).then_some(id))
+        .find(|id| destination.leaf_ids_in(*id).len() == 2)
+        .unwrap();
+    assert_eq!(destination.leaf_ids_in(moved).len(), 2);
+    assert_eq!(destination.focus(), destination.node_for_window(&3));
+    destination.set_focus(moved);
+    destination.focus_child();
+    assert_eq!(destination.focus(), destination.node_for_window(&1));
+    source.check_invariants();
+    destination.check_invariants();
+}
+
+#[test]
 fn removing_a_sibling_collapses_the_implicit_container() {
     let mut t = tree((1920., 1080.), 0.);
     let a = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);

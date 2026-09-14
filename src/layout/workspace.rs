@@ -21,7 +21,9 @@ use super::floating::{FloatingSpace, FloatingSpaceRenderElement};
 use super::scrolling::{ColumnWidth, ScrollDirection};
 use super::shadow::Shadow;
 use super::tile::{Tile, TileRenderSnapshot};
-use super::tiling_tree::{InsertTarget, TilingTree, TilingTreeRenderElement};
+use super::tiling_tree::{
+    DetachedSubtree, InsertTarget, NodeId, TilingTree, TilingTreeRenderElement,
+};
 use super::{
     ActivateWindow, HitType, InsertPosition, InteractiveResizeData, LayoutElement, Options,
     RemovedTile, SizeFrac,
@@ -845,6 +847,35 @@ impl<W: LayoutElement> Workspace<W> {
         self.update_focus_floating_tiling_after_removing(from_floating);
 
         removed
+    }
+
+    pub fn detach_tiling_subtree(
+        &mut self,
+        id: NodeId,
+    ) -> Option<(DetachedSubtree<W>, Option<NodeId>)> {
+        let detached = self.tiling.detach_subtree(id)?;
+        if let Some(output) = &self.output {
+            detached
+                .0
+                .for_each_window(|window| window.output_leave(output));
+        }
+        self.update_focus_floating_tiling_after_removing(false);
+        Some(detached)
+    }
+
+    pub fn attach_tiling_subtree(
+        &mut self,
+        subtree: DetachedSubtree<W>,
+    ) -> (NodeId, Vec<(NodeId, NodeId)>) {
+        if let Some(output) = &self.output {
+            subtree.for_each_window(|window| window.output_enter(output));
+        }
+        self.floating_is_active = FloatingActive::No;
+        self.tiling.attach_subtree(subtree)
+    }
+
+    pub fn finish_tiling_subtree_detach(&mut self, old_parent: Option<NodeId>) {
+        self.tiling.finish_subtree_detach(old_parent);
     }
 
     pub fn remove_active_tiling_tile(&mut self) -> Option<Tile<W>> {

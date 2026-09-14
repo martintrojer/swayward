@@ -1688,6 +1688,58 @@ fn criteria_targeted_move_workspace_moves_all_matches_without_changing_focus() {
 }
 
 #[test]
+fn criteria_targeted_move_workspace_preserves_a_container_subtree() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    assert!(crate::command::execute(f.niri_state(), "workspace source")[0].success);
+    for app_id in ["first", "second"] {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+    assert!(crate::command::execute(f.niri_state(), r#"[app_id="first"] focus"#)[0].success);
+    assert!(crate::command::execute(f.niri_state(), "focus parent")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "mark group")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "workspace target")[0].success);
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    let outcome = crate::command::execute(f.niri_state(), "[con_mark=group] move workspace target");
+    assert!(outcome[0].success, "{outcome:?}");
+    let workspaces = f.swayward().layout.workspaces().collect::<Vec<_>>();
+    let source = workspaces
+        .iter()
+        .find(|(_, _, workspace)| workspace.sway_name().as_deref() == Some("source"))
+        .unwrap()
+        .2;
+    let target = workspaces
+        .iter()
+        .find(|(_, _, workspace)| workspace.sway_name().as_deref() == Some("target"))
+        .unwrap()
+        .2;
+    assert_eq!(source.windows().count(), 0);
+    assert_eq!(target.windows().count(), 3);
+    assert_eq!(target.ipc_tiling_tree().nodes().len(), 5);
+    assert!(target.windows().any(|window| {
+        crate::utils::with_toplevel_role(window.toplevel(), |role| role.app_id.clone())
+            == Some("first".into())
+    }));
+}
+
+#[test]
 fn criteria_targeted_scratchpad_commands_move_only_the_matching_window() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));

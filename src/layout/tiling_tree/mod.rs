@@ -50,6 +50,48 @@ pub enum IpcNodeKind {
     Leaf,
 }
 
+#[derive(Debug)]
+pub struct DetachedSubtree<W: LayoutElement> {
+    node: DetachedNode<W>,
+    focus_history: Vec<W::Id>,
+}
+
+#[derive(Debug)]
+enum DetachedNode<W: LayoutElement> {
+    Split {
+        old_id: NodeId,
+        layout: Layout,
+        children: Vec<DetachedNode<W>>,
+        percents: Vec<f64>,
+        previous_layout: Option<Layout>,
+        pending_mode: Option<PendingMode>,
+    },
+    Leaf {
+        old_id: NodeId,
+        tile: Box<Tile<W>>,
+        pending_mode: Option<PendingMode>,
+    },
+}
+
+impl<W: LayoutElement> DetachedNode<W> {
+    fn for_each_window(&self, f: &mut impl FnMut(&W)) {
+        match self {
+            Self::Split { children, .. } => {
+                for child in children {
+                    child.for_each_window(f);
+                }
+            }
+            Self::Leaf { tile, .. } => f(tile.window()),
+        }
+    }
+}
+
+impl<W: LayoutElement> DetachedSubtree<W> {
+    pub fn for_each_window(&self, mut f: impl FnMut(&W)) {
+        self.node.for_each_window(&mut f);
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum IpcNode<I> {
     Split {
@@ -387,6 +429,186 @@ impl<W: LayoutElement> TilingTree<W> {
         self.animate_geometry_changes(old_geometries, Some(id));
         self.request_window_sizes();
         id
+    }
+
+    pub fn detach_subtree(&mut self, id: NodeId) -> Option<(DetachedSubtree<W>, Option<NodeId>)> {
+        let leaves = self.leaf_ids_in(id);
+        let focus_history = self
+            .focus_history
+            .iter()
+            .filter(|candidate| leaves.contains(candidate))
+            .filter_map(|leaf| self.tile(*leaf).map(|tile| tile.window().id().clone()))
+            .collect();
+        let parent = if id == self.root {
+            None
+        } else {
+            let parent = self.detach_subtree_only(id)?;
+            Some(parent)
+        };
+        let node = if id == self.root {
+            let TreeNode::Split {
+                layout,
+                children,
+                percents,
+            } = std::mem::replace(
+                &mut self.nodes.get_mut(&self.root)?.value,
+                TreeNode::Split {
+                    layout: Layout::SplitH,
+                    children: Vec::new(),
+                    percents: Vec::new(),
+                },
+            )
+            else {
+                return None;
+            };
+            let children = children
+                .into_iter()
+                .map(|child| self.take_detached_node(child))
+                .collect::<Option<Vec<_>>>()?;
+            DetachedNode::Split {
+                old_id: id,
+                layout,
+                children,
+                percents,
+                previous_layout: None,
+                pending_mode: None,
+            }
+        } else {
+            self.take_detached_node(id)?
+        };
+        self.focus = self.focused_leaf_in(self.root);
+        self.request_window_sizes();
+        Some((
+            DetachedSubtree {
+                node,
+                focus_history,
+            },
+            parent,
+        ))
+    }
+
+    pub fn attach_subtree(
+        &mut self,
+        subtree: DetachedSubtree<W>,
+    ) -> (NodeId, Vec<(NodeId, NodeId)>) {
+        let focus_history = subtree.focus_history;
+        let mut remapped = Vec::new();
+        let id = self.insert_detached_node(subtree.node, None, &mut remapped);
+        let target = self.focus;
+        let parent = target
+            .and_then(|target| self.nodes.get(&target)?.parent)
+            .unwrap_or(self.root);
+        let after = target
+            .filter(|target| self.nodes.get(target).and_then(|node| node.parent) == Some(parent));
+        self.insert_child(parent, id, after);
+        let insertion = usize::from(self.focus.is_some());
+        for window in focus_history.into_iter().rev() {
+            if let Some(leaf) = self.node_for_window(&window) {
+                self.focus_history.retain(|candidate| *candidate != leaf);
+                self.focus_history
+                    .insert(insertion.min(self.focus_history.len()), leaf);
+            }
+        }
+        self.request_window_sizes();
+        (id, remapped)
+    }
+
+    pub fn finish_subtree_detach(&mut self, old_parent: Option<NodeId>) {
+        if let Some(parent) = old_parent {
+            self.reap_empty_from(parent);
+        }
+        self.compact_tree();
+        self.focus = self.focused_leaf_in(self.root);
+        self.request_window_sizes();
+    }
+
+    fn take_detached_node(&mut self, id: NodeId) -> Option<DetachedNode<W>> {
+        let previous_layout = self.previous_split_layouts.get(&id).copied();
+        let pending_mode = self.pending_modes.get(&id).copied();
+        let node = self.remove_node(id)?;
+        match node.value {
+            TreeNode::Split {
+                layout,
+                children,
+                percents,
+            } => Some(DetachedNode::Split {
+                old_id: id,
+                layout,
+                children: children
+                    .into_iter()
+                    .map(|child| self.take_detached_node(child))
+                    .collect::<Option<Vec<_>>>()?,
+                percents,
+                previous_layout,
+                pending_mode,
+            }),
+            TreeNode::Leaf { tile } => Some(DetachedNode::Leaf {
+                old_id: id,
+                tile,
+                pending_mode,
+            }),
+        }
+    }
+
+    fn insert_detached_node(
+        &mut self,
+        node: DetachedNode<W>,
+        parent: Option<NodeId>,
+        remapped: &mut Vec<(NodeId, NodeId)>,
+    ) -> NodeId {
+        match node {
+            DetachedNode::Split {
+                old_id,
+                layout,
+                children,
+                percents,
+                previous_layout,
+                pending_mode,
+            } => {
+                let id = self.alloc(Node {
+                    parent,
+                    value: TreeNode::Split {
+                        layout,
+                        children: Vec::new(),
+                        percents,
+                    },
+                });
+                remapped.push((old_id, id));
+                let children = children
+                    .into_iter()
+                    .map(|child| self.insert_detached_node(child, Some(id), remapped))
+                    .collect();
+                let TreeNode::Split { children: slot, .. } =
+                    &mut self.nodes.get_mut(&id).unwrap().value
+                else {
+                    unreachable!();
+                };
+                *slot = children;
+                if let Some(layout) = previous_layout {
+                    self.previous_split_layouts.insert(id, layout);
+                }
+                if let Some(mode) = pending_mode {
+                    self.pending_modes.insert(id, mode);
+                }
+                id
+            }
+            DetachedNode::Leaf {
+                old_id,
+                mut tile,
+                pending_mode,
+            } => {
+                tile.update_config(self.view_size, self.scale, self.options.clone());
+                let id = self.alloc(Node {
+                    parent,
+                    value: TreeNode::Leaf { tile },
+                });
+                remapped.push((old_id, id));
+                if let Some(mode) = pending_mode {
+                    self.pending_modes.insert(id, mode);
+                }
+                id
+            }
+        }
     }
 
     pub fn remove_tile_node(&mut self, id: NodeId) -> Option<Tile<W>> {

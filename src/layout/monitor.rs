@@ -13,6 +13,7 @@ use swayward_config::{CornerRadius, LayoutPart};
 use super::insert_hint_element::{InsertHintElement, InsertHintRenderElement};
 use super::scrolling::ColumnWidth;
 use super::tile::Tile;
+use super::tiling_tree::NodeId;
 use super::workspace::{
     compute_working_area, OutputId, Workspace, WorkspaceAddWindowTarget, WorkspaceId,
     WorkspaceRenderElement,
@@ -865,6 +866,27 @@ impl<W: LayoutElement> Monitor<W> {
         if !self.active_workspace().focus_up() {
             self.switch_workspace_up();
         }
+    }
+
+    pub fn move_tiling_subtree_to_workspace(
+        &mut self,
+        source_workspace: WorkspaceId,
+        node: NodeId,
+        target_workspace: WorkspaceId,
+        preserve_empty_workspace: bool,
+    ) -> Option<Vec<(NodeId, NodeId)>> {
+        if source_workspace == target_workspace {
+            return Some(Vec::new());
+        }
+        let source_idx = self.idx_of_ws(source_workspace)?;
+        let target_idx = self.idx_of_ws(target_workspace)?;
+        let (subtree, old_parent) = self.workspaces[source_idx].detach_tiling_subtree(node)?;
+        let remapped = self.workspaces[target_idx].attach_tiling_subtree(subtree).1;
+        self.workspaces[source_idx].finish_tiling_subtree_detach(old_parent);
+        if !preserve_empty_workspace && self.workspace_switch.is_none() {
+            self.clean_up_workspaces();
+        }
+        Some(remapped)
     }
 
     pub fn move_to_workspace_up(&mut self, activate: ActivateWindow) {

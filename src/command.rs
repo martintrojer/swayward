@@ -192,10 +192,13 @@ fn execute_one(
             {
                 return failure("Can't move fullscreen global container");
             }
-            if let Err(error) = state.swayward.layout.move_to_sway_workspace(target) {
-                return failure(error);
+            let Some(focused) = focused_target(state) else {
+                return success();
+            };
+            let outcome = move_target_to_workspace(state, focused, target, false);
+            if !outcome.success {
+                return outcome;
             }
-            state.swayward.queue_redraw_all();
             None
         }
         Command::MoveToOutput(target) => {
@@ -791,6 +794,57 @@ fn select_resize_amount(
         .unwrap_or(first)
 }
 
+fn move_target_to_workspace(
+    state: &mut State,
+    target: CommandTarget,
+    workspace_target: WorkspaceTarget,
+    preserve_empty_workspace: bool,
+) -> CommandOutcome {
+    let result = match target {
+        CommandTarget::Window(target) => {
+            let window = state
+                .swayward
+                .layout
+                .windows()
+                .find_map(|(_, mapped)| (mapped.id() == target).then(|| mapped.window.clone()));
+            let Some(window) = window else {
+                return failure("No matching node.");
+            };
+            state
+                .swayward
+                .layout
+                .move_window_to_sway_workspace(&window, workspace_target)
+                .map(|_| ())
+        }
+        CommandTarget::Container(workspace, node) => {
+            let (target_workspace, remapped) =
+                match state.swayward.layout.move_tiling_subtree_to_sway_workspace(
+                    workspace,
+                    node,
+                    workspace_target,
+                    preserve_empty_workspace,
+                ) {
+                    Ok(moved) => moved,
+                    Err(error) => return failure(error),
+                };
+            for (old, new) in remapped {
+                if let Some(marks) = state.swayward.marks_by_container.remove(&(workspace, old)) {
+                    state
+                        .swayward
+                        .marks_by_container
+                        .insert((target_workspace, new), marks);
+                }
+            }
+            Ok(())
+        }
+    };
+    if let Err(error) = result {
+        return failure(error);
+    }
+    state.swayward.queue_redraw_all();
+    success()
+}
+
 fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget) -> CommandOutcome {
     match command {
         Command::Mark {
@@ -809,29 +863,10 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
             state.swayward.queue_redraw_all();
         }
         Command::MoveToWorkspace(workspace_target) => {
-            let result = match target {
-                CommandTarget::Window(target) => {
-                    let window = state.swayward.layout.windows().find_map(|(_, mapped)| {
-                        (mapped.id() == target).then(|| mapped.window.clone())
-                    });
-                    let Some(window) = window else {
-                        return failure("No matching node.");
-                    };
-                    state
-                        .swayward
-                        .layout
-                        .move_window_to_sway_workspace(&window, workspace_target.clone())
-                }
-                CommandTarget::Container(_, _) => {
-                    return failure(
-                        "moving container subtrees between workspaces is not implemented",
-                    )
-                }
-            };
-            if let Err(error) = result {
-                return failure(error);
+            let outcome = move_target_to_workspace(state, target, workspace_target.clone(), true);
+            if !outcome.success {
+                return outcome;
             }
-            state.swayward.queue_redraw_all();
         }
         Command::MoveToOutput(output_target_name) => {
             let CommandTarget::Window(target) = target else {
