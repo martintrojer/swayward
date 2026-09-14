@@ -4240,13 +4240,17 @@ impl<W: LayoutElement> Layout<W> {
     }
 
     pub fn disable_active_workspace_fullscreen(&mut self) {
-        let fullscreen = self
-            .active_workspace()
-            .and_then(|workspace| workspace.tiling().fullscreen_node());
-        if let Some(fullscreen) = fullscreen {
-            if let Some(workspace) = self.active_workspace_mut() {
-                workspace.tiling_mut().set_node_fullscreen(fullscreen, None);
-            }
+        let window = self.active_workspace().and_then(|workspace| {
+            let fullscreen = workspace.tiling().fullscreen_node()?;
+            workspace.tiling().windows().find_map(|(id, window)| {
+                workspace
+                    .tiling()
+                    .contains_node(fullscreen, id)
+                    .then(|| window.id().clone())
+            })
+        });
+        if let (Some(workspace), Some(window)) = (self.active_workspace_mut(), window) {
+            workspace.set_fullscreen(&window, false);
         }
     }
 
