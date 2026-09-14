@@ -1156,7 +1156,7 @@ fn focused_target(state: &State) -> Option<CommandTarget> {
     }
     let workspace = state.swayward.layout.active_workspace()?;
     workspace
-        .focused_tiling_node()
+        .focused_container_node()
         .map(|node| CommandTarget::Container(workspace.id(), node))
 }
 

@@ -44,3 +44,4 @@
 # Upstream i3 conformance files that pass in full against swayward.
 146-floating-reinsert.t
 145-flattening.t
+132-move-workspace.t

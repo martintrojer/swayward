@@ -328,7 +328,7 @@ fn describe_workspace_node(
             .is_some_and(|window| window.is_focused());
     let mut floating_nodes = workspace
         .tiles_with_ipc_layouts()
-        .filter(|(tile, _)| workspace.is_floating(&tile.window().window))
+        .filter(|(tile, _)| workspace.is_floating_for_ipc(&tile.window().window))
         .map(|(tile, layout)| {
             let (x, y) = layout.tile_pos_in_workspace_view.unwrap_or_default();
             let mut node = describe_window(

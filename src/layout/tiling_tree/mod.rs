@@ -74,6 +74,22 @@ enum DetachedNode<W: LayoutElement> {
 }
 
 impl<W: LayoutElement> DetachedNode<W> {
+    fn has_fullscreen(&self) -> bool {
+        match self {
+            Self::Split {
+                children,
+                pending_mode,
+                ..
+            } => {
+                pending_mode.is_some_and(|mode| mode.fullscreen.is_some())
+                    || children.iter().any(Self::has_fullscreen)
+            }
+            Self::Leaf { pending_mode, .. } => {
+                pending_mode.is_some_and(|mode| mode.fullscreen.is_some())
+            }
+        }
+    }
+
     fn for_each_window(&self, f: &mut impl FnMut(&W)) {
         match self {
             Self::Split { children, .. } => {
@@ -86,9 +102,27 @@ impl<W: LayoutElement> DetachedNode<W> {
     }
 }
 
+impl<I> IpcNode<I> {
+    pub fn retain_leaves(&mut self, keep: &impl Fn(&I) -> bool) {
+        if let Self::Split { children, .. } = self {
+            children.retain_mut(|child| match child {
+                Self::Leaf { window, .. } => keep(window),
+                Self::Split { .. } => {
+                    child.retain_leaves(keep);
+                    !matches!(child, Self::Split { children, .. } if children.is_empty())
+                }
+            });
+        }
+    }
+}
+
 impl<W: LayoutElement> DetachedSubtree<W> {
     pub fn for_each_window(&self, mut f: impl FnMut(&W)) {
         self.node.for_each_window(&mut f);
+    }
+
+    pub fn has_fullscreen(&self) -> bool {
+        self.node.has_fullscreen()
     }
 }
 
@@ -705,6 +739,10 @@ impl<W: LayoutElement> TilingTree<W> {
 
     pub fn root_is_focused(&self) -> bool {
         self.focus == Some(self.root)
+    }
+
+    pub fn is_root(&self, id: NodeId) -> bool {
+        id == self.root
     }
 
     pub fn focus_root(&mut self) {
@@ -1799,6 +1837,12 @@ impl<W: LayoutElement> TilingTree<W> {
         self.fullscreen_node()
             .zip(self.node_for_window(window))
             .is_some_and(|(fullscreen, node)| self.is_descendant(node, fullscreen))
+    }
+
+    pub fn fullscreen_window(&self) -> Option<&W::Id> {
+        let fullscreen = self.fullscreen_node()?;
+        let leaf = self.focused_leaf_in(fullscreen)?;
+        self.tile(leaf).map(|tile| tile.window().id())
     }
 
     pub fn set_maximized(&mut self, window: &W::Id, maximized: bool) -> bool {
@@ -3424,7 +3468,7 @@ impl<W: LayoutElement> TilingTree<W> {
         }
     }
 
-    fn node_for_window(&self, window: &W::Id) -> Option<NodeId> {
+    pub(super) fn node_for_window(&self, window: &W::Id) -> Option<NodeId> {
         self.windows()
             .find_map(|(id, candidate)| (candidate.id() == window).then_some(id))
     }

@@ -2691,6 +2691,22 @@ impl<W: LayoutElement> Layout<W> {
         target: crate::command::WorkspaceTarget,
         preserve_empty_workspace: bool,
     ) -> Result<(WorkspaceId, Vec<(tiling_tree::NodeId, tiling_tree::NodeId)>), String> {
+        let (floating, empty_root) = self
+            .workspaces()
+            .find(|(_, _, workspace)| workspace.id() == source_workspace)
+            .filter(|(_, _, workspace)| workspace.tiling().is_root(node))
+            .map(|(_, _, workspace)| {
+                (
+                    workspace
+                        .tiles()
+                        .filter(|tile| workspace.is_floating(tile.window().id()))
+                        .map(|tile| tile.window().id().clone())
+                        .collect::<Vec<_>>(),
+                    workspace.tiling().tiles().next().is_none(),
+                )
+            })
+            .unwrap_or_default();
+        let floating_target = target.clone();
         let (target_output, target_index) = self.resolve_sway_workspace_target(target)?;
         let target_workspace = match target_output.as_ref() {
             Some(output) => self
@@ -2706,6 +2722,12 @@ impl<W: LayoutElement> Layout<W> {
         if source_workspace == target_workspace {
             return Ok((target_workspace, Vec::new()));
         }
+        if empty_root {
+            for window in floating {
+                self.move_window_to_sway_workspace(&window, floating_target.clone())?;
+            }
+            return Ok((target_workspace, Vec::new()));
+        }
 
         let MonitorSet::Normal { monitors, .. } = &mut self.monitor_set else {
             return Err("cannot move a container without an output".into());
@@ -2719,15 +2741,18 @@ impl<W: LayoutElement> Layout<W> {
             .position(|monitor| monitor.has_ws(target_workspace))
             .ok_or_else(|| "target workspace does not exist".to_owned())?;
         if source_monitor == target_monitor {
-            return monitors[source_monitor]
+            let remapped = monitors[source_monitor]
                 .move_tiling_subtree_to_workspace(
                     source_workspace,
                     node,
                     target_workspace,
-                    preserve_empty_workspace,
+                    preserve_empty_workspace || !floating.is_empty(),
                 )
-                .map(|remapped| (target_workspace, remapped))
-                .ok_or_else(|| "No matching node.".to_owned());
+                .ok_or_else(|| "No matching node.".to_owned())?;
+            for window in floating {
+                self.move_window_to_sway_workspace(&window, floating_target.clone())?;
+            }
+            return Ok((target_workspace, remapped));
         }
 
         let (source, target) = if source_monitor < target_monitor {
@@ -2750,8 +2775,11 @@ impl<W: LayoutElement> Layout<W> {
             .attach_tiling_subtree(subtree)
             .1;
         source.workspaces[source_idx].finish_tiling_subtree_detach(old_parent);
-        if !preserve_empty_workspace && source.workspace_switch.is_none() {
+        if !preserve_empty_workspace && floating.is_empty() && source.workspace_switch.is_none() {
             source.clean_up_workspaces();
+        }
+        for window in floating {
+            self.move_window_to_sway_workspace(&window, floating_target.clone())?;
         }
         Ok((target_workspace, remapped))
     }

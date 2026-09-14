@@ -513,6 +513,15 @@ impl<W: LayoutElement> Workspace<W> {
         self.floating.has_window(id)
     }
 
+    pub fn is_floating_for_ipc(&self, id: &W::Id) -> bool {
+        self.floating.has_window(id)
+            || self.tiling.tiles().any(|tile| {
+                tile.window().id() == id
+                    && tile.restore_to_floating
+                    && tile.window().pending_sizing_mode().is_fullscreen()
+            })
+    }
+
     pub fn current_output(&self) -> Option<&Output> {
         self.output.as_ref()
     }
@@ -545,6 +554,41 @@ impl<W: LayoutElement> Workspace<W> {
 
     pub fn fullscreen_contains_window(&self, window: &W::Id) -> bool {
         self.tiling.fullscreen_contains_window(window)
+    }
+
+    pub fn fullscreen_window(&self) -> Option<&W::Id> {
+        self.tiling.fullscreen_window()
+    }
+
+    pub fn set_fullscreen_restore_to_floating(&mut self, window: &W::Id) {
+        if let Some(tile) = self
+            .tiling
+            .tiles_mut()
+            .find(|tile| tile.window().id() == window)
+        {
+            tile.restore_to_floating = true;
+        }
+    }
+
+    pub fn set_window_fullscreen(
+        &mut self,
+        window: &W::Id,
+        mode: Option<crate::layout::tiling_tree::FullscreenMode>,
+    ) -> bool {
+        if mode.is_some() {
+            self.disable_fullscreen();
+        }
+        self.set_fullscreen(window, mode.is_some());
+        let Some(id) = self.tiling.node_for_window(window) else {
+            return false;
+        };
+        self.tiling.set_node_fullscreen(id, mode)
+    }
+
+    pub fn disable_fullscreen(&mut self) {
+        if let Some(fullscreen) = self.tiling.fullscreen_node() {
+            self.tiling.set_node_fullscreen(fullscreen, None);
+        }
     }
 
     pub fn set_focused_fullscreen(
@@ -832,11 +876,13 @@ impl<W: LayoutElement> Workspace<W> {
             from_floating = true;
             self.floating.remove_tile(id)
         } else {
+            let tile = self.tiling.remove_tile(id, transaction).unwrap();
+            let is_floating = tile.restore_to_floating;
             RemovedTile {
-                tile: self.tiling.remove_tile(id, transaction).unwrap(),
+                tile,
                 width: ColumnWidth::Proportion(0.5),
                 is_full_width: false,
-                is_floating: false,
+                is_floating,
             }
         };
 
@@ -869,6 +915,10 @@ impl<W: LayoutElement> Workspace<W> {
     ) -> (NodeId, Vec<(NodeId, NodeId)>) {
         if let Some(output) = &self.output {
             subtree.for_each_window(|window| window.output_enter(output));
+        }
+        let fullscreen = subtree.has_fullscreen();
+        if fullscreen {
+            self.disable_fullscreen();
         }
         self.floating_is_active = FloatingActive::No;
         self.tiling.attach_subtree(subtree)
@@ -1046,6 +1096,14 @@ impl<W: LayoutElement> Workspace<W> {
         (!self.floating_is_active.get())
             .then(|| self.tiling.focus())
             .flatten()
+    }
+
+    pub fn focused_container_node(&self) -> Option<crate::layout::tiling_tree::NodeId> {
+        if self.floating_is_active == FloatingActive::NoButRaised {
+            self.tiling.focus().filter(|id| self.tiling.is_root(*id))
+        } else {
+            self.focused_tiling_node()
+        }
     }
 
     pub fn is_workspace_focused(&self) -> bool {
@@ -1849,7 +1907,9 @@ impl<W: LayoutElement> Workspace<W> {
     }
 
     pub fn ipc_tiling_tree(&self) -> super::tiling_tree::IpcNode<W::Id> {
-        self.tiling.ipc_tree()
+        let mut tree = self.tiling.ipc_tree();
+        tree.retain_leaves(&|window| !self.is_floating_for_ipc(window));
+        tree
     }
 
     pub fn ipc_decoration_rect(&self, window: &W::Id) -> Option<Rectangle<f64, Logical>> {

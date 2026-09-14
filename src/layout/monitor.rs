@@ -936,6 +936,8 @@ impl<W: LayoutElement> Monitor<W> {
             .find_map(|(tile, offset, _visible)| (tile.window().id() == &window).then_some(offset))
             .unwrap();
 
+        let fullscreen = workspace.fullscreen_mode();
+        let fullscreen_window = workspace.fullscreen_window().cloned();
         let transaction = Transaction::new();
         let removed = workspace.remove_tile(&window, transaction);
 
@@ -963,6 +965,10 @@ impl<W: LayoutElement> Monitor<W> {
             removed.is_floating,
             Some(config),
         );
+        if let (Some(fullscreen), Some(fullscreen_window)) = (fullscreen, fullscreen_window) {
+            self.workspaces[new_idx].set_window_fullscreen(&fullscreen_window, Some(fullscreen));
+            self.workspaces[new_idx].set_fullscreen_restore_to_floating(&fullscreen_window);
+        }
 
         if self.workspace_switch.is_none() {
             self.clean_up_workspaces();
