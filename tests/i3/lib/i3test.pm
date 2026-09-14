@@ -47,10 +47,12 @@ our @EXPORT = qw(
     isa_ok
     kill_all_windows
     launch_with_config
+    note
     create_layout
     exit_gracefully
     isnt
     ok
+    skip
     open_empty_con
     open_floating_window
     open_window
@@ -151,6 +153,8 @@ sub _skip_assertion {
     undef $skip_reason unless $skip_assertions;
     return 1;
 }
+sub skip ($;$) { $tester->skip(@_) }
+sub note (@) { $tester->note(@_) }
 sub ok ($;$) {
     if (_skip_assertion()) {
         _control({ action => 'remove_all_windows' }) unless $skip_assertions;
@@ -302,7 +306,7 @@ sub _workspace_nodes {
     map {
         my ($content) = grep { $_->{type} eq 'con' } @{$_->{nodes}};
         $content ? @{$content->{nodes}} : grep { $_->{type} eq 'workspace' } @{$_->{nodes}}
-    } grep { $_->{type} eq 'output' } @{_request(4)->{nodes}};
+    } grep { $_->{type} eq 'output' && $_->{name} ne '__i3' } @{_request(4)->{nodes}};
 }
 
 sub get_workspace_names { [map { $_->{name} } _workspace_nodes()] }
@@ -697,7 +701,13 @@ sub _find_window {
 package X11::XCB::Window;
 sub new { bless $_[1], $_[0] }
 sub id { $_[0]->{id} }
-sub name { $_[0]->{name} }
+sub name {
+    my ($self, $name) = @_;
+    return $self->{name} unless @_ > 1;
+    my $reply = i3test::_control({ action => 'set_title', handle => $self->{handle}, title => $name });
+    $reply->{success} or die "title update failed: " . ($reply->{error} // 'unknown error');
+    $self->{name} = $name;
+}
 sub map {
     my ($self) = @_;
     return $self if defined($self->{id});

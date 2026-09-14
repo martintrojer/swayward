@@ -452,6 +452,22 @@ fn handle_control(fixture: &mut Fixture, client: super::client::ClientId, stream
         "map" => json!({
             "id": map_window(fixture, client, request["handle"].as_u64().unwrap() as u32)
         }),
+        "set_title" => {
+            let surface_id = request["handle"].as_u64().unwrap() as u32;
+            let title = request["title"].as_str().unwrap();
+            let surface = fixture
+                .client(client)
+                .state
+                .windows
+                .iter()
+                .find(|window| window.surface.id().protocol_id() == surface_id)
+                .unwrap()
+                .surface
+                .clone();
+            fixture.client(client).window(&surface).set_title(title);
+            fixture.double_roundtrip(client);
+            json!({ "success": true })
+        }
         "close" => {
             json!({ "success": close_window(fixture, client, request["id"].as_i64().unwrap()) })
         }
