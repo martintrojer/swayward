@@ -2226,6 +2226,16 @@ impl<W: LayoutElement> Layout<W> {
         workspace.focus_column(index);
     }
 
+    fn focus_output_from_direction(
+        &mut self,
+        output: &Output,
+        direction: tiling_tree::Direction,
+    ) -> bool {
+        self.focus_output(output);
+        self.active_workspace_mut()
+            .is_some_and(|workspace| workspace.focus_from_output_direction(direction))
+    }
+
     pub fn focus_window_up_or_output(&mut self, output: &Output) -> bool {
         if let Some(workspace) = self.active_workspace_mut() {
             if workspace.focus_up() {
@@ -2233,7 +2243,7 @@ impl<W: LayoutElement> Layout<W> {
             }
         }
 
-        self.focus_output(output);
+        self.focus_output_from_direction(output, tiling_tree::Direction::Up);
         true
     }
 
@@ -2244,7 +2254,7 @@ impl<W: LayoutElement> Layout<W> {
             }
         }
 
-        self.focus_output(output);
+        self.focus_output_from_direction(output, tiling_tree::Direction::Down);
         true
     }
 
@@ -2255,7 +2265,7 @@ impl<W: LayoutElement> Layout<W> {
             }
         }
 
-        self.focus_output(output);
+        self.focus_output_from_direction(output, tiling_tree::Direction::Left);
         true
     }
 
@@ -2266,7 +2276,7 @@ impl<W: LayoutElement> Layout<W> {
             }
         }
 
-        self.focus_output(output);
+        self.focus_output_from_direction(output, tiling_tree::Direction::Right);
         true
     }
 

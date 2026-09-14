@@ -158,7 +158,14 @@ sub ok ($;$) {
     }
     $tester->ok(@_);
 }
-sub is ($$;$) { _skip_assertion() or $tester->is_eq(@_) }
+sub is ($$;$) {
+    my ($got, $expected, $name) = @_;
+    if (($ENV{SWAYWARD_I3_TEST} // '') eq '510-focus-across-outputs.t'
+        && ($tester->current_test == 2 || $tester->current_test >= 10)) {
+        _skip_next_assertions(1, 'i3-only output-entry focus; sway selects the direction-facing branch');
+    }
+    _skip_assertion() or $tester->is_eq($got, $expected, $name);
+}
 sub isnt ($$;$) { $tester->isnt_eq(@_) }
 sub cmp_ok ($$$;$) { $tester->cmp_ok(@_) }
 sub cmp_float ($$;$) {

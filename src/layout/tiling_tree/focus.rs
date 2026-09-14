@@ -112,6 +112,41 @@ impl<W: LayoutElement> TilingTree<W> {
         }
     }
 
+    pub fn focus_from_output_direction(&mut self, dir: Direction) -> bool {
+        let target = if let Some(fullscreen) = self.fullscreen_node() {
+            self.focused_leaf_in(fullscreen)
+        } else {
+            let TreeNode::Split {
+                layout, children, ..
+            } = &self.nodes[&self.root].value
+            else {
+                return false;
+            };
+            let matching_axis = matches!(
+                (dir, layout),
+                (
+                    Direction::Left | Direction::Right,
+                    Layout::SplitH | Layout::Tabbed
+                ) | (
+                    Direction::Up | Direction::Down,
+                    Layout::SplitV | Layout::Stacked
+                )
+            );
+            if matching_axis {
+                let branch = if matches!(dir, Direction::Left | Direction::Up) {
+                    children.last()
+                } else {
+                    children.first()
+                };
+                branch.and_then(|branch| self.focused_leaf_in(*branch))
+            } else {
+                self.focused_leaf_in(self.root)
+            }
+        };
+        self.set_focus_id(target);
+        target.is_some()
+    }
+
     pub fn focus_direction(&mut self, dir: Direction) -> bool {
         let Some(mut current) = self.focus else {
             return false;

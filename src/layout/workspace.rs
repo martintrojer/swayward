@@ -1159,6 +1159,17 @@ impl<W: LayoutElement> Workspace<W> {
         self.tiling.set_layout(id, layout);
     }
 
+    pub fn focus_from_output_direction(
+        &mut self,
+        direction: crate::layout::tiling_tree::Direction,
+    ) -> bool {
+        if self.tiling.is_empty() {
+            return false;
+        }
+        self.floating_is_active = FloatingActive::No;
+        self.tiling.focus_from_output_direction(direction)
+    }
+
     pub fn focus_left(&mut self) -> bool {
         if self.floating_is_active.get() {
             self.floating.focus_left()
