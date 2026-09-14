@@ -128,6 +128,26 @@ bindsym $missing+x nop
         self.assertIn("width 1", result.stdout)
         self.assertIn("manual attention: none", result.stderr)
 
+    def test_no_focus_translates_portable_criteria(self):
+        result = self.translate(
+            'no_focus [class="^chat$"]\nno_focus [title="^splash$"]\n'
+        )
+        self.assertIn('match app-id="^chat$"', result.stdout)
+        self.assertIn('match title="^splash$"', result.stdout)
+        self.assertEqual(result.stdout.count("open-focused false"), 2)
+        self.assertIn("manual attention: none", result.stderr)
+
+    def test_no_focus_refuses_unsupported_criteria(self):
+        for criterion, reason in [
+            ("instance", "X11-only criterion"),
+            ("workspace", "workspace criterion"),
+        ]:
+            with self.subTest(criterion=criterion):
+                result = self.translate(f'no_focus [{criterion}="value"]\n')
+                self.assertNotIn("window-rule {", result.stdout)
+                self.assertIn(reason, result.stdout)
+                self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
     def test_for_window_refuses_x11_only_criteria(self):
         for criterion in ["instance", "id", "window_role", "window_type"]:
             with self.subTest(criterion=criterion):

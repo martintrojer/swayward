@@ -102,6 +102,8 @@ class Translator:
                 self.translate_bind(path, line_no, match.group(1), match.group(2))
             elif match := re.match(r"for_window\s+(\[[^]]+\])\s+(.+)", text):
                 self.translate_for_window(path, line_no, match.group(1), match.group(2))
+            elif match := re.fullmatch(r"no_focus\s+(\[[^]]+\])", text):
+                self.translate_no_focus(path, line_no, match.group(1))
             elif match := re.match(r"assign\s+(\[[^]]+\])\s+(?:→|->)?\s*(.+)", text):
                 self.translate_assign(path, line_no, match.group(1), match.group(2))
             elif match := re.fullmatch(r"workspace\s+(.+?)\s+output\s+(\S+)(?:\s+.*)?", text):
@@ -326,6 +328,19 @@ class Translator:
                 return None
             translated.append(("title" if key == "title" else "app-id", value))
         return translated
+
+    def translate_no_focus(self, source: Path, line: int, criteria: str) -> None:
+        match = self.translate_window_criteria(source, line, "no_focus", criteria)
+        if match is None:
+            return
+        self.sections += [
+            "window-rule {",
+            "    match " + " ".join(
+                f"{field}={self.quote(value)}" for field, value in match
+            ),
+            "    open-focused false",
+            "}",
+        ]
 
     def translate_for_window(
         self, source: Path, line: int, criteria: str, command: str

@@ -185,6 +185,40 @@ for_window [title="^test\w+$"] layout tabbed, focus, move workspace moved
 }
 
 #[test]
+fn no_focus_maps_portable_criteria_and_refuses_x11_only_criteria() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_owned();
+    for (criterion, accepted) in [("class", true), ("title", true), ("instance", false)] {
+        let fixture = std::env::temp_dir().join(format!(
+            "swayward-no-focus-{}-{criterion}.conf",
+            std::process::id()
+        ));
+        std::fs::write(&fixture, format!("no_focus [{criterion}=\"value\"]\n")).unwrap();
+        let output = Command::new("python3")
+            .arg(root.join("contrib/sway-to-kdl"))
+            .arg(&fixture)
+            .output()
+            .unwrap();
+        std::fs::remove_file(fixture).unwrap();
+
+        assert!(output.status.success());
+        let translated = String::from_utf8(output.stdout).unwrap();
+        let summary = String::from_utf8(output.stderr).unwrap();
+        if accepted {
+            assert!(translated.contains("open-focused false"), "{translated}");
+            assert_eq!(summary, "manual attention: none\n");
+            Config::parse_mem(&translated).unwrap();
+        } else {
+            assert!(!translated.contains("window-rule {"), "{translated}");
+            assert!(translated.contains("X11-only criterion"), "{translated}");
+            assert!(summary.starts_with("manual attention: 1 directive(s)"));
+        }
+    }
+}
+
+#[test]
 fn sway_workspace_output_uses_first_preference() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()

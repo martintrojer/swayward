@@ -36,6 +36,7 @@
 224-regress-resize-branch.t
 227-ipc-workspace-empty.t
 237-regress-assign-focus.t
+242-no-focus.t
 273-regress-focus-toggle.t
 285-sticky.t
 292-regress-layout-toggle.t
