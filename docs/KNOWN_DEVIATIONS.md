@@ -42,6 +42,27 @@ Swayward leaves `warp-mouse-to-focus` disabled by default
 manual conversion because swayward cannot express output-only warping without
 also enabling within-output window warps.
 
+### Edge-border hiding
+
+Sway has two independent edge-decoration settings. `hide_edge_borders` has six
+case-sensitive values: `none`, `vertical`, `horizontal`, `both`, `smart`, and
+`smart_no_gaps`; the optional `--i3` flag separately enables `hide_lone_tab`
+(`sway/commands/hide_edge_borders.c:7-45`). The directional modes suppress
+individual tiled-window edges at workspace boundaries. `smart` suppresses every
+edge only when the tiled view is the sole visible view, while `smart_no_gaps`
+does so only when the workspace's current outer gaps are also all zero. Floating
+windows are excluded (`sway/tree/view.c:309-409`). `hide_lone_tab` separately
+removes a singleton tabbed or stacked titlebar for non-normal border styles
+(`sway/desktop/transaction.c:316-347`; `sway/sway/ipc-json.c:543-555`).
+
+Swayward's border model has one symmetric width used by geometry and rendering,
+and its titlebar model has no singleton suppression setting. The translator
+therefore accepts only `hide_edge_borders none`, which is already swayward's
+behavior, and reports every other mode and every `--i3` form for manual
+conversion. It does not map them to `border off`, because that would incorrectly
+remove floating and multi-window borders. Swayward's shipped 4 px border and
+16 px gaps remain unchanged.
+
 ## Bars
 
 Swayward has no `bar {}` configuration block and does not launch swaybar.

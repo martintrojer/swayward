@@ -156,6 +156,29 @@ bindsym $missing+x nop
         self.assertIn("width 1", result.stdout)
         self.assertIn("manual attention: none", result.stderr)
 
+    def test_hide_edge_borders_only_maps_the_exact_default(self):
+        result = self.translate("hide_edge_borders none\n")
+        self.assertIn("hide_edge_borders none (default)", result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
+        for value in ["vertical", "horizontal", "both", "smart", "smart_no_gaps"]:
+            with self.subTest(value=value):
+                result = self.translate(f"hide_edge_borders {value}\n")
+                self.assertIn("per-edge border suppression", result.stdout)
+                self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
+        for value in ["none", "vertical", "horizontal", "both", "smart", "smart_no_gaps"]:
+            with self.subTest(i3=value):
+                result = self.translate(f"hide_edge_borders --i3 {value}\n")
+                self.assertIn("hide_lone_tab", result.stdout)
+                self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
+        for value in ["NONE", "Smart", "bogus", "--i3", "smart extra"]:
+            with self.subTest(invalid=value):
+                result = self.translate(f"hide_edge_borders {value}\n")
+                self.assertIn("expected hide_edge_borders", result.stdout)
+                self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
     def test_workspace_auto_back_and_forth_uses_sway_boolean_words(self):
         for value in ["1", "yes", "on", "true", "enable", "enabled", "active"]:
             with self.subTest(value=value):

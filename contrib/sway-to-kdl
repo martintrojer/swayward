@@ -140,6 +140,35 @@ class Translator:
                 else:
                     name = match.group(1).replace("_", "-")
                     self.layout_settings.append(f"    {name} {width} {height}")
+            elif match := re.fullmatch(r"hide_edge_borders\s+(.+)", text):
+                arguments = match.group(1).split()
+                if arguments == ["none"]:
+                    self.sections.append("// sway hide_edge_borders none (default)")
+                elif arguments[:1] == ["--i3"] and len(arguments) == 2 and arguments[1] in {
+                    "none", "vertical", "horizontal", "both", "smart", "smart_no_gaps"
+                }:
+                    self.warn(
+                        path,
+                        line_no,
+                        text,
+                        "hide_lone_tab has no exact swayward equivalent",
+                    )
+                elif len(arguments) == 1 and arguments[0] in {
+                    "vertical", "horizontal", "both", "smart", "smart_no_gaps"
+                }:
+                    self.warn(
+                        path,
+                        line_no,
+                        text,
+                        "per-edge border suppression has no exact swayward equivalent",
+                    )
+                else:
+                    self.warn(
+                        path,
+                        line_no,
+                        text,
+                        "expected hide_edge_borders [--i3] none|vertical|horizontal|both|smart|smart_no_gaps",
+                    )
             elif match := re.fullmatch(r"force_focus_wrapping\s+(\S+)", text):
                 enabled = match.group(1).lower() in {
                     "1", "yes", "on", "true", "enable", "enabled", "active"
