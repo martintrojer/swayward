@@ -2904,7 +2904,7 @@ fn criteria_move_output_right_uses_layout_positions_during_workspace_animation()
 }
 
 #[test]
-fn move_output_direction_uses_the_windows_output_and_wraps_geometrically() {
+fn move_output_direction_uses_the_windows_output_and_stops_at_the_edge() {
     let mut f = Fixture::new();
     f.add_named_output_at("right".into(), (100, 100), Some((200, 100)));
     f.add_named_output_at("middle".into(), (100, 100), Some((100, 0)));
@@ -2924,7 +2924,7 @@ fn move_output_direction_uses_the_windows_output_and_wraps_geometrically() {
     let window_id = f.swayward().layout.focus().unwrap().id();
 
     assert!(crate::command::execute(f.niri_state(), "focus output left")[0].success);
-    for expected in ["middle", "left", "right"] {
+    for expected in ["middle", "left"] {
         assert!(
             crate::command::execute(f.niri_state(), r#"[app_id="moveme"] move output left"#)[0]
                 .success
@@ -2941,6 +2941,25 @@ fn move_output_direction_uses_the_windows_output_and_wraps_geometrically() {
             expected
         );
     }
+
+    let outcome =
+        &crate::command::execute(f.niri_state(), r#"[app_id="moveme"] move output left"#)[0];
+    assert!(!outcome.success);
+    assert_eq!(
+        outcome.error.as_deref(),
+        Some("Can't find output with name/direction 'left'")
+    );
+    assert_eq!(
+        f.swayward()
+            .layout
+            .windows()
+            .find(|(_, mapped)| mapped.id() == window_id)
+            .unwrap()
+            .0
+            .unwrap()
+            .output_name(),
+        "left"
+    );
 }
 
 #[test]

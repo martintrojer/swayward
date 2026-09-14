@@ -3608,7 +3608,7 @@ impl Swayward {
         current: &Output,
         reference: Point<i32, Logical>,
     ) -> Option<Output> {
-        self.output_in_direction(current, reference, true, false)
+        self.output_in_direction(current, reference, true, false, true)
     }
 
     pub fn output_right_of(&self, current: &Output) -> Option<Output> {
@@ -3620,7 +3620,7 @@ impl Swayward {
         current: &Output,
         reference: Point<i32, Logical>,
     ) -> Option<Output> {
-        self.output_in_direction(current, reference, true, true)
+        self.output_in_direction(current, reference, true, true, true)
     }
 
     pub fn output_up_of(&self, current: &Output) -> Option<Output> {
@@ -3632,7 +3632,7 @@ impl Swayward {
         current: &Output,
         reference: Point<i32, Logical>,
     ) -> Option<Output> {
-        self.output_in_direction(current, reference, false, false)
+        self.output_in_direction(current, reference, false, false, true)
     }
 
     pub fn output_down_of(&self, current: &Output) -> Option<Output> {
@@ -3644,7 +3644,17 @@ impl Swayward {
         current: &Output,
         reference: Point<i32, Logical>,
     ) -> Option<Output> {
-        self.output_in_direction(current, reference, false, true)
+        self.output_in_direction(current, reference, false, true, true)
+    }
+
+    pub(crate) fn adjacent_output(
+        &self,
+        current: &Output,
+        reference: Point<i32, Logical>,
+        horizontal: bool,
+        positive: bool,
+    ) -> Option<Output> {
+        self.output_in_direction(current, reference, horizontal, positive, false)
     }
 
     fn output_in_direction(
@@ -3653,6 +3663,7 @@ impl Swayward {
         reference: Point<i32, Logical>,
         horizontal: bool,
         positive: bool,
+        wrap: bool,
     ) -> Option<Output> {
         let current_geo = self.global_space.output_geometry(current)?;
         let candidates = || {
@@ -3695,22 +3706,25 @@ impl Swayward {
             .filter(|(_, geometry)| in_direction(*geometry))
             .min_by_key(|(_, geometry)| distance(*geometry))
             .or_else(|| {
-                candidates()
-                    .filter(|(_, geometry)| {
-                        let positive = !positive;
-                        if horizontal {
-                            if positive {
-                                geometry.loc.x >= current_geo.loc.x + current_geo.size.w
+                wrap.then(|| {
+                    candidates()
+                        .filter(|(_, geometry)| {
+                            let positive = !positive;
+                            if horizontal {
+                                if positive {
+                                    geometry.loc.x >= current_geo.loc.x + current_geo.size.w
+                                } else {
+                                    geometry.loc.x + geometry.size.w <= current_geo.loc.x
+                                }
+                            } else if positive {
+                                geometry.loc.y >= current_geo.loc.y + current_geo.size.h
                             } else {
-                                geometry.loc.x + geometry.size.w <= current_geo.loc.x
+                                geometry.loc.y + geometry.size.h <= current_geo.loc.y
                             }
-                        } else if positive {
-                            geometry.loc.y >= current_geo.loc.y + current_geo.size.h
-                        } else {
-                            geometry.loc.y + geometry.size.h <= current_geo.loc.y
-                        }
-                    })
-                    .max_by_key(|(_, geometry)| distance(*geometry))
+                        })
+                        .max_by_key(|(_, geometry)| distance(*geometry))
+                })
+                .flatten()
             })
             .map(|(output, _)| output.clone())
     }

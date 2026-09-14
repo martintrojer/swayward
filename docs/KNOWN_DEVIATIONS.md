@@ -139,6 +139,10 @@ opposite edge. Sway resolves the destination with
 adjacent (`sway/sway/tree/output.c:316-330`; `sway/sway/commands/move.c:277-309`).
 Swayward follows sway, so the two wrap assertions in `512-move-wraps.t` are
 skipped. This behavior is independent of the `focus_wrapping` configuration.
+A sway 1.11 run with two horizontal headless outputs confirmed the source: the
+first `move container to output right` moved the view from x=0 to x=800. The
+second command failed with `Can't move an empty workspace`, and the view stayed
+at x=800.
 
 ### Directional floating moves in percentage points
 

@@ -50,38 +50,22 @@ pub(super) fn output_target(
         }
         OutputTarget::Name(name) => state.swayward.output_by_name_match(name).cloned(),
         OutputTarget::Direction(direction) => match (direction, reference) {
-            (Direction::Left, Some(output)) => state.swayward.output_left_of_point(
-                output,
-                reference_point.unwrap_or_else(|| {
+            (direction, Some(output)) => {
+                let reference = reference_point.unwrap_or_else(|| {
                     crate::utils::center(
                         state.swayward.global_space.output_geometry(output).unwrap(),
                     )
-                }),
-            ),
-            (Direction::Right, Some(output)) => state.swayward.output_right_of_point(
-                output,
-                reference_point.unwrap_or_else(|| {
-                    crate::utils::center(
-                        state.swayward.global_space.output_geometry(output).unwrap(),
-                    )
-                }),
-            ),
-            (Direction::Up, Some(output)) => state.swayward.output_up_of_point(
-                output,
-                reference_point.unwrap_or_else(|| {
-                    crate::utils::center(
-                        state.swayward.global_space.output_geometry(output).unwrap(),
-                    )
-                }),
-            ),
-            (Direction::Down, Some(output)) => state.swayward.output_down_of_point(
-                output,
-                reference_point.unwrap_or_else(|| {
-                    crate::utils::center(
-                        state.swayward.global_space.output_geometry(output).unwrap(),
-                    )
-                }),
-            ),
+                });
+                let (horizontal, positive) = match direction {
+                    Direction::Left => (true, false),
+                    Direction::Right => (true, true),
+                    Direction::Up => (false, false),
+                    Direction::Down => (false, true),
+                };
+                state
+                    .swayward
+                    .adjacent_output(output, reference, horizontal, positive)
+            }
             (Direction::Left, None) => state.swayward.output_left(),
             (Direction::Right, None) => state.swayward.output_right(),
             (Direction::Up, None) => state.swayward.output_up(),
