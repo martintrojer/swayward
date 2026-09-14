@@ -228,6 +228,33 @@ bindsym $missing+x nop
                 self.assertIn(reason, result.stdout)
                 self.assertIn("manual attention: 1 directive(s)", result.stderr)
 
+    def test_for_window_maps_sway_layer_state_and_refuses_i3_provenance(self):
+        for criterion, expected in [("tiling", "false"), ("floating", "true")]:
+            with self.subTest(criterion=criterion):
+                result = self.translate(
+                    f"for_window [{criterion}] floating enable\n"
+                )
+                self.assertIn(f"match is-floating={expected}", result.stdout)
+                self.assertIn("open-floating true", result.stdout)
+                self.assertIn("manual attention: none", result.stderr)
+
+        result = self.translate(
+            'for_window [class="app" floating] border none\n'
+        )
+        self.assertIn('match app-id="app" is-floating=true', result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
+        for criterion in ["tiling_from", "floating_from"]:
+            for origin in ["auto", "user"]:
+                with self.subTest(criterion=criterion, origin=origin):
+                    result = self.translate(
+                        f'for_window [{criterion}="{origin}"] floating enable\n'
+                    )
+                    self.assertNotIn("window-rule {", result.stdout)
+                    self.assertIn("i3-only provenance criterion", result.stdout)
+                    self.assertIn("no sway equivalent", result.stdout)
+                    self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
     def test_for_window_refuses_x11_only_criteria(self):
         for criterion in ["instance", "id", "window_role", "window_type"]:
             with self.subTest(criterion=criterion):

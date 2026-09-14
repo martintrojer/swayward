@@ -427,18 +427,17 @@ class Translator:
             target = target.removeprefix("workspace ").strip()
         self.sections += [
             "window-rule {",
-            "    match " + " ".join(
-                f"{field}={self.quote(value)}" for field, value in match
-            ),
+            "    match " + self.render_window_match(match),
             f"    {property_name} {self.quote(target.strip(chr(34)))}",
             "}",
         ]
 
     def translate_window_criteria(
         self, source: Path, line: int, directive: str, criteria: str
-    ) -> list[tuple[str, str]] | None:
-        pairs = re.findall(r'(\w+)="((?:\\.|[^"])*)"', criteria)
-        if not pairs or " ".join(f'{key}="{value}"' for key, value in pairs) != criteria[1:-1]:
+    ) -> list[tuple[str, str | bool]] | None:
+        token = re.compile(r'(?:(\w+)="((?:\\.|[^"])*)"|(tiling|floating))')
+        matches = list(token.finditer(criteria[1:-1]))
+        if not matches or " ".join(match.group(0) for match in matches) != criteria[1:-1]:
             self.warn(
                 source,
                 line,
@@ -447,7 +446,17 @@ class Translator:
             )
             return None
         translated = []
-        for key, value in pairs:
+        for criterion in matches:
+            key = criterion.group(1) or criterion.group(3)
+            value = criterion.group(2)
+            if key in {"tiling_from", "floating_from"}:
+                self.warn(
+                    source,
+                    line,
+                    f"{directive} {criteria}",
+                    f"i3-only provenance criterion {key} has no sway equivalent",
+                )
+                return None
             if key in {"instance", "id", "window_role", "window_type"}:
                 self.warn(
                     source,
@@ -464,7 +473,11 @@ class Translator:
                     "workspace criterion has no window-rule equivalent",
                 )
                 return None
-            if key not in {"app_id", "class", "title"}:
+            if key in {"tiling", "floating"}:
+                translated.append(("is-floating", key == "floating"))
+            elif key in {"app_id", "class", "title"}:
+                translated.append(("title" if key == "title" else "app-id", value))
+            else:
                 self.warn(
                     source,
                     line,
@@ -472,8 +485,13 @@ class Translator:
                     "criteria need manual conversion to a window-rule match",
                 )
                 return None
-            translated.append(("title" if key == "title" else "app-id", value))
         return translated
+
+    def render_window_match(self, match: list[tuple[str, str | bool]]) -> str:
+        return " ".join(
+            f"{field}={str(value).lower() if isinstance(value, bool) else self.quote(value)}"
+            for field, value in match
+        )
 
     def translate_no_focus(self, source: Path, line: int, criteria: str) -> None:
         match = self.translate_window_criteria(source, line, "no_focus", criteria)
@@ -481,9 +499,7 @@ class Translator:
             return
         self.sections += [
             "window-rule {",
-            "    match " + " ".join(
-                f"{field}={self.quote(value)}" for field, value in match
-            ),
+            "    match " + self.render_window_match(match),
             "    open-focused false",
             "}",
         ]
@@ -558,9 +574,7 @@ class Translator:
                 return
         self.sections += [
             "window-rule {",
-            "    match " + " ".join(
-                f"{field}={self.quote(value)}" for field, value in match
-            ),
+            "    match " + self.render_window_match(match),
             *effects,
             "}",
         ]
