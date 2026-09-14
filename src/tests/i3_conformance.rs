@@ -36,7 +36,10 @@ impl AllowedRejection {
                     && command.starts_with("[con_mark=a] move to workspace "))
                 || (self.command == "[id= . *] focus output right"
                     && command.starts_with("[id= . ")
-                    && command.ends_with("] focus output right")))
+                    && command.ends_with("] focus output right"))
+                || (self.command == "[id=*] swap container with id *"
+                    && command.starts_with("[id=")
+                    && command.contains("] swap container with id ")))
     }
 }
 
@@ -93,6 +96,11 @@ const ALLOWED_REJECTIONS: &[AllowedRejection] = &[
         command: "[id= . *] focus output right",
         reason:
             "unchanged upstream file contains this malformed criterion and expects no focus change",
+    },
+    AllowedRejection {
+        test: "294-focus-order.t",
+        command: "[id=*] swap container with id *",
+        reason: "sway's id swap target is an X11 window id unavailable to native Wayland clients",
     },
     AllowedRejection {
         test: "126-regress-close.t",
@@ -168,6 +176,10 @@ fn expected_rejections(test: &str) -> Vec<&'static AllowedRejection> {
             ) && allowed.command == "mode toggle"
             {
                 2
+            } else if test == "294-focus-order.t"
+                && allowed.command == "[id=*] swap container with id *"
+            {
+                3
             } else {
                 1
             };
@@ -674,6 +686,18 @@ fn rejection_allowlist_is_keyed_by_file_and_exact_command() {
     assert!(rejections_match(
         "111-goto.t",
         &["[con_mark=\"mark.A1b2\"] focus"]
+    ));
+    assert!(rejections_match(
+        "294-focus-order.t",
+        &[
+            "[id=1] swap container with id 2",
+            "[id=3] swap container with id 4",
+            "[id=5] swap container with id 6",
+        ]
+    ));
+    assert!(!rejections_match(
+        "294-focus-order.t",
+        &["[id=1] swap container with con_id 2"]
     ));
     assert!(ALLOWED_REJECTIONS
         .iter()
