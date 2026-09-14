@@ -194,3 +194,24 @@ distinct from niri's name and persistence state, because "sway-visible" differs
 between IPC, relative navigation, and cleanup. The analysis, including the two
 reverted attempts and the exact conformance cost, is recorded in
 `tests/i3/README.md`.
+
+## Floating split containers
+
+Sway can float a whole split container. `cmd_floating` selects the focused
+container, wraps every tiling child when the workspace itself is selected,
+promotes a child of an existing floating root to that root, then calls
+`container_set_floating`, which detaches the selected node as one unit
+(`sway/sway/commands/floating.c:23-55`).
+
+Swayward floats windows, not containers. `FloatingSpace` stores a
+`Vec<Tile<W>>` of leaves rather than tree nodes
+(`src/layout/floating.rs:36-38`), and `Workspace::toggle_window_floating`
+accepts a single window id (`src/layout/workspace.rs:1641`). So
+`floating enable` on a focused split floats nothing.
+
+Supporting it needs a floating container representation plus coordinated
+rendering, geometry, focus, IPC, toggle-back, workspace-move, scratchpad and
+invariant work. That is a deliberate deferral, not an oversight: I5 makes the
+upstream diff a budget and Q7 keeps `floating.rs` close to niri so upstream
+merges stay viable. The conformance cost is recorded against
+`155-floating-split-size.t` in `tests/i3/README.md`.
