@@ -1595,6 +1595,35 @@ fn scratchpad_show_moves_visible_window_to_current_workspace_and_focuses_it() {
 }
 
 #[test]
+fn moving_fullscreen_window_to_scratchpad_clears_its_fullscreen_state() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    assert!(crate::command::execute(f.niri_state(), "fullscreen enable")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "move scratchpad")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "scratchpad show")[0].success);
+    let shown = f.swayward().layout.focus().unwrap().window.clone();
+    assert_eq!(f.swayward().layout.fullscreen_mode(&shown), None);
+
+    assert!(crate::command::execute(f.niri_state(), "floating toggle")[0].success);
+    assert!(!f
+        .swayward()
+        .layout
+        .active_workspace()
+        .unwrap()
+        .is_floating(&shown));
+}
+
+#[test]
 fn scratchpad_show_disables_target_workspace_and_global_fullscreen() {
     for fullscreen in ["fullscreen enable", "fullscreen enable global"] {
         let mut f = Fixture::new();

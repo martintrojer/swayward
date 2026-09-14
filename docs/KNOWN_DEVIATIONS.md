@@ -272,4 +272,5 @@ rendering, geometry, focus, IPC, toggle-back, workspace-move, scratchpad and
 invariant work. That is a deliberate deferral, not an oversight: I5 makes the
 upstream diff a budget and Q7 keeps `floating.rs` close to niri so upstream
 merges stay viable. The conformance cost is recorded against
-`155-floating-split-size.t` in `tests/i3/README.md`.
+`155-floating-split-size.t`, `184-regress-float-split-resize.t`, and
+`206-fullscreen-scratchpad.t` in `tests/i3/README.md`.

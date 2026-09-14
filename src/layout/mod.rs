@@ -3122,6 +3122,9 @@ impl<W: LayoutElement> Layout<W> {
         }
         if let Some(workspace) = self.workspaces_mut().find(|ws| ws.has_window(&window)) {
             workspace.prepare_tiled_window_for_scratchpad(&window);
+            if workspace.fullscreen_contains_window(&window) {
+                workspace.set_fullscreen(&window, false);
+            }
         }
         let Some(removed) = self.remove_window(&window, Transaction::new()) else {
             return;
