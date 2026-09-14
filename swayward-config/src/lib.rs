@@ -1666,6 +1666,7 @@ mod tests {
                 empty_workspace_above_first: false,
                 default_column_display: Tabbed,
                 focus_wrapping: Yes,
+                workspace_layout: Default,
                 floating_minimum_size: FloatingSize {
                     width: 75,
                     height: 50,

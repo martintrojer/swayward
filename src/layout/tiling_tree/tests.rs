@@ -1144,6 +1144,40 @@ fn opening_a_window_after_a_focused_split_adds_its_sibling() {
 }
 
 #[test]
+fn workspace_layout_wraps_each_inserted_window() {
+    for (workspace_layout, expected) in [
+        (swayward_config::WorkspaceLayout::Stacking, Layout::Stacked),
+        (swayward_config::WorkspaceLayout::Tabbed, Layout::Tabbed),
+    ] {
+        let mut options = Options::default();
+        options.layout.workspace_layout = workspace_layout;
+        let mut tree = TilingTree::new(
+            Size::from((1000., 1000.)),
+            Rectangle::from_size(Size::from((1000., 1000.))),
+            1.,
+            Clock::with_time(Duration::ZERO),
+            Rc::new(options),
+        );
+
+        tree.add_tile(tile(1, tree.view_size()), InsertTarget::Focused);
+        tree.add_tile(tile(2, tree.view_size()), InsertTarget::Focused);
+
+        let TreeNode::Split { children, .. } = &tree.nodes[&tree.root].value else {
+            unreachable!()
+        };
+        assert_eq!(children.len(), 1);
+        let TreeNode::Split {
+            layout, children, ..
+        } = &tree.nodes[&children[0]].value
+        else {
+            panic!("workspace layout must wrap the inserted leaf")
+        };
+        assert_eq!(*layout, expected);
+        assert_eq!(children.len(), 2);
+    }
+}
+
+#[test]
 fn opening_a_window_preserves_intentional_nested_splits() {
     let mut t = tree((1200., 800.), 0.);
     let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);

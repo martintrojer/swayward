@@ -258,6 +258,51 @@ fn floating_constraints_preserve_values_and_refuse_invalid_forms() {
 }
 
 #[test]
+fn workspace_layout_maps_sway_values_and_refuses_i3_stacked_spelling() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_owned();
+    for (value, expected) in [
+        ("default", Some("default")),
+        ("DeFaUlT", Some("default")),
+        ("stacking", Some("stacking")),
+        ("StAcKiNg", Some("stacking")),
+        ("tabbed", Some("tabbed")),
+        ("TaBbEd", Some("tabbed")),
+        ("stacked", None),
+        ("splitv", None),
+    ] {
+        let fixture = std::env::temp_dir().join(format!(
+            "swayward-workspace-layout-{}-{value}.conf",
+            std::process::id()
+        ));
+        std::fs::write(&fixture, format!("workspace_layout {value}\n")).unwrap();
+        let output = Command::new("python3")
+            .arg(root.join("contrib/sway-to-kdl"))
+            .arg(&fixture)
+            .output()
+            .unwrap();
+        std::fs::remove_file(fixture).unwrap();
+
+        assert!(output.status.success());
+        let translated = String::from_utf8(output.stdout).unwrap();
+        let summary = String::from_utf8(output.stderr).unwrap();
+        if let Some(expected) = expected {
+            assert!(
+                translated.contains(&format!("workspace-layout \"{expected}\"")),
+                "{translated}"
+            );
+            assert_eq!(summary, "manual attention: none\n");
+            Config::parse_mem(&translated).unwrap();
+        } else {
+            assert!(!translated.contains("    workspace-layout"), "{translated}");
+            assert!(summary.starts_with("manual attention: 1 directive(s)"));
+        }
+    }
+}
+
+#[test]
 fn title_criteria_preserve_regex_escapes_and_translate_window_actions() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()

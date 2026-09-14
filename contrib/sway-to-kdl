@@ -140,6 +140,12 @@ class Translator:
                 else:
                     name = match.group(1).replace("_", "-")
                     self.layout_settings.append(f"    {name} {width} {height}")
+            elif match := re.fullmatch(r"workspace_layout\s+(\S+)", text, re.IGNORECASE):
+                value = match.group(1).lower()
+                if value in {"default", "stacking", "tabbed"}:
+                    self.layout_settings.append(f'    workspace-layout "{value}"')
+                else:
+                    self.warn(path, line_no, text, "unsupported workspace layout")
             elif match := re.fullmatch(r"hide_edge_borders\s+(.+)", text):
                 arguments = match.group(1).split()
                 if arguments == ["none"]:

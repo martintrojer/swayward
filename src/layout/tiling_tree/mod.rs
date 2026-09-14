@@ -447,6 +447,15 @@ impl<W: LayoutElement> TilingTree<W> {
         let after = target
             .filter(|target| self.nodes.get(target).and_then(|node| node.parent) == Some(parent));
         self.insert_child(parent, id, after);
+        if parent == self.root {
+            if let Some(layout) = match self.options.layout.workspace_layout {
+                swayward_config::WorkspaceLayout::Default => None,
+                swayward_config::WorkspaceLayout::Stacking => Some(Layout::Stacked),
+                swayward_config::WorkspaceLayout::Tabbed => Some(Layout::Tabbed),
+            } {
+                self.wrap_node(id, layout);
+            }
+        }
         if activate {
             self.set_focus_id(Some(id));
         } else if let Some(previous_focus) = previous_focus {
