@@ -3706,6 +3706,62 @@ fn live_ipc_percent_matches_sway_parent_shares() {
 }
 
 #[test]
+fn root_focus_lists_outputs_once_in_global_mru_order() {
+    let mut f = Fixture::new();
+    for output in 1..=3 {
+        f.add_output(output, (1280, 720));
+    }
+    let client = f.add_client();
+    for output in [1, 2, 3] {
+        f.niri_focus_output(output);
+        let window = f.client(client).create_window();
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+
+    let root_focus = |f: &mut Fixture| {
+        let swayward = f.swayward();
+        describe_tree(
+            &swayward.layout,
+            &swayward.global_space,
+            &Default::default(),
+            &Default::default(),
+        )
+        .focus
+    };
+    let output_ids = |f: &mut Fixture| {
+        let swayward = f.swayward();
+        describe_tree(
+            &swayward.layout,
+            &swayward.global_space,
+            &Default::default(),
+            &Default::default(),
+        )
+        .nodes
+        .into_iter()
+        .filter(|node| node.name.as_deref() != Some("__i3"))
+        .map(|node| node.id)
+        .collect::<Vec<_>>()
+    };
+
+    let ids = output_ids(&mut f);
+    assert_eq!(root_focus(&mut f), [ids[2], ids[1], ids[0]]);
+    f.niri_focus_output(1);
+    assert_eq!(root_focus(&mut f), [ids[0], ids[2], ids[1]]);
+    let focus = root_focus(&mut f);
+    assert_eq!(focus.len(), ids.len());
+    assert_eq!(
+        focus.iter().collect::<std::collections::HashSet<_>>().len(),
+        ids.len()
+    );
+}
+
+#[test]
 fn focus_output_prefers_a_name_over_a_direction_and_resolves_directions() {
     let mut f = Fixture::new();
     f.add_named_output_at("origin".into(), (1280, 720), Some((0, 0)));

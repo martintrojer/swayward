@@ -33,7 +33,10 @@ impl AllowedRejection {
                     && command.starts_with("[con_mark=\"")
                     && command.ends_with("\"] focus"))
                 || (self.command == "[con_mark=a] move to workspace *"
-                    && command.starts_with("[con_mark=a] move to workspace ")))
+                    && command.starts_with("[con_mark=a] move to workspace "))
+                || (self.command == "[id= . *] focus output right"
+                    && command.starts_with("[id= . ")
+                    && command.ends_with("] focus output right")))
     }
 }
 
@@ -79,6 +82,17 @@ const ALLOWED_REJECTIONS: &[AllowedRejection] = &[
         test: "119-match.t",
         command: "[con_id=\"99999\"] kill",
         reason: "the test verifies that an unmatched criterion leaves the window alive",
+    },
+    AllowedRejection {
+        test: "502-focus-output.t",
+        command: "[con_mark=doesnotexist] focus output right",
+        reason: "the assertion expects the unmatched criterion to leave output focus unchanged",
+    },
+    AllowedRejection {
+        test: "502-focus-output.t",
+        command: "[id= . *] focus output right",
+        reason:
+            "unchanged upstream file contains this malformed criterion and expects no focus change",
     },
     AllowedRejection {
         test: "126-regress-close.t",

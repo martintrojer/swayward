@@ -1,3 +1,5 @@
+use std::cmp::Reverse;
+
 use smithay::desktop::{Space, Window};
 use smithay::utils::{Logical, Rectangle};
 use swayward_ipc::{
@@ -38,12 +40,22 @@ pub fn describe_tree(
     nodes.extend(outputs.iter().map(|monitor| {
         describe_output_node(layout, global_space, monitor, marks, container_marks)
     }));
-    let focus = outputs
-        .iter()
-        .find(|monitor| monitor.active_workspace_ref().active_window().is_some())
-        .or_else(|| outputs.first())
-        .map(|monitor| output_id(monitor.output_name()))
+    let active_output = layout.active_monitor_ref().map(|monitor| monitor.output());
+    let mut focused_outputs = outputs.clone();
+    focused_outputs.sort_by_key(|monitor| {
+        (
+            monitor.output() != active_output.unwrap_or(monitor.output()),
+            Reverse(
+                monitor
+                    .windows()
+                    .filter_map(|window| window.focus_timestamp())
+                    .max(),
+            ),
+        )
+    });
+    let focus = focused_outputs
         .into_iter()
+        .map(|monitor| output_id(monitor.output_name()))
         .collect();
     common_node(
         ROOT_ID,
