@@ -67,3 +67,5 @@
 
 220-ipc-window-title.t
 265-ipc-mark.t
+282-tabbed-floating-disable-crash.t
+275-ipc-window-close.t
