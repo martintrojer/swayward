@@ -1099,7 +1099,12 @@ impl<W: LayoutElement> TilingTree<W> {
                         let new_index = if backwards { index - 1 } else { index + 1 };
                         return self.move_subtree_to_index_inner(id, new_index);
                     }
-                    return self.move_into_directional_destination(id, destination, direction);
+                    return self.move_into_directional_destination(
+                        id,
+                        destination,
+                        direction,
+                        false,
+                    );
                 }
                 if parent_id == self.root && branch != id {
                     let Some(boundary) = children
@@ -1140,6 +1145,7 @@ impl<W: LayoutElement> TilingTree<W> {
         id: NodeId,
         destination: NodeId,
         direction: Direction,
+        descended_perpendicularly: bool,
     ) -> bool {
         let wanted_layout = match direction {
             Direction::Left | Direction::Right => Layout::SplitH,
@@ -1157,30 +1163,31 @@ impl<W: LayoutElement> TilingTree<W> {
                 let Some(old_parent) = self.detach_subtree_only(id) else {
                     return false;
                 };
-                self.insert_existing_child(parent, id, index + usize::from(backwards), destination);
+                self.insert_child_at(
+                    parent,
+                    id,
+                    index + usize::from(backwards || descended_perpendicularly),
+                );
                 self.reap_empty_from(old_parent);
             }
             Some(TreeNode::Split {
                 layout, children, ..
             }) if Self::layouts_parallel(*layout, wanted_layout) => {
-                let Some(split_share_of) = children
-                    .get(if backwards { children.len() - 1 } else { 0 })
-                    .copied()
-                else {
+                if children.is_empty() {
                     return false;
-                };
+                }
                 let index = if backwards { children.len() } else { 0 };
                 let Some(old_parent) = self.detach_subtree_only(id) else {
                     return false;
                 };
-                self.insert_existing_child(destination, id, index, split_share_of);
+                self.insert_child_at(destination, id, index);
                 self.reap_empty_from(old_parent);
             }
             Some(TreeNode::Split { .. }) => {
                 let Some(child) = self.focused_child_in(destination) else {
                     return false;
                 };
-                return self.move_into_directional_destination(id, child, direction);
+                return self.move_into_directional_destination(id, child, direction, true);
             }
             None => return false,
         }
@@ -1557,6 +1564,7 @@ impl<W: LayoutElement> TilingTree<W> {
     pub fn set_focused_layout(&mut self, layout: Layout) {
         let focus = self.focus;
         let Some(target) = self.focused_layout_target() else {
+            self.set_layout(self.root, layout);
             return;
         };
         if target == self.root
@@ -2716,6 +2724,16 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     fn insert_child(&mut self, parent: NodeId, child: NodeId, after: Option<NodeId>) {
+        let index = match &self.nodes[&parent].value {
+            TreeNode::Split { children, .. } => after
+                .and_then(|id| children.iter().position(|child| *child == id))
+                .map_or(children.len(), |index| index + 1),
+            TreeNode::Leaf { .. } => return,
+        };
+        self.insert_child_at(parent, child, index);
+    }
+
+    fn insert_child_at(&mut self, parent: NodeId, child: NodeId, index: usize) {
         let Some(Node {
             value: TreeNode::Split {
                 children, percents, ..
@@ -2725,14 +2743,12 @@ impl<W: LayoutElement> TilingTree<W> {
         else {
             return;
         };
-        let after_index = after.and_then(|id| children.iter().position(|child| *child == id));
-        let index = after_index.map_or(children.len(), |index| index + 1);
         let percent = 1. / (children.len() + 1) as f64;
         for existing in percents.iter_mut() {
             *existing *= 1. - percent;
         }
-        children.insert(index, child);
-        percents.insert(index, percent);
+        children.insert(index.min(children.len()), child);
+        percents.insert(index.min(percents.len()), percent);
         self.nodes.get_mut(&child).unwrap().parent = Some(parent);
     }
 

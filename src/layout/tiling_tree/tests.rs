@@ -469,6 +469,22 @@ fn inserting_a_sibling_scales_existing_shares_for_an_equal_new_share() {
 }
 
 #[test]
+fn layout_on_an_empty_tree_sets_the_root_layout() {
+    let mut t = tree((1200., 800.), 0.);
+
+    t.set_focused_layout(Layout::SplitV);
+
+    assert!(matches!(
+        t.nodes[&t.root].value,
+        TreeNode::Split {
+            layout: Layout::SplitV,
+            ..
+        }
+    ));
+    t.check_invariants();
+}
+
+#[test]
 fn split_on_an_empty_tree_sets_the_root_layout() {
     let mut t = tree((1200., 800.), 0.);
 
@@ -1167,14 +1183,17 @@ fn directional_move_squashes_after_reordering_siblings() {
 }
 
 #[test]
-fn directional_move_reorders_siblings_and_stops_at_tree_edge() {
+fn directional_move_swaps_same_parent_siblings_and_preserves_their_shares() {
     let mut t = tree((1200., 800.), 0.);
     let a = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
     let b = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    assert!(t.resize_adjacent(a, b, 0.1));
 
     assert!(t.move_direction(b, Direction::Left));
     assert_eq!(t.geometry(b).unwrap().loc.x, 0.);
-    assert_eq!(t.geometry(a).unwrap().loc.x, 600.);
+    assert_eq!(t.geometry(b).unwrap().size.w, 480.);
+    assert_eq!(t.geometry(a).unwrap().loc.x, 480.);
+    assert_eq!(t.geometry(a).unwrap().size.w, 720.);
     assert!(!t.move_direction(b, Direction::Left));
     t.check_invariants();
 }
@@ -1211,7 +1230,7 @@ fn directional_move_preserves_a_nonsquashable_singleton_source() {
 }
 
 #[test]
-fn directional_move_descends_into_a_neighboring_container() {
+fn directional_move_descends_after_the_inactive_child_of_a_perpendicular_branch() {
     let mut t = tree((1200., 800.), 0.);
     let left = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
     let top_right = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
@@ -1232,10 +1251,60 @@ fn directional_move_descends_into_a_neighboring_container() {
             ..
         } if matches!(&children[..], [
             IpcNode::Leaf { id: top, .. },
+            IpcNode::Leaf { id: inactive, .. },
             IpcNode::Leaf { id, .. },
-            IpcNode::Leaf { id: bottom, .. },
-        ] if *top == top_right && *id == left && *bottom == bottom_right)
+        ] if *top == top_right && *inactive == bottom_right && *id == left)
     ));
+    let parent = t.nodes[&left].parent.unwrap();
+    let TreeNode::Split { percents, .. } = &t.nodes[&parent].value else {
+        panic!("destination must be a split");
+    };
+    for percent in percents {
+        assert!((percent - 1. / 3.).abs() < 1e-9);
+    }
+    t.check_invariants();
+}
+
+#[test]
+fn directional_move_prepends_to_a_parallel_branch() {
+    let mut t = tree((1200., 800.), 0.);
+    t.set_focused_layout(Layout::SplitV);
+    let top = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let first_bottom = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.split(first_bottom, Layout::SplitV);
+    t.set_focused_layout(Layout::Stacked);
+    let second_bottom = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+    t.set_focus(second_bottom);
+
+    assert!(t.move_direction(top, Direction::Down));
+
+    let IpcNode::Split { children, .. } = t.ipc_tree() else {
+        panic!("root must be a split");
+    };
+    let IpcNode::Split {
+        id: branch,
+        layout,
+        children,
+        ..
+    } = &children[0]
+    else {
+        panic!("destination must be a split");
+    };
+    assert_eq!(*layout, Layout::Stacked);
+    assert!(matches!(
+        &children[..],
+        [
+            IpcNode::Leaf { id, .. },
+            IpcNode::Leaf { id: first, .. },
+            IpcNode::Leaf { id: second, .. },
+        ] if *id == top && *first == first_bottom && *second == second_bottom
+    ));
+    let TreeNode::Split { percents, .. } = &t.nodes[branch].value else {
+        unreachable!();
+    };
+    for percent in percents {
+        assert!((percent - 1. / 3.).abs() < 1e-9);
+    }
     t.check_invariants();
 }
 
