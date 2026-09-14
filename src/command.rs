@@ -283,6 +283,24 @@ fn execute_one(
             state.swayward.queue_redraw_all();
             None
         }
+        Command::Sticky(value) => {
+            let Some(window) = state
+                .swayward
+                .layout
+                .focus()
+                .map(|mapped| mapped.window.clone())
+            else {
+                return failure("No current container");
+            };
+            if state.swayward.layout.is_scratchpad_hidden(&window) {
+                return success();
+            }
+            if !state.swayward.layout.set_window_sticky(&window, &value) {
+                return failure("Expected output to have a workspace");
+            }
+            state.swayward.queue_redraw_all();
+            None
+        }
         Command::Floating(mode) => {
             let Some(window) = state
                 .swayward
@@ -691,6 +709,26 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
                 Toggle::Enable => state.swayward.layout.set_fullscreen(&window, true),
                 Toggle::Disable => state.swayward.layout.set_fullscreen(&window, false),
                 Toggle::Toggle => state.swayward.layout.toggle_fullscreen(&window),
+            }
+            state.swayward.queue_redraw_all();
+        }
+        Command::Sticky(value) => {
+            let CommandTarget::Window(target) = target else {
+                return failure("No current container");
+            };
+            let window = state
+                .swayward
+                .layout
+                .windows()
+                .find_map(|(_, mapped)| (mapped.id() == target).then(|| mapped.window.clone()));
+            let Some(window) = window else {
+                return failure("No matching node.");
+            };
+            if state.swayward.layout.is_scratchpad_hidden(&window) {
+                return success();
+            }
+            if !state.swayward.layout.set_window_sticky(&window, value) {
+                return failure("Expected output to have a workspace");
             }
             state.swayward.queue_redraw_all();
         }
@@ -1111,6 +1149,17 @@ mod tests {
     fn parses_sway_focus_modes() {
         for input in ["focus tiling", "focus floating", "focus mode_toggle"] {
             assert!(parse(input)[0].is_ok(), "{input}");
+        }
+    }
+
+    #[test]
+    fn parses_sticky_with_exactly_one_argument() {
+        assert_eq!(command("sticky enabled"), Command::Sticky("enabled".into()));
+        for input in ["sticky", "sticky enable extra"] {
+            assert_eq!(
+                parse(input)[0].as_ref().unwrap_err().error.as_deref(),
+                Some("Expected 'sticky <enable|disable|toggle>'")
+            );
         }
     }
 

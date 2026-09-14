@@ -1935,6 +1935,63 @@ fn move_output_accepts_direction_name_current_and_workspace_forms() {
 }
 
 #[test]
+fn sticky_accepts_sway_boolean_words_and_reports_tree_state() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+    assert!(crate::command::execute(f.niri_state(), "floating enable")[0].success);
+
+    for (value, expected) in [
+        ("enable", true),
+        ("toggle", false),
+        ("enabled", true),
+        ("off", false),
+        ("yes", true),
+        ("0", false),
+        ("1", true),
+        ("no", false),
+        ("on", true),
+        ("disable", false),
+        ("active", true),
+        ("unknown", false),
+    ] {
+        assert!(crate::command::execute(f.niri_state(), &format!("sticky {value}"))[0].success);
+        let swayward = f.swayward();
+        let tree = serde_json::to_value(describe_tree(
+            &swayward.layout,
+            &swayward.global_space,
+            &Default::default(),
+            &Default::default(),
+        ))
+        .unwrap();
+        assert_eq!(
+            find_json_node(&tree, "floating_con", false).unwrap()["sticky"],
+            expected
+        );
+    }
+}
+
+#[test]
+fn sticky_without_a_container_matches_sway_failure() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    assert_eq!(
+        crate::command::execute(f.niri_state(), "sticky enable")[0]
+            .error
+            .as_deref(),
+        Some("No current container")
+    );
+}
+
+#[test]
 fn workspace_criteria_uses_sparse_and_named_sway_identities() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));

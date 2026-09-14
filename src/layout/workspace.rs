@@ -1721,6 +1721,36 @@ impl<W: LayoutElement> Workspace<W> {
         self.windows().next().is_some()
     }
 
+    pub fn has_non_sticky_windows(&self) -> bool {
+        !self.tiling.is_empty() || self.floating.tiles().any(|tile| !tile.is_sticky)
+    }
+
+    pub fn is_window_sticky(&self, window: &W::Id) -> bool {
+        self.tiles()
+            .find(|tile| tile.window().id() == window)
+            .is_some_and(|tile| tile.is_sticky)
+    }
+
+    pub fn set_window_sticky(&mut self, window: &W::Id, sticky: bool) -> bool {
+        let Some(tile) = self.tiles_mut().find(|tile| tile.window().id() == window) else {
+            return false;
+        };
+        tile.is_sticky = sticky;
+        true
+    }
+
+    pub fn take_sticky_tiles(&mut self) -> Vec<RemovedTile<W>> {
+        let ids = self
+            .floating
+            .tiles()
+            .filter(|tile| tile.is_sticky)
+            .map(|tile| tile.window().id().clone())
+            .collect::<Vec<_>>();
+        ids.iter()
+            .map(|id| self.remove_tile(id, Transaction::new()))
+            .collect()
+    }
+
     pub fn has_window(&self, window: &W::Id) -> bool {
         self.windows().any(|win| win.id() == window)
     }

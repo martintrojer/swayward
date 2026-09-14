@@ -480,7 +480,11 @@ impl<W: LayoutElement> Monitor<W> {
         }
 
         let prev_active_idx = self.active_workspace_idx;
+        let focused = self.workspaces[prev_active_idx]
+            .active_window()
+            .map(|window| window.id().clone());
         self.active_workspace_idx = idx;
+        self.move_sticky_to_active_workspace(prev_active_idx, focused.as_ref());
 
         let config = config.unwrap_or(self.options.animations.workspace_switch.0);
 
@@ -665,12 +669,40 @@ impl<W: LayoutElement> Monitor<W> {
         }
     }
 
+    fn move_sticky_to_active_workspace(&mut self, old_idx: usize, focused: Option<&W::Id>) {
+        if old_idx == self.active_workspace_idx {
+            return;
+        }
+        let sticky = self.workspaces[old_idx].take_sticky_tiles();
+        let target = &mut self.workspaces[self.active_workspace_idx];
+        let activate_sticky = !target.has_windows()
+            || sticky
+                .iter()
+                .any(|removed| Some(removed.tile.window().id()) == focused);
+        for removed in sticky {
+            let activate = activate_sticky && Some(removed.tile.window().id()) == focused;
+            target.add_tile(
+                removed.tile,
+                WorkspaceAddWindowTarget::Auto,
+                if activate {
+                    ActivateWindow::Yes
+                } else {
+                    ActivateWindow::No
+                },
+                removed.width,
+                removed.is_full_width,
+                true,
+                None,
+            );
+        }
+    }
+
     pub fn clean_up_workspaces(&mut self) {
         assert!(self.workspace_switch.is_none());
         let active_workspace_id = self.workspaces[self.active_workspace_idx].id();
         for workspace in &mut self.workspaces {
             if workspace.id() != active_workspace_id
-                && !workspace.has_windows()
+                && !workspace.has_non_sticky_windows()
                 && !workspace.is_persistent()
             {
                 workspace.unname();

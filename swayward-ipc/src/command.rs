@@ -108,6 +108,7 @@ pub enum Command {
         global: bool,
     },
     Floating(Toggle),
+    Sticky(String),
     Workspace(WorkspaceTarget),
     AssignWorkspace {
         target: WorkspaceTarget,
@@ -331,6 +332,8 @@ fn parse_one(input: &str) -> Result<Command, String> {
         "floating" => one(rest, "floating <enable|disable|toggle>")
             .and_then(parse_toggle)
             .map(Command::Floating),
+        "sticky" => one(rest, "sticky <enable|disable|toggle>")
+            .map(|value| Command::Sticky(value.to_owned())),
         "workspace" => parse_workspace_command(rest),
         "rename" => parse_rename(rest),
         "scratchpad" => match rest {

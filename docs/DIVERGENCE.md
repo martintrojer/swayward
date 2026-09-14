@@ -36,6 +36,7 @@ src/layout/mod.rs, src/handlers/mod.rs, src/protocols/foreign_toplevel.rs — st
 src/command.rs — apply criteria-targeted scratchpad move and show commands to the matched window, matching sway's overridden-node command context.
 src/command.rs, src/layout/mod.rs — reject floating and resize changes to hidden scratchpad windows like sway and guard typed by-id actions from reaching workspace-only mutation paths.
 src/layout/mod.rs, src/layout/workspace.rs — fall back to normal placement for children of hidden scratchpad windows and center dialogs from stable parent geometry.
+swayward-ipc/src/command.rs, src/command.rs, src/layout/mod.rs, src/layout/monitor.rs, src/layout/tile.rs, src/layout/workspace.rs, src/ipc/tree.rs — implement sway sticky commands and move sticky floating windows with workspace focus on their output.
 swayward-ipc/src/command.rs, src/command.rs — parse and execute sway's container and workspace move-to-output forms by output name or direction.
 swayward-ipc/src/command.rs, src/command.rs — parse and execute sway's focus-output command, including multi-word names and directional output lookup.
 (workspace-wide) — run `cargo fmt --all` after the rename changed identifier sort order; no behavioural change.

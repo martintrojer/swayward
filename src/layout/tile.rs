@@ -67,6 +67,7 @@ pub struct Tile<W: LayoutElement> {
 
     /// Parent container before this tile became floating.
     pub(super) tiling_parent: Option<super::tiling_tree::NodeId>,
+    pub(super) is_sticky: bool,
 
     /// The size that the window should assume when going floating.
     ///
@@ -208,6 +209,7 @@ impl<W: LayoutElement> Tile<W> {
             restore_to_floating: false,
             tiling_focus_rank: None,
             tiling_parent: None,
+            is_sticky: false,
             floating_window_size: None,
             floating_pos: None,
             floating_preset_width_idx: None,

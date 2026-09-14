@@ -331,7 +331,7 @@ fn describe_workspace_node(
         .filter(|(tile, _)| workspace.is_floating(&tile.window().window))
         .map(|(tile, layout)| {
             let (x, y) = layout.tile_pos_in_workspace_view.unwrap_or_default();
-            describe_window(
+            let mut node = describe_window(
                 tile.window(),
                 rect_from(x, y, layout.tile_size.0, layout.tile_size.1),
                 NodeType::FloatingCon,
@@ -340,7 +340,9 @@ fn describe_workspace_node(
                 marks,
                 compositor_layout.is_scratchpad_window(&tile.window().window),
                 true,
-            )
+            );
+            node.sticky = workspace.is_window_sticky(&tile.window().window);
+            node
         })
         .collect::<Vec<_>>();
     floating_nodes.reverse();

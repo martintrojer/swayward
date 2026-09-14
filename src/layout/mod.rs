@@ -2688,6 +2688,50 @@ impl<W: LayoutElement> Layout<W> {
         Ok(())
     }
 
+    pub fn set_window_sticky(&mut self, window: &W::Id, value: &str) -> bool {
+        let current = self
+            .workspaces()
+            .any(|(_, _, workspace)| workspace.is_window_sticky(window));
+        let sticky = match value.to_ascii_lowercase().as_str() {
+            "1" | "yes" | "on" | "true" | "enable" | "enabled" | "active" => true,
+            "toggle" => !current,
+            _ => false,
+        };
+        let Some(monitor) = self
+            .monitors_mut()
+            .find(|monitor| monitor.has_window(window))
+        else {
+            return false;
+        };
+        let Some(source) = monitor
+            .workspaces
+            .iter()
+            .position(|workspace| workspace.has_window(window))
+        else {
+            return false;
+        };
+        if !monitor.workspaces[source].set_window_sticky(window, sticky) {
+            return true;
+        }
+        let active = monitor.active_workspace_idx();
+        if sticky && source != active {
+            let removed = monitor.workspaces[source].take_sticky_tiles();
+            let target = &mut monitor.workspaces[active];
+            for removed in removed {
+                target.add_tile(
+                    removed.tile,
+                    WorkspaceAddWindowTarget::Auto,
+                    ActivateWindow::Yes,
+                    removed.width,
+                    removed.is_full_width,
+                    true,
+                    None,
+                );
+            }
+        }
+        true
+    }
+
     pub fn move_to_scratchpad(&mut self, window: Option<&W::Id>) {
         let window = window
             .cloned()
