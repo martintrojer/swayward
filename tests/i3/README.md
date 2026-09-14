@@ -107,14 +107,20 @@ reload for either transition would test a weaker lifecycle.
 The adapter cannot reproduce i3's `open_window(rect => [x, y, width, height])`
 input or later X11 `Window::rect(Rect)` configure requests. The i3 helper passes
 the initial rectangle when it creates an X11 child window
-(`i3/testcases/lib/i3test.pm.in:313-350`). An `xdg_toplevel` client can set its
-surface-local window geometry, but it cannot request an absolute desktop
-position or size. Its `move` and `resize` requests start interactive
-compositor-controlled operations and require input-event serials
-(`xdg-shell.xml`, `xdg_toplevel.move`, `xdg_toplevel.resize`). Using a swayward
-window rule or compositor command would test compositor policy rather than
-equivalent client input. The adapter's rectangle setter therefore dies loudly;
-assertions that depend on X11 configure requests remain unproven.
+(`i3/testcases/lib/i3test.pm.in:313-350`), and i3 applies later configure-request
+position and size fields to floating leaves (`i3/src/handlers.c:300-371`). An
+`xdg_toplevel` client has no equivalent request for either operation.
+`xdg_surface.set_window_geometry` describes visible bounds in surface-local
+coordinates and says changing its x/y should generally not alter the window's
+position (`xdg-shell.xml`, `xdg_surface.set_window_geometry`). The toplevel
+`move` and `resize` requests start interactive compositor-controlled operations,
+require an input-event serial, and do not accept a target size or position
+(`xdg-shell.xml`, `xdg_toplevel.move`, `xdg_toplevel.resize`). Although the test
+client can choose its buffer size after a compositor configure, that is not the
+X11 request under test. Using a swayward window rule or compositor command would
+test compositor policy instead of equivalent client input. The adapter's
+rectangle setter therefore dies loudly; assertions that depend on X11 configure
+requests remain unproven.
 
 `tests/i3/passing.txt` lists the files that pass in full, and the default gate
 runs every one of them. A conformance slice adds its file to that list the
@@ -214,7 +220,7 @@ without fabricating a tree that real sway clients do not see. See
 | `237-regress-assign-focus.t` | 1 | pass | Title-based assignment plus `for_window ... layout tabbed, focus` executes without crashing (`sway/criteria.c:203-217,601-650`; `sway/tree/view.c:570-590,631-664`). |
 | `005-floating.t` | 13 | finished: 6 pass; 7 unproven | Assertions 5 and 7–13 depend on i3's X11 `rect` creation input. Wayland `xdg_toplevel` has no equivalent absolute-position request; using a window rule or compositor move would test a different input. Sway clamps and centers natural floating geometry (`sway/tree/container.c:793-905,955-982`). See the adapter limitation above. |
 | `135-floating-focus.t` | 82 | finished: 66 pass; 16 skip | Assertions 23–25 require distinct X11 positions that the Wayland adapter cannot request. Assertions 31, 32, 34, 35, 37, 40, 43, 46, 50, 54, 58, 62, 66, 70, 73, and 74 use i3's floating wrappers, X11-only `window` field, or opposite floating-list insertion order; equivalent direct-node checks pass where the hierarchy agrees. Layer focus modes, workspace child descent, cross-workspace focus, nested reinsertion, and close restoration match sway. Assertions 75 and 77 pass through a temporary direct-node diagnostic after preserving non-root parents across floating transitions (`sway/tree/container.c:955-1013`). Assertions 50 and 58 expect i3's new floating wrapper at index 0, while sway appends new floating containers (`sway/tree/workspace.c:961-971`). See [Floating container wrappers](../../docs/KNOWN_DEVIATIONS.md#floating-container-wrappers). |
-| `112-floating-resize.t` | 11 | unproven | The unchanged file stops before its first assertion because the fail-loud X11 stub does not implement `X11::XCB::Rect->new`. Every assertion depends on X11 configure requests for absolute position or size, which native `xdg_toplevel` cannot issue; see the adapter limit above. |
+| `112-floating-resize.t` | 11 | unproven | The unchanged file executes 0 assertions and stops at its first `Window::rect(Rect)` call with `X11 window geometry mutation is unavailable in the Wayland test adapter`. Assertions 1–9 depend on X11 configure requests that set a floating window's position and size; assertions 10–11 depend on an out-of-bounds position request. Native `xdg_toplevel` has no equivalent request: `set_window_geometry` is surface-local and must not be treated as desktop placement, while `move` and `resize` are serial-gated interactive operations without target coordinates or dimensions (`xdg-shell.xml`, `xdg_surface.set_window_geometry`, `xdg_toplevel.move`, `xdg_toplevel.resize`). Client buffer resizing after `ack_configure` would answer a different question. All 11 assertions are therefore unproven, and the fail-loud setter is retained. |
 | `138-floating-attach.t` | 11 | pass | Opening a tiled window when only a float exists creates a tiled root, and opening after a float over a stacked layout preserves that stacked container. No setup command is rejected. |
 | `148-regress-floatingmovews.t` | 1 | unproven | The unchanged file uses obsolete `mode toggle`, which both pinned i3 and sway interpret as binding-mode selection rather than floating state (`i3/parser-specs/commands.spec:480-482`; `sway/commands/mode.c:23-62`). The rejected setup leaves the second window tiled. A temporary `floating toggle` diagnostic still fails because moving the focused float away restores focus to the prior tiled window, matching sway's focus-restoration path (`sway/commands/move.c:554-608`); the assertion's expected remote focus is i3-only. |
 | `153-floating-originalsize.t` | 7 | unproven | All assertions depend on `open_window(rect => ...)`, an X11 client size request that the Wayland adapter cannot reproduce. The first three observe the adapter's 1×1 default stretched by tiling, and the final four compare the float against the unavailable 400×150 request, so none proves original-size restoration. |
