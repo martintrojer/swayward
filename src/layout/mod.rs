@@ -1625,6 +1625,47 @@ impl<W: LayoutElement> Layout<W> {
     }
 
     pub fn activate_window(&mut self, window: &W::Id) {
+        let global = self.workspaces().find_map(|(_, _, workspace)| {
+            (workspace.fullscreen_mode() == Some(tiling_tree::FullscreenMode::Global)).then(|| {
+                (
+                    workspace.id(),
+                    workspace.tiling().fullscreen_node().unwrap(),
+                )
+            })
+        });
+        if let Some((workspace_id, node)) = global {
+            let target_is_inside = self.workspaces().any(|(_, _, candidate)| {
+                candidate.id() == workspace_id && candidate.has_window(window)
+            });
+            if !target_is_inside {
+                if let Some(workspace) = self
+                    .workspaces_mut()
+                    .find(|candidate| candidate.id() == workspace_id)
+                {
+                    workspace.tiling_mut().set_node_fullscreen(node, None);
+                }
+            }
+        }
+        let obstructing = self
+            .workspaces()
+            .find(|(_, _, workspace)| workspace.has_window(window))
+            .and_then(|(_, _, workspace)| {
+                let fullscreen = workspace.tiling().fullscreen_node()?;
+                let target = workspace
+                    .tiling()
+                    .windows()
+                    .find_map(|(id, candidate)| (candidate.id() == window).then_some(id))?;
+                (!workspace.tiling().contains_node(fullscreen, target))
+                    .then_some((workspace.id(), fullscreen))
+            });
+        if let Some((workspace_id, fullscreen)) = obstructing {
+            if let Some(workspace) = self
+                .workspaces_mut()
+                .find(|candidate| candidate.id() == workspace_id)
+            {
+                workspace.tiling_mut().set_node_fullscreen(fullscreen, None);
+            }
+        }
         if let Some(InteractiveMoveState::Moving(move_)) = &self.interactive_move {
             if move_.tile.window().id() == window {
                 return;
@@ -2082,18 +2123,14 @@ impl<W: LayoutElement> Layout<W> {
         }
     }
 
-    pub fn focus_left(&mut self) {
-        let Some(workspace) = self.active_workspace_mut() else {
-            return;
-        };
-        workspace.focus_left();
+    pub fn focus_left(&mut self) -> bool {
+        self.active_workspace_mut()
+            .is_some_and(Workspace::focus_left)
     }
 
-    pub fn focus_right(&mut self) {
-        let Some(workspace) = self.active_workspace_mut() else {
-            return;
-        };
-        workspace.focus_right();
+    pub fn focus_right(&mut self) -> bool {
+        self.active_workspace_mut()
+            .is_some_and(Workspace::focus_right)
     }
 
     pub fn focus_column_first(&mut self) {
@@ -2182,18 +2219,13 @@ impl<W: LayoutElement> Layout<W> {
         workspace.focus_window_in_column(index);
     }
 
-    pub fn focus_down(&mut self) {
-        let Some(workspace) = self.active_workspace_mut() else {
-            return;
-        };
-        workspace.focus_down();
+    pub fn focus_down(&mut self) -> bool {
+        self.active_workspace_mut()
+            .is_some_and(Workspace::focus_down)
     }
 
-    pub fn focus_up(&mut self) {
-        let Some(workspace) = self.active_workspace_mut() else {
-            return;
-        };
-        workspace.focus_up();
+    pub fn focus_up(&mut self) -> bool {
+        self.active_workspace_mut().is_some_and(Workspace::focus_up)
     }
 
     pub fn focus_down_or_left(&mut self) {
@@ -2692,11 +2724,7 @@ impl<W: LayoutElement> Layout<W> {
         let current = self
             .workspaces()
             .any(|(_, _, workspace)| workspace.is_window_sticky(window));
-        let sticky = match value.to_ascii_lowercase().as_str() {
-            "1" | "yes" | "on" | "true" | "enable" | "enabled" | "active" => true,
-            "toggle" => !current,
-            _ => false,
-        };
+        let sticky = swayward_ipc::command::parse_boolean(value, current);
         let Some(monitor) = self
             .monitors_mut()
             .find(|monitor| monitor.has_window(window))
@@ -4191,6 +4219,83 @@ impl<W: LayoutElement> Layout<W> {
         }
 
         activate
+    }
+
+    pub fn focused_fullscreen_mode(&self) -> Option<tiling_tree::FullscreenMode> {
+        self.active_workspace().and_then(Workspace::fullscreen_mode)
+    }
+
+    pub fn global_fullscreen_active(&self) -> bool {
+        self.workspaces().any(|(_, _, workspace)| {
+            workspace.fullscreen_mode() == Some(tiling_tree::FullscreenMode::Global)
+        })
+    }
+
+    pub fn focused_window_is_fullscreen_or_child(&self) -> bool {
+        let Some(window) = self.focus() else {
+            return false;
+        };
+        self.active_workspace()
+            .is_some_and(|workspace| workspace.fullscreen_contains_window(window.id()))
+    }
+
+    pub fn disable_active_workspace_fullscreen(&mut self) {
+        let fullscreen = self
+            .active_workspace()
+            .and_then(|workspace| workspace.tiling().fullscreen_node());
+        if let Some(fullscreen) = fullscreen {
+            if let Some(workspace) = self.active_workspace_mut() {
+                workspace.tiling_mut().set_node_fullscreen(fullscreen, None);
+            }
+        }
+    }
+
+    pub fn set_focused_fullscreen_mode(&mut self, mode: Option<tiling_tree::FullscreenMode>) {
+        if mode.is_some() {
+            for workspace in self.workspaces_mut() {
+                if workspace.fullscreen_mode() == Some(tiling_tree::FullscreenMode::Global) {
+                    let node = workspace.tiling().fullscreen_node().unwrap();
+                    workspace.tiling_mut().set_node_fullscreen(node, None);
+                    break;
+                }
+            }
+        }
+        if let Some(workspace) = self.active_workspace_mut() {
+            workspace.set_focused_fullscreen(mode);
+        }
+    }
+
+    pub fn fullscreen_mode(&self, id: &W::Id) -> Option<tiling_tree::FullscreenMode> {
+        self.workspaces()
+            .find(|(_, _, workspace)| workspace.has_window(id))
+            .and_then(|(_, _, workspace)| workspace.fullscreen_mode())
+    }
+
+    pub fn set_fullscreen_mode(&mut self, id: &W::Id, mode: Option<tiling_tree::FullscreenMode>) {
+        if mode.is_some() {
+            for workspace in self.workspaces_mut() {
+                if workspace.fullscreen_mode() == Some(tiling_tree::FullscreenMode::Global) {
+                    let node = workspace.tiling().fullscreen_node().unwrap();
+                    workspace.tiling_mut().set_node_fullscreen(node, None);
+                    break;
+                }
+            }
+        }
+        if let Some(workspace) = self
+            .workspaces_mut()
+            .find(|workspace| workspace.has_window(id))
+        {
+            workspace.activate_window(id);
+            if workspace.is_floating(id) {
+                workspace.set_fullscreen(id, mode.is_some());
+                workspace.activate_window(id);
+                if mode == Some(tiling_tree::FullscreenMode::Global) {
+                    workspace.set_focused_fullscreen(mode);
+                }
+            } else {
+                workspace.set_focused_fullscreen(mode);
+            }
+        }
     }
 
     pub fn set_fullscreen(&mut self, id: &W::Id, is_fullscreen: bool) {

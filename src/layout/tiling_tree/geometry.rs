@@ -34,6 +34,7 @@ pub(crate) fn compute<W: LayoutElement>(
     } else {
         Rectangle::from_size(view_size)
     };
+    let fullscreen_root = fullscreen.iter().copied().next();
     area.loc.x += gaps;
     area.loc.y += gaps;
     area.size.w = (area.size.w - gaps * 2.).max(0.);
@@ -49,6 +50,19 @@ pub(crate) fn compute<W: LayoutElement>(
         Point::default(),
         &mut result,
     );
+    if let Some(fullscreen_root) = fullscreen_root {
+        assign(
+            nodes,
+            fullscreen_root,
+            area,
+            gaps,
+            titlebar_height,
+            fullscreen,
+            false,
+            Point::default(),
+            &mut result,
+        );
+    }
     result
 }
 

@@ -1,8 +1,8 @@
 use swayward_config::Action;
 use swayward_ipc::command::parse_error;
 pub use swayward_ipc::command::{
-    parse, Command, Direction, Layout, LayoutToggle, LayoutToggleEntry, OutputTarget,
-    ParsedCommand, ResizeAmount, ResizeAxis, ResizeUnit, Toggle, WorkspaceTarget,
+    parse, parse_boolean, Command, Direction, Layout, LayoutToggle, LayoutToggleEntry,
+    OutputTarget, ParsedCommand, ResizeAmount, ResizeAxis, ResizeUnit, Toggle, WorkspaceTarget,
 };
 use swayward_ipc::legacy::SizeChange;
 use swayward_ipc::{criteria, CommandOutcome};
@@ -84,10 +84,31 @@ fn execute_one(
 
     let action = match parsed.command {
         Command::Focus => None,
-        Command::FocusDirection(Direction::Left) => Some(Action::FocusColumnLeft),
-        Command::FocusDirection(Direction::Right) => Some(Action::FocusColumnRight),
-        Command::FocusDirection(Direction::Up) => Some(Action::FocusWindowUp),
-        Command::FocusDirection(Direction::Down) => Some(Action::FocusWindowDown),
+        Command::FocusDirection(direction) => {
+            let action = match direction {
+                Direction::Left => Action::FocusColumnOrMonitorLeft,
+                Direction::Right => Action::FocusColumnOrMonitorRight,
+                Direction::Up => Action::FocusWindowOrMonitorUp,
+                Direction::Down => Action::FocusWindowOrMonitorDown,
+            };
+            let changed = match direction {
+                Direction::Left => state.swayward.layout.focus_left(),
+                Direction::Right => state.swayward.layout.focus_right(),
+                Direction::Up => state.swayward.layout.focus_up(),
+                Direction::Down => state.swayward.layout.focus_down(),
+            };
+            if changed {
+                state.swayward.queue_redraw_all();
+                None
+            } else if state.swayward.layout.global_fullscreen_active()
+                || direction == Direction::Left
+                    && state.swayward.layout.focused_fullscreen_mode().is_some()
+            {
+                None
+            } else {
+                Some(action)
+            }
+        }
         Command::FocusOutput(identifier) => {
             let output = match output_target_by_name_or_direction(state, &identifier) {
                 Ok(output) => output,
@@ -111,8 +132,14 @@ fn execute_one(
         }
         Command::FocusNext => Some(Action::FocusColumnRightOrFirst),
         Command::FocusPrev => Some(Action::FocusColumnLeftOrLast),
-        Command::FocusFloating => Some(Action::FocusFloating),
-        Command::FocusTiling => Some(Action::FocusTiling),
+        Command::FocusFloating => {
+            state.swayward.layout.disable_active_workspace_fullscreen();
+            Some(Action::FocusFloating)
+        }
+        Command::FocusTiling => {
+            state.swayward.layout.disable_active_workspace_fullscreen();
+            Some(Action::FocusTiling)
+        }
         Command::FocusModeToggle => Some(Action::SwitchFocusBetweenFloatingAndTiling),
         Command::MoveDirection { direction, pixels } => {
             let Some(workspace) = state.swayward.layout.active_workspace() else {
@@ -149,6 +176,14 @@ fn execute_one(
             }
         }
         Command::MoveToWorkspace(target) => {
+            if state.swayward.layout.global_fullscreen_active()
+                && state
+                    .swayward
+                    .layout
+                    .focused_window_is_fullscreen_or_child()
+            {
+                return failure("Can't move fullscreen global container");
+            }
             if let Err(error) = state.swayward.layout.move_to_sway_workspace(target) {
                 return failure(error);
             }
@@ -266,26 +301,22 @@ fn execute_one(
         Command::Split(Some(Layout::Tabbed | Layout::Stacked)) => {
             return failure("invalid split layout");
         }
-        Command::Fullscreen { global: true, .. } => {
-            return failure("global fullscreen is not implemented yet");
-        }
-        Command::Fullscreen {
-            mode,
-            global: false,
-        } => {
-            let Some(window) = state
+        Command::Fullscreen { mode, global } => {
+            let current = state.swayward.layout.focused_fullscreen_mode();
+            let enabled = match mode {
+                Toggle::Enable => true,
+                Toggle::Disable => false,
+                Toggle::Toggle => current.is_none(),
+            };
+            let fullscreen = enabled.then_some(if global {
+                crate::layout::tiling_tree::FullscreenMode::Global
+            } else {
+                crate::layout::tiling_tree::FullscreenMode::Workspace
+            });
+            state
                 .swayward
                 .layout
-                .focus()
-                .map(|mapped| mapped.window.clone())
-            else {
-                return success();
-            };
-            match mode {
-                Toggle::Enable => state.swayward.layout.set_fullscreen(&window, true),
-                Toggle::Disable => state.swayward.layout.set_fullscreen(&window, false),
-                Toggle::Toggle => state.swayward.layout.toggle_fullscreen(&window),
-            }
+                .set_focused_fullscreen_mode(fullscreen);
             state.swayward.queue_redraw_all();
             None
         }
@@ -684,10 +715,7 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
             state.swayward.layout.show_scratchpad(Some(&window));
             state.swayward.queue_redraw_all();
         }
-        Command::Fullscreen {
-            mode,
-            global: false,
-        } => {
+        Command::Fullscreen { mode, global } => {
             let CommandTarget::Window(target) = target else {
                 return failure("command requires a window target");
             };
@@ -699,11 +727,20 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
             let Some(window) = window else {
                 return failure("No matching node.");
             };
-            match mode {
-                Toggle::Enable => state.swayward.layout.set_fullscreen(&window, true),
-                Toggle::Disable => state.swayward.layout.set_fullscreen(&window, false),
-                Toggle::Toggle => state.swayward.layout.toggle_fullscreen(&window),
-            }
+            let current = state.swayward.layout.fullscreen_mode(&window);
+            let enabled = match mode {
+                Toggle::Enable => true,
+                Toggle::Disable => false,
+                Toggle::Toggle => current.is_none(),
+            };
+            state.swayward.layout.set_fullscreen_mode(
+                &window,
+                enabled.then_some(if *global {
+                    crate::layout::tiling_tree::FullscreenMode::Global
+                } else {
+                    crate::layout::tiling_tree::FullscreenMode::Workspace
+                }),
+            );
             state.swayward.queue_redraw_all();
         }
         Command::Sticky(value) => {
@@ -1166,6 +1203,51 @@ mod tests {
     }
 
     #[test]
+    fn parses_fullscreen_with_sway_boolean_vocabulary() {
+        for value in ["1", "yes", "on", "true", "enable", "enabled", "active"] {
+            assert_eq!(
+                command(&format!("fullscreen {value}")),
+                Command::Fullscreen {
+                    mode: Toggle::Enable,
+                    global: false,
+                }
+            );
+        }
+        for value in [
+            "0", "no", "off", "false", "disable", "disabled", "inactive", "nope",
+        ] {
+            assert_eq!(
+                command(&format!("fullscreen {value}")),
+                Command::Fullscreen {
+                    mode: Toggle::Disable,
+                    global: false,
+                }
+            );
+        }
+        assert_eq!(
+            command("fullscreen global"),
+            Command::Fullscreen {
+                mode: Toggle::Toggle,
+                global: true,
+            }
+        );
+        assert_eq!(
+            command("fullscreen yes global"),
+            Command::Fullscreen {
+                mode: Toggle::Enable,
+                global: true,
+            }
+        );
+        assert_eq!(
+            command("fullscreen toggle nope"),
+            Command::Fullscreen {
+                mode: Toggle::Toggle,
+                global: false,
+            }
+        );
+    }
+
+    #[test]
     fn parses_every_supported_command_family() {
         assert_eq!(command("focus"), Command::Focus);
         assert_eq!(
@@ -1452,7 +1534,7 @@ mod tests {
             "resize grow width nope px",
             "frobnicate",
             "[app_id=foo focus left",
-            "fullscreen enable nope",
+            "fullscreen enable global extra",
             "exec",
         ] {
             let error = parse(input).into_iter().next().unwrap().unwrap_err();

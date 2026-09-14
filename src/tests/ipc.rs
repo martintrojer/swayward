@@ -2607,6 +2607,7 @@ fn stale_tree_leaf_is_omitted_without_panicking() {
         percent: None,
         focus: vec![NodeId(1)],
         focused: false,
+        fullscreen_mode: 0,
         children: vec![IpcNode::Leaf {
             id: NodeId(1),
             window: (),

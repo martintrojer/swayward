@@ -1081,8 +1081,12 @@ impl Op {
                 }
                 layout.toggle_windowed_fullscreen(&id);
             }
-            Op::FocusColumnLeft => layout.focus_left(),
-            Op::FocusColumnRight => layout.focus_right(),
+            Op::FocusColumnLeft => {
+                layout.focus_left();
+            }
+            Op::FocusColumnRight => {
+                layout.focus_right();
+            }
             Op::FocusColumnFirst => layout.focus_column_first(),
             Op::FocusColumnLast => layout.focus_column_last(),
             Op::FocusColumnRightOrFirst => layout.focus_column_right_or_first(),
@@ -1120,8 +1124,12 @@ impl Op {
 
                 layout.focus_column_right_or_output(&output);
             }
-            Op::FocusWindowDown => layout.focus_down(),
-            Op::FocusWindowUp => layout.focus_up(),
+            Op::FocusWindowDown => {
+                layout.focus_down();
+            }
+            Op::FocusWindowUp => {
+                layout.focus_up();
+            }
             Op::FocusWindowDownOrColumnLeft => layout.focus_down_or_left(),
             Op::FocusWindowDownOrColumnRight => layout.focus_down_or_right(),
             Op::FocusWindowUpOrColumnLeft => layout.focus_up_or_left(),

@@ -31,6 +31,7 @@ our @EXPORT = qw(
     is
     is_deeply
     is_num_children
+    is_num_fullscreen
     isa_ok
     kill_all_windows
     isnt
@@ -296,6 +297,18 @@ sub is_num_children {
     $tester->ok(defined($node), "Workspace $workspace exists");
     return $tester->skip('Workspace does not exist') unless $node;
     $tester->is_num(scalar @{$node->{nodes}}, $expected, $name);
+}
+
+sub is_num_fullscreen {
+    my ($workspace, $expected, $name) = @_;
+    my $node = get_ws($workspace);
+    my $count = 0;
+    my @pending = (@{$node->{nodes} // []}, @{$node->{floating_nodes} // []});
+    while (my $child = shift @pending) {
+        $count++ if ($child->{fullscreen_mode} // 0) != 0;
+        push @pending, @{$child->{nodes} // []}, @{$child->{floating_nodes} // []};
+    }
+    $tester->is_num($count, $expected, $name);
 }
 
 sub kill_all_windows {

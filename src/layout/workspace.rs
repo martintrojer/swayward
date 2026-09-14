@@ -535,6 +535,27 @@ impl<W: LayoutElement> Workspace<W> {
         self.tiling.is_active_pending_fullscreen()
     }
 
+    pub fn fullscreen_mode(&self) -> Option<crate::layout::tiling_tree::FullscreenMode> {
+        self.tiling
+            .fullscreen_node()
+            .and_then(|id| self.tiling.fullscreen_mode(id))
+    }
+
+    pub fn fullscreen_contains_window(&self, window: &W::Id) -> bool {
+        self.tiling.fullscreen_contains_window(window)
+    }
+
+    pub fn set_focused_fullscreen(
+        &mut self,
+        mode: Option<crate::layout::tiling_tree::FullscreenMode>,
+    ) -> bool {
+        let Some(id) = self.tiling.focus() else {
+            return false;
+        };
+        self.floating_is_active = FloatingActive::No;
+        self.tiling.set_node_fullscreen(id, mode)
+    }
+
     pub fn set_output(&mut self, output: Option<Output>) {
         if self.output == output {
             return;

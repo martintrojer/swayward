@@ -58,6 +58,7 @@ pub enum IpcNode<I> {
         percent: Option<f64>,
         focus: Vec<NodeId>,
         focused: bool,
+        fullscreen_mode: i32,
         children: Vec<IpcNode<I>>,
     },
     Leaf {
@@ -98,8 +99,14 @@ pub enum Direction {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FullscreenMode {
+    Workspace = 1,
+    Global = 2,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct PendingMode {
-    fullscreen: bool,
+    fullscreen: Option<FullscreenMode>,
     maximized: bool,
 }
 
@@ -355,16 +362,23 @@ impl<W: LayoutElement> TilingTree<W> {
         let after = target
             .filter(|target| self.nodes.get(target).and_then(|node| node.parent) == Some(parent));
         self.insert_child(parent, id, after);
-        self.set_focus_id(if activate {
-            Some(id)
+        if activate {
+            self.set_focus_id(Some(id));
+        } else if let Some(previous_focus) = previous_focus {
+            self.focus_history.retain(|candidate| *candidate != id);
+            self.focus_history
+                .insert(1.min(self.focus_history.len()), id);
+            self.focus = Some(previous_focus);
         } else {
-            previous_focus.or(Some(id))
-        });
+            self.set_focus_id(Some(id));
+        }
         if !pending_mode.is_normal() {
             self.pending_modes.insert(
                 id,
                 PendingMode {
-                    fullscreen: pending_mode.is_fullscreen(),
+                    fullscreen: pending_mode
+                        .is_fullscreen()
+                        .then_some(FullscreenMode::Workspace),
                     maximized: pending_mode.is_maximized(),
                 },
             );
@@ -409,8 +423,15 @@ impl<W: LayoutElement> TilingTree<W> {
                 self.compact_tree();
             }
         }
-        if self.focus == Some(id) || self.windows().next().is_none() {
-            self.set_focus_id(self.focused_leaf_in(self.root));
+        if self.windows().next().is_none() {
+            self.pending_modes.clear();
+            self.set_focus_id(None);
+        } else if self.focus == Some(id) {
+            self.set_focus_id(
+                self.fullscreen_node()
+                    .and_then(|fullscreen| self.focused_leaf_in(fullscreen))
+                    .or_else(|| self.focused_leaf_in(self.root)),
+            );
         }
         self.animate_geometry_changes(old_geometries, None);
         Some(*tile)
@@ -479,7 +500,13 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub fn focus_parent(&mut self) -> bool {
-        let Some(parent) = self.focus.and_then(|focus| self.nodes.get(&focus)?.parent) else {
+        let Some(focus) = self.focus else {
+            return false;
+        };
+        if self.fullscreen_node() == Some(focus) {
+            return false;
+        }
+        let Some(parent) = self.nodes.get(&focus).and_then(|node| node.parent) else {
             return false;
         };
         self.set_focus_id(Some(parent));
@@ -503,6 +530,7 @@ impl<W: LayoutElement> TilingTree<W> {
         let Some(mut current) = self.focus else {
             return false;
         };
+        let barrier = self.fullscreen_node();
         let direction_layout = match dir {
             Direction::Left | Direction::Right => Layout::SplitH,
             Direction::Up | Direction::Down => Layout::SplitV,
@@ -538,6 +566,9 @@ impl<W: LayoutElement> TilingTree<W> {
                         children.first().copied()
                     };
                 }
+            }
+            if Some(parent) == barrier {
+                break;
             }
             current = parent;
         }
@@ -688,6 +719,12 @@ impl<W: LayoutElement> TilingTree<W> {
 
     fn move_direction_inner(&mut self, id: NodeId, direction: Direction) -> bool {
         if !self.nodes.contains_key(&id) || id == self.root || self.windows().nth(1).is_none() {
+            return false;
+        }
+        if self
+            .fullscreen_node()
+            .is_some_and(|fullscreen| self.is_descendant(id, fullscreen))
+        {
             return false;
         }
         self.interactive_resize = None;
@@ -1465,17 +1502,53 @@ impl<W: LayoutElement> TilingTree<W> {
         let Some(id) = self.node_for_window(window) else {
             return false;
         };
-        let mode = self.pending_modes.entry(id).or_insert(PendingMode {
-            fullscreen: false,
-            maximized: false,
-        });
-        if mode.fullscreen == fullscreen {
+        self.set_node_fullscreen(id, fullscreen.then_some(FullscreenMode::Workspace))
+    }
+
+    pub fn set_node_fullscreen(&mut self, id: NodeId, fullscreen: Option<FullscreenMode>) -> bool {
+        if !self.nodes.contains_key(&id) {
             return false;
         }
-        mode.fullscreen = fullscreen;
+        let current = self.fullscreen_node();
+        if current == Some(id)
+            && self.pending_modes.get(&id).and_then(|mode| mode.fullscreen) == fullscreen
+        {
+            return false;
+        }
+        if let Some(current) = current {
+            if let Some(mode) = self.pending_modes.get_mut(&current) {
+                mode.fullscreen = None;
+            }
+        }
+        if let Some(fullscreen) = fullscreen {
+            self.pending_modes
+                .entry(id)
+                .or_insert(PendingMode {
+                    fullscreen: None,
+                    maximized: false,
+                })
+                .fullscreen = Some(fullscreen);
+            self.set_focus_id(self.focused_leaf_in(id));
+        }
         self.cancel_resize_for(id);
         self.request_window_sizes_with(Some(Transaction::new()), true);
         true
+    }
+
+    pub fn fullscreen_node(&self) -> Option<NodeId> {
+        self.pending_modes
+            .iter()
+            .find_map(|(id, mode)| mode.fullscreen.map(|_| *id))
+    }
+
+    pub fn fullscreen_mode(&self, id: NodeId) -> Option<FullscreenMode> {
+        self.pending_modes.get(&id).and_then(|mode| mode.fullscreen)
+    }
+
+    pub fn fullscreen_contains_window(&self, window: &W::Id) -> bool {
+        self.fullscreen_node()
+            .zip(self.node_for_window(window))
+            .is_some_and(|(fullscreen, node)| self.is_descendant(node, fullscreen))
     }
 
     pub fn set_maximized(&mut self, window: &W::Id, maximized: bool) -> bool {
@@ -1483,7 +1556,7 @@ impl<W: LayoutElement> TilingTree<W> {
             return false;
         };
         let mode = self.pending_modes.entry(id).or_insert(PendingMode {
-            fullscreen: false,
+            fullscreen: None,
             maximized: false,
         });
         if mode.maximized == maximized {
@@ -1497,14 +1570,14 @@ impl<W: LayoutElement> TilingTree<W> {
 
     pub fn is_active_pending_fullscreen(&self) -> bool {
         self.focus
-            .and_then(|id| self.pending_modes.get(&id))
-            .is_some_and(|mode| mode.fullscreen)
+            .and_then(|focus| self.fullscreen_node().map(|fullscreen| (focus, fullscreen)))
+            .is_some_and(|(focus, fullscreen)| self.is_descendant(focus, fullscreen))
     }
 
     pub fn is_pending_fullscreen(&self, window: &W::Id) -> bool {
         self.node_for_window(window)
             .and_then(|id| self.pending_modes.get(&id))
-            .is_some_and(|mode| mode.fullscreen)
+            .is_some_and(|mode| mode.fullscreen.is_some())
     }
 
     pub fn is_pending_maximized(&self, window: &W::Id) -> bool {
@@ -1783,7 +1856,7 @@ impl<W: LayoutElement> TilingTree<W> {
         if self
             .pending_modes
             .get(&id)
-            .is_some_and(|mode| mode.fullscreen || mode.maximized)
+            .is_some_and(|mode| mode.fullscreen.is_some() || mode.maximized)
         {
             return false;
         }
@@ -2001,11 +2074,7 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     fn compute_geometry(&self) -> geometry::Geometry<W::Id> {
-        let fullscreen = self
-            .pending_modes
-            .iter()
-            .filter_map(|(id, mode)| mode.fullscreen.then_some(*id))
-            .collect();
+        let fullscreen = self.fullscreen_node().into_iter().collect();
         geometry::compute(
             &self.nodes,
             self.root,
@@ -2059,6 +2128,7 @@ impl<W: LayoutElement> TilingTree<W> {
                             focus
                         }),
                     focused: tree.focus == Some(id),
+                    fullscreen_mode: tree.fullscreen_mode(id).map_or(0, |mode| mode as i32),
                     children: children
                         .iter()
                         .zip(percents)
@@ -2070,7 +2140,7 @@ impl<W: LayoutElement> TilingTree<W> {
                     window: tile.window().id().clone(),
                     percent,
                     focused: tree.focus == Some(id),
-                    rect: geometries.nodes[&id],
+                    rect: geometries.nodes.get(&id).copied().unwrap_or_default(),
                     deco_rect: geometries.titlebars.get(&id).map(|bar| bar.ipc_rect),
                 },
             }
@@ -2151,10 +2221,11 @@ impl<W: LayoutElement> TilingTree<W> {
             self.focus_history.len(),
             "focus_history contains duplicate node ids"
         );
-        assert!(self.pending_modes.keys().all(|id| matches!(
-            self.nodes.get(id).map(|node| &node.value),
-            Some(TreeNode::Leaf { .. })
-        )));
+        assert!(self.pending_modes.iter().all(|(id, mode)| {
+            self.nodes
+                .get(id)
+                .is_some_and(|node| matches!(node.value, TreeNode::Leaf { .. }) || !mode.maximized)
+        }));
         if let Some(resize) = &self.interactive_resize {
             assert_eq!(self.node_for_window(&resize.window), Some(resize.target));
             assert!(self.sibling_percents(resize.first, resize.second).is_some());
@@ -2510,6 +2581,15 @@ impl<W: LayoutElement> TilingTree<W> {
             };
             children[index] = child;
             self.nodes.get_mut(&child).unwrap().parent = Some(parent);
+            if let Some(fullscreen) = self.pending_modes.get(&id).and_then(|mode| mode.fullscreen) {
+                self.pending_modes
+                    .entry(child)
+                    .or_insert(PendingMode {
+                        fullscreen: None,
+                        maximized: false,
+                    })
+                    .fullscreen = Some(fullscreen);
+            }
             if self.focus == Some(id) {
                 self.set_focus_id(Some(child));
             }
@@ -2666,6 +2746,18 @@ impl<W: LayoutElement> TilingTree<W> {
             self.nodes.get_mut(grandchild).unwrap().parent = Some(parent);
         }
         let replacement = grandchildren.first().copied().unwrap_or(parent);
+        if let Some(fullscreen) = [id, child]
+            .into_iter()
+            .find_map(|id| self.pending_modes.get(&id).and_then(|mode| mode.fullscreen))
+        {
+            self.pending_modes
+                .entry(parent)
+                .or_insert(PendingMode {
+                    fullscreen: None,
+                    maximized: false,
+                })
+                .fullscreen = Some(fullscreen);
+        }
         if self.focus == Some(id) || self.focus == Some(child) {
             self.set_focus_id(Some(replacement));
         }
@@ -2734,14 +2826,10 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     fn visible_leaves(&self) -> HashSet<NodeId> {
-        if let Some(focus) = self.focus {
-            if self
-                .pending_modes
-                .get(&focus)
-                .is_some_and(|mode| mode.fullscreen)
-            {
-                return HashSet::from([focus]);
-            }
+        if let Some(fullscreen) = self.fullscreen_node() {
+            let mut visible = HashSet::new();
+            self.collect_visible(fullscreen, &mut visible);
+            return visible;
         }
         let mut visible = HashSet::new();
         self.collect_visible(self.root, &mut visible);
@@ -2777,7 +2865,7 @@ impl<W: LayoutElement> TilingTree<W> {
         }
     }
 
-    fn contains_node(&self, ancestor: NodeId, mut id: NodeId) -> bool {
+    pub fn contains_node(&self, ancestor: NodeId, mut id: NodeId) -> bool {
         loop {
             if id == ancestor {
                 return true;
@@ -3292,10 +3380,10 @@ impl<W: LayoutElement> TilingTree<W> {
                 let transaction = transaction.clone();
                 if let Some(rect) = geometries.nodes.get(id) {
                     let mode = self.pending_modes.get(id).copied().unwrap_or(PendingMode {
-                        fullscreen: false,
+                        fullscreen: None,
                         maximized: false,
                     });
-                    if mode.fullscreen {
+                    if mode.fullscreen.is_some() {
                         tile.request_fullscreen(animate, transaction);
                     } else if mode.maximized {
                         tile.request_maximized(self.parent_area.size, animate, transaction);

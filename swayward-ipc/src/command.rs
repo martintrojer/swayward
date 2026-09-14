@@ -390,6 +390,14 @@ fn parse_toggle(value: &str) -> Result<Toggle, String> {
     }
 }
 
+pub fn parse_boolean(value: &str, current: bool) -> bool {
+    match value.to_ascii_lowercase().as_str() {
+        "1" | "yes" | "on" | "true" | "enable" | "enabled" | "active" => true,
+        "toggle" => !current,
+        _ => false,
+    }
+}
+
 fn parse_focus(args: &[&str]) -> Result<Command, String> {
     if args.is_empty() {
         return Ok(Command::Focus);
@@ -553,11 +561,20 @@ fn parse_split(args: &[&str]) -> Result<Command, String> {
 
 fn parse_fullscreen(args: &[&str]) -> Result<Command, String> {
     let syntax = "Expected 'fullscreen [enable|disable|toggle] [global]'";
+    let mode = |value: &str| {
+        if value.eq_ignore_ascii_case("toggle") {
+            Toggle::Toggle
+        } else if parse_boolean(value, false) {
+            Toggle::Enable
+        } else {
+            Toggle::Disable
+        }
+    };
     let (mode, global) = match args {
         [] => (Toggle::Toggle, false),
         [global] if global.eq_ignore_ascii_case("global") => (Toggle::Toggle, true),
-        [mode] => (parse_toggle(mode)?, false),
-        [mode, global] if global.eq_ignore_ascii_case("global") => (parse_toggle(mode)?, true),
+        [value] => (mode(value), false),
+        [value, global] => (mode(value), global.eq_ignore_ascii_case("global")),
         _ => return Err(syntax.into()),
     };
     Ok(Command::Fullscreen { mode, global })

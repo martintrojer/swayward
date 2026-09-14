@@ -305,7 +305,7 @@ fn invariant_rejects_stale_and_duplicate_node_side_state() {
                 t.pending_modes.insert(
                     stale,
                     PendingMode {
-                        fullscreen: true,
+                        fullscreen: Some(FullscreenMode::Workspace),
                         maximized: false,
                     },
                 );
@@ -335,7 +335,7 @@ fn removing_a_node_clears_every_node_side_collection() {
     t.pending_modes.insert(
         leaf,
         PendingMode {
-            fullscreen: true,
+            fullscreen: Some(FullscreenMode::Workspace),
             maximized: false,
         },
     );
@@ -1159,6 +1159,29 @@ fn resizing_adjacent_siblings_changes_only_that_boundary() {
 }
 
 #[test]
+fn fullscreen_container_restricts_focus_and_move_to_its_subtree() {
+    let mut t = tree((1920., 1080.), 0.);
+    let _left = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let upper = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.split(upper, Layout::SplitV);
+    let lower = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+    let branch = t.nodes[&lower].parent.unwrap();
+
+    assert!(t.set_node_fullscreen(branch, Some(FullscreenMode::Workspace)));
+    assert!(t.activate_window(&2));
+    assert!(!t.focus_direction(Direction::Left));
+    assert_eq!(t.focus(), Some(upper));
+    assert!(!t.move_direction(upper, Direction::Left));
+    assert_eq!(t.nodes[&upper].parent, Some(branch));
+    assert!(t.activate_window(&3));
+    assert!(t.focus_direction(Direction::Up));
+    assert_eq!(t.focus(), Some(upper));
+    assert_eq!(t.fullscreen_node(), Some(branch));
+    assert_eq!(t.visible_leaves(), HashSet::from([upper, lower]));
+    t.check_invariants();
+}
+
+#[test]
 fn fullscreen_and_maximize_survive_tree_mutations() {
     let mut t = tree((1920., 1080.), 0.);
     let first_window = TestWindow::new(1);
@@ -1178,14 +1201,14 @@ fn fullscreen_and_maximize_survive_tree_mutations() {
     assert!(t.set_fullscreen(&1, true));
     assert_eq!(first_state.0.requested_mode.get(), SizingMode::Fullscreen);
     assert!(first_state.0.received_transaction.get());
-    assert!(t.move_direction(first, Direction::Right));
+    assert!(!t.move_direction(first, Direction::Right));
     assert!(t.is_active_pending_fullscreen());
     assert_eq!(first_state.0.requested_mode.get(), SizingMode::Fullscreen);
 
     assert!(t.set_fullscreen(&1, false));
     assert!(t.set_maximized(&1, true));
     assert_eq!(first_state.0.requested_mode.get(), SizingMode::Maximized);
-    assert!(t.move_subtree_to_first(first));
+    t.move_subtree_to_first(first);
     assert_eq!(first_state.0.requested_mode.get(), SizingMode::Maximized);
     assert!(t.geometry(second).is_some());
     t.check_invariants();
