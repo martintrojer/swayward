@@ -10,6 +10,11 @@ impl<W: LayoutElement> TilingTree<W> {
         {
             return false;
         }
+        let moved = self
+            .leaf_ids_in(id)
+            .into_iter()
+            .filter_map(|leaf| self.tile(leaf).map(|tile| tile.window().id().clone()))
+            .collect::<Vec<_>>();
         let (parent, after) = match self.nodes[&destination] {
             Node {
                 parent: Some(parent),
@@ -28,6 +33,15 @@ impl<W: LayoutElement> TilingTree<W> {
         self.insert_child(parent, id, after);
         self.reap_empty_from(old_parent);
         self.compact_tree();
+        let insertion = usize::from(self.focus.is_some());
+        for window in moved.into_iter().rev() {
+            let Some(leaf) = self.node_for_window(&window) else {
+                continue;
+            };
+            self.focus_history.retain(|candidate| *candidate != leaf);
+            self.focus_history
+                .insert(insertion.min(self.focus_history.len()), leaf);
+        }
         self.animate_geometry_changes(old, None);
         self.request_window_sizes();
         true
@@ -52,8 +66,12 @@ impl<W: LayoutElement> TilingTree<W> {
 
     pub fn move_node_direction(&mut self, id: NodeId, direction: Direction) -> bool {
         let focus = self.focus;
+        let focus_history = self.window_focus_history();
         let changed = self.move_direction(id, direction);
-        self.set_focus_id(focus);
+        if changed {
+            self.restore_window_focus_history(focus_history);
+        }
+        self.focus = focus;
         changed
     }
 

@@ -945,6 +945,10 @@ impl<W: LayoutElement> Workspace<W> {
         self.tiling.move_subtree_to_node(source, target)
     }
 
+    pub fn sort_tiling_focus_by_timestamp(&mut self) {
+        self.tiling.sort_focus_history_by_timestamp();
+    }
+
     pub fn attach_tiling_subtree_at(
         &mut self,
         subtree: DetachedSubtree<W>,

@@ -29,6 +29,33 @@ impl<W: LayoutElement> TilingTree<W> {
             .insert(rank.min(self.focus_history.len()), node);
     }
 
+    pub(super) fn window_focus_history(&self) -> Vec<W::Id> {
+        self.focus_history
+            .iter()
+            .filter_map(|node| self.tile(*node).map(|tile| tile.window().id().clone()))
+            .collect()
+    }
+
+    pub(super) fn restore_window_focus_history(&mut self, history: Vec<W::Id>) {
+        self.focus_history = history
+            .into_iter()
+            .filter_map(|window| self.node_for_window(&window))
+            .collect();
+    }
+
+    pub(crate) fn sort_focus_history_by_timestamp(&mut self) {
+        let mut history = self
+            .focus_history
+            .iter()
+            .filter_map(|node| {
+                self.tile(*node)
+                    .map(|tile| (*node, tile.window().focus_timestamp()))
+            })
+            .collect::<Vec<_>>();
+        history.sort_by_key(|(_, timestamp)| std::cmp::Reverse(*timestamp));
+        self.focus_history = history.into_iter().map(|(node, _)| node).collect();
+    }
+
     pub fn root_is_focused(&self) -> bool {
         self.focus == Some(self.root)
     }

@@ -138,6 +138,11 @@ pub trait LayoutElement {
     /// Unique ID of this element.
     fn id(&self) -> &Self::Id;
 
+    /// Most recent time this element received keyboard focus.
+    fn focus_timestamp(&self) -> Option<Duration> {
+        None
+    }
+
     /// Updates the config for the element.
     fn update_config(&mut self, blur_config: swayward_config::Blur) {
         let _ = blur_config;
@@ -4486,6 +4491,7 @@ impl<W: LayoutElement> Layout<W> {
             if mon.workspace_switch.is_none() {
                 monitors[mon_idx].clean_up_workspaces();
             }
+            monitors[new_idx].workspaces[workspace_idx].sort_tiling_focus_by_timestamp();
         }
     }
 

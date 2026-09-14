@@ -267,6 +267,39 @@ fn struts_reduce_new_window_bounds() {
 }
 
 #[test]
+fn structural_moves_preserve_unfocused_window_order() {
+    let mut t = tree((1200., 800.), 0.);
+    for id in 1..=4 {
+        t.add_tile(tile(id, t.view_size()), InsertTarget::Focused);
+    }
+    for id in [4, 3, 2, 1] {
+        let node = t.node_for_window(&id).unwrap();
+        t.set_focus(node);
+    }
+
+    let third = t.node_for_window(&3).unwrap();
+    assert!(t.move_node_direction(third, Direction::Up));
+    assert_eq!(
+        t.focus_history
+            .iter()
+            .filter_map(|node| t.tile(*node).map(|tile| *tile.window().id()))
+            .collect::<Vec<_>>(),
+        [1, 2, 3, 4]
+    );
+
+    let fourth = t.node_for_window(&4).unwrap();
+    let second = t.node_for_window(&2).unwrap();
+    assert!(t.move_subtree_to_node(fourth, second));
+    assert_eq!(
+        t.focus_history
+            .iter()
+            .filter_map(|node| t.tile(*node).map(|tile| *tile.window().id()))
+            .collect::<Vec<_>>(),
+        [1, 4, 2, 3]
+    );
+}
+
+#[test]
 fn restoring_a_removed_windows_focus_rank_preserves_close_order() {
     let mut t = tree((1200., 800.), 0.);
     for id in 1..=5 {

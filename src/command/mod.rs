@@ -482,7 +482,7 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
         } => mark_target(state, target, identifier, *add, *toggle),
         Command::Unmark(identifier) => unmark_target(state, target, identifier.as_deref()),
         Command::MoveDirection { direction, pixels } => {
-            let direction = match direction {
+            let layout_direction = match direction {
                 Direction::Left => crate::layout::tiling_tree::Direction::Left,
                 Direction::Right => crate::layout::tiling_tree::Direction::Right,
                 Direction::Up => crate::layout::tiling_tree::Direction::Up,
@@ -496,17 +496,41 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
                     let Some(window) = window else {
                         return failure("No matching node.");
                     };
-                    state.swayward.layout.move_window_in_direction(
+                    let moved = state.swayward.layout.move_window_in_direction(
                         &window,
-                        direction,
+                        layout_direction,
                         f64::from(pixels.unwrap_or(10)),
                     );
+                    if !moved {
+                        let destination = OutputTarget::Direction(*direction);
+                        let reference = state
+                            .swayward
+                            .layout
+                            .windows()
+                            .find_map(|(monitor, mapped)| {
+                                (mapped.id() == target)
+                                    .then(|| monitor.map(|monitor| monitor.output()))
+                            })
+                            .flatten();
+                        let reference_point = state.swayward.layout.window_center(&window);
+                        if let Ok(output) =
+                            output_target(state, &destination, reference, reference_point)
+                        {
+                            state.swayward.layout.move_to_output(
+                                Some(&window),
+                                &output,
+                                None,
+                                crate::layout::ActivateWindow::No,
+                            );
+                        }
+                    }
                 }
                 CommandTarget::Container(workspace, node) => {
-                    state
-                        .swayward
-                        .layout
-                        .move_tiling_node_in_direction(workspace, node, direction);
+                    state.swayward.layout.move_tiling_node_in_direction(
+                        workspace,
+                        node,
+                        layout_direction,
+                    );
                 }
             }
             state.swayward.queue_redraw_all();

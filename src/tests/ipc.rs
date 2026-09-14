@@ -2408,6 +2408,52 @@ fn resize_rejects_hidden_scratchpad_window_without_panicking() {
 }
 
 #[test]
+fn criteria_directional_move_crosses_outputs_without_changing_focus() {
+    let mut f = Fixture::new();
+    f.add_named_output_at("left".into(), (800, 600), Some((0, 0)));
+    f.add_named_output_at("right".into(), (800, 600), Some((800, 0)));
+    let client = f.add_client();
+
+    assert!(crate::command::execute(f.niri_state(), "focus output left")[0].success);
+    let moved = f.client(client).create_window();
+    moved.xdg_toplevel.set_app_id("moved".into());
+    moved.commit();
+    let surface = moved.surface.clone();
+    f.roundtrip(client);
+    let moved = f.client(client).window(&surface);
+    moved.attach_new_buffer();
+    moved.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    assert!(crate::command::execute(f.niri_state(), "focus output right")[0].success);
+    let focused = f.client(client).create_window();
+    focused.commit();
+    let surface = focused.surface.clone();
+    f.roundtrip(client);
+    let focused = f.client(client).window(&surface);
+    focused.attach_new_buffer();
+    focused.ack_last_and_commit();
+    f.double_roundtrip(client);
+    let focused = f.swayward().layout.focus().unwrap().id();
+
+    let outcome = crate::command::execute(f.niri_state(), r#"[app_id="moved"] move right"#);
+    assert!(outcome[0].success, "{outcome:?}");
+    assert_eq!(f.swayward().layout.focus().unwrap().id(), focused);
+    assert!(f
+        .swayward()
+        .layout
+        .windows()
+        .find(
+            |(_, mapped)| crate::utils::with_toplevel_role(mapped.toplevel(), |role| {
+                role.app_id.as_deref() == Some("moved")
+            })
+        )
+        .unwrap()
+        .0
+        .is_some_and(|monitor| monitor.output_name() == "right"));
+}
+
+#[test]
 fn criteria_move_output_right_uses_layout_positions_during_workspace_animation() {
     let mut f = Fixture::new();
     for (name, position) in [
