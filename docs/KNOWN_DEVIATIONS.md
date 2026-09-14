@@ -33,6 +33,16 @@ a nested compositor and is not part of the automated suite.
 
 ## IPC requests and commands
 
+### Version identity
+
+`GET_VERSION` uses sway's six-field reply schema: `human_readable`, `variant`,
+`major`, `minor`, `patch`, and `loaded_config_file_name`. Sway defines that
+schema in `sway/sway/ipc-json.c:225-238`; the fixture capture records sway 1.11
+as `variant: sway`, version `1.11.0` (`tests/fixtures/sway/README.md:9`).
+Swayward reports its own variant and package version in those fields rather than
+claiming to be sway or i3. Therefore, i3's `193-ipc-version.t` assertion that
+the major version is always 4 does not apply.
+
 `GET_CONFIG`, `GET_INPUTS`, and `GET_SEATS` return:
 
 ```json

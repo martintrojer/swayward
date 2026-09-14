@@ -196,7 +196,7 @@ sub events_for {
     $callback->();
     _request(10, 'swayward-i3-flush');
 
-    my %event_types = (workspace => 0, window => 3);
+    my %event_types = (workspace => 0, mode => 2, window => 3);
     my @events;
     while (1) {
         my ($type, $payload) = _read_reply($socket);
@@ -378,6 +378,8 @@ sub NEXTKEY { each %{$_[0]} }
 sub SCALAR { scalar %{$_[0]} }
 
 package i3test::IPC;
+sub connect { i3test::Future->new(1) }
+sub message { i3test::Future->new(i3test::_request($_[1], $_[2])) }
 sub command { i3test::Future->new(i3test::_request(0, $_[1])) }
 sub get_workspaces { i3test::Future->new(i3test::_request(1)) }
 sub get_tree { i3test::Future->new(i3test::_request(4)) }
