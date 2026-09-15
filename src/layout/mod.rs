@@ -2840,6 +2840,77 @@ impl<W: LayoutElement> Layout<W> {
             .map_err(str::to_owned)
     }
 
+    #[allow(clippy::type_complexity)]
+    pub fn swap_tiling_nodes_between_workspaces(
+        &mut self,
+        first_workspace: WorkspaceId,
+        first: tiling_tree::NodeId,
+        second_workspace: WorkspaceId,
+        second: tiling_tree::NodeId,
+    ) -> Result<
+        (
+            Vec<(tiling_tree::NodeId, tiling_tree::NodeId)>,
+            Vec<(tiling_tree::NodeId, tiling_tree::NodeId)>,
+        ),
+        String,
+    > {
+        let MonitorSet::Normal { monitors, .. } = &mut self.monitor_set else {
+            return Err("cannot swap containers without an output".into());
+        };
+        let first_monitor = monitors
+            .iter()
+            .position(|monitor| monitor.has_ws(first_workspace))
+            .ok_or_else(|| "No matching node.".to_owned())?;
+        let second_monitor = monitors
+            .iter()
+            .position(|monitor| monitor.has_ws(second_workspace))
+            .ok_or_else(|| "No matching node.".to_owned())?;
+        let (first_ws, second_ws) = if first_monitor == second_monitor {
+            let monitor = &mut monitors[first_monitor];
+            let first_idx = monitor.idx_of_ws(first_workspace).unwrap();
+            let second_idx = monitor.idx_of_ws(second_workspace).unwrap();
+            if first_idx < second_idx {
+                let (before, after) = monitor.workspaces.split_at_mut(second_idx);
+                (&mut before[first_idx], &mut after[0])
+            } else {
+                let (before, after) = monitor.workspaces.split_at_mut(first_idx);
+                (&mut after[0], &mut before[second_idx])
+            }
+        } else if first_monitor < second_monitor {
+            let (before, after) = monitors.split_at_mut(second_monitor);
+            let first_idx = before[first_monitor].idx_of_ws(first_workspace).unwrap();
+            let second_idx = after[0].idx_of_ws(second_workspace).unwrap();
+            (
+                &mut before[first_monitor].workspaces[first_idx],
+                &mut after[0].workspaces[second_idx],
+            )
+        } else {
+            let (before, after) = monitors.split_at_mut(first_monitor);
+            let first_idx = after[0].idx_of_ws(first_workspace).unwrap();
+            let second_idx = before[second_monitor].idx_of_ws(second_workspace).unwrap();
+            (
+                &mut after[0].workspaces[first_idx],
+                &mut before[second_monitor].workspaces[second_idx],
+            )
+        };
+        let (mut first_subtree, first_slot) = first_ws
+            .detach_tiling_subtree_for_swap(first)
+            .ok_or_else(|| "No matching node.".to_owned())?;
+        let (mut second_subtree, second_slot) = second_ws
+            .detach_tiling_subtree_for_swap(second)
+            .ok_or_else(|| "No matching node.".to_owned())?;
+        first_subtree.swap_root_mode(&mut second_subtree);
+        let second_remapped = first_ws
+            .attach_tiling_subtree_for_swap(second_subtree, first_slot)
+            .1;
+        let first_remapped = second_ws
+            .attach_tiling_subtree_for_swap(first_subtree, second_slot)
+            .1;
+        first_ws.finish_tiling_subtree_detach(None);
+        second_ws.finish_tiling_subtree_detach(None);
+        Ok((first_remapped, second_remapped))
+    }
+
     pub fn move_tiling_subtree_to_node(
         &mut self,
         source_workspace: WorkspaceId,

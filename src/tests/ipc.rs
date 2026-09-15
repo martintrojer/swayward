@@ -2541,6 +2541,107 @@ fn criteria_targeted_move_workspace_moves_all_matches_without_changing_focus() {
 }
 
 #[test]
+fn cross_workspace_swap_exchanges_positions_marks_and_fullscreen() {
+    let mut f = Fixture::new();
+    f.add_output_at(1, (600, 800), Some((0, 0)));
+    f.add_output_at(2, (1000, 800), Some((600, 0)));
+    let client = f.add_client();
+
+    let mut windows = Vec::new();
+    for (output, workspace, mark, fullscreen) in [
+        ("headless-1", "one", "A", true),
+        ("headless-2", "two", "B", false),
+    ] {
+        assert!(crate::command::execute(
+            f.niri_state(),
+            &format!("focus output {output}, workspace {workspace}")
+        )
+        .iter()
+        .all(|outcome| outcome.success));
+        let window = f.client(client).create_window();
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+        let mapped = f.swayward().layout.focus().unwrap();
+        windows.push((workspace, mapped.id(), mapped.window.clone()));
+        assert!(crate::command::execute(f.niri_state(), &format!("mark {mark}"))[0].success);
+        if fullscreen {
+            assert!(crate::command::execute(f.niri_state(), "fullscreen enable")[0].success);
+        }
+    }
+
+    let result = crate::command::execute(f.niri_state(), "[con_mark=B] swap container with mark A");
+    assert!(result[0].success, "{result:?}");
+    let (one_id, two_id) = {
+        let layout = &f.swayward().layout;
+        let one = layout
+            .workspaces()
+            .find(|(_, _, workspace)| workspace.sway_name().as_deref() == Some("one"))
+            .unwrap()
+            .2
+            .id();
+        let two = layout
+            .workspaces()
+            .find(|(_, _, workspace)| workspace.sway_name().as_deref() == Some("two"))
+            .unwrap()
+            .2
+            .id();
+        (one, two)
+    };
+    assert_eq!(
+        f.swayward().layout.window_workspace_id(&windows[0].2),
+        Some(two_id)
+    );
+    assert_eq!(
+        f.swayward().layout.window_workspace_id(&windows[1].2),
+        Some(one_id)
+    );
+    for workspace in [one_id, two_id] {
+        let tree = f
+            .swayward()
+            .layout
+            .workspaces()
+            .find(|(_, _, candidate)| candidate.id() == workspace)
+            .unwrap()
+            .2
+            .ipc_tiling_tree();
+        assert_eq!(tree.nodes().len(), 2);
+    }
+    let first_center = f.swayward().layout.window_center(&windows[0].2).unwrap();
+    let second_center = f.swayward().layout.window_center(&windows[1].2).unwrap();
+    assert!(first_center.x >= 600, "{first_center:?}");
+    assert!(second_center.x < 600, "{second_center:?}");
+    assert_eq!(f.swayward().layout.fullscreen_mode(&windows[0].2), None);
+    assert_eq!(
+        f.swayward().layout.fullscreen_mode(&windows[1].2),
+        Some(crate::layout::tiling_tree::FullscreenMode::Workspace)
+    );
+    assert!(f
+        .swayward()
+        .marks_by_window
+        .get(&windows[0].1)
+        .is_some_and(|marks| marks.as_slice() == ["A"]));
+    assert!(f
+        .swayward()
+        .marks_by_window
+        .get(&windows[1].1)
+        .is_some_and(|marks| marks.as_slice() == ["B"]));
+    assert_eq!(
+        f.swayward()
+            .marks_by_window
+            .values()
+            .flatten()
+            .filter(|mark| *mark == "A" || *mark == "B")
+            .count(),
+        2
+    );
+}
+
+#[test]
 fn criteria_targeted_move_workspace_preserves_a_container_subtree() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));

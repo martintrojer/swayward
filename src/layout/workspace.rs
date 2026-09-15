@@ -977,6 +977,30 @@ impl<W: LayoutElement> Workspace<W> {
         self.tiling.swap_nodes(first, second)
     }
 
+    pub fn detach_tiling_subtree_for_swap(
+        &mut self,
+        id: NodeId,
+    ) -> Option<(DetachedSubtree<W>, crate::layout::tiling_tree::DetachedSlot)> {
+        let detached = self.tiling.detach_subtree_for_swap(id)?;
+        if let Some(output) = &self.output {
+            detached
+                .0
+                .for_each_window(|window| window.output_leave(output));
+        }
+        Some(detached)
+    }
+
+    pub fn attach_tiling_subtree_for_swap(
+        &mut self,
+        subtree: DetachedSubtree<W>,
+        slot: crate::layout::tiling_tree::DetachedSlot,
+    ) -> (NodeId, Vec<(NodeId, NodeId)>) {
+        if let Some(output) = &self.output {
+            subtree.for_each_window(|window| window.output_enter(output));
+        }
+        self.tiling.attach_subtree_for_swap(subtree, slot)
+    }
+
     pub fn sort_tiling_focus_by_timestamp(&mut self) {
         self.tiling.sort_focus_history_by_timestamp();
     }
