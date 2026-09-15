@@ -194,6 +194,9 @@ pub struct Mapped {
     /// in response yet.
     uncommitted_maximized: Vec<(Serial, bool)>,
 
+    /// Sway title format applied to the client title and app ID.
+    title_format: Option<String>,
+
     /// Most recent monotonic time when the window had the focus.
     focus_timestamp: Option<Duration>,
 }
@@ -314,6 +317,7 @@ impl Mapped {
             is_maximized: false,
             is_pending_maximized: false,
             uncommitted_maximized: Vec::new(),
+            title_format: None,
             focus_timestamp: None,
         };
 
@@ -368,6 +372,23 @@ impl Mapped {
 
     pub fn credentials(&self) -> Option<&Credentials> {
         self.credentials.as_ref()
+    }
+
+    pub fn set_title_format(&mut self, format: String) {
+        self.title_format = (format != "%title").then_some(format);
+    }
+
+    pub fn formatted_title(&self) -> String {
+        let (title, app_id) = with_toplevel_role(self.toplevel(), |role| {
+            (
+                role.title.clone().unwrap_or_default(),
+                role.app_id.clone().unwrap_or_default(),
+            )
+        });
+        let Some(format) = &self.title_format else {
+            return title;
+        };
+        format.replace("%title", &title).replace("%app_id", &app_id)
     }
 
     pub fn offscreen_data(&self) -> Ref<'_, Option<OffscreenData>> {
@@ -646,7 +667,7 @@ impl LayoutElement for Mapped {
     }
 
     fn title(&self) -> String {
-        with_toplevel_role(self.toplevel(), |role| role.title.clone()).unwrap_or_default()
+        self.formatted_title()
     }
 
     fn size(&self) -> Size<i32, Logical> {

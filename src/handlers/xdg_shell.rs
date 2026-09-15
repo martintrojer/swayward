@@ -974,10 +974,12 @@ impl XdgShellHandler for State {
 
     fn app_id_changed(&mut self, toplevel: ToplevelSurface) {
         self.update_window_rules(&toplevel);
+        self.refresh_formatted_title(&toplevel);
     }
 
     fn title_changed(&mut self, toplevel: ToplevelSurface) {
         self.update_window_rules(&toplevel);
+        self.refresh_formatted_title(&toplevel);
     }
 
     fn parent_changed(&mut self, toplevel: ToplevelSurface) {
@@ -1447,6 +1449,22 @@ impl State {
                 PopupKind::InputMethod(_) => (),
             }
         }
+    }
+
+    fn refresh_formatted_title(&mut self, toplevel: &ToplevelSurface) {
+        if let Some((mapped, output)) = self
+            .swayward
+            .layout
+            .find_window_and_output_mut(toplevel.wl_surface())
+        {
+            let output = output.cloned();
+            let window = mapped.window.clone();
+            self.swayward.layout.update_window(&window, None);
+            if let Some(output) = output {
+                self.swayward.queue_redraw(&output);
+            }
+        }
+        self.ipc_refresh_layout();
     }
 
     pub fn update_window_rules(&mut self, toplevel: &ToplevelSurface) {

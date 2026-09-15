@@ -267,6 +267,32 @@ bindsym $missing+x nop
                 result = self.translate(source)
                 self.assertIn("manual attention: 1 directive(s)", result.stderr)
 
+    def test_for_window_title_format_preserves_wayland_placeholders(self):
+        result = self.translate(
+            'for_window [app_id="^demo$"] title_format [%app_id] %title\n'
+        )
+        self.assertIn(
+            'sway-for-window-command "title_format [%app_id] %title"', result.stdout
+        )
+        self.assertIn("manual attention: none", result.stderr)
+
+    def test_for_window_title_format_refuses_x11_placeholders(self):
+        for placeholder in [
+            "%class",
+            "%instance",
+            "%shell",
+            "%sandbox_engine",
+            "%sandbox_app_id",
+            "%sandbox_instance_id",
+        ]:
+            with self.subTest(placeholder=placeholder):
+                result = self.translate(
+                    f'for_window [app_id="^demo$"] title_format {placeholder}\n'
+                )
+                self.assertNotIn("sway-for-window-command", result.stdout)
+                self.assertIn("placeholder is unavailable for native Wayland windows", result.stdout)
+                self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
     def test_bind_input_device_strips_quotes_and_preserves_spaces_and_colons(self):
         result = self.translate(
             'bindsym --input-device="123:456:keyboard with spaces" x nop exact\n'

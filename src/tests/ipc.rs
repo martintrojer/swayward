@@ -1926,6 +1926,59 @@ fn reload_replaces_map_time_rules_while_windows_are_mapped() {
 }
 
 #[test]
+fn title_format_updates_get_tree_and_titlebar_after_client_title_change() {
+    let (mut fixture, socket) = ipc_fixture();
+    fixture.add_output(1, (800, 600));
+    let client = fixture.add_client();
+    let window = fixture.client(client).create_window();
+    window.xdg_toplevel.set_app_id("format-app".into());
+    window.set_title("before");
+    window.commit();
+    let surface = window.surface.clone();
+    fixture.roundtrip(client);
+    let window = fixture.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    fixture.double_roundtrip(client);
+
+    assert!(crate::command::execute(fixture.niri_state(), "border normal")[0].success);
+    let outcome = crate::command::execute(
+        fixture.niri_state(),
+        r#"[app_id="format-app"] title_format [%app_id] %title"#,
+    );
+    assert!(outcome[0].success);
+
+    let mut stream = UnixStream::connect(socket).unwrap();
+    let tree = query_ipc(&mut fixture, &mut stream, MessageType::GetTree);
+    assert_eq!(
+        find_json_node(&tree, "con", true).unwrap()["name"],
+        "[format-app] before"
+    );
+    let workspace = fixture.swayward().layout.active_workspace().unwrap();
+    assert_eq!(
+        workspace.tiling().titlebar_titles(),
+        ["[format-app] before"]
+    );
+
+    let window = fixture.client(client).window(&surface);
+    window.set_title("after");
+    window.commit();
+    fixture.double_roundtrip(client);
+
+    let tree = query_ipc(&mut fixture, &mut stream, MessageType::GetTree);
+    assert_eq!(
+        find_json_node(&tree, "con", true).unwrap()["name"],
+        "[format-app] after"
+    );
+    let workspace = fixture.swayward().layout.active_workspace().unwrap();
+    assert_eq!(workspace.tiling().titlebar_titles(), ["[format-app] after"]);
+
+    assert!(crate::command::execute(fixture.niri_state(), "title_format %title")[0].success);
+    let tree = query_ipc(&mut fixture, &mut stream, MessageType::GetTree);
+    assert_eq!(find_json_node(&tree, "con", true).unwrap()["name"], "after");
+}
+
+#[test]
 fn for_window_applies_matching_command_when_window_maps() {
     let (mut fixture, socket) = ipc_fixture();
     fixture.add_output(1, (1920, 1080));

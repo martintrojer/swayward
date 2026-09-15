@@ -14,6 +14,15 @@ impl<W: LayoutElement> TilingTree<W> {
             .map(|bar| bar.ipc_rect)
     }
 
+    #[cfg(test)]
+    pub fn titlebar_titles(&self) -> Vec<String> {
+        self.compute_geometry()
+            .titlebars
+            .into_values()
+            .map(|bar| bar.title)
+            .collect()
+    }
+
     pub fn titlebar_rects(&self) -> Vec<(W::Id, Rectangle<f64, Logical>)> {
         self.compute_geometry()
             .titlebars

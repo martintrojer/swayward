@@ -431,6 +431,7 @@ All seven i3 files using `cmp_tree` avoid X11-only client operations and belong 
 | `313-include.t` | 20 outer assertions | finished: 8 pass; 12 skip | Ordinary absolute, nested, and relative includes translate without manual-attention diagnostics. Their title-based `for_window ... border none` rules now match at map time and report `border: none` through GET_TREE. This behavior was already fixed by mapping translated border actions to swayward's sway-compatible border fields rather than niri's visual styling; `183-config-variables.t` covers the same variable expansion and title-rule path. Assertions 9–20 are skipped at the command-substitution boundary. Sway expands include arguments with `wordexp(3)`, including shell command substitution, after changing to the parent config's directory (`sway/config.c:594-625`). The static translator deliberately refuses to execute shell text from an untrusted config; see [Include command substitution](../../docs/KNOWN_DEVIATIONS.md#include-command-substitution). It does support tilde, sway variables, globs, parent-relative nested paths, and canonical-path duplicate/cycle prevention, covered by its translator tests and matching sway's `realpath`/`config_chain` check (`sway/config.c:555-591`). Assertions after the cycle check also inspect i3-only included-file arrays: sway's GET_VERSION has no such array and GET_CONFIG returns only `config` (`sway/ipc-json.c:225-238`; `sway/ipc-server.c:908-917`). The unchanged file cannot reach them past the deliberate fail-loud refusal. |
 | `511-scratchpad-configure-request.t` | 2 | finished: 0 pass; 2 skip | The unchanged file moves a window to the hidden scratchpad, then sends an X11 ConfigureRequest with absolute x/y/width/height before checking both visible workspaces. It stops fail-loud before either assertion at `Window::rect(...)`; no command is rejected. Sway receives this operation only from its in-process Xwayland view and handles it in `handle_request_configure` (`sway/sway/desktop/xwayland.c:578-604`). Native xdg-shell has no equivalent absolute state request: `xdg_surface.set_window_geometry` changes surface-local content geometry, while `xdg_toplevel.move` and `resize` require a seat serial and start interactive operations (`smithay/src/wayland/shell/xdg/mod.rs:1048-1122`). Swayward delegates its XWM to `xwayland-satellite`, so the X ConfigureRequest cannot reach the compositor through the harness. Both assertions are skipped rather than substituting a compositor resize command, which would test a different path. |
 | `295-net-wm-state-focused.t` | 5 | pass with protocol substitution | The adapter reads the latest configure received by each real xdg-toplevel. All five focus assertions pass, including both deactivation checks: focusing a second window clears `Activated` on the first, and focusing an empty workspace clears it on the previous window. The conformance config enables swayward's inherited `deactivate-unfocused-windows` option because sway sends `activated=false` to the old view before activating the new one (`sway/sway/input/seat.c:1068-1077,1182-1198`; `sway/sway/desktop/xdg_shell.c:188-192`). |
+| `284-ewmh-visible-name.t` | 5 | 5 unproven; native title-format substitute passes | The unchanged file reaches zero assertions because its first helper reads `_NET_WM_VISIBLE_NAME`, which native xdg-shell cannot expose. Native tests instead prove the portable behavior: `title_format` applies to a criteria-selected window, expands `%title` and `%app_id` into GET_TREE `name` and the rendered titlebar, updates both after a live client title change, and treats `%title` alone as the unformatted title. Sway stores the joined format on the selected container, reparses it when the view title changes, and serializes the resulting `container->title` as GET_TREE `name` (`sway/sway/commands/title_format.c:9-35`; `sway/sway/tree/container.c:649-700`; `sway/sway/ipc-json.c:711-714`). `%class`, `%instance`, `%shell`, and sandbox placeholders remain fail-loud because those identities are unavailable through ordinary xdg-toplevels. |
 | `551-net-wm-state-maximized.t` | 33 inner state assertions | finished: 2 pass; 33 skip | The real client binds the advertised modern `xdg_wm_base` version and receives all four `Tiled` edge states with no `Maximized` state; both protocol checks pass. Every upstream assertion reads `_NET_WM_STATE_MAXIMIZED_VERT` or `_HORZ`, so all 33 are skipped. Sway sends tiled edges to clients that support protocol version 2 or newer and uses `Maximized` only as a compatibility fallback for older clients (`sway/sway/desktop/xdg_shell.c:195-212`). The harness does not downgrade its client to manufacture the i3 EWMH result. |
 
 | `554-commands-crash-for-window.t` | 101 subtests | blocked before assertions; diagnostic proves liveness only | The unchanged file stops at its `for_window [class=xxx] nop` directive because `nop` has no exact typed window-rule equivalent. A temporary uncommitted variant that removed only that inert rule reached all 101 command subtests; every one of its 101 `does_i3_live` checks passed, but command-result mismatches and unsupported commands kept the variant red. This proves no panic for the reduced command sequence, not for the unchanged configuration. |
@@ -473,9 +474,10 @@ earlier intermittent failures in this suite each turned out to be a real bug.
 
 This audit opened all 66 files that were unvendored before
 `511-scratchpad-configure-request.t` was added. After concurrent work and this
-change added seven other files, the remaining 58 divide into 8 reachable
-candidates, 28 unreachable files, and 22 files for i3-only subsystems or
-lifecycle tests. A filename grep had estimated only five candidates.
+change added eight other files, the remaining 57 divide into 7 reachable
+candidates, 27 unreachable files, 22 files for i3-only subsystems or lifecycle
+tests, and one file with measured partial coverage. A filename grep had
+estimated only five candidates.
 
 The green ceiling is the number of files that could ever enter `passing.txt`
 without relaxing a documented oracle limit. Two workers measured it
@@ -483,11 +485,27 @@ concurrently and reported 132 and then 127 as candidates were reclassified, so
 treat the figure as approximate and recompute it from this table rather than
 quoting it.
 
-As of this revision the table records 99 green files, 25 vendored files whose
+As of this revision the table records 99 green files, 20 vendored files whose
 only obstacles are implementation or adapter gaps, and 7 unvendored files still
-marked as reachable candidates. That puts the ceiling near 131 and swayward
-about 32 files below it, but the gap-only and candidate counts move with every
-merge and the two categories have overlapped before.
+marked as reachable candidates, which puts the ceiling near 126. The counts move
+with every merge and the two non-green categories have overlapped before, so
+recompute rather than quote.
+The **current green ceiling is 126 files**. Swayward is 27 files below it:
+
+- 99 files are already in `passing.txt`, including `295-net-wm-state-focused.t`.
+- 20 vendored files have only implementation or adapter gaps and no permanent
+  skip or unproven assertion: `139-ws-numbers.t`, `172-start-on-named-ws.t`,
+  `202-scratchpad-criteria.t`, `256-no-auto-back-and-forth.t`,
+  `258-keypress-release.t`, `287-edge-borders.t`, `290-keypress-numlock.t`,
+  `297-assign-workspace-to-output.t`, `319-gaps.t`, `503-workspace.t`,
+  `506-focus-right.t`, `514-ipc-workspace-multi-monitor.t`,
+  `515-create-workspace.t`, `519-mouse-warping.t`,
+  `522-rename-assigned-workspace.t`, `528-workspace-next-prev-reversed.t`,
+  `535-workspace-next-prev.t`, `539-disable_focus_wrapping.t`,
+  `541-resize-set-tiling.t`, and `549-focus-wrapping-gaps.t`.
+- 7 unvendored files remain reachable candidates in the audit below.
+- `284-ewmh-visible-name.t` is vendored with partial native coverage and does
+  not enter `passing.txt`.
 
 The ceiling holds the documented oracle limits fixed. It excludes every file
 with an i3-only assertion or an input that the harness cannot ask. It also does
@@ -550,7 +568,6 @@ The categories use these source-backed boundaries:
 | `264-dock-criteria.t` | unreachable | Requires `_NET_WM_WINDOW_TYPE_DOCK` clients to remain outside i3's workspace tree while criteria commands run. Native layer-shell is a related protocol but cannot supply the asserted X class or dockarea tree membership (`sway/sway/desktop/xwayland.c:25-34,816-869`). |
 | `278-layout-restore-output.t` | i3-only subsystem | Creates workspace objects and swallow placeholders by loading i3 JSON through `append_layout`. Sway has no layout-restoration command. |
 | `283-net-wm-state-hidden.t` | unreachable | Every assertion reads `_NET_WM_STATE_HIDDEN` from X windows. xdg-toplevel's optional `suspended` configure state is not this asserted X property and sway's XWM owns the atom path. |
-| `284-ewmh-visible-name.t` | unreachable | Every assertion reads `_NET_WM_VISIBLE_NAME` after `title_format`. Sway supports the command, but native xdg-shell has no visible-name property and GET_TREE reports the client title, not this XWM-owned atom (`sway/sway/commands/title_format.c:9-35`). |
 | `288-i3-floating-window-atom.t` | unreachable | Reads i3's proprietary `I3_FLOATING_WINDOW` X property. Sway does not publish an i3-private atom; portable floating state is already exposed through GET_TREE. |
 | `294-update-ewmh-atoms.t` | unreachable | Reads three X-root EWMH properties after workspace deletion and rename. Workspace IPC cannot prove root-property publication; see the X11 boundary above. |
 | `300-restart-non-utf8.t` | i3-only subsystem | The intended assertion follows an in-place restart with a live client. The harness cannot preserve that client through compositor replacement; see the lifecycle boundary above. |
@@ -579,8 +596,8 @@ The categories use these source-backed boundaries:
 The initial X11-protocol exclusions are `113-urgent.t`,
 `162-regress-dock-urgent.t`, `196-randr-output-names.t`,
 `209-ewmh-net-workarea.t`, `234-ewmh-desktop-names.t`,
-`277-ipc-window-urgent.t`, `284-ewmh-visible-name.t`,
-`294-update-ewmh-atoms.t`, `521-ewmh-desktop-viewport.t`, and `533-randr15.t`.
+`277-ipc-window-urgent.t`, `294-update-ewmh-atoms.t`,
+`521-ewmh-desktop-viewport.t`, and `533-randr15.t`.
 
 Tests that inspect X11, EWMH, RandR, XKB, or raw X events are outside this
 adapter's scope. Tests requiring unsupported i3 commands such as

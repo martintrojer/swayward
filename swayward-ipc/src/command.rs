@@ -165,6 +165,7 @@ pub enum Command {
     },
     Floating(Toggle),
     Border(Border),
+    TitleFormat(String),
     Sticky(String),
     Swap(SwapTarget),
     Workspace {
@@ -401,6 +402,28 @@ fn parse_one(input: &str) -> Result<Command, String> {
             .and_then(parse_toggle)
             .map(Command::Floating),
         "border" => parse_border(rest).map(Command::Border),
+        "title_format" => {
+            if rest.is_empty() {
+                Err("Expected 'title_format <format>'".into())
+            } else {
+                let format = join_words(rest);
+                for unsupported in [
+                    "%class",
+                    "%instance",
+                    "%shell",
+                    "%sandbox_engine",
+                    "%sandbox_app_id",
+                    "%sandbox_instance_id",
+                ] {
+                    if format.contains(unsupported) {
+                        return Err(format!(
+                            "title_format placeholder '{unsupported}' is unavailable for native Wayland windows"
+                        ));
+                    }
+                }
+                Ok(Command::TitleFormat(format))
+            }
+        }
         "sticky" => one(rest, "sticky <enable|disable|toggle>")
             .map(|value| Command::Sticky(value.to_owned())),
         "swap" => parse_swap(rest),

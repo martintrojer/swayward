@@ -38,6 +38,29 @@ pub(super) fn sticky(
     Ok(())
 }
 
+pub(super) fn title_format(
+    state: &mut State,
+    target: CommandTarget,
+    format: &str,
+) -> Result<(), CommandOutcome> {
+    let CommandTarget::Window(target) = target else {
+        return Err(failure("Only valid containers can have a title_format"));
+    };
+    let mut window = None;
+    state.swayward.layout.with_windows_mut(|mapped, _| {
+        if mapped.id() == target {
+            mapped.set_title_format(format.to_owned());
+            window = Some(mapped.window.clone());
+        }
+    });
+    let Some(window) = window else {
+        return Err(failure("No matching node."));
+    };
+    state.swayward.layout.update_window(&window, None);
+    state.swayward.queue_redraw_all();
+    Ok(())
+}
+
 pub(super) fn border(
     state: &mut State,
     target: CommandTarget,

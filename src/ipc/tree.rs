@@ -595,7 +595,8 @@ fn describe_window(
         shell: Some("xdg_shell".into()),
         visible,
     });
-    let title = with_toplevel_role(mapped.toplevel(), |role| role.title.clone());
+    // Sway serializes the container's formatted title here, not the client's raw title.
+    let title = mapped.formatted_title();
     let percent = parent.and_then(|parent| {
         (parent.width != 0 && parent.height != 0).then(|| {
             f64::from(rect.width) / f64::from(parent.width) * f64::from(rect.height)
@@ -607,7 +608,7 @@ fn describe_window(
         node_type,
         NodeLayout::None,
         "none",
-        title.as_deref(),
+        Some(&title),
         rect,
         vec![],
         vec![],

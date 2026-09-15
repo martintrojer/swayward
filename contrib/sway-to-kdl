@@ -710,6 +710,31 @@ class Translator:
                 effects.append('    default-column-display "tabbed"')
             elif words == ["focus"]:
                 effects.append("    open-focused true")
+            elif words[:1] == ["title_format"] and len(words) >= 2:
+                unsupported = next(
+                    (
+                        placeholder
+                        for placeholder in [
+                            "%class",
+                            "%instance",
+                            "%shell",
+                            "%sandbox_engine",
+                            "%sandbox_app_id",
+                            "%sandbox_instance_id",
+                        ]
+                        if placeholder in directive
+                    ),
+                    None,
+                )
+                if unsupported:
+                    self.warn(
+                        source,
+                        line,
+                        f"for_window {criteria} {command}",
+                        f"title_format {unsupported} placeholder is unavailable for native Wayland windows",
+                    )
+                    return
+                effects.append(f"    sway-for-window-command {self.quote(directive)}")
             elif words in (["kill"], ["reload"], ["move", "scratchpad"]):
                 effects.append(f"    sway-for-window-command {self.quote(directive)}")
             elif words[:1] == ["mark"]:

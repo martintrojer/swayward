@@ -293,6 +293,15 @@ fn execute_one(
             layout::fullscreen(state, mode, global);
             None
         }
+        Command::TitleFormat(format) => {
+            let Some(target) = focused_target(state) else {
+                return failure("Only valid containers can have a title_format");
+            };
+            if let Err(error) = window::title_format(state, target, &format) {
+                return error;
+            }
+            None
+        }
         Command::Sticky(value) => {
             let Some(window) = state
                 .swayward
@@ -775,6 +784,11 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
                 return error;
             }
         }
+        Command::TitleFormat(format) => {
+            if let Err(error) = window::title_format(state, target, format) {
+                return error;
+            }
+        }
         Command::Border(border) => {
             if let Err(error) = window::border(state, target, border) {
                 return error;
@@ -1061,6 +1075,32 @@ mod tests {
 
     fn command(input: &str) -> Command {
         parse(input).into_iter().next().unwrap().unwrap().command
+    }
+
+    #[test]
+    fn parses_title_format_and_refuses_unavailable_placeholders() {
+        assert_eq!(
+            command(r#"title_format "[%app_id] %title""#),
+            Command::TitleFormat("[%app_id] %title".into())
+        );
+        for placeholder in [
+            "%class",
+            "%instance",
+            "%shell",
+            "%sandbox_engine",
+            "%sandbox_app_id",
+            "%sandbox_instance_id",
+        ] {
+            let outcome = parse(&format!("title_format {placeholder}"))
+                .into_iter()
+                .next()
+                .unwrap()
+                .unwrap_err();
+            assert!(
+                outcome.error.unwrap().contains("unavailable"),
+                "{placeholder}"
+            );
+        }
     }
 
     #[test]
