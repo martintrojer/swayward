@@ -203,6 +203,26 @@ impl<W: LayoutElement> TilingTree<W> {
         wrap.is_some()
     }
 
+    pub fn focus_next_or_prev(&mut self, next: bool) -> bool {
+        let Some(parent) = self
+            .focus
+            .and_then(|focus| self.nodes.get(&focus))
+            .and_then(|node| node.parent)
+        else {
+            return false;
+        };
+        let TreeNode::Split { layout, .. } = self.nodes[&parent].value else {
+            return false;
+        };
+        let direction = match (next, layout) {
+            (false, Layout::SplitH | Layout::Tabbed) => Direction::Left,
+            (true, Layout::SplitH | Layout::Tabbed) => Direction::Right,
+            (false, Layout::SplitV | Layout::Stacked) => Direction::Up,
+            (true, Layout::SplitV | Layout::Stacked) => Direction::Down,
+        };
+        self.focus_direction(direction)
+    }
+
     pub fn focus_direction(&mut self, dir: Direction) -> bool {
         let Some(mut current) = self.focus else {
             return false;

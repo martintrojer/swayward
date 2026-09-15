@@ -54,6 +54,16 @@ pub(super) fn next_prev_sibling(state: &mut State, next: bool) {
     }
 }
 
+pub(super) fn next_or_prev(state: &mut State, next: bool) -> Result<(), CommandOutcome> {
+    state
+        .swayward
+        .layout
+        .focus_next_or_prev(next)
+        .ok_or_else(|| failure("Expected a tiling container"))?;
+    state.swayward.queue_redraw_all();
+    Ok(())
+}
+
 pub(super) fn floating(state: &mut State) -> Action {
     state.swayward.layout.disable_active_workspace_fullscreen();
     Action::FocusFloating

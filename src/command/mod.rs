@@ -127,8 +127,18 @@ fn execute_one(
             focus::child(state);
             None
         }
-        Command::FocusNext => Some(Action::FocusColumnRightOrFirst),
-        Command::FocusPrev => Some(Action::FocusColumnLeftOrLast),
+        Command::FocusNext => {
+            if let Err(error) = focus::next_or_prev(state, true) {
+                return error;
+            }
+            None
+        }
+        Command::FocusPrev => {
+            if let Err(error) = focus::next_or_prev(state, false) {
+                return error;
+            }
+            None
+        }
         Command::FocusNextSibling => {
             focus::next_prev_sibling(state, true);
             None

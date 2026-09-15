@@ -1230,6 +1230,13 @@ impl<W: LayoutElement> Workspace<W> {
         self.tiling.focus_from_output_direction(direction)
     }
 
+    pub fn focus_next_or_prev(&mut self, next: bool) -> Option<bool> {
+        if self.floating_is_active.get() {
+            return None;
+        }
+        Some(self.tiling.focus_next_or_prev(next))
+    }
+
     pub fn focus_left(&mut self) -> bool {
         if self.floating_is_active.get() {
             self.floating.focus_left()

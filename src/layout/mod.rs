@@ -2206,6 +2206,12 @@ impl<W: LayoutElement> Layout<W> {
         }
     }
 
+    pub fn focus_next_or_prev(&mut self, next: bool) -> Option<bool> {
+        self.active_workspace_mut()
+            .map(|workspace| workspace.focus_next_or_prev(next))
+            .unwrap_or(Some(false))
+    }
+
     pub fn focus_left(&mut self) -> bool {
         self.active_workspace_mut()
             .is_some_and(Workspace::focus_left)

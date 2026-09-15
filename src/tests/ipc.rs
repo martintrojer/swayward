@@ -2262,6 +2262,45 @@ fn workspace_commands_create_sparse_global_identities() {
 }
 
 #[test]
+fn focus_next_and_prev_follow_the_immediate_parent_layout() {
+    for layout in ["splith", "splitv", "tabbed", "stacking"] {
+        let mut f = Fixture::new();
+        f.add_output(1, (1920, 1080));
+        let client = f.add_client();
+        for app_id in ["first", "second"] {
+            let window = f.client(client).create_window();
+            window.xdg_toplevel.set_app_id(app_id.into());
+            window.commit();
+            let surface = window.surface.clone();
+            f.roundtrip(client);
+            let window = f.client(client).window(&surface);
+            window.attach_new_buffer();
+            window.ack_last_and_commit();
+            f.double_roundtrip(client);
+        }
+
+        assert!(crate::command::execute(f.niri_state(), &format!("layout {layout}"))[0].success);
+        assert!(crate::command::execute(f.niri_state(), r#"[app_id="first"] focus"#)[0].success);
+        let first = f.swayward().layout.focus().unwrap().id();
+
+        let outcome = crate::command::execute(f.niri_state(), "focus next");
+        assert!(outcome[0].success, "{layout}: {outcome:?}");
+        assert_ne!(f.swayward().layout.focus().unwrap().id(), first, "{layout}");
+
+        let outcome = crate::command::execute(f.niri_state(), "focus prev");
+        assert!(outcome[0].success, "{layout}: {outcome:?}");
+        assert_eq!(f.swayward().layout.focus().unwrap().id(), first, "{layout}");
+    }
+
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    assert!(f.swayward().layout.focus().is_none());
+    let outcome = crate::command::execute(f.niri_state(), "focus next");
+    assert!(outcome[0].success, "{outcome:?}");
+    assert!(f.swayward().layout.focus().is_none());
+}
+
+#[test]
 fn criteria_directional_move_uses_the_materialized_target_without_changing_focus() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));
