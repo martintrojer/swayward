@@ -22,6 +22,29 @@ binds {
 Swayward also retains typed niri actions for features outside the current sway
 command subset.
 
+### Bound command validation
+
+Swayward validates every `command "..."` bind while it loads the KDL file. An
+invalid command makes the config load fail before the compositor applies that
+config (`swayward-config/src/binds.rs`; `swayward-ipc/src/command.rs`). This is
+a deliberate safety difference from sway: sway parses and stores a binding's
+command text, then validates the command only when the binding runs. For
+example, sway accepts `bindsym X resize` into its configuration and reports the
+missing resize arguments when `X` is pressed (`sway/sway/commands.c:131`;
+`sway/sway/commands/bind.c:389-463`; `sway/sway/commands/resize.c:558-570`).
+
+This difference can reject a sway configuration during migration even when the
+invalid binding is never used. Swayward keeps eager validation because a typed
+configuration should report broken actions at load time instead of preserving
+a latent runtime error. The sway-to-KDL translator reports incomplete or
+invalid bindings for manual correction; it does not omit them and apply a
+partial configuration.
+
+An empty binding such as `bindsym X` is invalid in both compositors. Sway rejects
+it because `bindsym` requires both a key and a command
+(`sway/sway/commands/bind.c:329-396`). The translator also rejects it as a
+malformed directive.
+
 ### Focus wrapping modes
 
 Sway accepts `focus_wrapping yes|no|force|workspace`; its parser also treats the seven true boolean words as `yes`, compares `force` and `workspace` case-insensitively, and treats every other value as `no` (`sway/commands/focus_wrapping.c:6-22`; `common/util.c:40-52`). Swayward currently represents only `yes` and `force`. The config translator maps those exact modes, including the seven true words, and reports `no`, `workspace`, `toggle`, and other false-valued forms for manual conversion rather than changing their behavior. Both compositors default to `yes` (`sway/config.c:274`; `swayward-config/src/layout.rs`).

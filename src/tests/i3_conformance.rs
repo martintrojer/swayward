@@ -921,9 +921,13 @@ fn i3_config_translation_rejects_unhandled_directives() {
 }
 
 #[test]
-fn i3_config_translation_rejects_empty_bind_commands() {
-    let error = translate_config("bindsym X\n").unwrap_err();
-    assert!(error.contains("malformed bindsym"));
+fn i3_config_translation_never_applies_a_partial_or_invalid_config() {
+    let incomplete = translate_config("bindsym X\n").unwrap_err();
+    assert!(incomplete.contains("manual attention: 1 directive(s)"));
+    assert!(incomplete.contains("malformed bindsym: X"));
+
+    let invalid = translate_config("mode \"default\" {\n bindsym X resize\n}\n").unwrap_err();
+    assert!(invalid.contains("Expected 'resize grow|shrink"));
 }
 
 #[test]
