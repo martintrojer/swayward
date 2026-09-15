@@ -3011,9 +3011,7 @@ impl State {
         let mod_down = modifiers.contains(mod_key.to_modifiers());
 
         if ButtonState::Pressed == button_state {
-            let mut is_mru_open = false;
             if let Some(mru_output) = self.swayward.window_mru_ui.output() {
-                is_mru_open = true;
                 if let Some(MouseButton::Left) = button {
                     let location = pointer.current_location();
                     let (output, pos_within_output) = self.swayward.output_under(location).unwrap();
@@ -3036,7 +3034,7 @@ impl State {
                 }
             }
 
-            if is_mru_open || self.swayward.mods_with_mouse_binds.contains(&modifiers) {
+            {
                 if let Some(bind) = match button {
                     Some(MouseButton::Left) => Some(Trigger::MouseLeft),
                     Some(MouseButton::Right) => Some(Trigger::MouseRight),
@@ -3068,10 +3066,12 @@ impl State {
                     (press, release)
                 })
                 .map(|(press, release)| {
-                    (
-                        press.filter(|bind| self.mouse_bind_matches_region(bind)),
-                        release.filter(|bind| self.mouse_bind_matches_region(bind)),
-                    )
+                    let allowed = |bind: &Bind| {
+                        self.mouse_bind_matches_region(bind)
+                            && (!self.swayward.screenshot_ui.is_open()
+                                || allowed_during_screenshot(&bind.action))
+                    };
+                    (press.filter(allowed), release.filter(allowed))
                 })
                 .and_then(|(press, release)| {
                     if let Some(release) = release {
@@ -3080,10 +3080,6 @@ impl State {
                             .insert(button_code, release);
                     }
                     press
-                })
-                .filter(|bind| {
-                    !self.swayward.screenshot_ui.is_open()
-                        || allowed_during_screenshot(&bind.action)
                 }) {
                     self.swayward.suppressed_buttons.insert(button_code);
                     self.handle_bind(bind.clone());

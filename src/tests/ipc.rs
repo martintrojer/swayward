@@ -1171,6 +1171,106 @@ fn release_key_binding_dispatches_only_on_release_through_real_input() {
 }
 
 #[test]
+fn release_key_binding_survives_mode_change_after_press() {
+    let config = swayward_config::Config::parse_mem(
+        r#"binds {
+            x { command "mode other"; }
+            x release=true { command "workspace key-released"; }
+        }
+        mode "other" { y { command "nop"; }; }"#,
+    )
+    .unwrap();
+    let mut fixture = Fixture::with_config(config);
+    fixture.add_output(1, (1280, 720));
+
+    key_event(&mut fixture, 53, true);
+    assert_eq!(fixture.swayward().binding_mode, "other");
+    key_event(&mut fixture, 53, false);
+
+    assert!(fixture
+        .swayward()
+        .layout
+        .find_workspace_by_name("key-released")
+        .is_some());
+}
+
+#[test]
+fn release_key_binding_survives_config_reload_after_press() {
+    let config = swayward_config::Config::parse_mem(
+        r#"binds { x release=true { command "workspace key-released"; }; }"#,
+    )
+    .unwrap();
+    let mut fixture = Fixture::with_config(config);
+    fixture.add_output(1, (1280, 720));
+
+    key_event(&mut fixture, 53, true);
+    super::i3_conformance::reload_test_config(&mut fixture, "font monospace\n").unwrap();
+    key_event(&mut fixture, 53, false);
+
+    assert!(fixture
+        .swayward()
+        .layout
+        .find_workspace_by_name("key-released")
+        .is_some());
+}
+
+#[test]
+fn release_key_binding_is_not_replaced_by_the_new_modes_binding() {
+    let config = swayward_config::Config::parse_mem(
+        r#"mode "held" { x release=true { command "workspace original-release"; }; }
+        mode "other" { x release=true { command "workspace wrong-release"; }; }"#,
+    )
+    .unwrap();
+    let mut fixture = Fixture::with_config(config);
+    fixture.add_output(1, (1280, 720));
+    assert!(crate::command::execute(fixture.niri_state(), "mode held")[0].success);
+
+    key_event(&mut fixture, 53, true);
+    assert!(crate::command::execute(fixture.niri_state(), "mode other")[0].success);
+    key_event(&mut fixture, 53, false);
+
+    assert!(fixture
+        .swayward()
+        .layout
+        .find_workspace_by_name("original-release")
+        .is_some());
+    assert!(fixture
+        .swayward()
+        .layout
+        .find_workspace_by_name("wrong-release")
+        .is_none());
+}
+
+#[test]
+fn release_mouse_binding_survives_mode_change_after_press() {
+    let config = swayward_config::Config::parse_mem(
+        r#"binds {
+            MouseLeft { command "mode other"; }
+            MouseLeft release=true { command "workspace mouse-released"; }
+        }
+        mode "other" { MouseLeft release=true { command "workspace wrong-release"; }; }"#,
+    )
+    .unwrap();
+    let mut fixture = Fixture::with_config(config);
+    fixture.add_output(1, (1280, 720));
+
+    pointer_button(&mut fixture, 0x110, true);
+    assert_eq!(fixture.swayward().binding_mode, "other");
+    pointer_button(&mut fixture, 0x110, false);
+
+    assert!(fixture
+        .swayward()
+        .layout
+        .find_workspace_by_name("mouse-released")
+        .is_some());
+    assert!(fixture
+        .swayward()
+        .layout
+        .find_workspace_by_name("wrong-release")
+        .is_none());
+}
+
+#[test]
 fn release_mouse_binding_dispatches_only_on_release() {
     let config = swayward_config::Config::parse_mem(
         r#"binds { MouseLeft release=true { command "rename workspace to released"; }; }"#,

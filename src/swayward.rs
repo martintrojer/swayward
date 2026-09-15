@@ -1656,8 +1656,7 @@ impl State {
 
         // Release the borrow.
         drop(old_config);
-        self.swayward.held_release_bind = None;
-        self.swayward.held_release_buttons.clear();
+        // Held release bindings own their action so a reload cannot invalidate them.
 
         // Now with a &mut self we can reload the xkb config.
         if let Some(mut xkb) = reload_xkb {
