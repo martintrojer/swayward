@@ -77,7 +77,6 @@ impl std::fmt::Debug for Bind {
         f.debug_struct("Bind")
             .field("key", &self.key)
             .field("action", &self.action)
-            .field("group", &self.group)
             .field("repeat", &self.repeat)
             .field("cooldown", &self.cooldown)
             .field("allow_when_locked", &self.allow_when_locked)
@@ -873,10 +872,8 @@ impl Binds {
         node: &knuffel::ast::SpannedNode<S>,
         ctx: &mut knuffel::decode::Context<S>,
     ) -> Self {
-        let mut seen_keys: HashMap<
-            (Key, Option<u8>, bool, bool, bool),
-            &knuffel::ast::SpannedNode<S>,
-        > = HashMap::new();
+        type BindIdentity = (Key, Option<u8>, bool, bool, bool);
+        let mut seen_keys: HashMap<BindIdentity, &knuffel::ast::SpannedNode<S>> = HashMap::new();
         let mut binds = Vec::new();
 
         for child in node.children() {

@@ -4996,6 +4996,7 @@ fn should_intercept_key<'a>(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn find_bind<'a>(
     bindings: impl IntoIterator<Item = &'a Bind> + Clone,
     mod_key: ModKey,
@@ -5045,12 +5046,45 @@ fn find_bind<'a>(
         });
     }
 
-    let triggers = [
-        Trigger::Keysym(modified),
-        Trigger::Keysym(raw.unwrap_or(modified)),
-        Trigger::Keycode(key_code.raw()),
-    ];
-    find_configured_bind_with_context(bindings, mod_key, &triggers, mods, group, locked, inhibited)
+    let modified_bind = find_configured_bind_with_context(
+        bindings.clone(),
+        mod_key,
+        &[Trigger::Keysym(modified)],
+        mods,
+        group,
+        locked,
+        inhibited,
+    );
+    let numlock_changed_keypad_symbol = mods.num_lock
+        && raw != Some(modified)
+        && (keysyms::KEY_KP_Space..=keysyms::KEY_KP_Equal).contains(&modified.raw());
+    if modified_bind.is_some() || numlock_changed_keypad_symbol {
+        return modified_bind;
+    }
+
+    raw.filter(|raw| *raw != modified)
+        .and_then(|raw| {
+            find_configured_bind_with_context(
+                bindings.clone(),
+                mod_key,
+                &[Trigger::Keysym(raw)],
+                mods,
+                group,
+                locked,
+                inhibited,
+            )
+        })
+        .or_else(|| {
+            find_configured_bind_with_context(
+                bindings,
+                mod_key,
+                &[Trigger::Keycode(key_code.raw())],
+                mods,
+                group,
+                locked,
+                inhibited,
+            )
+        })
 }
 
 fn mouse_regions_match(
@@ -5087,6 +5121,8 @@ fn find_configured_bind_with_context<'a>(
 
     let mut best = None;
     let mut best_rank = None;
+    let mut lock_fallback = None;
+    let mut lock_fallback_rank = None;
     for trigger in triggers {
         for bind in bindings.clone() {
             let bind_locked = bind.allow_when_locked || allowed_when_locked(&bind.action);
@@ -5106,24 +5142,35 @@ fn find_configured_bind_with_context<'a>(
             } else if bind_modifiers.contains(mod_key.to_modifiers()) {
                 bind_modifiers |= Modifiers::COMPOSITOR;
             }
-            if bind_modifiers != modifiers {
-                continue;
-            }
 
             let rank = (
                 bind.group.is_some(),
                 bind_locked == locked,
                 (!bind.allow_inhibiting) == inhibited,
             );
-            if best_rank.is_none_or(|current| rank > current) {
-                best = Some(bind.clone());
-                best_rank = Some(rank);
-            } else if best_rank == Some(rank) && best.as_ref() != Some(bind) {
-                debug!("encountered conflicting bindings");
+            if bind_modifiers == modifiers {
+                if best_rank.is_none_or(|current| rank > current) {
+                    best = Some(bind.clone());
+                    best_rank = Some(rank);
+                } else if best_rank == Some(rank) && best.as_ref() != Some(bind) {
+                    debug!("encountered conflicting bindings");
+                }
+                continue;
+            }
+
+            // i3 adds Caps Lock and Num Lock variants for bindings that do not name those
+            // modifiers, while keeping an explicit lock-qualified binding as the exact match.
+            let locks = Modifiers::CAPS | Modifiers::NUM;
+            if !bind_modifiers.intersects(locks)
+                && bind_modifiers == modifiers.difference(locks)
+                && lock_fallback_rank.is_none_or(|current| rank > current)
+            {
+                lock_fallback = Some(bind.clone());
+                lock_fallback_rank = Some(rank);
             }
         }
     }
-    best
+    best.or(lock_fallback)
 }
 
 fn find_configured_switch_action(

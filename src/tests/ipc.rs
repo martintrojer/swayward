@@ -1147,14 +1147,23 @@ fn group_binding_overrides_wildcard_only_in_its_active_group() {
     fixture.add_output(1, (1280, 720));
 
     type_key_chords(&mut fixture, &[&[53]]);
-    assert_eq!(active_workspace_name(&mut fixture).as_deref(), Some("wildcard"));
+    assert_eq!(
+        active_workspace_name(&mut fixture).as_deref(),
+        Some("wildcard")
+    );
 
     set_xkb_layout(&mut fixture, 1);
     type_key_chords(&mut fixture, &[&[53]]);
-    assert_eq!(active_workspace_name(&mut fixture).as_deref(), Some("exact"));
+    assert_eq!(
+        active_workspace_name(&mut fixture).as_deref(),
+        Some("exact")
+    );
     set_xkb_layout(&mut fixture, 2);
     type_key_chords(&mut fixture, &[&[53]]);
-    assert_eq!(active_workspace_name(&mut fixture).as_deref(), Some("wildcard"));
+    assert_eq!(
+        active_workspace_name(&mut fixture).as_deref(),
+        Some("wildcard")
+    );
 }
 
 #[test]
@@ -1168,11 +1177,17 @@ fn translated_keysym_binding_fires_in_its_xkb_layout() {
     fixture.add_output(1, (1280, 720));
 
     type_key_chords(&mut fixture, &[&[33]]);
-    assert_ne!(active_workspace_name(&mut fixture).as_deref(), Some("cyrillic"));
+    assert_ne!(
+        active_workspace_name(&mut fixture).as_deref(),
+        Some("cyrillic")
+    );
 
     set_xkb_layout(&mut fixture, 1);
     type_key_chords(&mut fixture, &[&[33]]);
-    assert_eq!(active_workspace_name(&mut fixture).as_deref(), Some("cyrillic"));
+    assert_eq!(
+        active_workspace_name(&mut fixture).as_deref(),
+        Some("cyrillic")
+    );
 }
 
 #[test]
@@ -1195,6 +1210,94 @@ fn pointer_button_binding_requires_the_configured_rendered_region() {
         .layout
         .find_workspace_by_name("clicked")
         .is_none());
+}
+
+#[test]
+fn numlock_qualified_binding_dispatches_only_while_numlock_is_active() {
+    let config = swayward_config::Config::parse_mem(
+        r#"binds { Num+a { command "rename workspace to numlocked"; }; }"#,
+    )
+    .unwrap();
+    let mut fixture = Fixture::with_config(config);
+    fixture.add_output(1, (1280, 720));
+
+    key_event(&mut fixture, 38, true);
+    key_event(&mut fixture, 38, false);
+    assert!(fixture
+        .swayward()
+        .layout
+        .find_workspace_by_name("numlocked")
+        .is_none());
+
+    key_event(&mut fixture, 77, true);
+    assert!(
+        fixture
+            .swayward()
+            .seat
+            .get_keyboard()
+            .unwrap()
+            .modifier_state()
+            .num_lock
+    );
+    key_event(&mut fixture, 77, false);
+    assert!(
+        fixture
+            .swayward()
+            .seat
+            .get_keyboard()
+            .unwrap()
+            .modifier_state()
+            .num_lock
+    );
+    key_event(&mut fixture, 38, true);
+    key_event(&mut fixture, 38, false);
+    assert!(fixture
+        .swayward()
+        .layout
+        .find_workspace_by_name("numlocked")
+        .is_some());
+}
+
+#[test]
+fn unqualified_binding_dispatches_while_numlock_is_active() {
+    let config = swayward_config::Config::parse_mem(
+        r#"binds { Mod4+a { command "rename workspace to numlocked"; }; }"#,
+    )
+    .unwrap();
+    let mut fixture = Fixture::with_config(config);
+    fixture.add_output(1, (1280, 720));
+
+    key_event(&mut fixture, 77, true);
+    key_event(&mut fixture, 77, false);
+    key_event(&mut fixture, 133, true);
+    key_event(&mut fixture, 38, true);
+    key_event(&mut fixture, 38, false);
+    key_event(&mut fixture, 133, false);
+
+    assert!(fixture
+        .swayward()
+        .layout
+        .find_workspace_by_name("numlocked")
+        .is_some());
+}
+
+#[test]
+fn bindcode_uses_the_xkb_keycode_from_real_input() {
+    let config = swayward_config::Config::parse_mem(
+        r#"binds { "code:39" { command "rename workspace to bindcode"; }; }"#,
+    )
+    .unwrap();
+    let mut fixture = Fixture::with_config(config);
+    fixture.add_output(1, (1280, 720));
+
+    key_event(&mut fixture, 39, true);
+    key_event(&mut fixture, 39, false);
+
+    assert!(fixture
+        .swayward()
+        .layout
+        .find_workspace_by_name("bindcode")
+        .is_some());
 }
 
 #[test]
