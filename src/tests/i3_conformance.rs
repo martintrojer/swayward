@@ -11,6 +11,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
+use smithay::reexports::wayland_protocols::xdg::shell::client::xdg_toplevel;
 use wayland_client::Proxy as _;
 use wayland_server::Resource as _;
 
@@ -395,6 +396,43 @@ fn activate_window(fixture: &mut Fixture, client: super::client::ClientId, id: i
     true
 }
 
+fn window_states(
+    fixture: &mut Fixture,
+    client: super::client::ClientId,
+    id: i64,
+) -> Option<Vec<&'static str>> {
+    settle_configures(fixture, client);
+    let surface_id = fixture
+        .swayward()
+        .layout
+        .windows()
+        .find_map(|(_, mapped)| {
+            (crate::ipc::tree::window_id(mapped.id()) == id)
+                .then(|| mapped.toplevel().wl_surface().id().protocol_id())
+        })?;
+    let window = fixture
+        .client(client)
+        .state
+        .windows
+        .iter()
+        .find(|window| window.surface.id().protocol_id() == surface_id)?;
+    let states = &window.configures_received.last()?.1.states;
+    Some(
+        states
+            .iter()
+            .filter_map(|state| match state {
+                xdg_toplevel::State::Activated => Some("activated"),
+                xdg_toplevel::State::Maximized => Some("maximized"),
+                xdg_toplevel::State::TiledLeft => Some("tiled-left"),
+                xdg_toplevel::State::TiledRight => Some("tiled-right"),
+                xdg_toplevel::State::TiledTop => Some("tiled-top"),
+                xdg_toplevel::State::TiledBottom => Some("tiled-bottom"),
+                _ => None,
+            })
+            .collect(),
+    )
+}
+
 fn close_window(fixture: &mut Fixture, client: super::client::ClientId, id: i64) -> bool {
     let surface_id = fixture.swayward().layout.windows().find_map(|(_, mapped)| {
         (crate::ipc::tree::window_id(mapped.id()) == id)
@@ -495,10 +533,21 @@ fn translate_config(config: &str) -> Result<swayward_config::Config, String> {
     Ok(config)
 }
 
+fn configure_client_state_oracle(config: &mut swayward_config::Config, test: &str) {
+    match test {
+        "295-net-wm-state-focused.t" => config.debug.deactivate_unfocused_windows = true,
+        "551-net-wm-state-maximized.t" => config.prefer_no_csd = true,
+        _ => (),
+    }
+}
+
 fn prepare_test_config(source: &str) -> Result<swayward_config::Config, String> {
     let mut config = translate_config(source)?;
     config.layout.gaps = 0.;
     config.layout.border.off = false;
+    if let Ok(test) = std::env::var("SWAYWARD_I3_TEST") {
+        configure_client_state_oracle(&mut config, &test);
+    }
     if !source.lines().any(|line| {
         line.split_whitespace()
             .next()
@@ -546,6 +595,9 @@ fn handle_control(
                     scratch.push(path.clone());
                     config.layout.gaps = 0.;
                     config.layout.border.off = false;
+                    if let Ok(test) = std::env::var("SWAYWARD_I3_TEST") {
+                        configure_client_state_oracle(&mut config, &test);
+                    }
                     if !source.lines().any(|line| {
                         line.split_whitespace()
                             .next()
@@ -618,6 +670,13 @@ fn handle_control(
         "activate" => json!({
             "success": activate_window(fixture, client, request["id"].as_i64().unwrap())
         }),
+        "window_states" => {
+            let states = window_states(fixture, client, request["id"].as_i64().unwrap());
+            json!({
+                "states": states,
+                "xdg_wm_base_version": fixture.client(client).state.xdg_wm_base_version,
+            })
+        }
         "pointer_button" => match (request["button"].as_u64(), request["pressed"].as_bool()) {
             (Some(button), Some(pressed)) => {
                 super::ipc::pointer_button(fixture, u32::try_from(button).unwrap(), pressed);
@@ -735,6 +794,7 @@ fn run_i3_test(test: &str) {
     let mut config = swayward_config::Config::default();
     config.layout.gaps = 0.;
     config.layout.border.off = false;
+    configure_client_state_oracle(&mut config, test);
     config.input.focus_follows_mouse = Some(swayward_config::input::FocusFollowsMouse {
         max_scroll_amount: None,
     });

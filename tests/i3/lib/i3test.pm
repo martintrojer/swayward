@@ -51,6 +51,7 @@ our @EXPORT = qw(
     kill_all_windows
     launch_with_config
     listen_for_binding
+    net_wm_state_contains
     note
     unlike
     create_layout
@@ -73,6 +74,7 @@ my $tester = Test::Builder->new;
 my $window_count = 0;
 my $skip_assertions = 0;
 my $skip_reason;
+my $checked_tiled_state = 0;
 my %visible_workspaces;
 our $x = bless {}, 'i3test::X';
 
@@ -742,6 +744,29 @@ sub exit_gracefully {
 }
 
 sub sync_with_i3 { _control({ action => 'reap_closed' }) }
+sub net_wm_state_contains {
+    my ($window, $atom_name) = @_;
+    if (($ENV{SWAYWARD_I3_TEST} // '') eq '295-net-wm-state-focused.t'
+        && $atom_name eq '_NET_WM_STATE_FOCUSED') {
+        my $reply = _control({ action => 'window_states', id => $window->{id} });
+        return scalar grep { $_ eq 'activated' } @{$reply->{states}};
+    }
+    if (($ENV{SWAYWARD_I3_TEST} // '') eq '551-net-wm-state-maximized.t'
+        && $atom_name =~ /^_NET_WM_STATE_MAXIMIZED_(?:VERT|HORZ)$/) {
+        my $reply = _control({ action => 'window_states', id => $window->{id} });
+        if (!$checked_tiled_state++) {
+            $tester->cmp_ok($reply->{xdg_wm_base_version}, '>=', 2,
+                'client binds a modern xdg_wm_base version');
+            ok(
+                !(scalar grep { $_ eq 'maximized' } @{$reply->{states}})
+                && 4 == scalar grep { /^tiled-(?:left|right|top|bottom)$/ } @{$reply->{states}},
+                'modern client receives all four Tiled states, not Maximized');
+        }
+        _skip_next_assertions(1, 'i3-only EWMH maximized atom; modern xdg-shell reports tiled edges');
+        return scalar grep { $_ eq 'maximized' } @{$reply->{states}};
+    }
+    die "X11 window state is unavailable in the Wayland test adapter\n";
+}
 sub wait_for_map { sync_with_i3() }
 sub wait_for_unmap { sync_with_i3() }
 

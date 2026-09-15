@@ -101,3 +101,4 @@
 550-focus-workspace.t
 550-split-redundant-containers.t
 270-config-no-newline-end.t
+295-net-wm-state-focused.t

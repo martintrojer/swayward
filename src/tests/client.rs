@@ -58,6 +58,7 @@ pub struct State {
 
     pub compositor: Option<WlCompositor>,
     pub xdg_wm_base: Option<XdgWmBase>,
+    pub xdg_wm_base_version: Option<u32>,
     pub xdg_activation: Option<XdgActivationV1>,
     pub layer_shell: Option<ZwlrLayerShellV1>,
     pub spbm: Option<WpSinglePixelBufferManagerV1>,
@@ -185,6 +186,7 @@ impl Client {
             outputs: HashMap::new(),
             compositor: None,
             xdg_wm_base: None,
+            xdg_wm_base_version: None,
             xdg_activation: None,
             layer_shell: None,
             spbm: None,
@@ -539,6 +541,7 @@ impl Dispatch<WlRegistry, ()> for State {
                 } else if interface == XdgWmBase::interface().name {
                     let version = min(version, XdgWmBase::interface().version);
                     state.xdg_wm_base = Some(registry.bind(name, version, qh, ()));
+                    state.xdg_wm_base_version = Some(version);
                 } else if interface == XdgActivationV1::interface().name {
                     let version = min(version, XdgActivationV1::interface().version);
                     state.xdg_activation = Some(registry.bind(name, version, qh, ()));
