@@ -3755,9 +3755,29 @@ impl Swayward {
         self.output_left_of(active)
     }
 
+    pub fn adjacent_output_left(&self) -> Option<Output> {
+        let active = self.layout.active_output()?;
+        self.adjacent_output(
+            active,
+            center(self.global_space.output_geometry(active)?),
+            true,
+            false,
+        )
+    }
+
     pub fn output_right(&self) -> Option<Output> {
         let active = self.layout.active_output()?;
         self.output_right_of(active)
+    }
+
+    pub fn adjacent_output_right(&self) -> Option<Output> {
+        let active = self.layout.active_output()?;
+        self.adjacent_output(
+            active,
+            center(self.global_space.output_geometry(active)?),
+            true,
+            true,
+        )
     }
 
     pub fn output_up(&self) -> Option<Output> {
@@ -3765,9 +3785,29 @@ impl Swayward {
         self.output_up_of(active)
     }
 
+    pub fn adjacent_output_up(&self) -> Option<Output> {
+        let active = self.layout.active_output()?;
+        self.adjacent_output(
+            active,
+            center(self.global_space.output_geometry(active)?),
+            false,
+            false,
+        )
+    }
+
     pub fn output_down(&self) -> Option<Output> {
         let active = self.layout.active_output()?;
         self.output_down_of(active)
+    }
+
+    pub fn adjacent_output_down(&self) -> Option<Output> {
+        let active = self.layout.active_output()?;
+        self.adjacent_output(
+            active,
+            center(self.global_space.output_geometry(active)?),
+            false,
+            true,
+        )
     }
 
     pub fn output_previous(&self) -> Option<Output> {

@@ -1245,11 +1245,27 @@ impl<W: LayoutElement> Workspace<W> {
         }
     }
 
+    pub fn focus_left_without_wrap(&mut self) -> bool {
+        if self.floating_is_active.get() {
+            self.floating.focus_left()
+        } else {
+            self.tiling.focus_direction_without_wrap(Direction::Left)
+        }
+    }
+
     pub fn focus_right(&mut self) -> bool {
         if self.floating_is_active.get() {
             self.floating.focus_right()
         } else {
             self.tiling.focus_right()
+        }
+    }
+
+    pub fn focus_right_without_wrap(&mut self) -> bool {
+        if self.floating_is_active.get() {
+            self.floating.focus_right()
+        } else {
+            self.tiling.focus_direction_without_wrap(Direction::Right)
         }
     }
 
@@ -1303,11 +1319,27 @@ impl<W: LayoutElement> Workspace<W> {
         }
     }
 
+    pub fn focus_down_without_wrap(&mut self) -> bool {
+        if self.floating_is_active.get() {
+            self.floating.focus_down()
+        } else {
+            self.tiling.focus_direction_without_wrap(Direction::Down)
+        }
+    }
+
     pub fn focus_up(&mut self) -> bool {
         if self.floating_is_active.get() {
             self.floating.focus_up()
         } else {
             self.tiling.focus_up()
+        }
+    }
+
+    pub fn focus_up_without_wrap(&mut self) -> bool {
+        if self.floating_is_active.get() {
+            self.floating.focus_up()
+        } else {
+            self.tiling.focus_direction_without_wrap(Direction::Up)
         }
     }
 

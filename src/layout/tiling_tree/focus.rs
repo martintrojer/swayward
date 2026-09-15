@@ -224,6 +224,14 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub fn focus_direction(&mut self, dir: Direction) -> bool {
+        self.focus_direction_inner(dir, true)
+    }
+
+    pub fn focus_direction_without_wrap(&mut self, dir: Direction) -> bool {
+        self.focus_direction_inner(dir, false)
+    }
+
+    fn focus_direction_inner(&mut self, dir: Direction, allow_wrap: bool) -> bool {
         let Some(mut current) = self.focus else {
             return false;
         };
@@ -256,7 +264,7 @@ impl<W: LayoutElement> TilingTree<W> {
                     self.set_focus_id(next);
                     return next.is_some();
                 }
-                if children.len() > 1 {
+                if allow_wrap && children.len() > 1 {
                     let candidate = if backwards {
                         children.last().copied()
                     } else {

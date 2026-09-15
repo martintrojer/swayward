@@ -4502,6 +4502,62 @@ fn focus_output_prefers_a_name_over_a_direction_and_resolves_directions() {
 }
 
 #[test]
+fn directional_focus_prefers_an_adjacent_output_over_local_wrapping() {
+    for (target_position, layout, command, wrapping, expected_output) in [
+        (
+            (800, 0),
+            "layout splith",
+            "focus right",
+            swayward_config::FocusWrapping::Yes,
+            "target",
+        ),
+        (
+            (0, 600),
+            "layout stacked",
+            "focus down",
+            swayward_config::FocusWrapping::Yes,
+            "target",
+        ),
+        (
+            (800, 0),
+            "layout splith",
+            "focus right",
+            swayward_config::FocusWrapping::Force,
+            "source",
+        ),
+    ] {
+        let mut config = swayward_config::Config::default();
+        config.layout.focus_wrapping = wrapping;
+        let mut f = Fixture::with_config(config);
+        f.add_named_output_at("source".into(), (800, 600), Some((0, 0)));
+        f.add_named_output_at("target".into(), (800, 600), Some(target_position));
+        let client = f.add_client();
+
+        for output in ["target", "source", "source"] {
+            assert!(
+                crate::command::execute(f.niri_state(), &format!("focus output {output}"))[0]
+                    .success
+            );
+            let window = f.client(client).create_window();
+            window.commit();
+            let surface = window.surface.clone();
+            f.roundtrip(client);
+            let window = f.client(client).window(&surface);
+            window.attach_new_buffer();
+            window.ack_last_and_commit();
+            f.double_roundtrip(client);
+        }
+        assert!(crate::command::execute(f.niri_state(), layout)[0].success);
+
+        assert!(crate::command::execute(f.niri_state(), command)[0].success);
+        assert_eq!(
+            f.swayward().layout.active_output().unwrap().name(),
+            expected_output
+        );
+    }
+}
+
+#[test]
 fn focus_output_reports_sway_errors() {
     let mut f = Fixture::new();
     f.add_output(1, (1280, 720));

@@ -2217,9 +2217,19 @@ impl<W: LayoutElement> Layout<W> {
             .is_some_and(Workspace::focus_left)
     }
 
+    pub fn focus_left_without_wrap(&mut self) -> bool {
+        self.active_workspace_mut()
+            .is_some_and(Workspace::focus_left_without_wrap)
+    }
+
     pub fn focus_right(&mut self) -> bool {
         self.active_workspace_mut()
             .is_some_and(Workspace::focus_right)
+    }
+
+    pub fn focus_right_without_wrap(&mut self) -> bool {
+        self.active_workspace_mut()
+            .is_some_and(Workspace::focus_right_without_wrap)
     }
 
     pub fn focus_column_first(&mut self) {
@@ -2269,7 +2279,7 @@ impl<W: LayoutElement> Layout<W> {
 
     pub fn focus_window_up_or_output(&mut self, output: &Output) -> bool {
         if let Some(workspace) = self.active_workspace_mut() {
-            if workspace.focus_up() {
+            if workspace.focus_up_without_wrap() {
                 return false;
             }
         }
@@ -2280,7 +2290,7 @@ impl<W: LayoutElement> Layout<W> {
 
     pub fn focus_window_down_or_output(&mut self, output: &Output) -> bool {
         if let Some(workspace) = self.active_workspace_mut() {
-            if workspace.focus_down() {
+            if workspace.focus_down_without_wrap() {
                 return false;
             }
         }
@@ -2291,7 +2301,7 @@ impl<W: LayoutElement> Layout<W> {
 
     pub fn focus_column_left_or_output(&mut self, output: &Output) -> bool {
         if let Some(workspace) = self.active_workspace_mut() {
-            if workspace.focus_left() {
+            if workspace.focus_left_without_wrap() {
                 return false;
             }
         }
@@ -2302,7 +2312,7 @@ impl<W: LayoutElement> Layout<W> {
 
     pub fn focus_column_right_or_output(&mut self, output: &Output) -> bool {
         if let Some(workspace) = self.active_workspace_mut() {
-            if workspace.focus_right() {
+            if workspace.focus_right_without_wrap() {
                 return false;
             }
         }
@@ -2323,8 +2333,18 @@ impl<W: LayoutElement> Layout<W> {
             .is_some_and(Workspace::focus_down)
     }
 
+    pub fn focus_down_without_wrap(&mut self) -> bool {
+        self.active_workspace_mut()
+            .is_some_and(Workspace::focus_down_without_wrap)
+    }
+
     pub fn focus_up(&mut self) -> bool {
         self.active_workspace_mut().is_some_and(Workspace::focus_up)
+    }
+
+    pub fn focus_up_without_wrap(&mut self) -> bool {
+        self.active_workspace_mut()
+            .is_some_and(Workspace::focus_up_without_wrap)
     }
 
     pub fn focus_down_or_left(&mut self) {

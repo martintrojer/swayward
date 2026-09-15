@@ -11,11 +11,17 @@ pub(super) fn direction(state: &mut State, direction: Direction) -> Option<Actio
         Direction::Up => Action::FocusWindowOrMonitorUp,
         Direction::Down => Action::FocusWindowOrMonitorDown,
     };
-    let changed = match direction {
-        Direction::Left => state.swayward.layout.focus_left(),
-        Direction::Right => state.swayward.layout.focus_right(),
-        Direction::Up => state.swayward.layout.focus_up(),
-        Direction::Down => state.swayward.layout.focus_down(),
+    let force = state.swayward.config.borrow().layout.focus_wrapping
+        == swayward_config::FocusWrapping::Force;
+    let changed = match (direction, force) {
+        (Direction::Left, true) => state.swayward.layout.focus_left(),
+        (Direction::Right, true) => state.swayward.layout.focus_right(),
+        (Direction::Up, true) => state.swayward.layout.focus_up(),
+        (Direction::Down, true) => state.swayward.layout.focus_down(),
+        (Direction::Left, false) => state.swayward.layout.focus_left_without_wrap(),
+        (Direction::Right, false) => state.swayward.layout.focus_right_without_wrap(),
+        (Direction::Up, false) => state.swayward.layout.focus_up_without_wrap(),
+        (Direction::Down, false) => state.swayward.layout.focus_down_without_wrap(),
     };
     if changed {
         state.swayward.queue_redraw_all();

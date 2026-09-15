@@ -1255,7 +1255,7 @@ impl State {
                 self.swayward.queue_redraw_all();
             }
             Action::FocusWindowOrMonitorUp => {
-                if let Some(output) = self.swayward.output_up() {
+                if let Some(output) = self.swayward.adjacent_output_up() {
                     if self.swayward.layout.focus_window_up_or_output(&output)
                         && !self.maybe_warp_cursor_to_focus_centered()
                     {
@@ -1273,7 +1273,7 @@ impl State {
                 self.swayward.queue_redraw_all();
             }
             Action::FocusWindowOrMonitorDown => {
-                if let Some(output) = self.swayward.output_down() {
+                if let Some(output) = self.swayward.adjacent_output_down() {
                     if self.swayward.layout.focus_window_down_or_output(&output)
                         && !self.maybe_warp_cursor_to_focus_centered()
                     {
@@ -1291,7 +1291,7 @@ impl State {
                 self.swayward.queue_redraw_all();
             }
             Action::FocusColumnOrMonitorLeft => {
-                if let Some(output) = self.swayward.output_left() {
+                if let Some(output) = self.swayward.adjacent_output_left() {
                     if self.swayward.layout.focus_column_left_or_output(&output)
                         && !self.maybe_warp_cursor_to_focus_centered()
                     {
@@ -1309,7 +1309,7 @@ impl State {
                 self.swayward.queue_redraw_all();
             }
             Action::FocusColumnOrMonitorRight => {
-                if let Some(output) = self.swayward.output_right() {
+                if let Some(output) = self.swayward.adjacent_output_right() {
                     if self.swayward.layout.focus_column_right_or_output(&output)
                         && !self.maybe_warp_cursor_to_focus_centered()
                     {
