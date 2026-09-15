@@ -1754,6 +1754,9 @@ impl State {
         // clients will use the new xdg-decoration setting.
 
         self.swayward.queue_redraw_all();
+        if let Some(server) = &self.swayward.ipc_server {
+            server.send_event(swayward_ipc::legacy::Event::WorkspaceReloaded);
+        }
     }
 
     pub fn reload_output_config(&mut self) {

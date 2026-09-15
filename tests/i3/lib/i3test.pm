@@ -269,6 +269,11 @@ sub get_socket_path { $ENV{I3SOCK} // die 'I3SOCK is not set' }
 sub cmd_nosync {
     my ($command) = @_;
     return [_control({ action => 'open' })] if $command eq 'open';
+    if ($command eq 'reload') {
+        my $reply = _control({ action => 'reload' });
+        die($reply->{error} // 'test config reload failed') unless $reply->{success};
+        return [{ success => JSON::PP::true }];
+    }
     $command =~ s/\b(?:class|instance)=/app_id=/g;
     my $settle_configures = scalar(
         $command =~ /\b(?:resize\s+(?:grow|shrink)|floating\s+enable|move(?:\s+to)?\s+scratchpad|scratchpad\s+show)\b/i

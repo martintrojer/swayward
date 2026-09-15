@@ -1613,6 +1613,8 @@ pub enum Event {
         /// The removed workspace's last IPC tree representation.
         current: Box<crate::Node>,
     },
+    /// The configuration was reloaded.
+    WorkspaceReloaded,
     /// A workspace was created.
     WorkspaceInitialized {
         /// The new workspace's IPC tree representation.

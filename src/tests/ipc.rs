@@ -1268,6 +1268,47 @@ fn malformed_sway_criteria_reload_keeps_the_compositor_responsive() {
 }
 
 #[test]
+fn reload_replaces_map_time_rules_while_windows_are_mapped() {
+    let mut fixture = Fixture::new();
+    fixture.add_output(1, (1920, 1080));
+    let client = fixture.add_client();
+    let first = fixture.client(client).create_window();
+    first.xdg_toplevel.set_app_id("special".into());
+    first.commit();
+    let surface = first.surface.clone();
+    fixture.roundtrip(client);
+    let first = fixture.client(client).window(&surface);
+    first.attach_new_buffer();
+    first.ack_last_and_commit();
+    fixture.double_roundtrip(client);
+    let first_id = fixture.swayward().layout.focus().unwrap().id();
+
+    super::i3_conformance::reload_test_config(
+        &mut fixture,
+        r#"for_window [class="special"] mark reloaded"#,
+    )
+    .unwrap();
+
+    let second = fixture.client(client).create_window();
+    second.xdg_toplevel.set_app_id("special".into());
+    second.commit();
+    let surface = second.surface.clone();
+    fixture.roundtrip(client);
+    let second = fixture.client(client).window(&surface);
+    second.attach_new_buffer();
+    second.ack_last_and_commit();
+    fixture.double_roundtrip(client);
+    let second_id = fixture.swayward().layout.focus().unwrap().id();
+
+    let marks = &fixture.swayward().marks_by_window;
+    assert!(marks.get(&first_id).is_none_or(Vec::is_empty));
+    assert_eq!(
+        marks.get(&second_id).map(Vec::as_slice),
+        Some(["reloaded".to_owned()].as_slice())
+    );
+}
+
+#[test]
 fn for_window_applies_matching_command_when_window_maps() {
     let (mut fixture, socket) = ipc_fixture();
     fixture.add_output(1, (1920, 1080));

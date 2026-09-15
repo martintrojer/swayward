@@ -474,7 +474,36 @@ fn translate_config(config: &str) -> Result<swayward_config::Config, String> {
     Ok(config)
 }
 
-fn handle_control(fixture: &mut Fixture, client: super::client::ClientId, stream: UnixStream) {
+fn prepare_test_config(source: &str) -> Result<swayward_config::Config, String> {
+    let mut config = translate_config(source)?;
+    config.layout.border.off = false;
+    config
+        .input
+        .focus_follows_mouse
+        .get_or_insert(swayward_config::input::FocusFollowsMouse {
+            max_scroll_amount: None,
+        });
+    Ok(config)
+}
+
+pub(super) fn reload_test_config(fixture: &mut Fixture, source: &str) -> Result<(), String> {
+    let config = prepare_test_config(source)?;
+    fixture.niri_state().reload_config(Ok(config));
+    fixture.niri_state().ipc_config_loaded(false);
+    Ok(())
+}
+
+fn reload_loaded_test_config(fixture: &mut Fixture, source: Option<&str>) -> Result<(), String> {
+    let source = source.ok_or_else(|| "no test config has been loaded".to_owned())?;
+    reload_test_config(fixture, source)
+}
+
+fn handle_control(
+    fixture: &mut Fixture,
+    client: super::client::ClientId,
+    loaded_config_source: &mut Option<String>,
+    stream: UnixStream,
+) {
     let mut request = String::new();
     BufReader::new(stream.try_clone().unwrap())
         .read_line(&mut request)
@@ -500,11 +529,16 @@ fn handle_control(fixture: &mut Fixture, client: super::client::ClientId, stream
                     if let Some(outputs) = outputs {
                         fixture.replace_outputs(outputs);
                     }
+                    *loaded_config_source = Some(source.to_owned());
                     json!({ "success": true })
                 }
                 (Err(error), _) | (_, Err(error)) => json!({ "success": false, "error": error }),
             }
         }
+        "reload" => match reload_loaded_test_config(fixture, loaded_config_source.as_deref()) {
+            Ok(()) => json!({ "success": true }),
+            Err(error) => json!({ "success": false, "error": error }),
+        },
         "create" => json!({ "handle": create_window(fixture, client, &request) }),
         "open" => {
             let handle = create_window(fixture, client, &request);
@@ -676,10 +710,13 @@ fn run_i3_test(test: &str) {
 
     let started = Instant::now();
     let deadline = started + Duration::from_secs(30);
+    let mut loaded_config_source = None;
     loop {
         fixture.dispatch();
         match control.accept() {
-            Ok((stream, _)) => handle_control(&mut fixture, client, stream),
+            Ok((stream, _)) => {
+                handle_control(&mut fixture, client, &mut loaded_config_source, stream)
+            }
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
             Err(error) => panic!("test control accept failed: {error}"),
         }
@@ -817,6 +854,16 @@ fn fake_outputs_create_real_outputs_with_requested_geometry() {
             ),
         ]
     );
+}
+
+#[test]
+fn test_config_reload_requires_loaded_source() {
+    let mut fixture = Fixture::new();
+    assert_eq!(
+        reload_loaded_test_config(&mut fixture, None).unwrap_err(),
+        "no test config has been loaded"
+    );
+    reload_loaded_test_config(&mut fixture, Some("font monospace")).unwrap();
 }
 
 #[test]

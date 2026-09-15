@@ -484,6 +484,10 @@ async fn handle_event_stream_client(client: EventStreamClient) -> anyhow::Result
                 1 << 31,
                 serde_json::json!({"change":"empty","old":null,"current":current}),
             ),
+            Event::WorkspaceReloaded if subscriptions.contains("workspace") => (
+                1 << 31,
+                serde_json::json!({"change":"reload","old":null,"current":null}),
+            ),
             Event::WorkspaceInitialized { current } if subscriptions.contains("workspace") => (
                 1 << 31,
                 serde_json::json!({"change":"init","old":null,"current":current}),
