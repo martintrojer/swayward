@@ -144,6 +144,19 @@ first `move container to output right` moved the view from x=0 to x=800. The
 second command failed with `Can't move an empty workspace`, and the view stayed
 at x=800.
 
+### Workspace output lists
+
+I3 accepts `move workspace to output next` and lists of output names. It cycles
+each matched workspace through the configured list. Sway accepts only one output
+name, id, or geometric direction for this command. Its workspace mover resolves
+`argv[0]` and ignores later arguments (`sway/sway/commands/move.c:30-78,630-669`).
+Consequently, `next` is an unknown output and a list always selects its first
+valid name.
+
+Swayward follows sway's single-target grammar. The output-cycle assertions in
+`543-move-workspace-to-multiple-outputs.t` are skipped rather than adding i3-only
+selection semantics.
+
 ### Directional floating moves in percentage points
 
 The i3 command `move right 25 ppt` moves a floating container by 25 percent of
