@@ -61,6 +61,7 @@
 252-floating-size.t
 255-multiple-marks.t
 261-match-con_id-con_mark-combinations.t
+263-config-reload-reverts-bind-mode.t
 265-ipc-mark.t
 273-regress-focus-toggle.t
 274-move-branch-position.t

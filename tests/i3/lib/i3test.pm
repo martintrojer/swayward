@@ -34,6 +34,7 @@ our @EXPORT = qw(
     focused_ws
     get_dock_clients
     get_focused
+    get_i3_log
     get_output_for_workspace
     get_socket_path
     get_unused_workspace
@@ -46,10 +47,12 @@ our @EXPORT = qw(
     is_num_children
     is_num_fullscreen
     isa_ok
+    like
     kill_all_windows
     launch_with_config
     listen_for_binding
     note
+    unlike
     create_layout
     exit_gracefully
     isnt
@@ -75,6 +78,7 @@ our $x = bless {}, 'i3test::X';
 
 package AnyEvent;
 sub condvar { bless {}, 'i3test::CondVar' }
+sub timer { bless {}, 'i3test::Timer' }
 
 package i3test::CondVar;
 
@@ -87,6 +91,10 @@ sub import {
     warnings->import;
     if (($ENV{SWAYWARD_I3_TEST} // '') eq '201-config-parser.t') {
         Test::More::plan(skip_all => 'i3-only standalone generated-parser callback trace');
+        return;
+    }
+    if (($ENV{SWAYWARD_I3_TEST} // '') =~ /^(?:196-randr-output-names|235-check-config-no-x|262-config-validation)\.t$/) {
+        Test::More::plan(skip_all => 'invokes i3 check-config with i3 syntax and diagnostics');
         return;
     }
     if (defined($args{i3_config}) && $args{i3_config} ne '-default') {
@@ -221,6 +229,9 @@ sub is ($$;$) {
     _skip_assertion() or $tester->is_eq($got, $expected, $name);
 }
 sub isnt ($$;$) { $tester->isnt_eq(@_) }
+sub like ($$;$) { $tester->like(@_) }
+sub unlike ($$;$) { $tester->unlike(@_) }
+sub get_i3_log { die "i3 logs are unavailable in the Wayland test adapter\n" }
 sub cmp_ok ($$$;$) { $tester->cmp_ok(@_) }
 sub cmp_float ($$;$) {
     my ($a, $b, $name) = @_;
@@ -750,6 +761,7 @@ sub get_workspaces { i3test::Future->new(i3test::_request(1)) }
 sub get_tree { i3test::Future->new(i3test::_request(4)) }
 sub get_outputs { i3test::Future->new(i3test::_request(3)) }
 sub get_marks { i3test::Future->new(i3test::_request(5)) }
+sub get_config { i3test::Future->new(i3test::_request(9)) }
 
 package i3test::Future;
 sub new { bless { value => $_[1] }, $_[0] }

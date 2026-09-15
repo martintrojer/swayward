@@ -1656,6 +1656,17 @@ impl State {
 
         // Release the borrow.
         drop(old_config);
+        let mode_changed = self.swayward.binding_mode != "default";
+        self.swayward.binding_mode = "default".into();
+        self.ipc_refresh_config();
+        if mode_changed {
+            if let Some(server) = &self.swayward.ipc_server {
+                server.send_event(swayward_ipc::legacy::Event::BindingModeChanged {
+                    mode: "default".into(),
+                    pango_markup: false,
+                });
+            }
+        }
         // Held release bindings own their action so a reload cannot invalidate them.
 
         // Now with a &mut self we can reload the xkb config.

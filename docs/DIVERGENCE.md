@@ -8,6 +8,7 @@ Invariant I5: prefer new modules; when an inherited file must be edited, add a l
 swayward-ipc/src/lib.rs, swayward-ipc/src/legacy.rs, swayward-ipc/src/command.rs — retain inherited config vocabulary in `legacy` beside the sway schema until milestone 4 moves binds to sway command strings, carry internal window-move events for sway IPC translation, and parse sway's floating/tiling focus modes, directional move distances, and move-position forms.
 src/ipc/client.rs, src/ipc/server.rs — import colliding inherited IPC types from `legacy` while the new sway schema keeps the bare names.
 src/ipc/server.rs, src/ipc/wire.rs — replace niri's line-delimited request dispatch with tested sway binary framing and honest unsupported-message replies.
+swayward-config/src/lib.rs, src/ipc/server.rs, src/swayward.rs — retain the raw top-level KDL source and return it through sway's single-field GET_CONFIG schema; included files remain excluded.
 src/ipc/client.rs — remove niri's client because swaymsg is swayward's supported IPC client.
 src/backend/winit.rs — disable Mesa swap throttling in nested sessions because a blocking EGL swap deadlocks the compositor event loop and IPC.
 src/utils/xwayland/satellite.rs — log a missing optional xwayland-satellite executable at info while retaining warnings for spawn, wait, and capability failures.

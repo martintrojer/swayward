@@ -68,6 +68,8 @@ const RECURSION_LIMIT: u8 = 10;
 
 #[derive(Default, PartialEq)]
 pub struct Config {
+    /// Raw contents of the top-level KDL file, excluding included files.
+    pub raw_config: String,
     pub input: Input,
     pub outputs: Outputs,
     pub spawn_at_startup: Vec<SpawnAtStartup>,
@@ -580,7 +582,11 @@ impl Config {
         let includes = includes.take().0;
         let include_errors = include_errors.take().0;
         let config = part
-            .map(|_| config.take())
+            .map(|_| {
+                let mut config = config.take();
+                config.raw_config = text.to_owned();
+                config
+            })
             .map_err(move |err| ConfigIncludeError {
                 main: err,
                 includes: include_errors,

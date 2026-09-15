@@ -45,6 +45,7 @@ pub struct IpcServer {
 
 #[derive(Default)]
 struct QueryState {
+    config: String,
     tree: String,
     workspaces: String,
     outputs: String,
@@ -184,6 +185,7 @@ fn on_new_ipc_client(state: &mut State, stream: UnixStream) {
         return;
     };
     let mut query_state = server.query_state.borrow_mut();
+    query_state.config = config_reply(&state.swayward.config.borrow());
     query_state.binding_modes = binding_modes(&state.swayward.config.borrow());
     query_state.binding_state = binding_state(&state.swayward.binding_mode);
     refresh_query_state(
@@ -306,6 +308,7 @@ async fn dispatch(ctx: &ClientCtx, msg_type: MessageType, payload: &[u8]) -> Str
         MessageType::GetMarks => ctx.query_state.borrow().marks.clone(),
         MessageType::GetBindingModes => ctx.query_state.borrow().binding_modes.clone(),
         MessageType::GetBindingState => ctx.query_state.borrow().binding_state.clone(),
+        MessageType::GetConfig => ctx.query_state.borrow().config.clone(),
         MessageType::RunCommand => {
             let input = match String::from_utf8(payload.to_vec()) {
                 Ok(input) => input,
@@ -347,6 +350,10 @@ async fn dispatch(ctx: &ClientCtx, msg_type: MessageType, payload: &[u8]) -> Str
         }
         _ => r#"{"success":false,"error":"not implemented"}"#.into(),
     }
+}
+
+fn config_reply(config: &swayward_config::Config) -> String {
+    serde_json::json!({"config": config.raw_config}).to_string()
 }
 
 fn binding_modes(config: &swayward_config::Config) -> String {
@@ -651,6 +658,16 @@ impl State {
         let event = Event::KeyboardLayoutSwitched { idx };
         state.apply(event.clone());
         server.send_event(event);
+    }
+
+    pub(crate) fn ipc_refresh_config(&mut self) {
+        let Some(server) = &self.swayward.ipc_server else {
+            return;
+        };
+        let mut query_state = server.query_state.borrow_mut();
+        query_state.config = config_reply(&self.swayward.config.borrow());
+        query_state.binding_modes = binding_modes(&self.swayward.config.borrow());
+        query_state.binding_state = binding_state(&self.swayward.binding_mode);
     }
 
     pub fn ipc_refresh_layout(&mut self) {

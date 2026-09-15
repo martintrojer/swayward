@@ -493,6 +493,24 @@ fn captured_workspace_event_sequences_pin_order_and_multiplicity() {
 }
 
 #[test]
+fn get_config_returns_raw_top_level_config_after_reload() {
+    let (mut fixture, socket) = ipc_fixture();
+    let mut stream = UnixStream::connect(socket).unwrap();
+    let root = std::env::temp_dir().join(format!("swayward-get-config-{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("included.kdl"), "layout { gaps 7; }\n").unwrap();
+    let source = "include \"included.kdl\"\n";
+    let config = swayward_config::Config::parse(&root.join("config.kdl"), source)
+        .config
+        .unwrap();
+    std::fs::remove_dir_all(root).unwrap();
+    fixture.niri_state().reload_config(Ok(config));
+
+    let reply = query_ipc(&mut fixture, &mut stream, MessageType::GetConfig);
+    assert_eq!(reply, serde_json::json!({"config": source}));
+}
+
+#[test]
 fn event_subscription_does_not_block_a_concurrent_query() {
     let (mut fixture, socket) = ipc_fixture();
     let mut subscriber = UnixStream::connect(&socket).unwrap();
@@ -1349,14 +1367,16 @@ fn release_key_binding_survives_mode_change_after_press() {
 #[test]
 fn release_key_binding_survives_config_reload_after_press() {
     let config = swayward_config::Config::parse_mem(
-        r#"binds { x release=true { command "workspace key-released"; }; }"#,
+        r#"mode "held" { x release=true { command "workspace key-released"; }; }"#,
     )
     .unwrap();
     let mut fixture = Fixture::with_config(config);
     fixture.add_output(1, (1280, 720));
+    assert!(crate::command::execute(fixture.niri_state(), "mode held")[0].success);
 
     key_event(&mut fixture, 53, true);
     super::i3_conformance::reload_test_config(&mut fixture, "font monospace\n").unwrap();
+    assert_eq!(fixture.swayward().binding_mode, "default");
     key_event(&mut fixture, 53, false);
 
     assert!(fixture
