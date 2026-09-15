@@ -1,6 +1,58 @@
 use super::*;
 
 impl<W: LayoutElement> TilingTree<W> {
+    pub fn swap_nodes(&mut self, first: NodeId, second: NodeId) -> Result<(), &'static str> {
+        if !self.nodes.contains_key(&first) || !self.nodes.contains_key(&second) {
+            return Err("No matching node.");
+        }
+        if first == second {
+            return Err("Cannot swap a container with itself");
+        }
+        if self.contains_node(first, second) || self.contains_node(second, first) {
+            return Err("Cannot swap ancestor and descendant");
+        }
+
+        let old = self.compute_geometry();
+        let first_parent = self.nodes[&first].parent.unwrap();
+        let second_parent = self.nodes[&second].parent.unwrap();
+        let first_index = self.child_index(first_parent, first).unwrap();
+        let second_index = self.child_index(second_parent, second).unwrap();
+        if first_parent == second_parent {
+            let TreeNode::Split { children, .. } =
+                &mut self.nodes.get_mut(&first_parent).unwrap().value
+            else {
+                unreachable!();
+            };
+            children.swap(first_index, second_index);
+        } else {
+            let TreeNode::Split { children, .. } =
+                &mut self.nodes.get_mut(&first_parent).unwrap().value
+            else {
+                unreachable!();
+            };
+            children[first_index] = second;
+            let TreeNode::Split { children, .. } =
+                &mut self.nodes.get_mut(&second_parent).unwrap().value
+            else {
+                unreachable!();
+            };
+            children[second_index] = first;
+        }
+        self.nodes.get_mut(&first).unwrap().parent = Some(second_parent);
+        self.nodes.get_mut(&second).unwrap().parent = Some(first_parent);
+        let first_mode = self.pending_modes.remove(&first);
+        let second_mode = self.pending_modes.remove(&second);
+        if let Some(mode) = first_mode {
+            self.pending_modes.insert(second, mode);
+        }
+        if let Some(mode) = second_mode {
+            self.pending_modes.insert(first, mode);
+        }
+        self.animate_geometry_changes(old, None);
+        self.request_window_sizes();
+        Ok(())
+    }
+
     pub fn move_subtree_to_node(&mut self, id: NodeId, destination: NodeId) -> bool {
         if id == self.root
             || id == destination
@@ -10,24 +62,51 @@ impl<W: LayoutElement> TilingTree<W> {
         {
             return false;
         }
-        let (parent, after) = match self.nodes[&destination] {
+        let moved = self
+            .leaf_ids_in(id)
+            .into_iter()
+            .filter_map(|leaf| self.tile(leaf).map(|tile| tile.window().id().clone()))
+            .collect::<Vec<_>>();
+        let (parent, after, index) = match self.nodes[&destination] {
             Node {
                 parent: Some(parent),
                 value: TreeNode::Leaf { .. },
-            } => (parent, Some(destination)),
+            } => (parent, Some(destination), None),
             Node {
                 value: TreeNode::Split { .. },
                 ..
-            } => (destination, None),
+            } => {
+                let mut branch = id;
+                while let Some(parent) = self.nodes[&branch].parent {
+                    if parent == destination {
+                        break;
+                    }
+                    branch = parent;
+                }
+                (destination, None, self.child_index(destination, branch))
+            }
             _ => return false,
         };
         let old = self.compute_geometry();
         let Some(old_parent) = self.detach_subtree_only(id) else {
             return false;
         };
-        self.insert_child(parent, id, after);
+        if let Some(index) = index {
+            self.insert_child_at(parent, id, index);
+        } else {
+            self.insert_child(parent, id, after);
+        }
         self.reap_empty_from(old_parent);
         self.compact_tree();
+        let insertion = usize::from(self.focus.is_some());
+        for window in moved.into_iter().rev() {
+            let Some(leaf) = self.node_for_window(&window) else {
+                continue;
+            };
+            self.focus_history.retain(|candidate| *candidate != leaf);
+            self.focus_history
+                .insert(insertion.min(self.focus_history.len()), leaf);
+        }
         self.animate_geometry_changes(old, None);
         self.request_window_sizes();
         true
@@ -52,8 +131,12 @@ impl<W: LayoutElement> TilingTree<W> {
 
     pub fn move_node_direction(&mut self, id: NodeId, direction: Direction) -> bool {
         let focus = self.focus;
+        let focus_history = self.window_focus_history();
         let changed = self.move_direction(id, direction);
-        self.set_focus_id(focus);
+        if changed {
+            self.restore_window_focus_history(focus_history);
+        }
+        self.focus = focus;
         changed
     }
 

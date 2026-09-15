@@ -637,6 +637,10 @@ impl LayoutElement for Mapped {
         &self.window
     }
 
+    fn focus_timestamp(&self) -> Option<Duration> {
+        self.focus_timestamp
+    }
+
     fn update_config(&mut self, blur_config: swayward_config::Blur) {
         self.blur_config = blur_config;
     }

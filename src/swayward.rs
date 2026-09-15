@@ -109,7 +109,7 @@ use smithay::wayland::xdg_foreign::XdgForeignState;
 use swayward_config::debug::PreviewRender;
 use swayward_config::output::MaxBpc;
 use swayward_config::{
-    Config, FloatOrInt, Key, Modifiers, OutputName, TrackLayout, WarpMouseToFocusMode,
+    Bind, Config, FloatOrInt, Key, Modifiers, OutputName, TrackLayout, WarpMouseToFocusMode,
     WorkspaceReference, Xkb,
 };
 use wayland_server::protocol::wl_output::WlOutput;
@@ -338,9 +338,11 @@ pub struct Swayward {
     pub seat: Seat<State>,
     /// Scancodes of the keys to suppress.
     pub suppressed_keys: HashSet<Keycode>,
+    pub held_release_bind: Option<Bind>,
     /// Button codes of the mouse buttons to suppress.
     pub suppressed_buttons: HashSet<u32>,
-    pub bind_cooldown_timers: HashMap<Key, RegistrationToken>,
+    pub held_release_buttons: HashMap<u32, Bind>,
+    pub bind_cooldown_timers: HashMap<(Key, bool), RegistrationToken>,
     pub bind_repeat_timer: Option<RegistrationToken>,
     pub keyboard_focus: KeyboardFocus,
     pub layer_shell_on_demand_focus: Option<LayerSurface>,
@@ -1304,19 +1306,15 @@ impl State {
                 {
                     mapped.set_is_focused(true);
 
-                    // If `mapped` does not have a focus timestamp, then the window is newly
-                    // created/mapped and a timestamp is unconditionally created.
-                    //
-                    // If `mapped` already has a timestamp only update it after the focus lock-in
-                    // period has gone by without the focus having elsewhere.
+                    // Structural focus fallback follows sway's seat-wide stack immediately. The
+                    // recent-windows UI still uses the debounce below before committing its order.
                     let stamp = get_monotonic_time();
+                    mapped.set_focus_timestamp(stamp);
 
                     let debounce = self.swayward.config.borrow().recent_windows.debounce_ms;
                     let debounce = Duration::from_millis(u64::from(debounce));
 
-                    if mapped.get_focus_timestamp().is_none() || debounce.is_zero() {
-                        mapped.set_focus_timestamp(stamp);
-                    } else {
+                    if !debounce.is_zero() {
                         let timer = Timer::from_duration(debounce);
 
                         let focus_token = self
@@ -1658,6 +1656,7 @@ impl State {
 
         // Release the borrow.
         drop(old_config);
+        // Held release bindings own their action so a reload cannot invalidate them.
 
         // Now with a &mut self we can reload the xkb config.
         if let Some(mut xkb) = reload_xkb {
@@ -1758,6 +1757,9 @@ impl State {
         // clients will use the new xdg-decoration setting.
 
         self.swayward.queue_redraw_all();
+        if let Some(server) = &self.swayward.ipc_server {
+            server.send_event(swayward_ipc::legacy::Event::WorkspaceReloaded);
+        }
     }
 
     pub fn reload_output_config(&mut self) {
@@ -2634,7 +2636,9 @@ impl Swayward {
             popups: PopupManager::default(),
             popup_grab: None,
             suppressed_keys: HashSet::new(),
+            held_release_bind: None,
             suppressed_buttons: HashSet::new(),
+            held_release_buttons: HashMap::new(),
             bind_cooldown_timers: HashMap::new(),
             bind_repeat_timer: Option::default(),
             presentation_state,
@@ -3612,7 +3616,7 @@ impl Swayward {
         current: &Output,
         reference: Point<i32, Logical>,
     ) -> Option<Output> {
-        self.output_in_direction(current, reference, true, false)
+        self.output_in_direction(current, reference, true, false, true)
     }
 
     pub fn output_right_of(&self, current: &Output) -> Option<Output> {
@@ -3624,7 +3628,7 @@ impl Swayward {
         current: &Output,
         reference: Point<i32, Logical>,
     ) -> Option<Output> {
-        self.output_in_direction(current, reference, true, true)
+        self.output_in_direction(current, reference, true, true, true)
     }
 
     pub fn output_up_of(&self, current: &Output) -> Option<Output> {
@@ -3636,7 +3640,7 @@ impl Swayward {
         current: &Output,
         reference: Point<i32, Logical>,
     ) -> Option<Output> {
-        self.output_in_direction(current, reference, false, false)
+        self.output_in_direction(current, reference, false, false, true)
     }
 
     pub fn output_down_of(&self, current: &Output) -> Option<Output> {
@@ -3648,7 +3652,17 @@ impl Swayward {
         current: &Output,
         reference: Point<i32, Logical>,
     ) -> Option<Output> {
-        self.output_in_direction(current, reference, false, true)
+        self.output_in_direction(current, reference, false, true, true)
+    }
+
+    pub(crate) fn adjacent_output(
+        &self,
+        current: &Output,
+        reference: Point<i32, Logical>,
+        horizontal: bool,
+        positive: bool,
+    ) -> Option<Output> {
+        self.output_in_direction(current, reference, horizontal, positive, false)
     }
 
     fn output_in_direction(
@@ -3657,6 +3671,7 @@ impl Swayward {
         reference: Point<i32, Logical>,
         horizontal: bool,
         positive: bool,
+        wrap: bool,
     ) -> Option<Output> {
         let current_geo = self.global_space.output_geometry(current)?;
         let candidates = || {
@@ -3699,22 +3714,25 @@ impl Swayward {
             .filter(|(_, geometry)| in_direction(*geometry))
             .min_by_key(|(_, geometry)| distance(*geometry))
             .or_else(|| {
-                candidates()
-                    .filter(|(_, geometry)| {
-                        let positive = !positive;
-                        if horizontal {
-                            if positive {
-                                geometry.loc.x >= current_geo.loc.x + current_geo.size.w
+                wrap.then(|| {
+                    candidates()
+                        .filter(|(_, geometry)| {
+                            let positive = !positive;
+                            if horizontal {
+                                if positive {
+                                    geometry.loc.x >= current_geo.loc.x + current_geo.size.w
+                                } else {
+                                    geometry.loc.x + geometry.size.w <= current_geo.loc.x
+                                }
+                            } else if positive {
+                                geometry.loc.y >= current_geo.loc.y + current_geo.size.h
                             } else {
-                                geometry.loc.x + geometry.size.w <= current_geo.loc.x
+                                geometry.loc.y + geometry.size.h <= current_geo.loc.y
                             }
-                        } else if positive {
-                            geometry.loc.y >= current_geo.loc.y + current_geo.size.h
-                        } else {
-                            geometry.loc.y + geometry.size.h <= current_geo.loc.y
-                        }
-                    })
-                    .max_by_key(|(_, geometry)| distance(*geometry))
+                        })
+                        .max_by_key(|(_, geometry)| distance(*geometry))
+                })
+                .flatten()
             })
             .map(|(output, _)| output.clone())
     }
@@ -3745,9 +3763,29 @@ impl Swayward {
         self.output_left_of(active)
     }
 
+    pub fn adjacent_output_left(&self) -> Option<Output> {
+        let active = self.layout.active_output()?;
+        self.adjacent_output(
+            active,
+            center(self.global_space.output_geometry(active)?),
+            true,
+            false,
+        )
+    }
+
     pub fn output_right(&self) -> Option<Output> {
         let active = self.layout.active_output()?;
         self.output_right_of(active)
+    }
+
+    pub fn adjacent_output_right(&self) -> Option<Output> {
+        let active = self.layout.active_output()?;
+        self.adjacent_output(
+            active,
+            center(self.global_space.output_geometry(active)?),
+            true,
+            true,
+        )
     }
 
     pub fn output_up(&self) -> Option<Output> {
@@ -3755,9 +3793,29 @@ impl Swayward {
         self.output_up_of(active)
     }
 
+    pub fn adjacent_output_up(&self) -> Option<Output> {
+        let active = self.layout.active_output()?;
+        self.adjacent_output(
+            active,
+            center(self.global_space.output_geometry(active)?),
+            false,
+            false,
+        )
+    }
+
     pub fn output_down(&self) -> Option<Output> {
         let active = self.layout.active_output()?;
         self.output_down_of(active)
+    }
+
+    pub fn adjacent_output_down(&self) -> Option<Output> {
+        let active = self.layout.active_output()?;
+        self.adjacent_output(
+            active,
+            center(self.global_space.output_geometry(active)?),
+            false,
+            true,
+        )
     }
 
     pub fn output_previous(&self) -> Option<Output> {

@@ -50,23 +50,7 @@ impl<W: LayoutElement> TilingTree<W> {
                     *current = layout;
                 }
             } else {
-                let parent = self.nodes[&id].parent.unwrap_or(self.root);
-                let index = self.child_index(parent, id).unwrap();
-                let wrapper = self.alloc(Node {
-                    parent: Some(parent),
-                    value: TreeNode::Split {
-                        layout,
-                        children: vec![id],
-                        percents: vec![1.],
-                    },
-                });
-                let TreeNode::Split { children, .. } =
-                    &mut self.nodes.get_mut(&parent).unwrap().value
-                else {
-                    unreachable!();
-                };
-                children[index] = wrapper;
-                self.nodes.get_mut(&id).unwrap().parent = Some(wrapper);
+                self.wrap_node(id, layout);
             }
         } else {
             let parent = self.nodes[&id].parent.unwrap_or(self.root);
@@ -309,6 +293,33 @@ impl<W: LayoutElement> TilingTree<W> {
                 Layout::SplitV
             },
         );
+    }
+
+    pub(super) fn wrap_node(&mut self, id: NodeId, layout: Layout) -> NodeId {
+        let parent = self.nodes[&id].parent.unwrap_or(self.root);
+        let index = self.child_index(parent, id).unwrap();
+        let old_percent = match &self.nodes[&parent].value {
+            TreeNode::Split { percents, .. } => percents[index],
+            TreeNode::Leaf { .. } => unreachable!(),
+        };
+        let wrapper = self.alloc(Node {
+            parent: Some(parent),
+            value: TreeNode::Split {
+                layout,
+                children: vec![id],
+                percents: vec![1.],
+            },
+        });
+        let TreeNode::Split {
+            children, percents, ..
+        } = &mut self.nodes.get_mut(&parent).unwrap().value
+        else {
+            unreachable!();
+        };
+        children[index] = wrapper;
+        percents[index] = old_percent;
+        self.nodes.get_mut(&id).unwrap().parent = Some(wrapper);
+        wrapper
     }
 
     fn wrap_root_children(&mut self, layout: Layout) -> NodeId {

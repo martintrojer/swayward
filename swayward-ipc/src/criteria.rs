@@ -84,23 +84,7 @@ pub struct WindowInfo<'a> {
 
 impl Criteria {
     pub fn matches_container(&self, con_id: u64, marks: &[String]) -> bool {
-        self.title.is_none()
-            && self.shell.is_none()
-            && self.app_id.is_none()
-            && self.id.is_none()
-            && self.class.is_none()
-            && self.instance.is_none()
-            && self.window_role.is_none()
-            && self.window_type.is_none()
-            && self.urgent.is_none()
-            && self.workspace.is_none()
-            && !self.floating
-            && !self.tiling
-            && self.pid.is_none()
-            && self.sandbox_engine.is_none()
-            && self.sandbox_app_id.is_none()
-            && self.sandbox_instance_id.is_none()
-            && self.tag.is_none()
+        (self.con_mark.is_some() || self.con_id.is_some())
             && self
                 .con_mark
                 .as_ref()
@@ -146,7 +130,9 @@ impl Criteria {
                     criteria.con_id = Some(if value == "__focused__" {
                         focused_con_id.unwrap_or(0)
                     } else {
-                        number(name.as_str(), value)?
+                        value.parse().map_err(|_| {
+                            "The value for 'con_id' should be '__focused__' or numeric".to_owned()
+                        })?
                     });
                 }
                 "id" => criteria.id = Some(number(&name, required(&name, value.as_deref())?)?),
@@ -361,6 +347,22 @@ mod tests {
             &escaped_dot_must_not_become_wildcard,
             &WindowInfo::default()
         ));
+    }
+
+    #[test]
+    fn numeric_criteria_errors_match_sway_verbatim() {
+        assert_eq!(
+            Criteria::parse("[con_id=nope]", None).unwrap_err(),
+            "The value for 'con_id' should be '__focused__' or numeric"
+        );
+        assert_eq!(
+            Criteria::parse("[id=nope]", None).unwrap_err(),
+            "The value for 'id' should be numeric"
+        );
+        assert_eq!(
+            Criteria::parse("[pid=nope]", None).unwrap_err(),
+            "The value for 'pid' should be numeric"
+        );
     }
 
     #[test]

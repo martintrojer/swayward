@@ -66,7 +66,7 @@ pub use crate::workspace::{Workspace, WorkspaceLayoutPart};
 
 const RECURSION_LIMIT: u8 = 10;
 
-#[derive(Debug, Default, PartialEq)]
+#[derive(Default, PartialEq)]
 pub struct Config {
     pub input: Input,
     pub outputs: Outputs,
@@ -74,6 +74,7 @@ pub struct Config {
     pub spawn_sh_at_startup: Vec<SpawnShAtStartup>,
     pub layout: Layout,
     pub prefer_no_csd: bool,
+    pub popup_during_fullscreen: PopupDuringFullscreen,
     pub cursor: Cursor,
     pub screenshot_path: ScreenshotPath,
     pub clipboard: Clipboard,
@@ -93,6 +94,39 @@ pub struct Config {
     pub debug: Debug,
     pub workspaces: Vec<Workspace>,
     pub recent_windows: RecentWindows,
+}
+
+impl std::fmt::Debug for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut debug = f.debug_struct("Config");
+        debug
+            .field("input", &self.input)
+            .field("outputs", &self.outputs)
+            .field("spawn_at_startup", &self.spawn_at_startup)
+            .field("spawn_sh_at_startup", &self.spawn_sh_at_startup)
+            .field("layout", &self.layout)
+            .field("prefer_no_csd", &self.prefer_no_csd)
+            .field("cursor", &self.cursor)
+            .field("screenshot_path", &self.screenshot_path)
+            .field("clipboard", &self.clipboard)
+            .field("hotkey_overlay", &self.hotkey_overlay)
+            .field("config_notification", &self.config_notification)
+            .field("animations", &self.animations)
+            .field("blur", &self.blur)
+            .field("gestures", &self.gestures)
+            .field("overview", &self.overview)
+            .field("environment", &self.environment)
+            .field("xwayland_satellite", &self.xwayland_satellite)
+            .field("window_rules", &self.window_rules)
+            .field("layer_rules", &self.layer_rules)
+            .field("binds", &self.binds)
+            .field("binding_modes", &self.binding_modes)
+            .field("switch_events", &self.switch_events)
+            .field("debug", &self.debug)
+            .field("workspaces", &self.workspaces)
+            .field("recent_windows", &self.recent_windows)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -228,7 +262,12 @@ where
                     let mut config = config.borrow_mut();
                     let binds = &mut config.binds.0;
                     // Remove existing binds matching any new bind.
-                    binds.retain(|bind| !part.0.iter().any(|new| new.key == bind.key));
+                    binds.retain(|bind| {
+                        !part
+                            .0
+                            .iter()
+                            .any(|new| (new.key, new.release) == (bind.key, bind.release))
+                    });
                     // Add all new binds.
                     binds.extend(part.0);
                 }
@@ -239,6 +278,11 @@ where
 
                 "prefer-no-csd" => {
                     config.borrow_mut().prefer_no_csd = Flag::decode_node(node, ctx)?.0
+                }
+
+                "popup-during-fullscreen" => {
+                    config.borrow_mut().popup_during_fullscreen =
+                        PopupDuringFullscreen::decode_node(node, ctx)?
                 }
 
                 "screenshot-path" => {
@@ -640,6 +684,29 @@ mod tests {
     use super::*;
 
     #[test]
+    fn popup_during_fullscreen_parses_all_modes_and_rejects_invalid_input() {
+        for (value, expected) in [
+            ("smart", PopupDuringFullscreen::Smart),
+            ("IGNORE", PopupDuringFullscreen::Ignore),
+            ("Leave_Fullscreen", PopupDuringFullscreen::LeaveFullscreen),
+        ] {
+            let config =
+                Config::parse_mem(&format!("popup-during-fullscreen \"{value}\"")).unwrap();
+            assert_eq!(config.popup_during_fullscreen, expected);
+        }
+
+        for source in [
+            "popup-during-fullscreen",
+            "popup-during-fullscreen \"smart\" \"ignore\"",
+            "popup-during-fullscreen \"all\"",
+        ] {
+            let error = Config::parse_mem(source).unwrap_err();
+            assert!(format!("{error:?}")
+                .contains("Expected 'popup_during_fullscreen smart|ignore|leave_fullscreen'"));
+        }
+    }
+
+    #[test]
     fn can_create_default_config() {
         let _ = Config::load_default();
     }
@@ -720,6 +787,42 @@ mod tests {
             config.binding_modes[0].binds.0[1].action,
             Action::SwayCommand("mode default".into())
         );
+    }
+
+    #[test]
+    fn press_and_release_binds_can_share_a_trigger() {
+        let config = Config::parse_mem(
+            r#"binds {
+                Print { command "nop press"; }
+                Print release=true repeat=false { command "nop release"; }
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(config.binds.0.len(), 2);
+        assert!(!config.binds.0[0].release);
+        assert!(config.binds.0[1].release);
+        assert!(!config.binds.0[1].repeat);
+    }
+
+    #[test]
+    fn mouse_bind_regions_parse() {
+        let config = Config::parse_mem(
+            r#"binds { MouseLeft mouse-regions="titlebar+border+contents" { command "focus"; }; }"#,
+        )
+        .unwrap();
+        assert_eq!(
+            config.binds.0[0].mouse_regions,
+            crate::binds::MouseRegions::TITLEBAR
+                | crate::binds::MouseRegions::BORDER
+                | crate::binds::MouseRegions::CONTENTS
+        );
+
+        let error = Config::parse_mem(
+            r#"binds { MouseLeft mouse-regions="workspace" { command "focus"; }; }"#,
+        )
+        .unwrap_err();
+        assert!(format!("{error:?}").contains("mouse-regions must contain"));
     }
 
     #[test]
@@ -1666,6 +1769,15 @@ mod tests {
                 empty_workspace_above_first: false,
                 default_column_display: Tabbed,
                 focus_wrapping: Yes,
+                workspace_layout: Default,
+                floating_minimum_size: FloatingSize {
+                    width: 75,
+                    height: 50,
+                },
+                floating_maximum_size: FloatingSize {
+                    width: 0,
+                    height: 0,
+                },
                 gaps: 8.0,
                 struts: Struts {
                     left: FloatOrInt(

@@ -40,6 +40,7 @@ struct TestWindowInner {
     animate_next_configure: Cell<bool>,
     animation_snapshot: RefCell<Option<LayoutElementRenderSnapshot>>,
     rules: ResolvedWindowRules,
+    focus_timestamp: Cell<Option<Duration>>,
 }
 
 #[derive(Debug, Clone)]
@@ -92,6 +93,7 @@ impl TestWindow {
             animate_next_configure: Cell::new(false),
             animation_snapshot: RefCell::new(None),
             rules: params.rules.unwrap_or_default(),
+            focus_timestamp: Cell::new(None),
         }))
     }
 
@@ -153,6 +155,10 @@ impl LayoutElement for TestWindow {
 
     fn id(&self) -> &Self::Id {
         &self.0.id
+    }
+
+    fn focus_timestamp(&self) -> Option<Duration> {
+        self.0.focus_timestamp.get()
     }
 
     fn size(&self) -> Size<i32, Logical> {
@@ -1142,8 +1148,12 @@ impl Op {
             Op::FocusWindowBottom => layout.focus_window_bottom(),
             Op::FocusWindowDownOrTop => layout.focus_window_down_or_top(),
             Op::FocusWindowUpOrBottom => layout.focus_window_up_or_bottom(),
-            Op::MoveColumnLeft => layout.move_left(),
-            Op::MoveColumnRight => layout.move_right(),
+            Op::MoveColumnLeft => {
+                layout.move_left();
+            }
+            Op::MoveColumnRight => {
+                layout.move_right();
+            }
             Op::MoveColumnToFirst => layout.move_column_to_first(),
             Op::MoveColumnToLast => layout.move_column_to_last(),
             Op::MoveColumnLeftOrToMonitorLeft(id) => {
@@ -1163,8 +1173,12 @@ impl Op {
                 layout.move_column_right_or_to_output(&output);
             }
             Op::MoveColumnToIndex(index) => layout.move_column_to_index(index),
-            Op::MoveWindowDown => layout.move_down(),
-            Op::MoveWindowUp => layout.move_up(),
+            Op::MoveWindowDown => {
+                layout.move_down();
+            }
+            Op::MoveWindowUp => {
+                layout.move_up();
+            }
             Op::MoveWindowDownOrToWorkspaceDown => layout.move_down_or_to_workspace_down(),
             Op::MoveWindowUpOrToWorkspaceUp => layout.move_up_or_to_workspace_up(),
             Op::ConsumeOrExpelWindowLeft { id } => {
@@ -2169,6 +2183,111 @@ fn large_negative_height_change() {
 }
 
 #[test]
+fn tiled_window_gets_sway_default_size_when_first_moved_to_scratchpad() {
+    let mut options = Options::default();
+    options.layout.border.off = true;
+    let mut layout = check_ops_with_options(
+        options,
+        [
+            Op::AddOutput(1),
+            Op::AddWindow {
+                params: TestWindowParams::new(1),
+            },
+        ],
+    );
+
+    layout.move_to_scratchpad(Some(&1));
+    layout.show_scratchpad(Some(&1));
+
+    let window = layout
+        .windows()
+        .find(|(_, window)| window.id() == &1)
+        .unwrap()
+        .1;
+    assert_eq!(window.0.requested_size.get(), Some(Size::from((640, 540))));
+    let workspace = layout.active_workspace().unwrap();
+    let (_, pos) = workspace
+        .floating()
+        .tiles_with_ipc_layouts()
+        .find(|(tile, _)| tile.window().id() == &1)
+        .unwrap();
+    assert_eq!(pos.tile_pos_in_workspace_view, Some((320., 90.)));
+}
+
+#[test]
+fn scratchpad_default_size_honors_client_size_hints() {
+    let mut options = Options::default();
+    options.layout.border.off = true;
+    let mut layout = check_ops_with_options(
+        options,
+        [
+            Op::AddOutput(1),
+            Op::AddWindow {
+                params: TestWindowParams {
+                    min_max_size: (Size::from((700, 100)), Size::from((800, 400))),
+                    ..TestWindowParams::new(1)
+                },
+            },
+        ],
+    );
+
+    layout.move_to_scratchpad(Some(&1));
+    layout.show_scratchpad(Some(&1));
+
+    let window = layout
+        .windows()
+        .find(|(_, window)| window.id() == &1)
+        .unwrap()
+        .1;
+    assert_eq!(window.0.requested_size.get(), Some(Size::from((700, 400))));
+    let workspace = layout.active_workspace().unwrap();
+    let (_, layout) = workspace
+        .floating()
+        .tiles_with_ipc_layouts()
+        .find(|(tile, _)| tile.window().id() == &1)
+        .unwrap();
+    assert_eq!(layout.tile_pos_in_workspace_view, Some((290., 160.)));
+}
+
+#[test]
+fn configured_floating_constraints_clamp_resize_requests() {
+    let mut options = Options::default();
+    options.layout.border.off = true;
+    options.layout.floating_minimum_size = swayward_config::FloatingSize {
+        width: 60,
+        height: 50,
+    };
+    options.layout.floating_maximum_size = swayward_config::FloatingSize {
+        width: 100,
+        height: 90,
+    };
+    let mut params = TestWindowParams::new(1);
+    params.is_floating = true;
+    let layout = check_ops_with_options(
+        options,
+        [
+            Op::AddOutput(1),
+            Op::AddWindow { params },
+            Op::SetWindowWidth {
+                id: None,
+                change: SizeChange::SetFixed(200),
+            },
+            Op::SetWindowHeight {
+                id: None,
+                change: SizeChange::SetFixed(10),
+            },
+        ],
+    );
+
+    let window = layout
+        .windows()
+        .find(|(_, window)| window.id() == &1)
+        .unwrap()
+        .1;
+    assert_eq!(window.0.requested_size.get(), Some(Size::from((100, 50))));
+}
+
+#[test]
 fn large_max_size() {
     let ops = [
         Op::AddOutput(1),
@@ -2732,6 +2851,66 @@ fn move_window_to_different_output() {
         ..Default::default()
     };
     check_ops_with_options(options, ops);
+}
+
+#[test]
+fn mixed_layer_selection_filters_one_global_focus_order() {
+    let output = Output::new(
+        "output".into(),
+        PhysicalProperties {
+            size: Size::from((1280, 720)),
+            subpixel: Subpixel::Unknown,
+            make: String::new(),
+            model: String::new(),
+            serial_number: String::new(),
+        },
+    );
+    output.change_current_state(
+        Some(Mode {
+            size: Size::from((1280, 720)),
+            refresh: 60000,
+        }),
+        None,
+        None,
+        None,
+    );
+    output.user_data().insert_if_missing(|| OutputName {
+        connector: "output".into(),
+        make: None,
+        model: None,
+        serial: None,
+    });
+    let mut workspace = Workspace::new(
+        output,
+        Clock::with_time(Duration::ZERO),
+        Rc::new(Options::default()),
+    );
+    for (id, timestamp) in [(1, 4), (2, 3), (3, 2), (4, 1)] {
+        let window = TestWindow::new(TestWindowParams::new(id));
+        window
+            .0
+            .focus_timestamp
+            .set(Some(Duration::from_secs(timestamp)));
+        let tile = workspace.make_tile(window);
+        workspace.add_tile(
+            tile,
+            WorkspaceAddWindowTarget::Auto,
+            ActivateWindow::Yes,
+            ColumnWidth::Proportion(0.5),
+            false,
+            false,
+            None,
+        );
+        if id >= 3 {
+            workspace.toggle_window_floating(Some(&id));
+        }
+    }
+
+    workspace.activate_window(&1);
+    for expected in [1, 2, 3, 4] {
+        assert_eq!(workspace.active_window().unwrap().id(), &expected);
+        workspace.remove_tile(&expected, Transaction::new());
+    }
 }
 
 #[test]

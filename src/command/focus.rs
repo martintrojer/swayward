@@ -11,11 +11,17 @@ pub(super) fn direction(state: &mut State, direction: Direction) -> Option<Actio
         Direction::Up => Action::FocusWindowOrMonitorUp,
         Direction::Down => Action::FocusWindowOrMonitorDown,
     };
-    let changed = match direction {
-        Direction::Left => state.swayward.layout.focus_left(),
-        Direction::Right => state.swayward.layout.focus_right(),
-        Direction::Up => state.swayward.layout.focus_up(),
-        Direction::Down => state.swayward.layout.focus_down(),
+    let force = state.swayward.config.borrow().layout.focus_wrapping
+        == swayward_config::FocusWrapping::Force;
+    let changed = match (direction, force) {
+        (Direction::Left, true) => state.swayward.layout.focus_left(),
+        (Direction::Right, true) => state.swayward.layout.focus_right(),
+        (Direction::Up, true) => state.swayward.layout.focus_up(),
+        (Direction::Down, true) => state.swayward.layout.focus_down(),
+        (Direction::Left, false) => state.swayward.layout.focus_left_without_wrap(),
+        (Direction::Right, false) => state.swayward.layout.focus_right_without_wrap(),
+        (Direction::Up, false) => state.swayward.layout.focus_up_without_wrap(),
+        (Direction::Down, false) => state.swayward.layout.focus_down_without_wrap(),
     };
     if changed {
         state.swayward.queue_redraw_all();
@@ -48,6 +54,22 @@ pub(super) fn child(state: &mut State) {
     state.swayward.queue_redraw_all();
 }
 
+pub(super) fn next_prev_sibling(state: &mut State, next: bool) {
+    if state.swayward.layout.focus_next_prev_sibling(next) {
+        state.swayward.queue_redraw_all();
+    }
+}
+
+pub(super) fn next_or_prev(state: &mut State, next: bool) -> Result<(), CommandOutcome> {
+    state
+        .swayward
+        .layout
+        .focus_next_or_prev(next)
+        .ok_or_else(|| failure("Expected a tiling container"))?;
+    state.swayward.queue_redraw_all();
+    Ok(())
+}
+
 pub(super) fn floating(state: &mut State) -> Action {
     state.swayward.layout.disable_active_workspace_fullscreen();
     Action::FocusFloating
@@ -69,7 +91,11 @@ pub(super) fn targeted(state: &mut State, target: CommandTarget) -> Result<(), C
             let Some(window) = window else {
                 return Err(failure("No matching node."));
             };
-            state.swayward.layout.activate_window(&window);
+            if state.swayward.layout.is_scratchpad_hidden(&window) {
+                state.swayward.layout.show_scratchpad(Some(&window));
+            } else {
+                state.swayward.layout.activate_window(&window);
+            }
         }
         CommandTarget::Container(workspace, node) => {
             if !state.swayward.layout.focus_tiling_node(workspace, node) {
@@ -78,6 +104,50 @@ pub(super) fn targeted(state: &mut State, target: CommandTarget) -> Result<(), C
         }
     }
     Ok(())
+}
+
+pub(super) fn targeted_workspace(
+    state: &mut State,
+    target: CommandTarget,
+) -> Result<(), CommandOutcome> {
+    let CommandTarget::Window(target_id) = target else {
+        return Err(failure("No container to focus was specified."));
+    };
+    let window = state
+        .swayward
+        .layout
+        .windows()
+        .find_map(|(_, mapped)| (mapped.id() == target_id).then(|| mapped.window.clone()));
+    let Some(window) = window else {
+        return Err(failure("No matching node."));
+    };
+    let target_workspace = state
+        .swayward
+        .layout
+        .workspaces()
+        .find(|(_, _, workspace)| workspace.has_window(&window))
+        .map(|(_, _, workspace)| workspace.id());
+    let active_workspace = state
+        .swayward
+        .layout
+        .active_workspace()
+        .map(|workspace| workspace.id());
+    let auto_back_and_forth = state
+        .swayward
+        .config
+        .borrow()
+        .input
+        .workspace_auto_back_and_forth;
+    if auto_back_and_forth && target_workspace == active_workspace {
+        let previous = crate::command::WorkspaceTarget::BackAndForth;
+        state
+            .swayward
+            .layout
+            .activate_sway_workspace(previous)
+            .map_err(failure)
+    } else {
+        targeted(state, target)
+    }
 }
 
 pub(super) fn targeted_direction(

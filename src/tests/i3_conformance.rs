@@ -33,7 +33,15 @@ impl AllowedRejection {
                     && command.starts_with("[con_mark=\"")
                     && command.ends_with("\"] focus"))
                 || (self.command == "[con_mark=a] move to workspace *"
-                    && command.starts_with("[con_mark=a] move to workspace ")))
+                    && command.starts_with("[con_mark=a] move to workspace "))
+                || (self.command == "[id= . *] focus output right"
+                    && command.starts_with("[id= . ")
+                    && command.ends_with("] focus output right"))
+                || (self.command == "[id=*] swap container with id *"
+                    && command.starts_with("[id=")
+                    && command.contains("] swap container with id "))
+                || (self.command == "[app_id=b] swap with id *"
+                    && command.starts_with("[app_id=b] swap with id ")))
     }
 }
 
@@ -79,6 +87,52 @@ const ALLOWED_REJECTIONS: &[AllowedRejection] = &[
         test: "119-match.t",
         command: "[con_id=\"99999\"] kill",
         reason: "the test verifies that an unmatched criterion leaves the window alive",
+    },
+    AllowedRejection {
+        test: "260-invalid-criteria.t",
+        command: "[con_id=foobar] kill",
+        reason: "the test intentionally sends a malformed con_id criterion",
+    },
+    AllowedRejection {
+        test: "261-match-con_id-con_mark-combinations.t",
+        command: "[con_id=__focused__ app_id=doesnotmatch] kill",
+        reason: "the test expects the combined criterion not to match",
+    },
+    AllowedRejection {
+        test: "261-match-con_id-con_mark-combinations.t",
+        command: "[con_mark=marked app_id=doesnotmatch] kill",
+        reason: "the test expects the combined criterion not to match",
+    },
+    AllowedRejection {
+        test: "502-focus-output.t",
+        command: "[con_mark=doesnotexist] focus output right",
+        reason: "the assertion expects the unmatched criterion to leave output focus unchanged",
+    },
+    AllowedRejection {
+        test: "502-focus-output.t",
+        command: "[id= . *] focus output right",
+        reason:
+            "unchanged upstream file contains this malformed criterion and expects no focus change",
+    },
+    AllowedRejection {
+        test: "294-focus-order.t",
+        command: "[id=*] swap container with id *",
+        reason: "sway's id swap target is an X11 window id unavailable to native Wayland clients",
+    },
+    AllowedRejection {
+        test: "302-tree.t",
+        command: "[app_id=b] swap with id *",
+        reason: "i3's optional swap words and X11 id target are unavailable in sway",
+    },
+    AllowedRejection {
+        test: "302-tree.t",
+        command: "[con_mark=S1] swap with mark V1",
+        reason: "i3 permits omitted swap words; sway requires swap container with mark",
+    },
+    AllowedRejection {
+        test: "302-tree.t",
+        command: "[con_mark=S1] swap with mark T1",
+        reason: "i3 permits omitted swap words; sway requires swap container with mark",
     },
     AllowedRejection {
         test: "126-regress-close.t",
@@ -129,7 +183,8 @@ const ALLOWED_REJECTIONS: &[AllowedRejection] = &[
 
 fn rejected_commands(stderr: &str) -> impl Iterator<Item = &str> {
     stderr.lines().filter_map(|line| {
-        line.strip_prefix("# swayward rejected `")
+        line.trim_start()
+            .strip_prefix("# swayward rejected `")
             .and_then(|line| line.split_once("`: "))
             .map(|(command, _)| command)
     })
@@ -154,6 +209,10 @@ fn expected_rejections(test: &str) -> Vec<&'static AllowedRejection> {
             ) && allowed.command == "mode toggle"
             {
                 2
+            } else if test == "294-focus-order.t"
+                && allowed.command == "[id=*] swap container with id *"
+            {
+                3
             } else {
                 1
             };
@@ -180,12 +239,18 @@ fn socket_path(kind: &str) -> PathBuf {
 }
 
 fn create_window(fixture: &mut Fixture, client: super::client::ClientId, request: &Value) -> u32 {
+    let fullscreen_output = request["fullscreen_output"]
+        .as_str()
+        .map(|name| fixture.client(client).output(name));
     let window = fixture.client(client).create_window();
     if let Some(app_id) = request["app_id"].as_str() {
         window.xdg_toplevel.set_app_id(app_id.to_owned());
     }
     if let Some(name) = request["name"].as_str() {
         window.set_title(name);
+    }
+    if let Some(output) = fullscreen_output.as_ref() {
+        window.set_fullscreen(Some(output));
     }
     window.surface.id().protocol_id()
 }
@@ -373,7 +438,7 @@ fn fake_outputs(config: &str) -> Result<Option<Vec<FakeOutput>>, String> {
         .map(Some)
 }
 
-fn translate_config(config: &str) -> Result<swayward_config::Config, String> {
+fn translate_config_file(config: &str) -> Result<(PathBuf, swayward_config::Config), String> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = socket_path("config");
     let config = config
@@ -401,10 +466,57 @@ fn translate_config(config: &str) -> Result<swayward_config::Config, String> {
         return Err(format!("i3 config translation was incomplete:\n{stderr}"));
     }
     let translated = String::from_utf8(output.stdout).map_err(|error| error.to_string())?;
-    swayward_config::Config::parse_mem(&translated).map_err(|error| format!("{error:?}"))
+    let path = socket_path("translated-config");
+    std::fs::write(&path, translated).map_err(|error| error.to_string())?;
+    let config = swayward_config::Config::load(&path)
+        .config
+        .map_err(|error| format!("{error:?}"))?;
+    Ok((path, config))
 }
 
-fn handle_control(fixture: &mut Fixture, client: super::client::ClientId, stream: UnixStream) {
+fn translate_config(config: &str) -> Result<swayward_config::Config, String> {
+    let (path, config) = translate_config_file(config)?;
+    let _ = std::fs::remove_file(path);
+    Ok(config)
+}
+
+fn prepare_test_config(source: &str) -> Result<swayward_config::Config, String> {
+    let mut config = translate_config(source)?;
+    config.layout.gaps = 0.;
+    config.layout.border.off = false;
+    if !source.lines().any(|line| {
+        line.split_whitespace()
+            .next()
+            .is_some_and(|word| word.eq_ignore_ascii_case("focus_follows_mouse"))
+    }) {
+        config
+            .input
+            .focus_follows_mouse
+            .get_or_insert(swayward_config::input::FocusFollowsMouse {
+                max_scroll_amount: None,
+            });
+    }
+    Ok(config)
+}
+
+pub(super) fn reload_test_config(fixture: &mut Fixture, source: &str) -> Result<(), String> {
+    let config = prepare_test_config(source)?;
+    fixture.niri_state().reload_config(Ok(config));
+    fixture.niri_state().ipc_config_loaded(false);
+    Ok(())
+}
+
+fn reload_loaded_test_config(fixture: &mut Fixture, source: Option<&str>) -> Result<(), String> {
+    let source = source.ok_or_else(|| "no test config has been loaded".to_owned())?;
+    reload_test_config(fixture, source)
+}
+
+fn handle_control(
+    fixture: &mut Fixture,
+    client: super::client::ClientId,
+    loaded_config_source: &mut Option<String>,
+    stream: UnixStream,
+) {
     let mut request = String::new();
     BufReader::new(stream.try_clone().unwrap())
         .read_line(&mut request)
@@ -413,23 +525,45 @@ fn handle_control(fixture: &mut Fixture, client: super::client::ClientId, stream
     let reply = match request["action"].as_str().unwrap() {
         "config" => {
             let source = request["config"].as_str().unwrap();
-            match (fake_outputs(source), translate_config(source)) {
-                (Ok(outputs), Ok(mut config)) => {
+            match (fake_outputs(source), translate_config_file(source)) {
+                (Ok(outputs), Ok((path, mut config))) => {
+                    config.layout.gaps = 0.;
                     config.layout.border.off = false;
-                    config.input.focus_follows_mouse.get_or_insert(
-                        swayward_config::input::FocusFollowsMouse {
-                            max_scroll_amount: None,
-                        },
-                    );
+                    if !source.lines().any(|line| {
+                        line.split_whitespace()
+                            .next()
+                            .is_some_and(|word| word.eq_ignore_ascii_case("focus_follows_mouse"))
+                    }) {
+                        config.input.focus_follows_mouse.get_or_insert(
+                            swayward_config::input::FocusFollowsMouse {
+                                max_scroll_amount: None,
+                            },
+                        );
+                    }
+                    fixture
+                        .swayward()
+                        .layout
+                        .initialize_workspaces_from_bindings(&config);
                     fixture.niri_state().reload_config(Ok(config));
+                    crate::utils::watcher::setup(
+                        fixture.niri_state(),
+                        &swayward_config::ConfigPath::Explicit(path),
+                        Vec::new(),
+                    );
                     if let Some(outputs) = outputs {
                         fixture.replace_outputs(outputs);
+                        fixture.double_roundtrip(client);
                     }
+                    *loaded_config_source = Some(source.to_owned());
                     json!({ "success": true })
                 }
                 (Err(error), _) | (_, Err(error)) => json!({ "success": false, "error": error }),
             }
         }
+        "reload" => match reload_loaded_test_config(fixture, loaded_config_source.as_deref()) {
+            Ok(()) => json!({ "success": true }),
+            Err(error) => json!({ "success": false, "error": error }),
+        },
         "create" => json!({ "handle": create_window(fixture, client, &request) }),
         "open" => {
             let handle = create_window(fixture, client, &request);
@@ -438,6 +572,22 @@ fn handle_control(fixture: &mut Fixture, client: super::client::ClientId, stream
         "map" => json!({
             "id": map_window(fixture, client, request["handle"].as_u64().unwrap() as u32)
         }),
+        "set_title" => {
+            let surface_id = request["handle"].as_u64().unwrap() as u32;
+            let title = request["title"].as_str().unwrap();
+            let surface = fixture
+                .client(client)
+                .state
+                .windows
+                .iter()
+                .find(|window| window.surface.id().protocol_id() == surface_id)
+                .unwrap()
+                .surface
+                .clone();
+            fixture.client(client).window(&surface).set_title(title);
+            fixture.double_roundtrip(client);
+            json!({ "success": true })
+        }
         "close" => {
             json!({ "success": close_window(fixture, client, request["id"].as_i64().unwrap()) })
         }
@@ -451,6 +601,50 @@ fn handle_control(fixture: &mut Fixture, client: super::client::ClientId, stream
         "activate" => json!({
             "success": activate_window(fixture, client, request["id"].as_i64().unwrap())
         }),
+        "pointer_button" => match (request["button"].as_u64(), request["pressed"].as_bool()) {
+            (Some(button), Some(pressed)) => {
+                super::ipc::pointer_button(fixture, u32::try_from(button).unwrap(), pressed);
+                json!({ "success": true })
+            }
+            _ => json!({ "success": false, "error": "button and pressed are required" }),
+        },
+        "pointer_axis" => match (
+            request["horizontal_v120"].as_f64(),
+            request["vertical_v120"].as_f64(),
+        ) {
+            (Some(horizontal), Some(vertical)) => {
+                super::ipc::pointer_axis(fixture, horizontal, vertical);
+                json!({ "success": true })
+            }
+            _ => {
+                json!({ "success": false, "error": "horizontal_v120 and vertical_v120 are required" })
+            }
+        },
+        "key_event" => match (request["key"].as_u64(), request["pressed"].as_bool()) {
+            (Some(key), Some(pressed)) => {
+                super::ipc::key_event(fixture, u32::try_from(key).unwrap(), pressed);
+                json!({ "success": true })
+            }
+            _ => json!({ "success": false, "error": "key and pressed are required" }),
+        },
+        "type_key_chords" => {
+            let chords = request["chords"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|chord| {
+                    chord
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|key| u32::try_from(key.as_u64().unwrap()).unwrap())
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>();
+            let chords = chords.iter().map(Vec::as_slice).collect::<Vec<_>>();
+            super::ipc::type_key_chords(fixture, &chords);
+            json!({ "success": true })
+        }
         "warp_pointer" => match (request["x"].as_f64(), request["y"].as_f64()) {
             (Some(x), Some(y)) => {
                 settle_configures(fixture, client);
@@ -552,17 +746,32 @@ fn run_i3_test(test: &str) {
         .env("I3SOCK", &ipc_socket)
         .env("SWAYWARD_TEST_CONTROL", &control_path)
         .env("SWAYWARD_I3_TEST", test)
+        .env(
+            "PATH",
+            format!(
+                "{}:{}",
+                root.join("tests/i3/bin").display(),
+                std::env::var("PATH").unwrap_or_default()
+            ),
+        )
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
 
     let started = Instant::now();
-    let deadline = started + Duration::from_secs(30);
+    // Generous enough that a cold build cache and a loaded machine cannot trip
+    // it: 132-move-workspace.t runs 160 assertions in ~14s warm but has been
+    // measured at 33s cold, and the suite runs these files in parallel. A
+    // genuinely hung test still fails, just later.
+    let deadline = started + Duration::from_secs(180);
+    let mut loaded_config_source = None;
     loop {
         fixture.dispatch();
         match control.accept() {
-            Ok((stream, _)) => handle_control(&mut fixture, client, stream),
+            Ok((stream, _)) => {
+                handle_control(&mut fixture, client, &mut loaded_config_source, stream)
+            }
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
             Err(error) => panic!("test control accept failed: {error}"),
         }
@@ -645,6 +854,18 @@ fn rejection_allowlist_is_keyed_by_file_and_exact_command() {
         "111-goto.t",
         &["[con_mark=\"mark.A1b2\"] focus"]
     ));
+    assert!(rejections_match(
+        "294-focus-order.t",
+        &[
+            "[id=1] swap container with id 2",
+            "[id=3] swap container with id 4",
+            "[id=5] swap container with id 6",
+        ]
+    ));
+    assert!(!rejections_match(
+        "294-focus-order.t",
+        &["[id=1] swap container with con_id 2"]
+    ));
     assert!(ALLOWED_REJECTIONS
         .iter()
         .all(|rejection| !rejection.reason.is_empty()));
@@ -691,10 +912,56 @@ fn fake_outputs_create_real_outputs_with_requested_geometry() {
 }
 
 #[test]
+fn test_config_reload_requires_loaded_source() {
+    let mut fixture = Fixture::new();
+    assert_eq!(
+        reload_loaded_test_config(&mut fixture, None).unwrap_err(),
+        "no test config has been loaded"
+    );
+    reload_loaded_test_config(&mut fixture, Some("font monospace")).unwrap();
+}
+
+#[test]
 fn i3_config_translation_rejects_unhandled_directives() {
     let error = translate_config("font monospace\nmystery value\n").unwrap_err();
     assert!(error.contains("manual attention: 1 directive(s)"));
     assert!(error.contains("unhandled: mystery value"));
+}
+
+#[test]
+fn i3_config_translation_never_applies_a_partial_or_invalid_config() {
+    let incomplete = translate_config("bindsym X\n").unwrap_err();
+    assert!(incomplete.contains("manual attention: 1 directive(s)"));
+    assert!(incomplete.contains("malformed bindsym: X"));
+
+    let invalid = translate_config("mode \"default\" {\n bindsym X resize\n}\n").unwrap_err();
+    assert!(invalid.contains("Expected 'resize grow|shrink"));
+
+    let command = format!("invalid-command {}", "x".repeat(5000));
+    let source = format!("bindsym X {command}\n");
+    let invalid = translate_config(&source).unwrap_err();
+    assert!(invalid.contains("Unknown/invalid command 'invalid-command'"));
+    assert!(invalid.contains(&"x".repeat(5000)));
+}
+
+#[test]
+fn explicit_default_binding_mode_loads() {
+    let config = translate_config("mode \"default\" {\n    bindsym X nop\n}\n").unwrap();
+    let mode = config
+        .binding_modes
+        .iter()
+        .find(|mode| mode.name == "default")
+        .unwrap();
+    assert_eq!(mode.binds.0.len(), 1);
+}
+
+#[test]
+fn workspace_layout_config_wraps_new_windows() {
+    let config = translate_config("workspace_layout tabbed\n").unwrap();
+    assert_eq!(
+        config.layout.workspace_layout,
+        swayward_config::WorkspaceLayout::Tabbed
+    );
 }
 
 fn passing_tests() -> impl Iterator<Item = &'static str> {

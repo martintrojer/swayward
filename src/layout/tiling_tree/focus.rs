@@ -29,6 +29,33 @@ impl<W: LayoutElement> TilingTree<W> {
             .insert(rank.min(self.focus_history.len()), node);
     }
 
+    pub(super) fn window_focus_history(&self) -> Vec<W::Id> {
+        self.focus_history
+            .iter()
+            .filter_map(|node| self.tile(*node).map(|tile| tile.window().id().clone()))
+            .collect()
+    }
+
+    pub(super) fn restore_window_focus_history(&mut self, history: Vec<W::Id>) {
+        self.focus_history = history
+            .into_iter()
+            .filter_map(|window| self.node_for_window(&window))
+            .collect();
+    }
+
+    pub(crate) fn sort_focus_history_by_timestamp(&mut self) {
+        let mut history = self
+            .focus_history
+            .iter()
+            .filter_map(|node| {
+                self.tile(*node)
+                    .map(|tile| (*node, tile.window().focus_timestamp()))
+            })
+            .collect::<Vec<_>>();
+        history.sort_by_key(|(_, timestamp)| std::cmp::Reverse(*timestamp));
+        self.focus_history = history.into_iter().map(|(node, _)| node).collect();
+    }
+
     pub fn root_is_focused(&self) -> bool {
         self.focus == Some(self.root)
     }
@@ -85,7 +112,126 @@ impl<W: LayoutElement> TilingTree<W> {
         }
     }
 
+    pub fn focus_from_output_direction(&mut self, dir: Direction) -> bool {
+        let target = if let Some(fullscreen) = self.fullscreen_node() {
+            self.focused_leaf_in(fullscreen)
+        } else {
+            let TreeNode::Split {
+                layout, children, ..
+            } = &self.nodes[&self.root].value
+            else {
+                return false;
+            };
+            let matching_axis = matches!(
+                (dir, layout),
+                (
+                    Direction::Left | Direction::Right,
+                    Layout::SplitH | Layout::Tabbed
+                ) | (
+                    Direction::Up | Direction::Down,
+                    Layout::SplitV | Layout::Stacked
+                )
+            );
+            if matching_axis {
+                let branch = if matches!(dir, Direction::Left | Direction::Up) {
+                    children.last()
+                } else {
+                    children.first()
+                };
+                branch.and_then(|branch| self.focused_leaf_in(*branch))
+            } else {
+                self.focused_leaf_in(self.root)
+            }
+        };
+        self.set_focus_id(target);
+        target.is_some()
+    }
+
+    pub fn focus_next_prev_sibling(&mut self, next: bool) -> bool {
+        let Some(focus) = self.focus else {
+            return false;
+        };
+        let Some(parent) = self.nodes.get(&focus).and_then(|node| node.parent) else {
+            return false;
+        };
+        let TreeNode::Split { layout, .. } = &self.nodes[&parent].value else {
+            return false;
+        };
+        let direction_layout = match layout {
+            Layout::SplitH | Layout::Tabbed => Layout::SplitH,
+            Layout::SplitV | Layout::Stacked => Layout::SplitV,
+        };
+        let mut current = focus;
+        let mut wrap = None;
+        while let Some(parent) = self.nodes.get(&current).and_then(|node| node.parent) {
+            let TreeNode::Split {
+                layout, children, ..
+            } = &self.nodes[&parent].value
+            else {
+                return false;
+            };
+            if Self::layouts_parallel(*layout, direction_layout) {
+                let index = children.iter().position(|child| *child == current).unwrap();
+                let target = if next {
+                    children.get(index + 1).copied()
+                } else {
+                    index
+                        .checked_sub(1)
+                        .and_then(|index| children.get(index).copied())
+                };
+                if target.is_some() {
+                    self.set_focus_id(target);
+                    return true;
+                }
+                if children.len() > 1 && wrap.is_none() {
+                    wrap = if next {
+                        children.first().copied()
+                    } else {
+                        children.last().copied()
+                    };
+                    if self.options.layout.focus_wrapping == swayward_config::FocusWrapping::Force {
+                        self.set_focus_id(wrap);
+                        return true;
+                    }
+                }
+            }
+            current = parent;
+        }
+        if wrap.is_some() {
+            self.set_focus_id(wrap);
+        }
+        wrap.is_some()
+    }
+
+    pub fn focus_next_or_prev(&mut self, next: bool) -> bool {
+        let Some(parent) = self
+            .focus
+            .and_then(|focus| self.nodes.get(&focus))
+            .and_then(|node| node.parent)
+        else {
+            return false;
+        };
+        let TreeNode::Split { layout, .. } = self.nodes[&parent].value else {
+            return false;
+        };
+        let direction = match (next, layout) {
+            (false, Layout::SplitH | Layout::Tabbed) => Direction::Left,
+            (true, Layout::SplitH | Layout::Tabbed) => Direction::Right,
+            (false, Layout::SplitV | Layout::Stacked) => Direction::Up,
+            (true, Layout::SplitV | Layout::Stacked) => Direction::Down,
+        };
+        self.focus_direction(direction)
+    }
+
     pub fn focus_direction(&mut self, dir: Direction) -> bool {
+        self.focus_direction_inner(dir, true)
+    }
+
+    pub fn focus_direction_without_wrap(&mut self, dir: Direction) -> bool {
+        self.focus_direction_inner(dir, false)
+    }
+
+    fn focus_direction_inner(&mut self, dir: Direction, allow_wrap: bool) -> bool {
         let Some(mut current) = self.focus else {
             return false;
         };
@@ -118,7 +264,7 @@ impl<W: LayoutElement> TilingTree<W> {
                     self.set_focus_id(next);
                     return next.is_some();
                 }
-                if children.len() > 1 {
+                if allow_wrap && children.len() > 1 {
                     let candidate = if backwards {
                         children.last().copied()
                     } else {
@@ -285,7 +431,7 @@ impl<W: LayoutElement> TilingTree<W> {
     fn focus_extreme(&mut self, bottom: bool) {
         let geometries = self.compute_geometry();
         let focus = geometries
-            .nodes
+            .leaf_contents
             .iter()
             .min_by(|(_, a), (_, b)| {
                 let a = a.loc.y + if bottom { a.size.h } else { 0. };

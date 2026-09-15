@@ -53,14 +53,14 @@ impl<W: LayoutElement> TilingTree<W> {
             {
                 continue;
             }
-            let Some(rect) = geometries.nodes.get(id) else {
+            let Some(rect) = geometries.leaf_contents.get(id) else {
                 continue;
             };
             let mut view_rect = Rectangle::from_size(self.view_size);
             view_rect.loc -= rect.loc + tile.render_offset();
             tile.update_render_elements(is_active && Some(*id) == focus, view_rect);
         }
-        self.update_tab_indicators(is_active, &geometries.nodes);
+        self.update_tab_indicators(is_active, &geometries.leaf_contents);
     }
 
     pub fn tiles_with_render_positions(
@@ -73,7 +73,7 @@ impl<W: LayoutElement> TilingTree<W> {
             let TreeNode::Leaf { tile } = node else {
                 return None;
             };
-            let rect = geometries.nodes.get(&id)?;
+            let rect = geometries.leaf_contents.get(&id)?;
             let pos = (rect.loc + tile.render_offset())
                 .to_physical_precise_round(scale)
                 .to_logical(scale);
@@ -91,7 +91,7 @@ impl<W: LayoutElement> TilingTree<W> {
             let TreeNode::Leaf { tile } = &mut node.value else {
                 return None;
             };
-            let mut pos = geometries.nodes.get(id)?.loc + tile.render_offset();
+            let mut pos = geometries.leaf_contents.get(id)?.loc + tile.render_offset();
             if round {
                 pos = pos.to_physical_precise_round(scale).to_logical(scale);
             }
@@ -106,8 +106,10 @@ impl<W: LayoutElement> TilingTree<W> {
                 return None;
             };
             let mut layout = tile.ipc_layout_template();
-            layout.tile_pos_in_workspace_view =
-                geometries.nodes.get(&id).map(|rect| rect.loc.into());
+            layout.tile_pos_in_workspace_view = geometries
+                .leaf_contents
+                .get(&id)
+                .map(|rect| rect.loc.into());
             Some((tile.as_ref(), layout))
         })
     }
@@ -161,7 +163,7 @@ impl<W: LayoutElement> TilingTree<W> {
             ));
         }
         for (split, indicator) in &self.tab_indicators {
-            let Some((area, children)) = self.tab_area(*split, &geometries.nodes) else {
+            let Some((area, children)) = self.tab_area(*split, &geometries.leaf_contents) else {
                 continue;
             };
             if let Some(index) = indicator.hit(area, children.len(), self.scale, pos) {
@@ -276,7 +278,7 @@ impl<W: LayoutElement> TilingTree<W> {
             {
                 continue;
             }
-            let Some(rect) = geometries.nodes.get(&id) else {
+            let Some(rect) = geometries.leaf_contents.get(&id) else {
                 continue;
             };
             let tile_pos = (rect.loc + tile.render_offset())

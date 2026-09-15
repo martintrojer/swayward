@@ -3,7 +3,7 @@ use swayward_ipc::CommandOutcome;
 
 use super::{
     failure, success, CommandTarget, Direction, MovePosition, OutputTarget, ResizeAmount,
-    ResizeUnit, WorkspaceTarget,
+    ResizeUnit, SwapTarget, WorkspaceTarget,
 };
 use crate::swayward::State;
 
@@ -50,38 +50,22 @@ pub(super) fn output_target(
         }
         OutputTarget::Name(name) => state.swayward.output_by_name_match(name).cloned(),
         OutputTarget::Direction(direction) => match (direction, reference) {
-            (Direction::Left, Some(output)) => state.swayward.output_left_of_point(
-                output,
-                reference_point.unwrap_or_else(|| {
+            (direction, Some(output)) => {
+                let reference = reference_point.unwrap_or_else(|| {
                     crate::utils::center(
                         state.swayward.global_space.output_geometry(output).unwrap(),
                     )
-                }),
-            ),
-            (Direction::Right, Some(output)) => state.swayward.output_right_of_point(
-                output,
-                reference_point.unwrap_or_else(|| {
-                    crate::utils::center(
-                        state.swayward.global_space.output_geometry(output).unwrap(),
-                    )
-                }),
-            ),
-            (Direction::Up, Some(output)) => state.swayward.output_up_of_point(
-                output,
-                reference_point.unwrap_or_else(|| {
-                    crate::utils::center(
-                        state.swayward.global_space.output_geometry(output).unwrap(),
-                    )
-                }),
-            ),
-            (Direction::Down, Some(output)) => state.swayward.output_down_of_point(
-                output,
-                reference_point.unwrap_or_else(|| {
-                    crate::utils::center(
-                        state.swayward.global_space.output_geometry(output).unwrap(),
-                    )
-                }),
-            ),
+                });
+                let (horizontal, positive) = match direction {
+                    Direction::Left => (true, false),
+                    Direction::Right => (true, true),
+                    Direction::Up => (false, false),
+                    Direction::Down => (false, true),
+                };
+                state
+                    .swayward
+                    .adjacent_output(output, reference, horizontal, positive)
+            }
             (Direction::Left, None) => state.swayward.output_left(),
             (Direction::Right, None) => state.swayward.output_right(),
             (Direction::Up, None) => state.swayward.output_up(),
@@ -104,6 +88,27 @@ fn output_target_name(target: &OutputTarget) -> &str {
         OutputTarget::Direction(Direction::Up) => "up",
         OutputTarget::Direction(Direction::Down) => "down",
     }
+}
+
+pub(crate) fn clamp_pointer_position(
+    mut position: smithay::utils::Point<f64, smithay::utils::Logical>,
+    size: smithay::utils::Size<f64, smithay::utils::Logical>,
+    output: Option<smithay::utils::Rectangle<f64, smithay::utils::Logical>>,
+) -> smithay::utils::Point<f64, smithay::utils::Logical> {
+    let Some(output) = output else {
+        return position;
+    };
+    let right = output.loc.x + output.size.w;
+    let bottom = output.loc.y + output.size.h;
+    position.x = position.x.max(output.loc.x);
+    position.y = position.y.max(output.loc.y);
+    if position.x + size.w > right {
+        position.x = right - size.w;
+    }
+    if position.y + size.h > bottom {
+        position.y = bottom - size.h;
+    }
+    position
 }
 
 pub(super) fn move_position(
@@ -218,14 +223,63 @@ pub(super) fn move_position(
                 .get_pointer()
                 .ok_or("No cursor device")?
                 .current_location();
+            let Some(id) = window.clone().or_else(|| {
+                state
+                    .swayward
+                    .layout
+                    .focus()
+                    .map(|mapped| mapped.window.clone())
+            }) else {
+                return Err("Only floating containers can be moved to an absolute position");
+            };
             let Some((tile_size, workspace_origin)) = target_geometry() else {
                 return Err("Only floating containers can be moved to an absolute position");
             };
-            let position = pointer - tile_size.downscale(2.) - workspace_origin;
-            (
+            let mut position = pointer - tile_size.downscale(2.);
+            let cursor_output = state
+                .swayward
+                .global_space
+                .output_under(pointer)
+                .next()
+                .cloned();
+            let output_geometry = cursor_output
+                .as_ref()
+                .and_then(|output| state.swayward.global_space.output_geometry(output))
+                .map(|output| output.to_f64());
+            position = clamp_pointer_position(position, tile_size, output_geometry);
+            let target_output_origin = cursor_output
+                .as_ref()
+                .and_then(|output| state.swayward.global_space.output_geometry(output))
+                .map(|output| output.loc.to_f64());
+            let window_output = state
+                .swayward
+                .layout
+                .windows()
+                .find_map(|(monitor, mapped)| {
+                    (mapped.window == id)
+                        .then(|| monitor.map(|monitor| monitor.output().clone()))
+                        .flatten()
+                });
+            if let Some(output) = cursor_output
+                .as_ref()
+                .filter(|output| window_output.as_ref() != Some(*output))
+            {
+                state.swayward.layout.move_to_output(
+                    Some(&id),
+                    output,
+                    None,
+                    crate::layout::ActivateWindow::Yes,
+                );
+            }
+            let workspace_origin = target_output_origin.unwrap_or(workspace_origin);
+            let position = position - workspace_origin;
+            state.swayward.layout.move_floating_window(
+                Some(&id),
                 PositionChange::SetFixed(position.x),
                 PositionChange::SetFixed(position.y),
-            )
+                true,
+            );
+            return Ok(());
         }
     };
     state
@@ -256,6 +310,59 @@ pub(super) fn select_resize_amount(
                 .find(|amount| amount.unit == ResizeUnit::Default)
         })
         .unwrap_or(first)
+}
+
+pub(super) fn move_workspace_to_output(
+    state: &mut State,
+    target: Option<CommandTarget>,
+    output_target_name: &OutputTarget,
+) -> CommandOutcome {
+    let workspace_id = match target {
+        Some(CommandTarget::Window(target)) => {
+            let Some(window) = state
+                .swayward
+                .layout
+                .windows()
+                .find_map(|(_, mapped)| (mapped.id() == target).then(|| mapped.window.clone()))
+            else {
+                return failure("No matching node.");
+            };
+            state.swayward.layout.window_workspace_id(&window)
+        }
+        Some(CommandTarget::Container(workspace, _)) => Some(workspace),
+        None => state
+            .swayward
+            .layout
+            .active_workspace()
+            .map(|workspace| workspace.id()),
+    };
+    let Some(workspace_id) = workspace_id else {
+        return failure("No workspace to move");
+    };
+    let Some((reference, workspace_idx)) = state
+        .swayward
+        .layout
+        .workspaces()
+        .find(|(_, _, workspace)| workspace.id() == workspace_id)
+        .and_then(|(monitor, index, _)| monitor.map(|monitor| (monitor.output().clone(), index)))
+    else {
+        return failure("No workspace to move");
+    };
+    let reference_point = state
+        .swayward
+        .global_space
+        .output_geometry(&reference)
+        .map(crate::utils::center);
+    let output = match output_target(state, output_target_name, Some(&reference), reference_point) {
+        Ok(output) => output,
+        Err(error) => return failure(error),
+    };
+    state
+        .swayward
+        .layout
+        .move_workspace_to_output_by_id(workspace_idx, Some(reference), &output);
+    state.swayward.queue_redraw_all();
+    success()
 }
 
 pub(super) fn move_target_to_workspace(
@@ -303,6 +410,146 @@ pub(super) fn move_target_to_workspace(
         }
     };
     if let Err(error) = result {
+        return failure(error);
+    }
+    state.swayward.queue_redraw_all();
+    success()
+}
+
+fn swap_kind_value(target: &SwapTarget) -> (&'static str, &str) {
+    match target {
+        SwapTarget::Id(value) => ("id", value),
+        SwapTarget::ConId(value) => ("con_id", value),
+        SwapTarget::Mark(value) => ("mark", value),
+    }
+}
+
+fn swap_destination(state: &State, target: &SwapTarget) -> Result<CommandTarget, CommandOutcome> {
+    let (kind, value, destination) = match target {
+        SwapTarget::Id(value) => ("id", value, None),
+        SwapTarget::ConId(value) => (
+            "con_id",
+            value,
+            value.parse::<i64>().ok().and_then(|id| {
+                state
+                    .swayward
+                    .layout
+                    .workspaces()
+                    .find_map(|(_, _, workspace)| {
+                        workspace
+                            .ipc_tiling_tree()
+                            .nodes()
+                            .into_iter()
+                            .find_map(|(node, _)| {
+                                (crate::ipc::tree::container_id(node) == id)
+                                    .then_some(CommandTarget::Container(workspace.id(), node))
+                            })
+                    })
+                    .or_else(|| {
+                        state.swayward.layout.windows().find_map(|(_, mapped)| {
+                            (crate::ipc::tree::window_id(mapped.id()) == id)
+                                .then_some(CommandTarget::Window(mapped.id()))
+                        })
+                    })
+            }),
+        ),
+        SwapTarget::Mark(value) => ("mark", value, marked_target(state, value)),
+    };
+    destination.ok_or_else(|| failure(format!("Failed to find {kind} '{value}'")))
+}
+
+pub(super) fn swap_target(
+    state: &mut State,
+    source: CommandTarget,
+    target: &SwapTarget,
+) -> CommandOutcome {
+    let destination = match swap_destination(state, target) {
+        Ok(destination) => destination,
+        Err(error) => return error,
+    };
+    if source == destination {
+        return failure("Cannot swap a container with itself");
+    }
+    let (source_workspace, source_node) = match source {
+        CommandTarget::Container(workspace, node) => (workspace, node),
+        CommandTarget::Window(window) => {
+            let Some(mapped) = state
+                .swayward
+                .layout
+                .windows()
+                .find_map(|(_, mapped)| (mapped.id() == window).then(|| mapped.window.clone()))
+            else {
+                return failure("Can only swap with containers and views");
+            };
+            let Some(target) = state.swayward.layout.tiling_target_for_window(&mapped) else {
+                return failure("Can only swap with containers and views");
+            };
+            target
+        }
+    };
+    let (destination_workspace, destination_node) = match destination {
+        CommandTarget::Container(workspace, node) => (workspace, node),
+        CommandTarget::Window(window) => {
+            let Some(mapped) = state
+                .swayward
+                .layout
+                .windows()
+                .find_map(|(_, mapped)| (mapped.id() == window).then(|| mapped.window.clone()))
+            else {
+                let (kind, value) = swap_kind_value(target);
+                return failure(format!("Failed to find {kind} '{value}'"));
+            };
+            let Some(target) = state.swayward.layout.tiling_target_for_window(&mapped) else {
+                return failure("Can only swap with containers and views");
+            };
+            target
+        }
+    };
+    if state
+        .swayward
+        .layout
+        .is_tiling_root(source_workspace, source_node)
+        || state
+            .swayward
+            .layout
+            .is_tiling_root(destination_workspace, destination_node)
+    {
+        return failure("Can only swap with containers and views");
+    }
+    if source_workspace != destination_workspace {
+        let (source_remapped, destination_remapped) =
+            match state.swayward.layout.swap_tiling_nodes_between_workspaces(
+                source_workspace,
+                source_node,
+                destination_workspace,
+                destination_node,
+            ) {
+                Ok(remapped) => remapped,
+                Err(error) => return failure(error),
+            };
+        for (workspace, destination, remapped) in [
+            (source_workspace, destination_workspace, source_remapped),
+            (
+                destination_workspace,
+                source_workspace,
+                destination_remapped,
+            ),
+        ] {
+            for (old, new) in remapped {
+                if let Some(marks) = state.swayward.marks_by_container.remove(&(workspace, old)) {
+                    state
+                        .swayward
+                        .marks_by_container
+                        .insert((destination, new), marks);
+                }
+            }
+        }
+    } else if let Err(error) =
+        state
+            .swayward
+            .layout
+            .swap_tiling_nodes(source_workspace, source_node, destination_node)
+    {
         return failure(error);
     }
     state.swayward.queue_redraw_all();
@@ -458,4 +705,29 @@ pub(super) fn move_target_to_mark(
     }
     state.swayward.queue_redraw_all();
     success()
+}
+
+#[cfg(test)]
+mod tests {
+    use smithay::utils::{Point, Rectangle, Size};
+
+    use super::clamp_pointer_position;
+
+    #[test]
+    fn pointer_position_clamps_to_cursor_output_but_not_outside_outputs() {
+        let output = Rectangle::new(Point::from((1000., 50.)), Size::from((800., 600.)));
+        let size = Size::from((300., 200.));
+        assert_eq!(
+            clamp_pointer_position(Point::from((900., -50.)), size, Some(output)),
+            Point::from((1000., 50.))
+        );
+        assert_eq!(
+            clamp_pointer_position(Point::from((1700., 550.)), size, Some(output)),
+            Point::from((1500., 450.))
+        );
+        assert_eq!(
+            clamp_pointer_position(Point::from((850., 300.)), size, None),
+            Point::from((850., 300.))
+        );
+    }
 }

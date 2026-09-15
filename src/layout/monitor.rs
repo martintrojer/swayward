@@ -70,6 +70,8 @@ pub struct Monitor<W: LayoutElement> {
     pub(super) active_workspace_idx: usize,
     /// ID of the previously active workspace.
     pub(super) previous_workspace_id: Option<WorkspaceId>,
+    /// Sway name of the previously active workspace, retained after cleanup.
+    pub(super) previous_workspace_name: Option<String>,
     /// In-progress switch between workspaces.
     pub(super) workspace_switch: Option<WorkspaceSwitch>,
     /// Indication where an interactively-moved window is about to be placed.
@@ -296,6 +298,7 @@ impl<W: LayoutElement> Monitor<W> {
         output: Output,
         mut workspaces: Vec<Workspace<W>>,
         ws_id_to_activate: Option<WorkspaceId>,
+        initial_workspace_name: Option<String>,
         clock: Clock,
         base_options: Rc<Options>,
         layout_config: Option<LayoutPart>,
@@ -327,7 +330,15 @@ impl<W: LayoutElement> Monitor<W> {
             active_workspace_idx += 1;
         }
 
-        let ws = Workspace::new(output.clone(), clock.clone(), options.clone());
+        let mut ws = Workspace::new(output.clone(), clock.clone(), options.clone());
+        if workspaces.is_empty() {
+            if let Some(name) = initial_workspace_name {
+                let (name, number) =
+                    super::sway_workspace_identity(crate::command::WorkspaceTarget::Name(name))
+                        .unwrap();
+                ws.set_sway_identity(name, number);
+            }
+        }
         workspaces.push(ws);
 
         Self {
@@ -339,6 +350,7 @@ impl<W: LayoutElement> Monitor<W> {
             workspaces,
             active_workspace_idx,
             previous_workspace_id: None,
+            previous_workspace_name: None,
             insert_hint: None,
             insert_hint_element: InsertHintElement::new(options.layout.insert_hint),
             insert_hint_render_loc: None,
@@ -477,7 +489,9 @@ impl<W: LayoutElement> Monitor<W> {
         let current_idx = self.workspace_render_idx();
 
         if self.active_workspace_idx != idx {
-            self.previous_workspace_id = Some(self.workspaces[self.active_workspace_idx].id());
+            let previous = &self.workspaces[self.active_workspace_idx];
+            self.previous_workspace_id = Some(previous.id());
+            self.previous_workspace_name = previous.sway_name();
         }
 
         let prev_active_idx = self.active_workspace_idx;
@@ -1085,6 +1099,10 @@ impl<W: LayoutElement> Monitor<W> {
         self.idx_of_ws(id)
     }
 
+    pub(super) fn previous_workspace_name(&self) -> Option<&str> {
+        self.previous_workspace_name.as_deref()
+    }
+
     pub fn switch_workspace(&mut self, idx: usize) {
         self.activate_workspace(min(idx, self.workspaces.len() - 1));
     }
@@ -1343,9 +1361,11 @@ impl<W: LayoutElement> Monitor<W> {
         }
 
         let previous_workspace_id = self.previous_workspace_id;
+        let previous_workspace_name = self.previous_workspace_name.clone();
         self.activate_workspace(new_idx);
         self.workspace_switch = None;
         self.previous_workspace_id = previous_workspace_id;
+        self.previous_workspace_name = previous_workspace_name;
 
         self.clean_up_workspaces();
     }
@@ -1369,9 +1389,11 @@ impl<W: LayoutElement> Monitor<W> {
         }
 
         let previous_workspace_id = self.previous_workspace_id;
+        let previous_workspace_name = self.previous_workspace_name.clone();
         self.activate_workspace(new_idx);
         self.workspace_switch = None;
         self.previous_workspace_id = previous_workspace_id;
+        self.previous_workspace_name = previous_workspace_name;
 
         self.clean_up_workspaces();
     }
@@ -2170,7 +2192,9 @@ impl<W: LayoutElement> Monitor<W> {
         velocity *= rubber_band.clamp_derivative(min, max, gesture.start_idx + current_pos);
 
         if self.active_workspace_idx != new_idx {
-            self.previous_workspace_id = Some(self.workspaces[self.active_workspace_idx].id());
+            let previous = &self.workspaces[self.active_workspace_idx];
+            self.previous_workspace_id = Some(previous.id());
+            self.previous_workspace_name = previous.sway_name();
         }
 
         self.active_workspace_idx = new_idx;

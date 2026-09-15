@@ -111,6 +111,13 @@ pub enum OutputTarget {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SwapTarget {
+    Id(String),
+    ConId(String),
+    Mark(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkspaceTarget {
     Name(String),
     Number(String),
@@ -127,10 +134,13 @@ pub enum Command {
     FocusDirection(Direction),
     FocusOutput(String),
     Focus,
+    FocusWorkspace,
     FocusParent,
     FocusChild,
     FocusNext,
     FocusPrev,
+    FocusNextSibling,
+    FocusPrevSibling,
     FocusFloating,
     FocusTiling,
     FocusModeToggle,
@@ -156,7 +166,11 @@ pub enum Command {
     Floating(Toggle),
     Border(Border),
     Sticky(String),
-    Workspace(WorkspaceTarget),
+    Swap(SwapTarget),
+    Workspace {
+        target: WorkspaceTarget,
+        auto_back_and_forth: bool,
+    },
     AssignWorkspace {
         target: WorkspaceTarget,
         output: String,
@@ -171,6 +185,10 @@ pub enum Command {
         axis: ResizeAxis,
         first: ResizeAmount,
         second: Option<ResizeAmount>,
+    },
+    ResizeSet {
+        width: Option<ResizeAmount>,
+        height: Option<ResizeAmount>,
     },
     Reload,
     Mode(String),
@@ -385,6 +403,7 @@ fn parse_one(input: &str) -> Result<Command, String> {
         "border" => parse_border(rest).map(Command::Border),
         "sticky" => one(rest, "sticky <enable|disable|toggle>")
             .map(|value| Command::Sticky(value.to_owned())),
+        "swap" => parse_swap(rest),
         "workspace" => parse_workspace_command(rest),
         "rename" => parse_rename(rest),
         "scratchpad" => match rest {
@@ -483,6 +502,15 @@ fn parse_focus(args: &[&str]) -> Result<Command, String> {
             output => Ok(Command::FocusOutput(join_words(output))),
         };
     }
+    if let [direction, sibling] = args {
+        if sibling.eq_ignore_ascii_case("sibling") {
+            return match direction.to_ascii_lowercase().as_str() {
+                "next" => Ok(Command::FocusNextSibling),
+                "prev" => Ok(Command::FocusPrevSibling),
+                _ => Err("Expected 'focus next|prev [sibling]'".into()),
+            };
+        }
+    }
     let arg = one(
         args,
         "focus <left|right|up|down|parent|child|next|prev|floating|tiling|mode_toggle>",
@@ -498,6 +526,7 @@ fn parse_focus(args: &[&str]) -> Result<Command, String> {
         "floating" => Ok(Command::FocusFloating),
         "tiling" => Ok(Command::FocusTiling),
         "mode_toggle" => Ok(Command::FocusModeToggle),
+        "workspace" => Ok(Command::FocusWorkspace),
         _ => Err(
             "Expected 'focus <left|right|up|down|parent|child|next|prev|floating|tiling|mode_toggle>'"
                 .into(),
@@ -738,6 +767,30 @@ fn parse_rename(args: &[&str]) -> Result<Command, String> {
     })
 }
 
+fn parse_swap(args: &[&str]) -> Result<Command, String> {
+    const SYNTAX: &str = "Expected 'swap container with id|con_id|mark <arg>'";
+    let [container, with, kind, value @ ..] = args else {
+        return Err(SYNTAX.into());
+    };
+    if !container.eq_ignore_ascii_case("container")
+        || !with.eq_ignore_ascii_case("with")
+        || value.is_empty()
+    {
+        return Err(SYNTAX.into());
+    }
+    let value = join_words(value);
+    let target = if kind.eq_ignore_ascii_case("id") {
+        SwapTarget::Id(value)
+    } else if kind.eq_ignore_ascii_case("con_id") {
+        SwapTarget::ConId(value)
+    } else if kind.eq_ignore_ascii_case("mark") {
+        SwapTarget::Mark(value)
+    } else {
+        return Err(SYNTAX.into());
+    };
+    Ok(Command::Swap(target))
+}
+
 fn parse_workspace_command(args: &[&str]) -> Result<Command, String> {
     if let Some(index) = args
         .iter()
@@ -751,7 +804,16 @@ fn parse_workspace_command(args: &[&str]) -> Result<Command, String> {
             output: join_words(&args[index + 1..]),
         });
     }
-    parse_workspace(args).map(Command::Workspace)
+    let (auto_back_and_forth, args) = match args {
+        [option, rest @ ..] if option.eq_ignore_ascii_case("--no-auto-back-and-forth") => {
+            (false, rest)
+        }
+        _ => (true, args),
+    };
+    parse_workspace(args).map(|target| Command::Workspace {
+        target,
+        auto_back_and_forth,
+    })
 }
 
 fn parse_workspace(args: &[&str]) -> Result<WorkspaceTarget, String> {
@@ -771,7 +833,13 @@ fn parse_workspace(args: &[&str]) -> Result<WorkspaceTarget, String> {
 }
 
 fn parse_resize(args: &[&str]) -> Result<Command, String> {
-    let [operation, axis, rest @ ..] = args else {
+    let [operation, rest @ ..] = args else {
+        return Err(resize_usage());
+    };
+    if operation.eq_ignore_ascii_case("set") {
+        return parse_resize_set(rest);
+    }
+    let [axis, rest @ ..] = rest else {
         return Err(resize_usage());
     };
     let grow = if operation.eq_ignore_ascii_case("grow") {
@@ -827,6 +895,39 @@ fn parse_resize(args: &[&str]) -> Result<Command, String> {
         first,
         second,
     })
+}
+
+fn parse_resize_set(mut args: &[&str]) -> Result<Command, String> {
+    let usage = || {
+        "Expected 'resize set [width] <width> [px|ppt]' or 'resize set height <height> [px|ppt]' or 'resize set [width] <width> [px|ppt] [height] <height> [px|ppt]".to_owned()
+    };
+    if args.is_empty() {
+        return Err(usage());
+    }
+
+    let mut width = None;
+    if args.len() >= 2 && args[0] == "width" && args[1] != "height" {
+        args = &args[1..];
+    }
+    if args[0] != "height" {
+        let (amount, consumed) = parse_resize_amount(args).map_err(|_| usage())?;
+        width = Some(amount);
+        args = &args[consumed..];
+    }
+
+    let mut height = None;
+    if !args.is_empty() {
+        if args.len() >= 2 && args[0] == "height" {
+            args = &args[1..];
+        }
+        let (amount, consumed) = parse_resize_amount(args).map_err(|_| usage())?;
+        if consumed != args.len() {
+            return Err(usage());
+        }
+        height = Some(amount);
+    }
+
+    Ok(Command::ResizeSet { width, height })
 }
 
 fn parse_move_distance(value: &str) -> Result<i32, String> {

@@ -1,3 +1,5 @@
+use std::cmp::Reverse;
+
 use smithay::desktop::{Space, Window};
 use smithay::utils::{Logical, Rectangle};
 use swayward_ipc::{
@@ -38,12 +40,22 @@ pub fn describe_tree(
     nodes.extend(outputs.iter().map(|monitor| {
         describe_output_node(layout, global_space, monitor, marks, container_marks)
     }));
-    let focus = outputs
-        .iter()
-        .find(|monitor| monitor.active_workspace_ref().active_window().is_some())
-        .or_else(|| outputs.first())
-        .map(|monitor| output_id(monitor.output_name()))
+    let active_output = layout.active_monitor_ref().map(|monitor| monitor.output());
+    let mut focused_outputs = outputs.clone();
+    focused_outputs.sort_by_key(|monitor| {
+        (
+            monitor.output() != active_output.unwrap_or(monitor.output()),
+            Reverse(
+                monitor
+                    .windows()
+                    .filter_map(|window| window.focus_timestamp())
+                    .max(),
+            ),
+        )
+    });
+    let focus = focused_outputs
         .into_iter()
+        .map(|monitor| output_id(monitor.output_name()))
         .collect();
     common_node(
         ROOT_ID,
@@ -78,7 +90,11 @@ pub fn describe_workspaces(
                 .sway_name()
                 .unwrap_or_else(|| (index + 1).to_string());
             let rect = output_rect(global_space, monitor.output());
-            let focused = monitor.active_workspace_idx() == index;
+            let visible = monitor.active_workspace_idx() == index;
+            let focused = visible
+                && layout
+                    .active_monitor_ref()
+                    .is_some_and(|active| active.output() == monitor.output());
             let focus = workspace
                 .active_window()
                 .map(|window| window_id(window.id()))
@@ -128,7 +144,7 @@ pub fn describe_workspaces(
                 sticky: false,
                 node_type: NodeType::Workspace,
                 urgent: workspace.is_urgent(),
-                visible: focused,
+                visible,
                 window: None,
                 window_rect: Rect::default(),
             })
@@ -264,7 +280,7 @@ fn describe_output_node(
         workspaces,
         vec![],
         focus,
-        output.focused,
+        false,
         NodeProperties::Output(OutputProperties {
             active: output.active,
             adaptive_sync_status: output.adaptive_sync_status,
@@ -307,6 +323,14 @@ fn describe_workspace_node(
         workspace.id(),
     )
     .unwrap_or_else(|| empty_tiling_node(rect));
+    let workspace_focused = compositor_layout
+        .active_monitor_ref()
+        .is_some_and(|monitor| {
+            monitor.output_name() == output && monitor.active_workspace_ref().id() == workspace.id()
+        });
+    if !workspace_focused || workspace.floating_is_active() {
+        clear_focused(&mut tiled);
+    }
     let Node {
         layout,
         orientation,
@@ -315,23 +339,16 @@ fn describe_workspace_node(
         focused,
         ..
     } = &mut tiled;
-    let (layout, orientation, nodes, mut focus, container_focused) = (
+    let (layout, orientation, nodes, mut focus, focused) = (
         *layout,
         orientation.clone(),
         std::mem::take(nodes),
         std::mem::take(focus),
-        *focused,
+        *focused || workspace_focused && workspace.active_window().is_none(),
     );
-    let workspace_focused = compositor_layout
-        .active_monitor_ref()
-        .is_some_and(|monitor| {
-            monitor.output_name() == output && monitor.active_workspace_ref().id() == workspace.id()
-        });
-    let focused = workspace_focused
-        || container_focused
-        || workspace
-            .active_window()
-            .is_some_and(|window| window.is_focused());
+    let active_window = workspace_focused
+        .then(|| workspace.active_window().map(|window| window.id()))
+        .flatten();
     let mut floating_nodes = workspace
         .tiles_with_ipc_layouts()
         .filter(|(tile, _)| workspace.is_floating_for_ipc(&tile.window().window))
@@ -339,14 +356,22 @@ fn describe_workspace_node(
             let (x, y) = layout.tile_pos_in_workspace_view.unwrap_or_default();
             let mut node = describe_window(
                 tile.window(),
-                rect_from(x, y, layout.tile_size.0, layout.tile_size.1),
+                offset_rect(
+                    Rectangle::new(
+                        (x, y).into(),
+                        (layout.tile_size.0, layout.tile_size.1).into(),
+                    ),
+                    rect,
+                ),
                 NodeType::FloatingCon,
                 "user_on",
-                None,
+                Some(rect),
                 marks,
                 compositor_layout.is_scratchpad_window(&tile.window().window),
                 true,
             );
+            node.focused =
+                workspace.floating_is_active() && active_window == Some(tile.window().id());
             let border = tile.sway_border();
             node.border = ipc_border(border.0);
             node.current_border_width = i32::from(border.1);
@@ -390,6 +415,13 @@ fn describe_workspace_node(
     )
 }
 
+fn clear_focused(node: &mut Node) {
+    node.focused = false;
+    for child in node.nodes.iter_mut().chain(&mut node.floating_nodes) {
+        clear_focused(child);
+    }
+}
+
 pub(crate) fn describe_tiling<'a, I>(
     node: IpcNode<I>,
     find_window: &impl Fn(&I) -> Option<&'a Mapped>,
@@ -403,6 +435,7 @@ pub(crate) fn describe_tiling<'a, I>(
             id,
             layout,
             percent,
+            rect,
             focus,
             focused,
             fullscreen_mode,
@@ -440,7 +473,7 @@ pub(crate) fn describe_tiling<'a, I>(
                 ipc_layout(layout),
                 orientation(layout),
                 None,
-                workspace_rect,
+                offset_rect(rect, workspace_rect),
                 children,
                 vec![],
                 focus,
@@ -482,8 +515,23 @@ pub(crate) fn describe_tiling<'a, I>(
             node.current_border_width = i32::from(border.1);
             node.percent = percent;
             node.focused = focused;
-            node.deco_rect =
-                deco_rect.map_or_else(Rect::default, |rect| offset_rect(rect, workspace_rect));
+            let has_titlebar = deco_rect.is_some();
+            node.deco_rect = deco_rect.map_or_else(Rect::default, |rect| {
+                rect_from(rect.loc.x, rect.loc.y, rect.size.w, rect.size.h)
+            });
+            let border_width = match (node.border, has_titlebar) {
+                (NodeBorder::Normal | NodeBorder::Pixel, true) | (NodeBorder::Pixel, false) => {
+                    node.current_border_width
+                }
+                _ => 0,
+            };
+            let top = if has_titlebar { 0 } else { border_width };
+            node.window_rect = Rect {
+                x: border_width,
+                y: top,
+                width: (node.rect.width - border_width * 2).max(0),
+                height: (node.rect.height - border_width - top).max(0),
+            };
             Some(node)
         }
     }

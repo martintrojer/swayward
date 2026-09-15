@@ -267,6 +267,39 @@ fn struts_reduce_new_window_bounds() {
 }
 
 #[test]
+fn structural_moves_preserve_unfocused_window_order() {
+    let mut t = tree((1200., 800.), 0.);
+    for id in 1..=4 {
+        t.add_tile(tile(id, t.view_size()), InsertTarget::Focused);
+    }
+    for id in [4, 3, 2, 1] {
+        let node = t.node_for_window(&id).unwrap();
+        t.set_focus(node);
+    }
+
+    let third = t.node_for_window(&3).unwrap();
+    assert!(t.move_node_direction(third, Direction::Up));
+    assert_eq!(
+        t.focus_history
+            .iter()
+            .filter_map(|node| t.tile(*node).map(|tile| *tile.window().id()))
+            .collect::<Vec<_>>(),
+        [1, 2, 3, 4]
+    );
+
+    let fourth = t.node_for_window(&4).unwrap();
+    let second = t.node_for_window(&2).unwrap();
+    assert!(t.move_subtree_to_node(fourth, second));
+    assert_eq!(
+        t.focus_history
+            .iter()
+            .filter_map(|node| t.tile(*node).map(|tile| *tile.window().id()))
+            .collect::<Vec<_>>(),
+        [1, 4, 2, 3]
+    );
+}
+
+#[test]
 fn restoring_a_removed_windows_focus_rank_preserves_close_order() {
     let mut t = tree((1200., 800.), 0.);
     for id in 1..=5 {
@@ -730,6 +763,38 @@ fn detached_subtree_attaches_with_shape_and_internal_focus() {
 }
 
 #[test]
+fn swapping_nodes_preserves_focus_history_and_rejects_ancestry() {
+    let mut t = tree((1200., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    t.split(first, Layout::SplitV);
+    let second = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    let parent = t.nodes[&first].parent.unwrap();
+    let third = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+    t.set_focus(first);
+    let focus = t.focus();
+    let history = t.window_focus_history();
+    assert!(t.set_node_fullscreen(first, Some(FullscreenMode::Workspace)));
+
+    t.swap_nodes(first, third).unwrap();
+    assert_eq!(t.nodes[&first].parent, Some(t.root));
+    assert_eq!(t.nodes[&third].parent, Some(parent));
+    assert_eq!(t.focus(), focus);
+    assert_eq!(t.window_focus_history(), history);
+    assert_eq!(t.fullscreen_mode(first), None);
+    assert_eq!(t.fullscreen_mode(third), Some(FullscreenMode::Workspace));
+    assert_eq!(t.nodes[&parent].parent, None);
+    assert_eq!(
+        t.swap_nodes(first, first),
+        Err("Cannot swap a container with itself")
+    );
+    assert_eq!(
+        t.swap_nodes(parent, second),
+        Err("Cannot swap ancestor and descendant")
+    );
+    t.check_invariants();
+}
+
+#[test]
 fn move_subtree_to_node_inserts_beside_a_leaf_and_into_a_split() {
     let mut t = tree((1200., 800.), 0.);
     let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
@@ -744,6 +809,32 @@ fn move_subtree_to_node_inserts_beside_a_leaf_and_into_a_split() {
     assert!(t.move_subtree_to_node(third, split));
     assert_eq!(t.nodes[&third].parent, Some(split));
     assert_eq!(t.root_children().unwrap(), &[split, first]);
+    t.check_invariants();
+}
+
+#[test]
+fn move_subtree_to_ancestor_preserves_its_branch_position() {
+    let mut t = tree((1200., 800.), 0.);
+    let a = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let b = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    let c = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+    let parent = t.alloc(Node {
+        parent: Some(t.root),
+        value: TreeNode::Split {
+            layout: Layout::SplitH,
+            children: vec![b],
+            percents: vec![1.],
+        },
+    });
+    t.nodes.get_mut(&b).unwrap().parent = Some(parent);
+    t.nodes.get_mut(&t.root).unwrap().value = TreeNode::Split {
+        layout: Layout::SplitH,
+        children: vec![a, parent, c],
+        percents: vec![1. / 3.; 3],
+    };
+    assert!(t.move_subtree_to_node(b, t.root));
+
+    assert_eq!(t.root_children().unwrap(), &[a, b, c]);
     t.check_invariants();
 }
 
@@ -851,6 +942,25 @@ fn parent_and_child_focus_walk_the_tree_and_layout_the_selected_parent() {
     assert_eq!(t.focus(), Some(third));
     assert!(!t.focus_child());
     assert!(t.geometry(first).is_some());
+    t.check_invariants();
+}
+
+#[test]
+fn focus_next_sibling_stops_at_container_while_bare_next_descends() {
+    let mut t = tree((1200., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let second = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.split(second, Layout::SplitV);
+    let third = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+    let nested = t.nodes[&third].parent.unwrap();
+
+    t.set_focus(first);
+    assert!(t.focus_next_prev_sibling(true));
+    assert_eq!(t.focus(), Some(nested));
+
+    t.set_focus(first);
+    assert!(t.focus_right());
+    assert_eq!(t.focus(), Some(third));
     t.check_invariants();
 }
 
@@ -1076,6 +1186,40 @@ fn opening_a_window_after_a_focused_split_adds_its_sibling() {
             && *right == third
     ));
     t.check_invariants();
+}
+
+#[test]
+fn workspace_layout_wraps_each_inserted_window() {
+    for (workspace_layout, expected) in [
+        (swayward_config::WorkspaceLayout::Stacking, Layout::Stacked),
+        (swayward_config::WorkspaceLayout::Tabbed, Layout::Tabbed),
+    ] {
+        let mut options = Options::default();
+        options.layout.workspace_layout = workspace_layout;
+        let mut tree = TilingTree::new(
+            Size::from((1000., 1000.)),
+            Rectangle::from_size(Size::from((1000., 1000.))),
+            1.,
+            Clock::with_time(Duration::ZERO),
+            Rc::new(options),
+        );
+
+        tree.add_tile(tile(1, tree.view_size()), InsertTarget::Focused);
+        tree.add_tile(tile(2, tree.view_size()), InsertTarget::Focused);
+
+        let TreeNode::Split { children, .. } = &tree.nodes[&tree.root].value else {
+            unreachable!()
+        };
+        assert_eq!(children.len(), 1);
+        let TreeNode::Split {
+            layout, children, ..
+        } = &tree.nodes[&children[0]].value
+        else {
+            panic!("workspace layout must wrap the inserted leaf")
+        };
+        assert_eq!(*layout, expected);
+        assert_eq!(children.len(), 2);
+    }
 }
 
 #[test]
@@ -1530,6 +1674,26 @@ fn directional_resize_skips_an_unusable_same_axis_boundary() {
     assert_eq!(t.nodes[&left].parent, Some(t.root));
     assert_eq!(t.nodes[&right_branch].parent, Some(t.root));
     assert_eq!(t.sibling_percents(left, right_branch), Some((0.25, 0.75)));
+    t.check_invariants();
+}
+
+#[test]
+fn sway_set_size_uses_the_matching_axis_branch_extent() {
+    let mut t = tree((1000., 800.), 0.);
+    let left = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let top_right = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.split(top_right, Layout::SplitV);
+    let bottom_right = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+
+    t.set_window_size_sway(&3, None, Some(SizeChange::SetProportion(75.)));
+    assert_eq!(
+        t.sibling_percents(top_right, bottom_right),
+        Some((0.25, 0.75))
+    );
+
+    t.set_window_size_sway(&3, Some(SizeChange::SetFixed(200)), None);
+    assert_eq!(t.geometry(bottom_right).unwrap().size.w, 200.);
+    assert_eq!(t.geometry(left).unwrap().size.w, 800.);
     t.check_invariants();
 }
 

@@ -79,6 +79,193 @@ bindsym $missing+x nop
         for item in result.stderr.splitlines()[1:]:
             self.assertIn(item.strip(), result.stdout)
 
+    def test_empty_bind_command_fails_loud(self):
+        result = self.translate("bindsym X\n")
+        self.assertNotIn('X { command', result.stdout)
+        self.assertIn("malformed bindsym", result.stdout)
+        self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
+    def test_explicit_default_mode_is_preserved(self):
+        result = self.translate('mode "default" {\n    bindsym X nop\n}\n')
+        self.assertIn('mode "default" {', result.stdout)
+        self.assertIn('X { command "nop"; }', result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
+    def test_nested_variable_names_are_accepted_without_recursive_expansion(self):
+        result = self.translate(
+            "set $long_variable_name_with_short_value 1\n"
+            "set $$long_variable_name_with_short_value 2\n"
+            "set $$$long_variable_name_with_short_value 3\n"
+        )
+        self.assertIn("manual attention: none", result.stderr)
+
+        result = self.translate("set $a $b\nset $b expanded\nbindsym X nop $a\n")
+        self.assertIn("variable value could not be fully expanded", result.stdout)
+        self.assertIn("undefined variable", result.stdout)
+        self.assertIn("manual attention: 2 directive(s)", result.stderr)
+
+        result = self.translate("set $x expanded\nbindsym X nop $$x\n")
+        self.assertIn('X { command "nop $x"; }', result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
+    def test_bare_resize_command_is_preserved_for_typed_validation(self):
+        result = self.translate('mode "default" {\n    bindsym X resize\n}\n')
+        self.assertIn('X { command "resize"; }', result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
+    def test_workspace_layout_maps_all_sway_values_and_refuses_invalid_values(self):
+        for value in ["default", "stacking", "tabbed"]:
+            with self.subTest(value=value):
+                result = self.translate(f"workspace_layout {value}\n")
+                self.assertIn(f'workspace-layout "{value}"', result.stdout)
+                self.assertIn("manual attention: none", result.stderr)
+        result = self.translate("workspace_layout splitv\n")
+        self.assertNotIn("workspace-layout", result.stdout)
+        self.assertIn("unsupported workspace layout", result.stdout)
+        self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
+    def test_mouse_button_bindsyms_map_exact_names_in_top_level_and_modes(self):
+        result = self.translate(
+            "bindsym button1 nop left\n"
+            "bindsym button2 nop middle\n"
+            "bindsym button3 nop right\n"
+            "bindsym button4 nop up\n"
+            "bindsym button5 nop down\n"
+            "mode test {\n"
+            "    bindsym button1 nop mode-left\n"
+            "}\n"
+        )
+        for trigger, command in [
+            ("MouseLeft", "nop left"),
+            ("MouseMiddle", "nop middle"),
+            ("MouseRight", "nop right"),
+            ("WheelScrollUp", "nop up"),
+            ("WheelScrollDown", "nop down"),
+            ("MouseLeft", "nop mode-left"),
+        ]:
+            self.assertIn(f'{trigger} {{ command "{command}"; }}', result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
+        result = self.translate("bindsym button10 nop unsupported\n")
+        self.assertNotIn("command", result.stdout)
+        self.assertIn("unsupported mouse button button10", result.stdout)
+        self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
+    def test_sway_modifier_names_map_exactly_and_unknown_names_stay_fail_loud(self):
+        result = self.translate(
+            "bindsym Shift+a nop shift\n"
+            "bindsym Lock+b nop caps\n"
+            "bindsym Control+c nop control\n"
+            "bindsym Ctrl+d nop ctrl\n"
+            "bindsym Mod1+e nop mod1\n"
+            "bindsym Alt+f nop alt\n"
+            "bindsym Mod2+g nop mod2\n"
+            "bindsym Mod4+i nop mod4\n"
+            "bindsym Super+j nop super\n"
+        )
+        for key in [
+            "Shift+a",
+            "Lock+b",
+            "Control+c",
+            "Ctrl+d",
+            "Alt+e",
+            "Alt+f",
+            "Num+g",
+            "Super+i",
+            "Super+j",
+        ]:
+            self.assertIn(f"    {key} ", result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
+        for name in ["Mod3", "Mod5"]:
+            refused = self.translate(f"bindsym {name}+z nop x\n")
+            self.assertNotIn("command", refused.stdout)
+            self.assertIn(f"unsupported modifier {name}", refused.stdout)
+
+        result = self.translate("bindsym Mod6+a nop unsupported\n")
+        self.assertNotIn("command", result.stdout)
+        self.assertIn("unsupported modifier Mod6", result.stdout)
+        self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
+    def test_release_bindings_translate_for_keys_mouse_and_modes(self):
+        result = self.translate(
+            "bindsym Control+Print nop key-press\n"
+            "bindsym --release Control+Print nop key-release\n"
+            "bindsym button1 --release nop mouse-release\n"
+            "mode test {\n"
+            "    bindcode 27 --release nop mode-release\n"
+            "}\n"
+        )
+        for binding in [
+            'Control+Print release=true repeat=false { command "nop key-release"; }',
+            'MouseLeft release=true repeat=false { command "nop mouse-release"; }',
+            'code:27 release=true repeat=false { command "nop mode-release"; }',
+        ]:
+            self.assertIn(binding, result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
+    def test_mouse_binding_regions_translate_and_other_options_remain_fail_loud(self):
+        for option, regions in [
+            ("--whole-window", "titlebar+border+contents"),
+            ("--border", "border"),
+            ("--exclude-titlebar", "border+contents"),
+        ]:
+            with self.subTest(option=option):
+                result = self.translate(f"bindsym button1 {option} nop supported\n")
+                self.assertIn(
+                    f'MouseLeft mouse-regions="{regions}" {{ command "nop supported"; }}',
+                    result.stdout,
+                )
+                self.assertIn("manual attention: none", result.stderr)
+
+
+    def test_numeric_bindsym_is_quoted_at_top_level_and_in_modes(self):
+        result = self.translate(
+            "bindsym 1 workspace number 1\n"
+            "mode resize {\n"
+            "    bindsym 2 workspace number 2\n"
+            "}\n"
+            "bindcode nope kill\n"
+        )
+        self.assertEqual(
+            result.stdout.count('"1" { command "workspace number 1"; }'), 1
+        )
+        self.assertEqual(
+            result.stdout.count('"2" { command "workspace number 2"; }'), 1
+        )
+        self.assertIn('mode "resize" {', result.stdout)
+        self.assertIn("bindcode key must be numeric", result.stdout)
+        self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
+    def test_inner_gaps_accept_sway_units_and_clamp_negative_values(self):
+        for value, expected in [("10", "10"), ("20px", "20"), ("14PX", "14"), ("-5px", "0")]:
+            with self.subTest(value=value):
+                result = self.translate(f"gaps inner {value}\n")
+                self.assertIn(f"    gaps {expected}", result.stdout)
+                self.assertNotIn("px", result.stdout)
+                self.assertIn("manual attention: none", result.stderr)
+
+    def test_outer_gap_forms_remain_fail_loud(self):
+        for kind in ["outer", "horizontal", "vertical", "top", "right", "bottom", "left"]:
+            for value in ["10", "-10px"]:
+                with self.subTest(kind=kind, value=value):
+                    result = self.translate(f"gaps {kind} {value}\n")
+                    self.assertNotIn("struts {", result.stdout)
+                    self.assertIn("outer gaps affect floating geometry", result.stdout)
+                    self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
+    def test_gap_forms_refuse_unrepresentable_or_malformed_values(self):
+        for source in [
+            "gaps inner nope\n",
+            "gaps outer 2em\n",
+            "gaps diagonal 10\n",
+            "gaps outer all set 10px\n",
+            "workspace 2 gaps inner 10\n",
+        ]:
+            with self.subTest(source=source):
+                result = self.translate(source)
+                self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
     def test_assign_workspace_target_is_preserved(self):
         result = self.translate('assign [class="special"] workspace targetws\n')
         self.assertIn('open-on-workspace "targetws"', result.stdout)
@@ -145,15 +332,97 @@ bindsym $missing+x nop
 '''
         )
         self.assertIn(r'match app-id="^foo\\\\w+$" title="^bar\\\\d+$"', result.stdout)
-        self.assertIn("border {", result.stdout)
-        self.assertIn("off", result.stdout)
+        self.assertIn('sway-border "none"', result.stdout)
         self.assertIn("manual attention: none", result.stderr)
 
     def test_for_window_translates_pixel_border(self):
         result = self.translate('for_window [class="foo"] border 1pixel\n')
-        self.assertIn("border {", result.stdout)
-        self.assertIn("on", result.stdout)
-        self.assertIn("width 1", result.stdout)
+        self.assertIn('sway-border "pixel"', result.stdout)
+        self.assertIn("sway-border-width 1", result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
+    def test_line_continuation_precedes_variable_expansion(self):
+        result = self.translate(
+            "set \\\n$var \\\nspecial title\n"
+            'for_window \\\n[title="$var"] \\\nborder \\\nnone\n'
+        )
+        self.assertIn('match title="special title"', result.stdout)
+        self.assertIn('sway-border "none"', result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
+    def test_overlong_valid_and_invalid_continued_bindings_are_not_truncated(self):
+        payload = "x" * 5000
+        valid = self.translate(f"bindsym X nop \\\n{payload}\n")
+        self.assertIn(f'command "nop  {payload}"', valid.stdout)
+        self.assertIn("manual attention: none", valid.stderr)
+
+        invalid = self.translate(f"bindsym X invalid-{payload[:8]} \\\n{payload}\n")
+        self.assertIn(f'command "invalid-{payload[:8]}  {payload}"', invalid.stdout)
+        self.assertIn("manual attention: none", invalid.stderr)
+
+    def test_last_line_without_newline_is_translated(self):
+        result = self.translate("set $ws workspace eggs\nbindsym Mod4+0 $ws")
+        self.assertIn('Super+0 { command "workspace eggs"; }', result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
+    def test_hide_edge_borders_only_maps_the_exact_default(self):
+        result = self.translate("hide_edge_borders none\n")
+        self.assertIn("hide_edge_borders none (default)", result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
+        for value in ["vertical", "horizontal", "both", "smart", "smart_no_gaps"]:
+            with self.subTest(value=value):
+                result = self.translate(f"hide_edge_borders {value}\n")
+                self.assertIn("per-edge border suppression", result.stdout)
+                self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
+        for value in ["none", "vertical", "horizontal", "both", "smart", "smart_no_gaps"]:
+            with self.subTest(i3=value):
+                result = self.translate(f"hide_edge_borders --i3 {value}\n")
+                self.assertIn("hide_lone_tab", result.stdout)
+                self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
+        for value in ["NONE", "Smart", "bogus", "--i3", "smart extra"]:
+            with self.subTest(invalid=value):
+                result = self.translate(f"hide_edge_borders {value}\n")
+                self.assertIn("expected hide_edge_borders", result.stdout)
+                self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
+    def test_popup_during_fullscreen_maps_all_modes_case_insensitively(self):
+        for value, expected in [
+            ("smart", "smart"),
+            ("IGNORE", "ignore"),
+            ("Leave_Fullscreen", "leave_fullscreen"),
+        ]:
+            with self.subTest(value=value):
+                result = self.translate(f"popup_during_fullscreen {value}\n")
+                self.assertIn(f'popup-during-fullscreen "{expected}"', result.stdout)
+                self.assertIn("manual attention: none", result.stderr)
+
+        for directive in [
+            "popup_during_fullscreen",
+            "popup_during_fullscreen smart ignore",
+            "popup_during_fullscreen all",
+        ]:
+            with self.subTest(directive=directive):
+                result = self.translate(directive + "\n")
+                self.assertNotIn("popup-during-fullscreen", result.stdout)
+                self.assertIn(
+                    "expected popup_during_fullscreen smart|ignore|leave_fullscreen",
+                    result.stdout,
+                )
+                self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
+    def test_workspace_auto_back_and_forth_uses_sway_boolean_words(self):
+        for value in ["1", "yes", "on", "true", "enable", "enabled", "active"]:
+            with self.subTest(value=value):
+                result = self.translate(f"workspace_auto_back_and_forth {value}\n")
+                self.assertIn("workspace-auto-back-and-forth", result.stdout)
+                self.assertNotIn("workspace-auto-back-and-forth false", result.stdout)
+                self.assertIn("manual attention: none", result.stderr)
+
+        result = self.translate("workspace_auto_back_and_forth no\n")
+        self.assertIn("workspace-auto-back-and-forth false", result.stdout)
         self.assertIn("manual attention: none", result.stderr)
 
     def test_focus_on_window_activation_translates_sway_modes(self):
@@ -193,6 +462,33 @@ bindsym $missing+x nop
                 self.assertIn(reason, result.stdout)
                 self.assertIn("manual attention: 1 directive(s)", result.stderr)
 
+    def test_for_window_maps_sway_layer_state_and_refuses_i3_provenance(self):
+        for criterion, expected in [("tiling", "false"), ("floating", "true")]:
+            with self.subTest(criterion=criterion):
+                result = self.translate(
+                    f"for_window [{criterion}] floating enable\n"
+                )
+                self.assertIn(f"match is-floating={expected}", result.stdout)
+                self.assertIn("open-floating true", result.stdout)
+                self.assertIn("manual attention: none", result.stderr)
+
+        result = self.translate(
+            'for_window [class="app" floating] border none\n'
+        )
+        self.assertIn('match app-id="app" is-floating=true', result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
+        for criterion in ["tiling_from", "floating_from"]:
+            for origin in ["auto", "user"]:
+                with self.subTest(criterion=criterion, origin=origin):
+                    result = self.translate(
+                        f'for_window [{criterion}="{origin}"] floating enable\n'
+                    )
+                    self.assertNotIn("window-rule {", result.stdout)
+                    self.assertIn("i3-only provenance criterion", result.stdout)
+                    self.assertIn("no sway equivalent", result.stdout)
+                    self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
     def test_for_window_refuses_x11_only_criteria(self):
         for criterion in ["instance", "id", "window_role", "window_type"]:
             with self.subTest(criterion=criterion):
@@ -203,24 +499,63 @@ bindsym $missing+x nop
                 self.assertIn("X11-only criterion", result.stdout)
                 self.assertIn("manual attention: 1 directive(s)", result.stderr)
 
-    def test_for_window_translates_map_time_unmap_actions(self):
-        for action in ["kill", "move scratchpad"]:
+    def test_for_window_translates_map_time_commands(self):
+        result = self.translate('for_window[app_id="mapped"] mark label\n')
+        self.assertIn('sway-for-window-command "mark label"', result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
+        for action in [
+            "kill",
+            "reload",
+            "move scratchpad",
+            "mark label",
+            "mark --add label",
+            "mark --replace label",
+            "mark --add --toggle label",
+            "mark --replace --toggle label",
+        ]:
             with self.subTest(action=action):
-                result = self.translate(f'for_window [app_id="gone"] {action}\n')
+                result = self.translate(f'for_window [app_id="mapped"] {action}\n')
                 self.assertIn(f'sway-for-window-command "{action}"', result.stdout)
                 self.assertIn("manual attention: none", result.stderr)
+
+        for action in ["mark", "mark --add", "mark --unknown label"]:
+            with self.subTest(invalid=action):
+                result = self.translate(f'for_window [app_id="mapped"] {action}\n')
+                self.assertNotIn("sway-for-window-command", result.stdout)
+                self.assertIn("invalid mark command", result.stdout)
+                self.assertIn("manual attention: 1 directive(s)", result.stderr)
 
     def test_for_window_refuses_missing_rule_surfaces(self):
         for source, reason in [
             ('for_window [workspace="web"] floating enable\n', "workspace criterion"),
-            ('for_window [class="foo"] mark tagged\n', "command needs manual conversion"),
             ('for_window [class="foo"] exec notify-send mapped\n', "command needs manual conversion"),
-            ('for_window [class="foo"] kill, mark tagged\n', "command needs manual conversion"),
         ]:
             with self.subTest(source=source):
                 result = self.translate(source)
                 self.assertNotIn("window-rule {", result.stdout)
                 self.assertIn(reason, result.stdout)
+                self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
+    def test_focus_follows_mouse_maps_exact_modes_and_refuses_always(self):
+        result = self.translate("focus_follows_mouse no\n")
+        self.assertNotIn("focus-follows-mouse", result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
+        result = self.translate("focus_follows_mouse yes\n")
+        self.assertIn("focus-follows-mouse", result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
+        result = self.translate("focus_follows_mouse always\n")
+        self.assertNotIn("focus-follows-mouse", result.stdout)
+        self.assertIn("focus_follows_mouse always", result.stdout)
+        self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
+        for value in ["No", "YeS", "invalid"]:
+            with self.subTest(value=value):
+                result = self.translate(f"focus_follows_mouse {value}\n")
+                self.assertNotIn("focus-follows-mouse", result.stdout)
+                self.assertIn("expected focus_follows_mouse no|yes|always", result.stdout)
                 self.assertIn("manual attention: 1 directive(s)", result.stderr)
 
     def test_mouse_warping_maps_exact_modes_and_refuses_output(self):

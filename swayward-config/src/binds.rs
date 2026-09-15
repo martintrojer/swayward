@@ -57,15 +57,31 @@ where
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Bind {
     pub key: Key,
     pub action: Action,
+    pub mouse_regions: MouseRegions,
+    pub release: bool,
     pub repeat: bool,
     pub cooldown: Option<Duration>,
     pub allow_when_locked: bool,
     pub allow_inhibiting: bool,
     pub hotkey_overlay_title: Option<Option<String>>,
+}
+
+impl std::fmt::Debug for Bind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Bind")
+            .field("key", &self.key)
+            .field("action", &self.action)
+            .field("repeat", &self.repeat)
+            .field("cooldown", &self.cooldown)
+            .field("allow_when_locked", &self.allow_when_locked)
+            .field("allow_inhibiting", &self.allow_inhibiting)
+            .field("hotkey_overlay_title", &self.hotkey_overlay_title)
+            .finish()
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
@@ -97,15 +113,26 @@ pub enum Trigger {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+    pub struct MouseRegions: u8 {
+        const TITLEBAR = 1;
+        const BORDER = 1 << 1;
+        const CONTENTS = 1 << 2;
+    }
+}
+
+bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub struct Modifiers : u8 {
+    pub struct Modifiers : u16 {
         const CTRL = 1;
         const SHIFT = 1 << 1;
         const ALT = 1 << 2;
         const SUPER = 1 << 3;
-        const ISO_LEVEL3_SHIFT = 1 << 4;
-        const ISO_LEVEL5_SHIFT = 1 << 5;
-        const COMPOSITOR = 1 << 6;
+        const NUM = 1 << 4;
+        const CAPS = 1 << 5;
+        const ISO_LEVEL3_SHIFT = 1 << 6;
+        const ISO_LEVEL5_SHIFT = 1 << 7;
+        const COMPOSITOR = 1 << 8;
     }
 }
 
@@ -843,13 +870,13 @@ impl Binds {
         node: &knuffel::ast::SpannedNode<S>,
         ctx: &mut knuffel::decode::Context<S>,
     ) -> Self {
-        let mut seen_keys: HashMap<Key, &knuffel::ast::SpannedNode<S>> = HashMap::new();
+        let mut seen_keys: HashMap<(Key, bool), &knuffel::ast::SpannedNode<S>> = HashMap::new();
         let mut binds = Vec::new();
 
         for child in node.children() {
             match <Bind as knuffel::Decode<S>>::decode_node(child, ctx) {
                 Err(e) => ctx.emit_error(e),
-                Ok(bind) => match seen_keys.entry(bind.key) {
+                Ok(bind) => match seen_keys.entry((bind.key, bind.release)) {
                     Entry::Occupied(entry) => {
                         // Even though it's technically incorrect, we use
                         // `DecodeError::Missing` here because it labels the bind with
@@ -917,6 +944,8 @@ where
             .parse::<Key>()
             .map_err(|e| DecodeError::conversion(&node.node_name, e.wrap_err("invalid keybind")))?;
 
+        let mut mouse_regions = MouseRegions::empty();
+        let mut release = false;
         let mut repeat = true;
         let mut cooldown = None;
         let mut allow_when_locked = false;
@@ -925,6 +954,27 @@ where
         let mut hotkey_overlay_title = None;
         for (name, val) in &node.properties {
             match &***name {
+                "mouse-regions" => {
+                    let regions: String = knuffel::traits::DecodeScalar::decode(val, ctx)?;
+                    for region in regions.split('+') {
+                        mouse_regions |= match region {
+                            "titlebar" => MouseRegions::TITLEBAR,
+                            "border" => MouseRegions::BORDER,
+                            "contents" => MouseRegions::CONTENTS,
+                            _ => {
+                                ctx.emit_error(DecodeError::unexpected(
+                                    name,
+                                    "property",
+                                    "mouse-regions must contain titlebar, border, or contents",
+                                ));
+                                MouseRegions::empty()
+                            }
+                        };
+                    }
+                }
+                "release" => {
+                    release = knuffel::traits::DecodeScalar::decode(val, ctx)?;
+                }
                 "repeat" => {
                     repeat = knuffel::traits::DecodeScalar::decode(val, ctx)?;
                 }
@@ -953,6 +1003,10 @@ where
             }
         }
 
+        if release {
+            repeat = false;
+        }
+
         let mut children = node.children();
 
         // If the action is invalid but the key is fine, we still want to return something.
@@ -961,6 +1015,8 @@ where
         let dummy = Self {
             key,
             action: Action::Spawn(vec![]),
+            mouse_regions,
+            release,
             repeat: true,
             cooldown: None,
             allow_when_locked: false,
@@ -1013,6 +1069,8 @@ where
                 return Ok(Self {
                     key,
                     action: Action::SwayCommand(command),
+                    mouse_regions,
+                    release,
                     repeat,
                     cooldown,
                     allow_when_locked,
@@ -1041,6 +1099,8 @@ where
                     Ok(Self {
                         key,
                         action,
+                        mouse_regions,
+                        release,
                         repeat,
                         cooldown,
                         allow_when_locked,
@@ -1080,10 +1140,18 @@ impl FromStr for Key {
                 modifiers |= Modifiers::CTRL;
             } else if part.eq_ignore_ascii_case("shift") {
                 modifiers |= Modifiers::SHIFT;
-            } else if part.eq_ignore_ascii_case("alt") {
+            } else if part.eq_ignore_ascii_case("lock") {
+                modifiers |= Modifiers::CAPS;
+            } else if part.eq_ignore_ascii_case("alt") || part.eq_ignore_ascii_case("mod1") {
                 modifiers |= Modifiers::ALT;
-            } else if part.eq_ignore_ascii_case("super") || part.eq_ignore_ascii_case("win") {
+            } else if part.eq_ignore_ascii_case("super")
+                || part.eq_ignore_ascii_case("logo")
+                || part.eq_ignore_ascii_case("win")
+                || part.eq_ignore_ascii_case("mod4")
+            {
                 modifiers |= Modifiers::SUPER;
+            } else if part.eq_ignore_ascii_case("num") || part.eq_ignore_ascii_case("mod2") {
+                modifiers |= Modifiers::NUM;
             } else if part.eq_ignore_ascii_case("iso_level3_shift")
                 || part.eq_ignore_ascii_case("mod5")
             {
@@ -1204,6 +1272,31 @@ mod tests {
     }
 
     #[test]
+    fn parse_numlock_and_sway_modifier_aliases() {
+        for (name, modifier) in [
+            ("Shift", Modifiers::SHIFT),
+            ("Lock", Modifiers::CAPS),
+            ("Control", Modifiers::CTRL),
+            ("Ctrl", Modifiers::CTRL),
+            ("Alt", Modifiers::ALT),
+            ("Mod1", Modifiers::ALT),
+            ("Num", Modifiers::NUM),
+            ("Mod2", Modifiers::NUM),
+            ("Mod3", Modifiers::ISO_LEVEL5_SHIFT),
+            ("Super", Modifiers::SUPER),
+            ("Logo", Modifiers::SUPER),
+            ("Mod4", Modifiers::SUPER),
+            ("Mod5", Modifiers::ISO_LEVEL3_SHIFT),
+        ] {
+            assert_eq!(
+                format!("{name}+A").parse::<Key>().unwrap().modifiers,
+                modifier
+            );
+        }
+        assert!("Mod6+A".parse::<Key>().is_err());
+    }
+
+    #[test]
     fn parse_iso_level_shifts() {
         assert_eq!(
             "ISO_Level3_Shift+A".parse::<Key>().unwrap(),
@@ -1212,23 +1305,9 @@ mod tests {
                 modifiers: Modifiers::ISO_LEVEL3_SHIFT
             },
         );
-        assert_eq!(
-            "Mod5+A".parse::<Key>().unwrap(),
-            Key {
-                trigger: Trigger::Keysym(Keysym::a),
-                modifiers: Modifiers::ISO_LEVEL3_SHIFT
-            },
-        );
 
         assert_eq!(
             "ISO_Level5_Shift+A".parse::<Key>().unwrap(),
-            Key {
-                trigger: Trigger::Keysym(Keysym::a),
-                modifiers: Modifiers::ISO_LEVEL5_SHIFT
-            },
-        );
-        assert_eq!(
-            "Mod3+A".parse::<Key>().unwrap(),
             Key {
                 trigger: Trigger::Keysym(Keysym::a),
                 modifiers: Modifiers::ISO_LEVEL5_SHIFT

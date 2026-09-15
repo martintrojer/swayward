@@ -15,6 +15,7 @@ use smithay::backend::input::{
 };
 use smithay::backend::libinput::LibinputInputBackend;
 use smithay::input::dnd::DnDGrab;
+use smithay::input::keyboard::xkb::keysym_get_name;
 use smithay::input::keyboard::{keysyms, FilterResult, Keysym, Layout, ModifiersState};
 use smithay::input::pointer::{
     AxisFrame, ButtonEvent, CursorIcon, CursorImageStatus, Focus, GestureHoldBeginEvent,
@@ -35,7 +36,8 @@ use smithay::utils::{Logical, Point, Rectangle, Transform, SERIAL_COUNTER};
 use smithay::wayland::keyboard_shortcuts_inhibit::KeyboardShortcutsInhibitor;
 use smithay::wayland::pointer_constraints::{with_pointer_constraint, PointerConstraint};
 use swayward_config::{
-    Action, Bind, Binds, Config, Key, ModKey, Modifiers, MruDirection, SwitchBinds, Trigger,
+    Action, Bind, Binds, Config, Key, ModKey, Modifiers, MouseRegions, MruDirection, SwitchBinds,
+    Trigger,
 };
 use swayward_ipc::LayoutSwitchTarget;
 use touch_overview_grab::TouchOverviewGrab;
@@ -48,7 +50,7 @@ use self::spatial_movement_grab::SpatialMovementGrab;
 #[cfg(feature = "dbus")]
 use crate::dbus::freedesktop_a11y::KbMonBlock;
 use crate::layout::scrolling::ScrollDirection;
-use crate::layout::{ActivateWindow, LayoutElement as _};
+use crate::layout::{ActivateWindow, HitType, LayoutElement as _};
 use crate::swayward::{CastTarget, PointerVisibility, State};
 use crate::ui::mru::{WindowMru, WindowMruUi};
 use crate::ui::screenshot_ui::ScreenshotUi;
@@ -573,6 +575,7 @@ impl State {
 
                     should_intercept_key(
                         &mut this.swayward.suppressed_keys,
+                        &mut this.swayward.held_release_bind,
                         bindings,
                         mod_key,
                         key_code,
@@ -611,13 +614,11 @@ impl State {
             return;
         };
 
-        if !pressed {
-            return;
-        }
-
         self.handle_bind(bind.clone());
 
-        self.start_key_repeat(bind);
+        if pressed {
+            self.start_key_repeat(bind);
+        }
     }
 
     fn start_key_repeat(&mut self, bind: Bind) {
@@ -677,42 +678,79 @@ impl State {
     }
 
     pub fn handle_bind(&mut self, bind: Bind) {
-        let Some(cooldown) = bind.cooldown else {
-            self.do_action(bind.action, bind.allow_when_locked);
-            return;
-        };
-
-        // Check this first so that it doesn't trigger the cooldown.
         if self.swayward.is_locked()
             && !(bind.allow_when_locked || allowed_when_locked(&bind.action))
         {
             return;
         }
 
-        match self.swayward.bind_cooldown_timers.entry(bind.key) {
-            // The bind is on cooldown.
-            Entry::Occupied(_) => (),
-            Entry::Vacant(entry) => {
-                let timer = Timer::from_duration(cooldown);
-                let token = self
-                    .swayward
-                    .event_loop
-                    .insert_source(timer, move |_, _, state| {
-                        if state
-                            .swayward
-                            .bind_cooldown_timers
-                            .remove(&bind.key)
-                            .is_none()
-                        {
-                            error!("bind cooldown timer entry disappeared");
-                        }
-                        TimeoutAction::Drop
-                    })
-                    .unwrap();
-                entry.insert(token);
-
-                self.do_action(bind.action, bind.allow_when_locked);
+        if let Some(cooldown) = bind.cooldown {
+            match self
+                .swayward
+                .bind_cooldown_timers
+                .entry((bind.key, bind.release))
+            {
+                Entry::Occupied(_) => return,
+                Entry::Vacant(entry) => {
+                    let timer = Timer::from_duration(cooldown);
+                    let token = self
+                        .swayward
+                        .event_loop
+                        .insert_source(timer, move |_, _, state| {
+                            if state
+                                .swayward
+                                .bind_cooldown_timers
+                                .remove(&(bind.key, bind.release))
+                                .is_none()
+                            {
+                                error!("bind cooldown timer entry disappeared");
+                            }
+                            TimeoutAction::Drop
+                        })
+                        .unwrap();
+                    entry.insert(token);
+                }
             }
+        }
+
+        let event = sway_binding_event(&bind, self.backend.mod_key(&self.swayward.config.borrow()));
+        let succeeded = match bind.action {
+            Action::SwayCommand(command) => crate::command::execute(self, &command)
+                .into_iter()
+                .all(|outcome| outcome.success),
+            action => {
+                self.do_action(action, bind.allow_when_locked);
+                false
+            }
+        };
+        if succeeded {
+            if let (Some(server), Some(event)) = (&self.swayward.ipc_server, event) {
+                server.send_event(event);
+            }
+        }
+    }
+
+    fn focused_view_id(&self) -> Option<i64> {
+        let workspace = self.swayward.layout.active_workspace()?;
+        if workspace
+            .focused_container_node()
+            .is_some_and(|node| workspace.is_tiling_split(node))
+        {
+            return None;
+        }
+        self.swayward
+            .layout
+            .focus()
+            .map(|window| crate::ipc::tree::window_id(window.id()))
+    }
+
+    fn emit_window_move(&mut self, moved: bool, id: Option<i64>) {
+        if !moved {
+            return;
+        }
+        self.ipc_refresh_layout();
+        if let (Some(server), Some(id)) = (&self.swayward.ipc_server, id) {
+            server.send_event(swayward_ipc::legacy::Event::WindowMoved { id });
         }
     }
 
@@ -983,8 +1021,10 @@ impl State {
                 if self.swayward.screenshot_ui.is_open() {
                     self.swayward.screenshot_ui.move_left();
                 } else {
-                    self.swayward.layout.move_left();
+                    let id = self.focused_view_id();
+                    let moved = self.swayward.layout.move_left();
                     self.maybe_warp_cursor_to_focus();
+                    self.emit_window_move(moved, id);
                 }
 
                 // FIXME: granular
@@ -994,8 +1034,10 @@ impl State {
                 if self.swayward.screenshot_ui.is_open() {
                     self.swayward.screenshot_ui.move_right();
                 } else {
-                    self.swayward.layout.move_right();
+                    let id = self.focused_view_id();
+                    let moved = self.swayward.layout.move_right();
                     self.maybe_warp_cursor_to_focus();
+                    self.emit_window_move(moved, id);
                 }
 
                 // FIXME: granular
@@ -1055,8 +1097,10 @@ impl State {
                 if self.swayward.screenshot_ui.is_open() {
                     self.swayward.screenshot_ui.move_down();
                 } else {
-                    self.swayward.layout.move_down();
+                    let id = self.focused_view_id();
+                    let moved = self.swayward.layout.move_down();
                     self.maybe_warp_cursor_to_focus();
+                    self.emit_window_move(moved, id);
                 }
 
                 // FIXME: granular
@@ -1066,8 +1110,10 @@ impl State {
                 if self.swayward.screenshot_ui.is_open() {
                     self.swayward.screenshot_ui.move_up();
                 } else {
-                    self.swayward.layout.move_up();
+                    let id = self.focused_view_id();
+                    let moved = self.swayward.layout.move_up();
                     self.maybe_warp_cursor_to_focus();
+                    self.emit_window_move(moved, id);
                 }
 
                 // FIXME: granular
@@ -1213,7 +1259,7 @@ impl State {
                 self.swayward.queue_redraw_all();
             }
             Action::FocusWindowOrMonitorUp => {
-                if let Some(output) = self.swayward.output_up() {
+                if let Some(output) = self.swayward.adjacent_output_up() {
                     if self.swayward.layout.focus_window_up_or_output(&output)
                         && !self.maybe_warp_cursor_to_focus_centered()
                     {
@@ -1231,7 +1277,7 @@ impl State {
                 self.swayward.queue_redraw_all();
             }
             Action::FocusWindowOrMonitorDown => {
-                if let Some(output) = self.swayward.output_down() {
+                if let Some(output) = self.swayward.adjacent_output_down() {
                     if self.swayward.layout.focus_window_down_or_output(&output)
                         && !self.maybe_warp_cursor_to_focus_centered()
                     {
@@ -1249,7 +1295,7 @@ impl State {
                 self.swayward.queue_redraw_all();
             }
             Action::FocusColumnOrMonitorLeft => {
-                if let Some(output) = self.swayward.output_left() {
+                if let Some(output) = self.swayward.adjacent_output_left() {
                     if self.swayward.layout.focus_column_left_or_output(&output)
                         && !self.maybe_warp_cursor_to_focus_centered()
                     {
@@ -1267,7 +1313,7 @@ impl State {
                 self.swayward.queue_redraw_all();
             }
             Action::FocusColumnOrMonitorRight => {
-                if let Some(output) = self.swayward.output_right() {
+                if let Some(output) = self.swayward.adjacent_output_right() {
                     if self.swayward.layout.focus_column_right_or_output(&output)
                         && !self.maybe_warp_cursor_to_focus_centered()
                     {
@@ -2948,9 +2994,16 @@ impl State {
 
         let mod_key = self.backend.mod_key(&self.swayward.config.borrow());
 
-        // Ignore release events for mouse clicks that triggered a bind.
-        if self.swayward.suppressed_buttons.remove(&button_code) {
-            return;
+        if ButtonState::Released == button_state {
+            let suppressed = self.swayward.suppressed_buttons.remove(&button_code);
+            if let Some(bind) = self.swayward.held_release_buttons.remove(&button_code) {
+                self.handle_bind(bind);
+                return;
+            }
+            // Ignore release events for mouse clicks that triggered a press bind.
+            if suppressed {
+                return;
+            }
         }
 
         let mods = self.swayward.seat.get_keyboard().unwrap().modifier_state();
@@ -2958,9 +3011,7 @@ impl State {
         let mod_down = modifiers.contains(mod_key.to_modifiers());
 
         if ButtonState::Pressed == button_state {
-            let mut is_mru_open = false;
             if let Some(mru_output) = self.swayward.window_mru_ui.output() {
-                is_mru_open = true;
                 if let Some(MouseButton::Left) = button {
                     let location = pointer.current_location();
                     let (output, pos_within_output) = self.swayward.output_under(location).unwrap();
@@ -2983,7 +3034,7 @@ impl State {
                 }
             }
 
-            if is_mru_open || self.swayward.mods_with_mouse_binds.contains(&modifiers) {
+            {
                 if let Some(bind) = match button {
                     Some(MouseButton::Left) => Some(Trigger::MouseLeft),
                     Some(MouseButton::Right) => Some(Trigger::MouseRight),
@@ -2992,7 +3043,7 @@ impl State {
                     Some(MouseButton::Forward) => Some(Trigger::MouseForward),
                     _ => None,
                 }
-                .and_then(|trigger| {
+                .map(|trigger| {
                     let config = self.swayward.config.borrow();
                     let bindings = make_binds_iter(
                         &config,
@@ -3000,16 +3051,47 @@ impl State {
                         &mut self.swayward.window_mru_ui,
                         modifiers,
                     );
-                    find_configured_bind(bindings, mod_key, trigger, mods)
+                    let release = find_configured_bind(
+                        bindings.clone().filter(|bind| bind.release),
+                        mod_key,
+                        trigger,
+                        mods,
+                    );
+                    let press = find_configured_bind(
+                        bindings.filter(|bind| !bind.release),
+                        mod_key,
+                        trigger,
+                        mods,
+                    );
+                    (press, release)
                 })
-                .filter(|bind| {
-                    !self.swayward.screenshot_ui.is_open()
-                        || allowed_during_screenshot(&bind.action)
+                .map(|(press, release)| {
+                    let allowed = |bind: &Bind| {
+                        self.mouse_bind_matches_region(bind)
+                            && (!self.swayward.screenshot_ui.is_open()
+                                || allowed_during_screenshot(&bind.action))
+                    };
+                    (press.filter(allowed), release.filter(allowed))
+                })
+                .and_then(|(press, release)| {
+                    if let Some(release) = release {
+                        self.swayward
+                            .held_release_buttons
+                            .insert(button_code, release);
+                    }
+                    press
                 }) {
                     self.swayward.suppressed_buttons.insert(button_code);
                     self.handle_bind(bind.clone());
                     return;
-                };
+                }
+                if self
+                    .swayward
+                    .held_release_buttons
+                    .contains_key(&button_code)
+                {
+                    return;
+                }
             }
 
             // We received an event for the regular pointer, so show it now.
@@ -3273,6 +3355,29 @@ impl State {
         pointer.frame(self);
     }
 
+    fn mouse_bind_matches_region(&self, bind: &Bind) -> bool {
+        if bind.mouse_regions.is_empty() {
+            return true;
+        }
+
+        let contents = self
+            .swayward
+            .contents_under(self.swayward.seat.get_pointer().unwrap().current_location());
+        let (click_region, on_workspace) = match contents.window.as_ref().map(|(_, hit)| hit) {
+            Some(HitType::Input { .. }) => (MouseRegions::CONTENTS, false),
+            Some(HitType::Activate {
+                is_tab_indicator: true,
+            }) => (MouseRegions::TITLEBAR, false),
+            Some(HitType::Activate {
+                is_tab_indicator: false,
+            }) => (MouseRegions::BORDER, false),
+            None if contents.layer.is_none() => (MouseRegions::all(), true),
+            None => (MouseRegions::empty(), false),
+        };
+
+        mouse_regions_match(bind.mouse_regions, click_region, on_workspace)
+    }
+
     fn on_pointer_axis<I: InputBackend>(&mut self, event: I::PointerAxisEvent) {
         let pointer = &self.swayward.seat.get_pointer().unwrap();
 
@@ -3339,6 +3444,8 @@ impl State {
                                     modifiers: Modifiers::empty(),
                                 },
                                 action: Action::FocusColumnLeftUnderMouse,
+                                mouse_regions: MouseRegions::empty(),
+                                release: false,
                                 repeat: true,
                                 cooldown: None,
                                 allow_when_locked: false,
@@ -3351,6 +3458,8 @@ impl State {
                                     modifiers: Modifiers::empty(),
                                 },
                                 action: Action::FocusColumnRightUnderMouse,
+                                mouse_regions: MouseRegions::empty(),
+                                release: false,
                                 repeat: true,
                                 cooldown: None,
                                 allow_when_locked: false,
@@ -3371,21 +3480,25 @@ impl State {
                                 mod_key,
                                 Trigger::WheelScrollLeft,
                                 mods,
-                            )
-                            .filter(|bind| {
-                                !self.swayward.screenshot_ui.is_open()
-                                    || allowed_during_screenshot(&bind.action)
-                            });
+                            );
                             let bind_right = find_configured_bind(
                                 bindings,
                                 mod_key,
                                 Trigger::WheelScrollRight,
                                 mods,
-                            )
-                            .filter(|bind| {
-                                !self.swayward.screenshot_ui.is_open()
-                                    || allowed_during_screenshot(&bind.action)
-                            });
+                            );
+                            let bind_left = bind_left
+                                .filter(|bind| self.mouse_bind_matches_region(bind))
+                                .filter(|bind| {
+                                    !self.swayward.screenshot_ui.is_open()
+                                        || allowed_during_screenshot(&bind.action)
+                                });
+                            let bind_right = bind_right
+                                .filter(|bind| self.mouse_bind_matches_region(bind))
+                                .filter(|bind| {
+                                    !self.swayward.screenshot_ui.is_open()
+                                        || allowed_during_screenshot(&bind.action)
+                                });
                             (bind_left, bind_right)
                         };
 
@@ -3412,6 +3525,8 @@ impl State {
                                 modifiers: Modifiers::empty(),
                             },
                             action: Action::FocusWorkspaceUpUnderMouse,
+                            mouse_regions: MouseRegions::empty(),
+                            release: false,
                             repeat: true,
                             cooldown: Some(Duration::from_millis(50)),
                             allow_when_locked: false,
@@ -3424,6 +3539,8 @@ impl State {
                                 modifiers: Modifiers::empty(),
                             },
                             action: Action::FocusWorkspaceDownUnderMouse,
+                            mouse_regions: MouseRegions::empty(),
+                            release: false,
                             repeat: true,
                             cooldown: Some(Duration::from_millis(50)),
                             allow_when_locked: false,
@@ -3438,6 +3555,8 @@ impl State {
                                 modifiers: Modifiers::empty(),
                             },
                             action: Action::FocusColumnLeftUnderMouse,
+                            mouse_regions: MouseRegions::empty(),
+                            release: false,
                             repeat: true,
                             cooldown: Some(Duration::from_millis(50)),
                             allow_when_locked: false,
@@ -3450,6 +3569,8 @@ impl State {
                                 modifiers: Modifiers::empty(),
                             },
                             action: Action::FocusColumnRightUnderMouse,
+                            mouse_regions: MouseRegions::empty(),
+                            release: false,
                             repeat: true,
                             cooldown: Some(Duration::from_millis(50)),
                             allow_when_locked: false,
@@ -3470,17 +3591,21 @@ impl State {
                             mod_key,
                             Trigger::WheelScrollUp,
                             mods,
-                        )
-                        .filter(|bind| {
-                            !self.swayward.screenshot_ui.is_open()
-                                || allowed_during_screenshot(&bind.action)
-                        });
+                        );
                         let bind_down =
-                            find_configured_bind(bindings, mod_key, Trigger::WheelScrollDown, mods)
-                                .filter(|bind| {
-                                    !self.swayward.screenshot_ui.is_open()
-                                        || allowed_during_screenshot(&bind.action)
-                                });
+                            find_configured_bind(bindings, mod_key, Trigger::WheelScrollDown, mods);
+                        let bind_up = bind_up
+                            .filter(|bind| self.mouse_bind_matches_region(bind))
+                            .filter(|bind| {
+                                !self.swayward.screenshot_ui.is_open()
+                                    || allowed_during_screenshot(&bind.action)
+                            });
+                        let bind_down = bind_down
+                            .filter(|bind| self.mouse_bind_matches_region(bind))
+                            .filter(|bind| {
+                                !self.swayward.screenshot_ui.is_open()
+                                    || allowed_during_screenshot(&bind.action)
+                            });
                         (bind_up, bind_down)
                     };
 
@@ -4744,6 +4869,7 @@ impl State {
 #[allow(clippy::too_many_arguments)]
 fn should_intercept_key<'a>(
     suppressed_keys: &mut HashSet<Keycode>,
+    held_release_bind: &mut Option<Bind>,
     bindings: impl IntoIterator<Item = &'a Bind> + Clone,
     mod_key: ModKey,
     key_code: Keycode,
@@ -4755,15 +4881,37 @@ fn should_intercept_key<'a>(
     disable_power_key_handling: bool,
     is_inhibiting_shortcuts: bool,
 ) -> FilterResult<Option<Bind>> {
-    // Actions are only triggered on presses, release of the key
-    // shouldn't try to intercept anything unless we have marked
-    // the key to suppress.
-    if !pressed && !suppressed_keys.contains(&key_code) {
-        return FilterResult::Forward;
+    let bindings = bindings.into_iter().collect::<Vec<_>>();
+    let release_bind = find_bind(
+        bindings.iter().copied().filter(|bind| bind.release),
+        mod_key,
+        modified,
+        raw,
+        key_code,
+        mods,
+        disable_power_key_handling,
+    )
+    .filter(|bind| !is_inhibiting_shortcuts || !bind.allow_inhibiting)
+    .filter(|bind| !screenshot_ui.is_open() || allowed_during_screenshot(&bind.action));
+    if pressed {
+        if release_bind.is_some() {
+            *held_release_bind = release_bind;
+        }
+    } else if held_release_bind.as_ref().is_some_and(|bind| {
+        bind.key.trigger == Trigger::Keycode(key_code.raw() + 8)
+            || bind.key.trigger == Trigger::Keysym(modified)
+            || raw.is_some_and(|raw| bind.key.trigger == Trigger::Keysym(raw))
+            || find_configured_bind(std::iter::once(bind), mod_key, bind.key.trigger, mods)
+                .is_none()
+    }) {
+        suppressed_keys.remove(&key_code);
+        return FilterResult::Intercept(held_release_bind.take());
+    } else if release_bind.is_some() {
+        return FilterResult::Intercept(release_bind);
     }
 
     let mut final_bind = find_bind(
-        bindings,
+        bindings.iter().copied().filter(|bind| !bind.release),
         mod_key,
         modified,
         raw,
@@ -4792,6 +4940,8 @@ fn should_intercept_key<'a>(
                         modifiers: Modifiers::empty(),
                     },
                     action,
+                    mouse_regions: MouseRegions::empty(),
+                    release: false,
                     repeat: true,
                     cooldown: None,
                     allow_when_locked: false,
@@ -4814,15 +4964,9 @@ fn should_intercept_key<'a>(
                 FilterResult::Intercept(Some(bind))
             }
         }
-        (_, false) => {
-            // By this point, we know that the key was suppressed on press. Even if we're inhibiting
-            // shortcuts, we should still suppress the release.
-            // But we don't need to check for shortcuts inhibition here, because
-            // if it was inhibited on press (forwarded to the client), it wouldn't be suppressed,
-            // so the release would already have been forwarded at the start of this function.
-            suppressed_keys.remove(&key_code);
-            FilterResult::Intercept(None)
-        }
+        (_, false) if suppressed_keys.remove(&key_code) => FilterResult::Intercept(None),
+        (_, false) => FilterResult::Forward,
+        (None, true) if held_release_bind.is_some() => FilterResult::Intercept(None),
         (None, true) => FilterResult::Forward,
     }
 }
@@ -4857,6 +5001,8 @@ fn find_bind<'a>(
                 modifiers: Modifiers::empty(),
             },
             action,
+            mouse_regions: MouseRegions::empty(),
+            release: false,
             repeat: true,
             cooldown: None,
             allow_when_locked: false,
@@ -4879,6 +5025,14 @@ fn find_bind<'a>(
                 mods,
             )
         })
+}
+
+fn mouse_regions_match(
+    configured: MouseRegions,
+    click_region: MouseRegions,
+    on_workspace: bool,
+) -> bool {
+    click_region.intersects(configured) && (!on_workspace || configured.contains(click_region))
 }
 
 fn find_configured_bind<'a>(
@@ -4932,6 +5086,70 @@ fn find_configured_switch_action(
         .map(|switch_action| Action::Spawn(switch_action.spawn.clone()))
 }
 
+fn sway_binding_event(bind: &Bind, mod_key: ModKey) -> Option<swayward_ipc::legacy::Event> {
+    let Action::SwayCommand(command) = &bind.action else {
+        return None;
+    };
+    let mut modifiers = bind.key.modifiers;
+    if modifiers.contains(Modifiers::COMPOSITOR) {
+        modifiers.remove(Modifiers::COMPOSITOR);
+        modifiers.insert(mod_key.to_modifiers());
+    }
+    let event_state_mask = [
+        (Modifiers::SHIFT, "Shift"),
+        (Modifiers::CTRL, "Control"),
+        (Modifiers::ALT, "Mod1"),
+        (Modifiers::ISO_LEVEL5_SHIFT, "Mod3"),
+        (Modifiers::SUPER, "Mod4"),
+        (Modifiers::ISO_LEVEL3_SHIFT, "Mod5"),
+    ]
+    .into_iter()
+    .filter(|(modifier, _)| modifiers.contains(*modifier))
+    .map(|(_, name)| name.into())
+    .collect();
+    let (input_codes, input_code, symbols, symbol, input_type) = match bind.key.trigger {
+        Trigger::Keycode(code) => (vec![code], code, vec![], None, "keyboard"),
+        Trigger::Keysym(keysym) => {
+            let symbol = keysym_get_name(keysym);
+            (vec![], 0, vec![symbol.clone()], Some(symbol), "keyboard")
+        }
+        Trigger::MouseLeft
+        | Trigger::MouseRight
+        | Trigger::MouseMiddle
+        | Trigger::MouseBack
+        | Trigger::MouseForward
+        | Trigger::WheelScrollDown
+        | Trigger::WheelScrollUp
+        | Trigger::WheelScrollLeft
+        | Trigger::WheelScrollRight => {
+            let symbol: String = match bind.key.trigger {
+                Trigger::MouseLeft => "button1",
+                Trigger::MouseRight => "button2",
+                Trigger::MouseMiddle => "button3",
+                Trigger::MouseBack => "button4",
+                Trigger::MouseForward => "button5",
+                Trigger::WheelScrollUp => "button4",
+                Trigger::WheelScrollDown => "button5",
+                Trigger::WheelScrollLeft => "button6",
+                Trigger::WheelScrollRight => "button7",
+                _ => unreachable!(),
+            }
+            .into();
+            (vec![], 0, vec![symbol.clone()], Some(symbol), "mouse")
+        }
+        _ => return None,
+    };
+    Some(swayward_ipc::legacy::Event::SwayBinding {
+        command: command.clone(),
+        event_state_mask,
+        input_codes,
+        input_code,
+        symbols,
+        symbol,
+        input_type: input_type.into(),
+    })
+}
+
 fn modifiers_from_state(mods: ModifiersState) -> Modifiers {
     let mut modifiers = Modifiers::empty();
     if mods.ctrl {
@@ -4940,11 +5158,17 @@ fn modifiers_from_state(mods: ModifiersState) -> Modifiers {
     if mods.shift {
         modifiers |= Modifiers::SHIFT;
     }
+    if mods.caps_lock {
+        modifiers |= Modifiers::CAPS;
+    }
     if mods.alt {
         modifiers |= Modifiers::ALT;
     }
     if mods.logo {
         modifiers |= Modifiers::SUPER;
+    }
+    if mods.num_lock {
+        modifiers |= Modifiers::NUM;
     }
     if mods.iso_level3_shift {
         modifiers |= Modifiers::ISO_LEVEL3_SHIFT;
@@ -5107,6 +5331,8 @@ fn hardcoded_overview_bind(raw: Keysym, mods: ModifiersState) -> Option<Bind> {
             modifiers: Modifiers::empty(),
         },
         action,
+        mouse_regions: MouseRegions::empty(),
+        release: false,
         repeat,
         cooldown: None,
         allow_when_locked: false,
@@ -5536,10 +5762,126 @@ fn make_binds_iter<'a>(
 
 #[cfg(test)]
 mod tests {
-    use std::cell::Cell;
+    use std::cell::{Cell, RefCell};
 
     use super::*;
     use crate::animation::Clock;
+
+    #[test]
+    fn mouse_region_matching_uses_intersection_except_for_workspace_background() {
+        let whole = MouseRegions::all();
+        assert!(mouse_regions_match(whole, MouseRegions::CONTENTS, false));
+        assert!(mouse_regions_match(whole, MouseRegions::all(), true));
+        assert!(!mouse_regions_match(
+            MouseRegions::BORDER,
+            MouseRegions::all(),
+            true
+        ));
+        assert!(!mouse_regions_match(
+            MouseRegions::TITLEBAR,
+            MouseRegions::CONTENTS,
+            false
+        ));
+    }
+
+    #[test]
+    fn release_bindings_fire_only_when_the_chord_is_released() {
+        let keysym = Keysym::x;
+        let key_code = Keycode::from(keysym.raw() + 8);
+        let bindings = Binds(vec![Bind {
+            key: Key {
+                trigger: Trigger::Keysym(keysym),
+                modifiers: Modifiers::SHIFT,
+            },
+            action: Action::SwayCommand("nop release".into()),
+            mouse_regions: MouseRegions::empty(),
+            release: true,
+            repeat: false,
+            cooldown: None,
+            allow_when_locked: false,
+            allow_inhibiting: true,
+            hotkey_overlay_title: None,
+        }]);
+        let screenshot_ui = ScreenshotUi::new(Clock::default(), Default::default());
+        let mods = ModifiersState {
+            shift: true,
+            ..Default::default()
+        };
+        let mut suppressed_keys = HashSet::new();
+        let mut held_release_bind = None;
+
+        let press = should_intercept_key(
+            &mut suppressed_keys,
+            &mut held_release_bind,
+            &bindings.0,
+            ModKey::Super,
+            key_code,
+            keysym,
+            Some(keysym),
+            true,
+            mods,
+            &screenshot_ui,
+            false,
+            false,
+        );
+        assert!(matches!(press, FilterResult::Intercept(None)));
+        assert!(held_release_bind.is_some());
+
+        let release = should_intercept_key(
+            &mut suppressed_keys,
+            &mut held_release_bind,
+            &bindings.0,
+            ModKey::Super,
+            key_code,
+            keysym,
+            Some(keysym),
+            false,
+            mods,
+            &screenshot_ui,
+            false,
+            false,
+        );
+        assert!(matches!(
+            release,
+            FilterResult::Intercept(Some(Bind { release: true, .. }))
+        ));
+        assert!(held_release_bind.is_none());
+    }
+
+    #[test]
+    fn numlock_is_a_distinct_locked_modifier_for_binding_match() {
+        let bind = Bind {
+            key: Key {
+                trigger: Trigger::Keysym(Keysym::a),
+                modifiers: Modifiers::NUM,
+            },
+            action: Action::CloseWindow,
+            mouse_regions: MouseRegions::empty(),
+            release: false,
+            repeat: true,
+            cooldown: None,
+            allow_when_locked: false,
+            allow_inhibiting: true,
+            hotkey_overlay_title: None,
+        };
+        assert!(find_configured_bind(
+            [&bind],
+            ModKey::Super,
+            Trigger::Keysym(Keysym::a),
+            ModifiersState::default(),
+        )
+        .is_none());
+        assert!(find_configured_bind(
+            [&bind],
+            ModKey::Super,
+            Trigger::Keysym(Keysym::a),
+            ModifiersState {
+                num_lock: true,
+                ..Default::default()
+            },
+        )
+        .is_some());
+    }
 
     #[test]
     fn bindings_suppress_keys() {
@@ -5550,6 +5892,8 @@ mod tests {
                 modifiers: Modifiers::COMPOSITOR | Modifiers::CTRL,
             },
             action: Action::CloseWindow,
+            mouse_regions: MouseRegions::empty(),
+            release: false,
             repeat: true,
             cooldown: None,
             allow_when_locked: false,
@@ -5559,6 +5903,7 @@ mod tests {
 
         let comp_mod = ModKey::Super;
         let mut suppressed_keys = HashSet::new();
+        let held_release_bind = RefCell::new(None);
 
         let screenshot_ui = ScreenshotUi::new(Clock::default(), Default::default());
         let disable_power_key_handling = false;
@@ -5571,6 +5916,7 @@ mod tests {
         let close_key_event = |suppr: &mut HashSet<Keycode>, mods: ModifiersState, pressed| {
             should_intercept_key(
                 suppr,
+                &mut held_release_bind.borrow_mut(),
                 &bindings.0,
                 comp_mod,
                 close_key_code,
@@ -5588,6 +5934,7 @@ mod tests {
         let none_key_event = |suppr: &mut HashSet<Keycode>, mods: ModifiersState, pressed| {
             should_intercept_key(
                 suppr,
+                &mut held_release_bind.borrow_mut(),
                 &bindings.0,
                 comp_mod,
                 Keycode::from(Keysym::l.raw() + 8),
@@ -5736,6 +6083,8 @@ mod tests {
                     modifiers: Modifiers::COMPOSITOR,
                 },
                 action: Action::CloseWindow,
+                mouse_regions: MouseRegions::empty(),
+                release: false,
                 repeat: true,
                 cooldown: None,
                 allow_when_locked: false,
@@ -5748,6 +6097,8 @@ mod tests {
                     modifiers: Modifiers::SUPER,
                 },
                 action: Action::FocusColumnLeft,
+                mouse_regions: MouseRegions::empty(),
+                release: false,
                 repeat: true,
                 cooldown: None,
                 allow_when_locked: false,
@@ -5760,6 +6111,8 @@ mod tests {
                     modifiers: Modifiers::empty(),
                 },
                 action: Action::FocusWindowDown,
+                mouse_regions: MouseRegions::empty(),
+                release: false,
                 repeat: true,
                 cooldown: None,
                 allow_when_locked: false,
@@ -5772,6 +6125,8 @@ mod tests {
                     modifiers: Modifiers::COMPOSITOR | Modifiers::SUPER,
                 },
                 action: Action::FocusWindowUp,
+                mouse_regions: MouseRegions::empty(),
+                release: false,
                 repeat: true,
                 cooldown: None,
                 allow_when_locked: false,
@@ -5784,6 +6139,8 @@ mod tests {
                     modifiers: Modifiers::SUPER | Modifiers::ALT,
                 },
                 action: Action::FocusColumnRight,
+                mouse_regions: MouseRegions::empty(),
+                release: false,
                 repeat: true,
                 cooldown: None,
                 allow_when_locked: false,

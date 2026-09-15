@@ -87,6 +87,53 @@ pub(super) fn kill(state: &mut State, target: CommandTarget) -> Result<(), Comma
     Ok(())
 }
 
+fn set_size_change(amount: ResizeAmount, floating: bool) -> Option<SizeChange> {
+    (amount.amount > 0).then(|| match amount.unit {
+        ResizeUnit::Pixels | ResizeUnit::Default if floating => SizeChange::SetFixed(amount.amount),
+        ResizeUnit::Pixels => SizeChange::SetFixed(amount.amount),
+        ResizeUnit::Default | ResizeUnit::PercentagePoints => {
+            SizeChange::SetProportion(f64::from(amount.amount))
+        }
+    })
+}
+
+pub(super) fn resize_set(
+    state: &mut State,
+    target: CommandTarget,
+    width: Option<ResizeAmount>,
+    height: Option<ResizeAmount>,
+) -> Result<(), CommandOutcome> {
+    let floating = match target {
+        CommandTarget::Window(target) => state
+            .swayward
+            .layout
+            .windows()
+            .any(|(_, mapped)| mapped.id() == target && mapped.is_floating()),
+        CommandTarget::Container(_, _) => false,
+    };
+    let width = width.and_then(|amount| set_size_change(amount, floating));
+    let height = height.and_then(|amount| set_size_change(amount, floating));
+    match target {
+        CommandTarget::Window(_) => {
+            let window = target_window(state, target, "command requires a window target")?;
+            if state.swayward.layout.is_scratchpad_hidden(&window) {
+                return Err(failure("Cannot resize a hidden scratchpad container"));
+            }
+            state
+                .swayward
+                .layout
+                .set_window_size_sway(&window, width, height);
+        }
+        CommandTarget::Container(workspace, node) => {
+            state
+                .swayward
+                .layout
+                .set_tiling_node_size_sway(workspace, node, width, height);
+        }
+    }
+    Ok(())
+}
+
 pub(super) fn resize(
     state: &mut State,
     target: CommandTarget,
@@ -148,4 +195,31 @@ pub(super) fn resize(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resize_set_preserves_units_and_nonpositive_sentinels() {
+        let amount = |amount, unit| ResizeAmount { amount, unit };
+        assert_eq!(
+            set_size_change(amount(50, ResizeUnit::Default), false),
+            Some(SizeChange::SetProportion(50.))
+        );
+        assert_eq!(
+            set_size_change(amount(50, ResizeUnit::Default), true),
+            Some(SizeChange::SetFixed(50))
+        );
+        assert_eq!(
+            set_size_change(amount(50, ResizeUnit::PercentagePoints), true),
+            Some(SizeChange::SetProportion(50.))
+        );
+        assert_eq!(set_size_change(amount(0, ResizeUnit::Pixels), false), None);
+        assert_eq!(
+            set_size_change(amount(-1, ResizeUnit::PercentagePoints), true),
+            None
+        );
+    }
 }

@@ -1613,6 +1613,8 @@ pub enum Event {
         /// The removed workspace's last IPC tree representation.
         current: Box<crate::Node>,
     },
+    /// The configuration was reloaded.
+    WorkspaceReloaded,
     /// A workspace was created.
     WorkspaceInitialized {
         /// The new workspace's IPC tree representation.
@@ -1735,6 +1737,23 @@ pub enum Event {
         payload: String,
         /// Whether this is the initial subscription tick.
         first: bool,
+    },
+    /// A sway-compatible binding ran.
+    SwayBinding {
+        /// Command attached to the binding.
+        command: String,
+        /// Active modifier names.
+        event_state_mask: Vec<String>,
+        /// Configured input codes.
+        input_codes: Vec<u32>,
+        /// First configured input code, or zero for symbolic bindings.
+        input_code: u32,
+        /// Configured input symbols.
+        symbols: Vec<String>,
+        /// First configured input symbol.
+        symbol: Option<String>,
+        /// Sway input type name.
+        input_type: String,
     },
     /// The sway-compatible binding mode changed.
     BindingModeChanged {

@@ -2,8 +2,8 @@ use swayward_config::Action;
 use swayward_ipc::command::parse_error;
 pub use swayward_ipc::command::{
     parse, parse_boolean, BorderStyle, Command, Direction, Layout, LayoutToggle, LayoutToggleEntry,
-    MovePosition, OutputTarget, ParsedCommand, ResizeAmount, ResizeAxis, ResizeUnit, Toggle,
-    WorkspaceTarget,
+    MovePosition, OutputTarget, ParsedCommand, ResizeAmount, ResizeAxis, ResizeUnit, SwapTarget,
+    Toggle, WorkspaceTarget,
 };
 use swayward_ipc::legacy::{PositionChange, SizeChange};
 use swayward_ipc::{criteria, CommandOutcome};
@@ -100,7 +100,18 @@ fn execute_one(
     }
 
     let action = match parsed.command {
+        Command::Swap(target) => {
+            let Some(source) = focused_target(state) else {
+                return failure("Can only swap with containers and views");
+            };
+            let outcome = movement::swap_target(state, source, &target);
+            if !outcome.success {
+                return outcome;
+            }
+            None
+        }
         Command::Focus => None,
+        Command::FocusWorkspace => return failure("No container to focus was specified."),
         Command::FocusDirection(direction) => focus::direction(state, direction),
         Command::FocusOutput(identifier) => {
             if let Err(error) = focus::output(state, &identifier) {
@@ -116,8 +127,26 @@ fn execute_one(
             focus::child(state);
             None
         }
-        Command::FocusNext => Some(Action::FocusColumnRightOrFirst),
-        Command::FocusPrev => Some(Action::FocusColumnLeftOrLast),
+        Command::FocusNext => {
+            if let Err(error) = focus::next_or_prev(state, true) {
+                return error;
+            }
+            None
+        }
+        Command::FocusPrev => {
+            if let Err(error) = focus::next_or_prev(state, false) {
+                return error;
+            }
+            None
+        }
+        Command::FocusNextSibling => {
+            focus::next_prev_sibling(state, true);
+            None
+        }
+        Command::FocusPrevSibling => {
+            focus::next_prev_sibling(state, false);
+            None
+        }
         Command::FocusFloating => Some(focus::floating(state)),
         Command::FocusTiling => Some(focus::tiling(state)),
         Command::FocusModeToggle => Some(Action::SwitchFocusBetweenFloatingAndTiling),
@@ -126,8 +155,7 @@ fn execute_one(
                 return failure("Cannot move workspaces in a direction");
             };
             let fullscreen_floating = workspace.active_floating_is_fullscreen();
-            let floating = workspace.floating_is_active() || fullscreen_floating;
-            if floating {
+            if workspace.floating_is_active() || fullscreen_floating {
                 if fullscreen_floating {
                     return failure("Cannot move fullscreen floating container");
                 }
@@ -147,12 +175,21 @@ fn execute_one(
                 state.swayward.queue_redraw_all();
                 None
             } else {
-                Some(match direction {
-                    Direction::Left => Action::MoveColumnLeft,
-                    Direction::Right => Action::MoveColumnRight,
-                    Direction::Up => Action::MoveWindowUp,
-                    Direction::Down => Action::MoveWindowDown,
-                })
+                let Some(target) = focused_target(state) else {
+                    return success();
+                };
+                let outcome = move_direction(
+                    state,
+                    target,
+                    direction,
+                    pixels,
+                    crate::layout::ActivateWindow::Smart,
+                    true,
+                );
+                if !outcome.success {
+                    return outcome;
+                }
+                None
             }
         }
         Command::MovePosition(position) => {
@@ -214,12 +251,10 @@ fn execute_one(
             None
         }
         Command::MoveWorkspaceToOutput(target) => {
-            let output = match output_target(state, &target, None, None) {
-                Ok(output) => output,
-                Err(error) => return failure(error),
-            };
-            state.swayward.layout.move_workspace_to_output(&output);
-            state.swayward.queue_redraw_all();
+            let outcome = move_workspace_to_output(state, None, &target);
+            if !outcome.success {
+                return outcome;
+            }
             None
         }
         Command::MoveScratchpad => {
@@ -319,8 +354,26 @@ fn execute_one(
             state.swayward.queue_redraw_all();
             None
         }
-        Command::Workspace(target) => {
-            if let Err(error) = state.swayward.layout.activate_sway_workspace(target) {
+        Command::Workspace {
+            target,
+            auto_back_and_forth,
+        } => {
+            let auto_back_and_forth = auto_back_and_forth
+                && state
+                    .swayward
+                    .config
+                    .borrow()
+                    .input
+                    .workspace_auto_back_and_forth;
+            let result = if auto_back_and_forth {
+                state
+                    .swayward
+                    .layout
+                    .activate_sway_workspace_auto_back_and_forth(target)
+            } else {
+                state.swayward.layout.activate_sway_workspace(target)
+            };
+            if let Err(error) = result {
                 return failure(error);
             }
             state.swayward.queue_redraw_all();
@@ -361,6 +414,15 @@ fn execute_one(
             } else {
                 Some(Action::CloseWindow)
             }
+        }
+        Command::ResizeSet { width, height } => {
+            let Some(target) = focused_target(state) else {
+                return success();
+            };
+            if let Err(error) = window::resize_set(state, target, width, height) {
+                return error;
+            }
+            None
         }
         Command::Resize {
             grow,
@@ -469,9 +531,119 @@ fn execute_one(
 }
 
 use movement::{
-    move_position, move_target_to_mark, move_target_to_workspace, output_target,
-    output_target_by_name_or_direction, select_resize_amount,
+    move_position, move_target_to_mark, move_target_to_workspace, move_workspace_to_output,
+    output_target, output_target_by_name_or_direction, select_resize_amount,
 };
+
+fn move_target_to_adjacent_output(
+    state: &mut State,
+    target: crate::window::mapped::MappedId,
+    direction: Direction,
+    activate: crate::layout::ActivateWindow,
+) {
+    let Some((reference, window)) =
+        state
+            .swayward
+            .layout
+            .windows()
+            .find_map(|(monitor, mapped)| {
+                (mapped.id() == target).then(|| {
+                    (
+                        monitor.map(|monitor| monitor.output()),
+                        mapped.window.clone(),
+                    )
+                })
+            })
+    else {
+        return;
+    };
+    let destination = OutputTarget::Direction(direction);
+    let reference_point = state.swayward.layout.window_center(&window);
+    if let Ok(output) = output_target(state, &destination, reference, reference_point) {
+        state
+            .swayward
+            .layout
+            .move_to_output(Some(&window), &output, None, activate);
+    }
+}
+
+fn move_direction(
+    state: &mut State,
+    target: CommandTarget,
+    direction: Direction,
+    pixels: Option<i32>,
+    activate: crate::layout::ActivateWindow,
+    focused: bool,
+) -> CommandOutcome {
+    if matches!(
+        target,
+        CommandTarget::Window(target)
+            if state.swayward.layout.windows().any(|(_, mapped)| {
+                mapped.id() == target
+                    && state.swayward.layout.fullscreen_mode(&mapped.window)
+                        == Some(crate::layout::tiling_tree::FullscreenMode::Global)
+            })
+    ) {
+        return success();
+    }
+    let layout_direction = match direction {
+        Direction::Left => crate::layout::tiling_tree::Direction::Left,
+        Direction::Right => crate::layout::tiling_tree::Direction::Right,
+        Direction::Up => crate::layout::tiling_tree::Direction::Up,
+        Direction::Down => crate::layout::tiling_tree::Direction::Down,
+    };
+    let moved_within_workspace = if focused {
+        let moved = match direction {
+            Direction::Left => state.swayward.layout.move_left(),
+            Direction::Right => state.swayward.layout.move_right(),
+            Direction::Up => state.swayward.layout.move_up(),
+            Direction::Down => state.swayward.layout.move_down(),
+        };
+        if !moved {
+            if let CommandTarget::Window(target) = target {
+                move_target_to_adjacent_output(state, target, direction, activate);
+            }
+        }
+        moved
+    } else {
+        match target {
+            CommandTarget::Window(target) => {
+                let window =
+                    state.swayward.layout.windows().find_map(|(_, mapped)| {
+                        (mapped.id() == target).then(|| mapped.window.clone())
+                    });
+                let Some(window) = window else {
+                    return failure("No matching node.");
+                };
+                let moved = state.swayward.layout.move_window_in_direction(
+                    &window,
+                    layout_direction,
+                    f64::from(pixels.unwrap_or(10)),
+                );
+                if !moved {
+                    move_target_to_adjacent_output(state, target, direction, activate);
+                }
+                moved
+            }
+            CommandTarget::Container(workspace, node) => state
+                .swayward
+                .layout
+                .move_tiling_node_in_direction(workspace, node, layout_direction),
+        }
+    };
+    state.swayward.queue_redraw_all();
+    if moved_within_workspace && focused {
+        if let CommandTarget::Window(window) = target {
+            state.ipc_refresh_layout();
+            if let Some(server) = &state.swayward.ipc_server {
+                server.send_event(swayward_ipc::legacy::Event::WindowMoved {
+                    id: crate::ipc::tree::window_id(window),
+                });
+            }
+        }
+    }
+    success()
+}
 
 fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget) -> CommandOutcome {
     match command {
@@ -481,35 +653,24 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
             identifier,
         } => mark_target(state, target, identifier, *add, *toggle),
         Command::Unmark(identifier) => unmark_target(state, target, identifier.as_deref()),
-        Command::MoveDirection { direction, pixels } => {
-            let direction = match direction {
-                Direction::Left => crate::layout::tiling_tree::Direction::Left,
-                Direction::Right => crate::layout::tiling_tree::Direction::Right,
-                Direction::Up => crate::layout::tiling_tree::Direction::Up,
-                Direction::Down => crate::layout::tiling_tree::Direction::Down,
-            };
-            match target {
-                CommandTarget::Window(target) => {
-                    let window = state.swayward.layout.windows().find_map(|(_, mapped)| {
-                        (mapped.id() == target).then(|| mapped.window.clone())
-                    });
-                    let Some(window) = window else {
-                        return failure("No matching node.");
-                    };
-                    state.swayward.layout.move_window_in_direction(
-                        &window,
-                        direction,
-                        f64::from(pixels.unwrap_or(10)),
-                    );
-                }
-                CommandTarget::Container(workspace, node) => {
-                    state
-                        .swayward
-                        .layout
-                        .move_tiling_node_in_direction(workspace, node, direction);
-                }
+        Command::Swap(swap_target) => {
+            let outcome = movement::swap_target(state, target, swap_target);
+            if !outcome.success {
+                return outcome;
             }
-            state.swayward.queue_redraw_all();
+        }
+        Command::MoveDirection { direction, pixels } => {
+            let outcome = move_direction(
+                state,
+                target,
+                *direction,
+                *pixels,
+                crate::layout::ActivateWindow::No,
+                false,
+            );
+            if !outcome.success {
+                return outcome;
+            }
         }
         Command::MovePosition(position) => {
             let CommandTarget::Window(target) = target else {
@@ -528,6 +689,12 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
         }
         Command::MoveToMark(mark) => {
             let outcome = move_target_to_mark(state, target, mark);
+            if !outcome.success {
+                return outcome;
+            }
+        }
+        Command::MoveWorkspaceToOutput(output_target_name) => {
+            let outcome = move_workspace_to_output(state, Some(target), output_target_name);
             if !outcome.success {
                 return outcome;
             }
@@ -623,6 +790,11 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
                 return error;
             }
         }
+        Command::ResizeSet { width, height } => {
+            if let Err(error) = window::resize_set(state, target, *width, *height) {
+                return error;
+            }
+        }
         Command::Resize {
             grow,
             axis,
@@ -638,8 +810,18 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
                 return error;
             }
         }
+        Command::FocusWorkspace => {
+            if let Err(error) = focus::targeted_workspace(state, target) {
+                return error;
+            }
+        }
         Command::FocusDirection(direction) => {
             if let Err(error) = focus::targeted_direction(state, target, *direction) {
+                return error;
+            }
+        }
+        Command::FocusOutput(identifier) => {
+            if let Err(error) = focus::output(state, identifier) {
                 return error;
             }
         }
@@ -732,12 +914,10 @@ fn focused_id(state: &State) -> Option<crate::window::mapped::MappedId> {
 }
 
 fn focused_con_id(state: &State) -> Option<u64> {
-    state
-        .swayward
-        .layout
-        .focused_tiling_node()
-        .map(|id| crate::ipc::tree::container_id(id) as u64)
-        .or_else(|| focused_id(state).map(|id| crate::ipc::tree::window_id(id) as u64))
+    match focused_target(state)? {
+        CommandTarget::Container(_, node) => Some(crate::ipc::tree::container_id(node) as u64),
+        CommandTarget::Window(window) => Some(crate::ipc::tree::window_id(window) as u64),
+    }
 }
 
 type WindowSnapshot = (
@@ -925,6 +1105,10 @@ mod tests {
         for input in ["focus tiling", "focus floating", "focus mode_toggle"] {
             assert!(parse(input)[0].is_ok(), "{input}");
         }
+        assert_eq!(command("focus next"), Command::FocusNext);
+        assert_eq!(command("focus prev"), Command::FocusPrev);
+        assert_eq!(command("focus next sibling"), Command::FocusNextSibling);
+        assert_eq!(command("focus prev sibling"), Command::FocusPrevSibling);
     }
 
     #[test]
@@ -1006,6 +1190,7 @@ mod tests {
     #[test]
     fn parses_every_supported_command_family() {
         assert_eq!(command("focus"), Command::Focus);
+        assert_eq!(command("focus workspace"), Command::FocusWorkspace);
         assert_eq!(
             command("focus left"),
             Command::FocusDirection(Direction::Left)
@@ -1058,6 +1243,22 @@ mod tests {
         assert_eq!(command("move scratchpad"), Command::MoveScratchpad);
         assert_eq!(command("move to scratchpad"), Command::MoveScratchpad);
         assert_eq!(command("scratchpad show"), Command::ScratchpadShow);
+        assert_eq!(
+            command("swap container with con_id 42"),
+            Command::Swap(SwapTarget::ConId("42".into()))
+        );
+        for input in [
+            "swap",
+            "swap window with con_id 42",
+            "swap container to con_id 42",
+            "swap container with nope 42",
+        ] {
+            assert_eq!(
+                parse(input)[0].as_ref().unwrap_err().error.as_deref(),
+                Some("Expected 'swap container with id|con_id|mark <arg>'"),
+                "{input}"
+            );
+        }
         assert_eq!(command("layout stacked"), Command::Layout(Layout::Stacked));
         assert_eq!(command("layout default"), Command::LayoutDefault);
         assert_eq!(
@@ -1110,11 +1311,17 @@ mod tests {
         );
         assert_eq!(
             command("workspace next_on_output"),
-            Command::Workspace(WorkspaceTarget::NextOnOutput)
+            Command::Workspace {
+                target: WorkspaceTarget::NextOnOutput,
+                auto_back_and_forth: true,
+            }
         );
         assert_eq!(
             command("workspace number 2:chat"),
-            Command::Workspace(WorkspaceTarget::Number("2:chat".into()))
+            Command::Workspace {
+                target: WorkspaceTarget::Number("2:chat".into()),
+                auto_back_and_forth: true,
+            }
         );
         assert_eq!(command("kill"), Command::Kill);
         assert_eq!(command("kill window"), Command::Kill);
@@ -1165,18 +1372,37 @@ mod tests {
     }
 
     #[test]
-    fn comma_keeps_criteria_and_semicolon_clears_it() {
-        let parsed = parse(r#"[app_id="foo,bar"] focus left, focus right; focus up"#);
+    fn comma_keeps_criteria_and_semicolon_starts_a_new_scope() {
+        let parsed =
+            parse(r#"[app_id="foo,bar"] focus left, focus right; [app_id="baz"] focus up"#);
         assert_eq!(parsed.len(), 3);
         assert_eq!(
             parsed[0].as_ref().unwrap().criteria.as_deref(),
             Some(r#"[app_id="foo,bar"]"#)
         );
+        assert!(parsed[0].as_ref().unwrap().criteria_start);
         assert_eq!(
             parsed[1].as_ref().unwrap().criteria.as_deref(),
             Some(r#"[app_id="foo,bar"]"#)
         );
-        assert_eq!(parsed[2].as_ref().unwrap().criteria, None);
+        assert!(!parsed[1].as_ref().unwrap().criteria_start);
+        assert_eq!(
+            parsed[2].as_ref().unwrap().criteria.as_deref(),
+            Some(r#"[app_id="baz"]"#)
+        );
+        assert!(parsed[2].as_ref().unwrap().criteria_start);
+    }
+
+    #[test]
+    fn malformed_criteria_after_semicolon_uses_the_criteria_error() {
+        let parsed = parse(r#"[app_id="foo"] nop; [con_id=nope] nop"#);
+        assert_eq!(parsed.len(), 2);
+        let error = parsed[1].as_ref().unwrap_err();
+        assert_eq!(error.parse_error, Some(true));
+        assert_eq!(
+            error.error.as_deref(),
+            Some("The value for 'con_id' should be '__focused__' or numeric")
+        );
     }
 
     #[test]
@@ -1252,6 +1478,60 @@ mod tests {
                 Some("Invalid distance specified"),
                 "{input}"
             );
+        }
+    }
+
+    #[test]
+    fn parses_sway_resize_set_forms_and_rejects_trailing_junk() {
+        let amount = |amount, unit| ResizeAmount { amount, unit };
+        for (input, width, height) in [
+            (
+                "resize set 201 131",
+                Some(amount(201, ResizeUnit::Default)),
+                Some(amount(131, ResizeUnit::Default)),
+            ),
+            (
+                "resize set width 80 ppt",
+                Some(amount(80, ResizeUnit::PercentagePoints)),
+                None,
+            ),
+            (
+                "resize set height 200 px",
+                None,
+                Some(amount(200, ResizeUnit::Pixels)),
+            ),
+            (
+                "resize set 75 ppt 200 px",
+                Some(amount(75, ResizeUnit::PercentagePoints)),
+                Some(amount(200, ResizeUnit::Pixels)),
+            ),
+            (
+                "resize set 0 ppt 75 ppt",
+                Some(amount(0, ResizeUnit::PercentagePoints)),
+                Some(amount(75, ResizeUnit::PercentagePoints)),
+            ),
+            (
+                "resize set 75 ppt 0 ppt",
+                Some(amount(75, ResizeUnit::PercentagePoints)),
+                Some(amount(0, ResizeUnit::PercentagePoints)),
+            ),
+            (
+                "resize set -1 px -2 ppt",
+                Some(amount(-1, ResizeUnit::Pixels)),
+                Some(amount(-2, ResizeUnit::PercentagePoints)),
+            ),
+        ] {
+            assert_eq!(
+                command(input),
+                Command::ResizeSet { width, height },
+                "{input}"
+            );
+        }
+        for input in [
+            "resize set width height 10",
+            "resize set 100 px height 200 px junk",
+        ] {
+            assert!(parse(input)[0].is_err(), "{input}");
         }
     }
 
@@ -1337,11 +1617,17 @@ mod tests {
     fn parses_workspace_names_with_spaces() {
         assert_eq!(
             command("workspace number 3: web browser"),
-            Command::Workspace(WorkspaceTarget::Number("3: web browser".into()))
+            Command::Workspace {
+                target: WorkspaceTarget::Number("3: web browser".into()),
+                auto_back_and_forth: true,
+            }
         );
         assert_eq!(
             command("workspace 'mail and chat'"),
-            Command::Workspace(WorkspaceTarget::Name("mail and chat".into()))
+            Command::Workspace {
+                target: WorkspaceTarget::Name("mail and chat".into()),
+                auto_back_and_forth: true,
+            }
         );
     }
 

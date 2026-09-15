@@ -4,7 +4,7 @@ use std::process::Command;
 use swayward_config::Config;
 
 #[test]
-fn sway_outer_gaps_translate_to_equal_struts() {
+fn sway_inner_gap_units_translate_to_loadable_typed_geometry() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
@@ -14,7 +14,7 @@ fn sway_outer_gaps_translate_to_equal_struts() {
         std::process::id(),
         std::thread::current().name().unwrap_or("test")
     ));
-    std::fs::write(&fixture, "gaps outer 10\n").unwrap();
+    std::fs::write(&fixture, "gaps inner 10px\n").unwrap();
     let output = Command::new("python3")
         .arg(root.join("contrib/sway-to-kdl"))
         .arg(&fixture)
@@ -24,10 +24,9 @@ fn sway_outer_gaps_translate_to_equal_struts() {
 
     assert!(output.status.success());
     let translated = String::from_utf8(output.stdout).unwrap();
-    assert!(translated.contains("        left 10"), "{translated}");
-    assert!(translated.contains("        right 10"), "{translated}");
-    assert!(translated.contains("        top 10"), "{translated}");
-    assert!(translated.contains("        bottom 10"), "{translated}");
+    assert!(translated.contains("    gaps 10"), "{translated}");
+    assert!(!translated.contains("struts"), "{translated}");
+    assert!(!translated.contains("px"), "{translated}");
     assert_eq!(
         String::from_utf8(output.stderr).unwrap(),
         "manual attention: none\n"
@@ -121,6 +120,184 @@ fn force_focus_wrapping_maps_to_swaywards_focus_wrapping_mode() {
             "manual attention: none\n"
         );
         Config::parse_mem(&translated).unwrap();
+    }
+}
+
+#[test]
+fn focus_wrapping_maps_exact_modes_and_refuses_unrepresentable_modes() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_owned();
+    for (directive, value, expected) in [
+        ("focus_wrapping", "1", Some("yes")),
+        ("FoCuS_WrApPiNg", "YeS", Some("yes")),
+        ("focus_wrapping", "ON", Some("yes")),
+        ("focus_wrapping", "true", Some("yes")),
+        ("focus_wrapping", "Enable", Some("yes")),
+        ("focus_wrapping", "ENABLED", Some("yes")),
+        ("focus_wrapping", "active", Some("yes")),
+        ("focus_wrapping", "FoRcE", Some("force")),
+        ("focus_wrapping", "no", None),
+        ("focus_wrapping", "workspace", None),
+        ("focus_wrapping", "toggle", None),
+        ("focus_wrapping", "false", None),
+    ] {
+        let fixture = std::env::temp_dir().join(format!(
+            "swayward-modern-focus-wrapping-{}-{value}.conf",
+            std::process::id()
+        ));
+        std::fs::write(&fixture, format!("{directive} {value}\n")).unwrap();
+        let output = Command::new("python3")
+            .arg(root.join("contrib/sway-to-kdl"))
+            .arg(&fixture)
+            .output()
+            .unwrap();
+        std::fs::remove_file(fixture).unwrap();
+
+        assert!(output.status.success());
+        let translated = String::from_utf8(output.stdout).unwrap();
+        let summary = String::from_utf8(output.stderr).unwrap();
+        if let Some(expected) = expected {
+            assert!(
+                translated.contains(&format!("focus-wrapping \"{expected}\"")),
+                "{translated}"
+            );
+            assert_eq!(summary, "manual attention: none\n");
+            Config::parse_mem(&translated).unwrap();
+        } else {
+            assert!(!translated.contains("    focus-wrapping"), "{translated}");
+            assert!(
+                translated.contains("focus wrapping mode has no exact swayward equivalent"),
+                "{translated}"
+            );
+            assert!(summary.starts_with("manual attention: 1 directive(s)"));
+        }
+    }
+}
+
+#[test]
+fn floating_constraints_preserve_values_and_refuse_invalid_forms() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_owned();
+    for (source, minimum, maximum) in [
+        (
+            "floating_minimum_size 60 x 40\nfloating_maximum_size 100 x 90\n",
+            Some((60, 40)),
+            Some((100, 90)),
+        ),
+        (
+            "floating_minimum_size -1 x -1\nfloating_maximum_size 0 x 0\n",
+            Some((-1, -1)),
+            Some((0, 0)),
+        ),
+    ] {
+        let fixture = std::env::temp_dir().join(format!(
+            "swayward-floating-constraints-{}-{}.conf",
+            std::process::id(),
+            minimum.unwrap().0
+        ));
+        std::fs::write(&fixture, source).unwrap();
+        let output = Command::new("python3")
+            .arg(root.join("contrib/sway-to-kdl"))
+            .arg(&fixture)
+            .output()
+            .unwrap();
+        std::fs::remove_file(fixture).unwrap();
+
+        assert!(output.status.success());
+        assert_eq!(
+            String::from_utf8(output.stderr).unwrap(),
+            "manual attention: none\n"
+        );
+        let config = Config::parse_mem(&String::from_utf8(output.stdout).unwrap()).unwrap();
+        let minimum = minimum.unwrap();
+        let maximum = maximum.unwrap();
+        assert_eq!(
+            (
+                config.layout.floating_minimum_size.width,
+                config.layout.floating_minimum_size.height
+            ),
+            minimum
+        );
+        assert_eq!(
+            (
+                config.layout.floating_maximum_size.width,
+                config.layout.floating_maximum_size.height
+            ),
+            maximum
+        );
+    }
+
+    for source in [
+        "floating_minimum_size 60 X 40\n",
+        "floating_maximum_size -2 x 100\n",
+        "floating_minimum_size 60x40\n",
+    ] {
+        let fixture = std::env::temp_dir().join(format!(
+            "swayward-invalid-floating-constraints-{}-{}.conf",
+            std::process::id(),
+            source.len()
+        ));
+        std::fs::write(&fixture, source).unwrap();
+        let output = Command::new("python3")
+            .arg(root.join("contrib/sway-to-kdl"))
+            .arg(&fixture)
+            .output()
+            .unwrap();
+        std::fs::remove_file(fixture).unwrap();
+
+        assert!(output.status.success());
+        assert!(String::from_utf8(output.stderr)
+            .unwrap()
+            .starts_with("manual attention: 1 directive(s)"));
+    }
+}
+
+#[test]
+fn workspace_layout_maps_sway_values_and_refuses_i3_stacked_spelling() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_owned();
+    for (value, expected) in [
+        ("default", Some("default")),
+        ("DeFaUlT", Some("default")),
+        ("stacking", Some("stacking")),
+        ("StAcKiNg", Some("stacking")),
+        ("tabbed", Some("tabbed")),
+        ("TaBbEd", Some("tabbed")),
+        ("stacked", None),
+        ("splitv", None),
+    ] {
+        let fixture = std::env::temp_dir().join(format!(
+            "swayward-workspace-layout-{}-{value}.conf",
+            std::process::id()
+        ));
+        std::fs::write(&fixture, format!("workspace_layout {value}\n")).unwrap();
+        let output = Command::new("python3")
+            .arg(root.join("contrib/sway-to-kdl"))
+            .arg(&fixture)
+            .output()
+            .unwrap();
+        std::fs::remove_file(fixture).unwrap();
+
+        assert!(output.status.success());
+        let translated = String::from_utf8(output.stdout).unwrap();
+        let summary = String::from_utf8(output.stderr).unwrap();
+        if let Some(expected) = expected {
+            assert!(
+                translated.contains(&format!("workspace-layout \"{expected}\"")),
+                "{translated}"
+            );
+            assert_eq!(summary, "manual attention: none\n");
+            Config::parse_mem(&translated).unwrap();
+        } else {
+            assert!(!translated.contains("    workspace-layout"), "{translated}");
+            assert!(summary.starts_with("manual attention: 1 directive(s)"));
+        }
     }
 }
 
@@ -322,7 +499,7 @@ fn mouse_warping_maps_exact_modes_and_refuses_output() {
 }
 
 #[test]
-fn sway_workspace_output_uses_first_preference() {
+fn sway_workspace_output_refuses_unrepresentable_fallback_lists() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
@@ -346,19 +523,19 @@ fn sway_workspace_output_uses_first_preference() {
 
     assert!(output.status.success());
     let translated = String::from_utf8(output.stdout).unwrap();
-    // sway checks configured outputs in order and falls back normally when none exist.
-    assert!(
-        translated.contains("workspace \"7:web\" {\n    open-on-output \"missing\"\n}"),
-        "{translated}"
-    );
-    assert!(!translated.contains("open-on-output \"HDMI-A-1\""));
+    assert!(!translated.contains("workspace \"7:web\""), "{translated}");
     assert!(
         translated.contains("workspace \"chat room\" {\n    open-on-output \"DP-2\"\n}"),
         "{translated}"
     );
-    assert_eq!(
-        String::from_utf8(output.stderr).unwrap(),
-        "manual attention: none\n"
+    let diagnostics = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        diagnostics.contains("ordered workspace output fallbacks are not representable"),
+        "{diagnostics}"
+    );
+    assert!(
+        diagnostics.contains("manual attention: 1 directive(s)"),
+        "{diagnostics}"
     );
     Config::parse_mem(&translated).unwrap();
 }

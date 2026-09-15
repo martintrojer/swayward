@@ -189,7 +189,35 @@ impl CompositorHandler for State {
                                 || output.is_none()
                                 || output.as_ref() == *parent_output
                         })
-                        .map(|(mapped, _)| mapped.window.clone());
+                        .map(|(mapped, _)| {
+                            (
+                                mapped.window.clone(),
+                                mapped.pending_sizing_mode().is_fullscreen(),
+                            )
+                        });
+
+                    let popup_policy = self.swayward.config.borrow().popup_during_fullscreen;
+                    let parent_was_fullscreen =
+                        parent.as_ref().is_some_and(|(_, fullscreen)| *fullscreen);
+                    let activate = if parent_was_fullscreen
+                        && popup_policy != swayward_config::PopupDuringFullscreen::Smart
+                    {
+                        ActivateWindow::No
+                    } else {
+                        activate
+                    };
+                    if parent_was_fullscreen
+                        && popup_policy == swayward_config::PopupDuringFullscreen::LeaveFullscreen
+                    {
+                        self.swayward
+                            .layout
+                            .set_fullscreen(&parent.as_ref().unwrap().0, false);
+                    }
+                    let parent = parent.and_then(|(parent, _)| {
+                        (!parent_was_fullscreen
+                            || popup_policy != swayward_config::PopupDuringFullscreen::Ignore)
+                            .then_some(parent)
+                    });
 
                     // The mapped pre-commit hook deals with dma-bufs on its own.
                     self.remove_default_dmabuf_pre_commit_hook(surface);
@@ -260,7 +288,6 @@ impl CompositorHandler for State {
 
                         self.swayward.queue_redraw(&output);
                     }
-                    crate::command::run_for_window(self, mapped_id);
                     let commands = self
                         .swayward
                         .layout
@@ -277,6 +304,7 @@ impl CompositorHandler for State {
                         );
                         let _ = crate::command::execute(self, &targeted);
                     }
+                    crate::command::run_for_window(self, mapped_id);
                     return;
                 }
 

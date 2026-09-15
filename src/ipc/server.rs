@@ -50,6 +50,7 @@ struct QueryState {
     outputs: String,
     marks: String,
     binding_modes: String,
+    binding_state: String,
 }
 
 struct EventStreamClient {
@@ -182,13 +183,15 @@ fn on_new_ipc_client(state: &mut State, stream: UnixStream) {
     let Some(server) = &state.swayward.ipc_server else {
         return;
     };
-    server.query_state.borrow_mut().binding_modes = binding_modes(&state.swayward.config.borrow());
+    let mut query_state = server.query_state.borrow_mut();
+    query_state.binding_modes = binding_modes(&state.swayward.config.borrow());
+    query_state.binding_state = binding_state(&state.swayward.binding_mode);
     refresh_query_state(
         &state.swayward.layout,
         &state.swayward.global_space,
         &state.swayward.marks_by_window,
         &state.swayward.marks_by_container,
-        &mut server.query_state.borrow_mut(),
+        &mut query_state,
     );
     let ctx = ClientCtx {
         query_state: server.query_state.clone(),
@@ -245,10 +248,12 @@ async fn handle_client(ctx: ClientCtx, stream: Async<'static, UnixStream>) -> an
                     continue;
                 }
             };
-            if !subscriptions
-                .iter()
-                .all(|event| matches!(event.as_str(), "workspace" | "mode" | "window" | "tick"))
-            {
+            if !subscriptions.iter().all(|event| {
+                matches!(
+                    event.as_str(),
+                    "workspace" | "mode" | "window" | "binding" | "tick"
+                )
+            }) {
                 write
                     .write_all(&encode(msg_type, r#"{"success": false}"#))
                     .await
@@ -300,6 +305,7 @@ async fn dispatch(ctx: &ClientCtx, msg_type: MessageType, payload: &[u8]) -> Str
         MessageType::GetOutputs => ctx.query_state.borrow().outputs.clone(),
         MessageType::GetMarks => ctx.query_state.borrow().marks.clone(),
         MessageType::GetBindingModes => ctx.query_state.borrow().binding_modes.clone(),
+        MessageType::GetBindingState => ctx.query_state.borrow().binding_state.clone(),
         MessageType::RunCommand => {
             let input = match String::from_utf8(payload.to_vec()) {
                 Ok(input) => input,
@@ -348,6 +354,10 @@ fn binding_modes(config: &swayward_config::Config) -> String {
         .chain(config.binding_modes.iter().map(|mode| mode.name.as_str()))
         .collect::<Vec<_>>();
     serde_json::to_string(&modes).unwrap_or_else(|_| "[]".into())
+}
+
+fn binding_state(mode: &str) -> String {
+    serde_json::json!({"name": mode}).to_string()
 }
 
 fn serialize_outcomes(outcomes: &[CommandOutcome]) -> String {
@@ -448,10 +458,12 @@ async fn handle_event_stream_client(client: EventStreamClient) -> anyhow::Result
                     .context("error reading IPC subscription payload")?;
                 let requested: Vec<String> = serde_json::from_slice(&payload)
                     .context("error parsing IPC subscription payload")?;
-                if !requested
-                    .iter()
-                    .all(|event| matches!(event.as_str(), "workspace" | "mode" | "window" | "tick"))
-                {
+                if !requested.iter().all(|event| {
+                    matches!(
+                        event.as_str(),
+                        "workspace" | "mode" | "window" | "binding" | "tick"
+                    )
+                }) {
                     write
                         .write_all(&encode(msg_type, r#"{"success": false}"#))
                         .await
@@ -471,6 +483,10 @@ async fn handle_event_stream_client(client: EventStreamClient) -> anyhow::Result
             Event::WorkspaceEmptied { current } if subscriptions.contains("workspace") => (
                 1 << 31,
                 serde_json::json!({"change":"empty","old":null,"current":current}),
+            ),
+            Event::WorkspaceReloaded if subscriptions.contains("workspace") => (
+                1 << 31,
+                serde_json::json!({"change":"reload","old":null,"current":null}),
             ),
             Event::WorkspaceInitialized { current } if subscriptions.contains("workspace") => (
                 1 << 31,
@@ -506,6 +522,29 @@ async fn handle_event_stream_client(client: EventStreamClient) -> anyhow::Result
             Event::BindingModeChanged { mode, pango_markup } if subscriptions.contains("mode") => (
                 (1 << 31) | 2,
                 serde_json::json!({"change":mode,"pango_markup":pango_markup}),
+            ),
+            Event::SwayBinding {
+                command,
+                event_state_mask,
+                input_codes,
+                input_code,
+                symbols,
+                symbol,
+                input_type,
+            } if subscriptions.contains("binding") => (
+                (1 << 31) | 5,
+                serde_json::json!({
+                    "change":"run",
+                    "binding": {
+                        "command": command,
+                        "event_state_mask": event_state_mask,
+                        "input_codes": input_codes,
+                        "input_code": input_code,
+                        "symbols": symbols,
+                        "symbol": symbol,
+                        "input_type": input_type,
+                    }
+                }),
             ),
             Event::SwayWindowChanged { change, container } if subscriptions.contains("window") => (
                 (1 << 31) | 3,
@@ -622,12 +661,14 @@ impl State {
             .and_then(|server| serde_json::from_str(&server.query_state.borrow().tree).ok());
         self.ipc_refresh_workspaces();
         if let Some(server) = &self.swayward.ipc_server {
+            let mut query_state = server.query_state.borrow_mut();
+            query_state.binding_state = binding_state(&self.swayward.binding_mode);
             refresh_query_state(
                 &self.swayward.layout,
                 &self.swayward.global_space,
                 &self.swayward.marks_by_window,
                 &self.swayward.marks_by_container,
-                &mut server.query_state.borrow_mut(),
+                &mut query_state,
             );
         }
         self.ipc_refresh_windows(previous_tree.as_ref());
@@ -880,6 +921,9 @@ impl State {
             let shown_from_scratchpad =
                 moved && previous_node.is_some_and(|node| node["scratchpad_state"] == "fresh");
             let floating_changed = ipc_win.is_floating != mapped.is_floating();
+            let sway_floating_changed = previous_node
+                .zip(current_node.as_ref())
+                .is_some_and(|(old, current)| old["type"] != current["type"]);
             let title_changed =
                 with_toplevel_role(mapped.toplevel(), |role| ipc_win.title != role.title);
             let fullscreen_changed = previous_node
@@ -892,9 +936,7 @@ impl State {
             if let Some(container) = current_node.clone() {
                 for change in [
                     moved.then_some("move"),
-                    (floating_changed
-                        && previous_node.is_some_and(|node| node["type"] != "floating_con"))
-                    .then_some("floating"),
+                    sway_floating_changed.then_some("floating"),
                     title_changed.then_some("title"),
                     fullscreen_changed.then_some("fullscreen_mode"),
                     marks_changed.then_some("mark"),
@@ -983,12 +1025,13 @@ impl State {
         let mut ipc_focused_id = None;
         for (id, ipc_win) in &state.windows {
             if !seen.contains(id) {
-                if let Some(container) = previous_tree
+                if let Some(mut container) = previous_tree
                     .and_then(|tree| {
                         find_node_by_id(tree, crate::ipc::tree::window_id_from_raw(*id))
                     })
                     .cloned()
                 {
+                    container["foreign_toplevel_identifier"] = serde_json::Value::Null;
                     events.push(Event::SwayWindowChanged {
                         change: "close".into(),
                         container,
@@ -1156,6 +1199,11 @@ impl State {
         let event = Event::ConfigLoaded { failed };
         state.apply(event.clone());
         server.send_event(event);
+        if !failed {
+            server.send_event(Event::WorkspacesChanged {
+                workspaces: state.workspaces.workspaces.values().cloned().collect(),
+            });
+        }
     }
 
     pub fn ipc_screenshot_taken(&mut self, path: Option<String>) {

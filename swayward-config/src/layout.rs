@@ -25,6 +25,9 @@ pub struct Layout {
     pub empty_workspace_above_first: bool,
     pub default_column_display: ColumnDisplay,
     pub focus_wrapping: FocusWrapping,
+    pub workspace_layout: WorkspaceLayout,
+    pub floating_minimum_size: FloatingSize,
+    pub floating_maximum_size: FloatingSize,
     pub gaps: f64,
     pub struts: Struts,
     pub background_color: Color,
@@ -50,6 +53,15 @@ impl Default for Layout {
             empty_workspace_above_first: false,
             default_column_display: ColumnDisplay::Normal,
             focus_wrapping: FocusWrapping::Yes,
+            workspace_layout: WorkspaceLayout::Default,
+            floating_minimum_size: FloatingSize {
+                width: 75,
+                height: 50,
+            },
+            floating_maximum_size: FloatingSize {
+                width: 0,
+                height: 0,
+            },
             gaps: 16.,
             struts: Struts::default(),
             preset_window_heights: vec![
@@ -84,6 +96,9 @@ impl MergeWith<LayoutPart> for Layout {
             center_focused_column,
             default_column_display,
             focus_wrapping,
+            workspace_layout,
+            floating_minimum_size,
+            floating_maximum_size,
             struts,
             background_color,
         );
@@ -132,6 +147,12 @@ pub struct LayoutPart {
     pub default_column_display: Option<ColumnDisplay>,
     #[knuffel(child, unwrap(argument, str))]
     pub focus_wrapping: Option<FocusWrapping>,
+    #[knuffel(child, unwrap(argument, str))]
+    pub workspace_layout: Option<WorkspaceLayout>,
+    #[knuffel(child)]
+    pub floating_minimum_size: Option<FloatingSize>,
+    #[knuffel(child)]
+    pub floating_maximum_size: Option<FloatingSize>,
     #[knuffel(child, unwrap(argument))]
     pub gaps: Option<FloatOrInt<0, 65535>>,
     #[knuffel(child)]
@@ -151,6 +172,35 @@ impl From<PresetSize> for SizeChange {
         match value {
             PresetSize::Proportion(prop) => SizeChange::SetProportion(prop * 100.),
             PresetSize::Fixed(fixed) => SizeChange::SetFixed(fixed),
+        }
+    }
+}
+
+#[derive(knuffel::Decode, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FloatingSize {
+    #[knuffel(argument)]
+    pub width: i32,
+    #[knuffel(argument)]
+    pub height: i32,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum WorkspaceLayout {
+    #[default]
+    Default,
+    Stacking,
+    Tabbed,
+}
+
+impl FromStr for WorkspaceLayout {
+    type Err = miette::Error;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "default" => Ok(Self::Default),
+            "stacking" => Ok(Self::Stacking),
+            "tabbed" => Ok(Self::Tabbed),
+            _ => Err(miette::miette!("unknown workspace layout `{value}`")),
         }
     }
 }

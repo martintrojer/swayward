@@ -2,7 +2,7 @@ use super::*;
 
 impl<W: LayoutElement> TilingTree<W> {
     pub fn geometry(&self, id: NodeId) -> Option<Rectangle<f64, Logical>> {
-        self.compute_geometry().nodes.remove(&id)
+        self.compute_geometry().leaf_contents.remove(&id)
     }
 
     pub fn ipc_decoration_rect(&self, window: &W::Id) -> Option<Rectangle<f64, Logical>> {
@@ -10,6 +10,7 @@ impl<W: LayoutElement> TilingTree<W> {
         self.compute_geometry()
             .titlebars
             .remove(&id)
+            .filter(|bar| bar.visible)
             .map(|bar| bar.ipc_rect)
     }
 
@@ -44,6 +45,7 @@ impl<W: LayoutElement> TilingTree<W> {
                     id,
                     layout: *layout,
                     percent,
+                    rect: geometries.ipc_nodes.get(&id).copied().unwrap_or_default(),
                     focus: tree
                         .focus_history
                         .iter()
@@ -73,8 +75,16 @@ impl<W: LayoutElement> TilingTree<W> {
                     window: tile.window().id().clone(),
                     percent,
                     focused: tree.focus == Some(id),
-                    rect: geometries.nodes.get(&id).copied().unwrap_or_default(),
-                    deco_rect: geometries.titlebars.get(&id).map(|bar| bar.ipc_rect),
+                    rect: geometries
+                        .leaf_contents
+                        .get(&id)
+                        .copied()
+                        .unwrap_or_default(),
+                    deco_rect: geometries
+                        .titlebars
+                        .get(&id)
+                        .filter(|bar| bar.visible)
+                        .map(|bar| bar.ipc_rect),
                     border: tile.sway_border(),
                 },
             }

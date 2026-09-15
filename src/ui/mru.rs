@@ -19,8 +19,8 @@ use smithay::input::keyboard::Keysym;
 use smithay::output::Output;
 use smithay::utils::{Logical, Point, Rectangle, Scale, Size, Transform};
 use swayward_config::{
-    Action, Bind, Color, Config, CornerRadius, GradientInterpolation, Key, Modifiers, MruDirection,
-    MruFilter, MruScope, Trigger,
+    Action, Bind, Color, Config, CornerRadius, GradientInterpolation, Key, Modifiers, MouseRegions,
+    MruDirection, MruFilter, MruScope, Trigger,
 };
 
 use crate::animation::{Animation, Clock};
@@ -1835,6 +1835,8 @@ fn make_preset_opened_binds() -> Vec<Bind> {
                 modifiers: Modifiers::empty(),
             },
             action,
+            mouse_regions: MouseRegions::empty(),
+            release: false,
             repeat: true,
             cooldown: None,
             allow_when_locked: false,

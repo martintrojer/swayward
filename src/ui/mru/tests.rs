@@ -1,5 +1,6 @@
 use proptest::prelude::*;
 use proptest_derive::Arbitrary;
+use swayward_config::MouseRegions;
 
 use super::*;
 use crate::tests::fixture::Fixture;
@@ -29,6 +30,8 @@ fn bind(trigger: Keysym, action: Action) -> Bind {
             modifiers: Modifiers::COMPOSITOR,
         },
         action,
+        mouse_regions: MouseRegions::empty(),
+        release: false,
         repeat: true,
         cooldown: None,
         allow_when_locked: false,
