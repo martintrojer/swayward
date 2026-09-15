@@ -194,6 +194,9 @@ sub is ($$;$) {
     } elsif (($ENV{SWAYWARD_I3_TEST} // '') eq '238-ipc-binding-event.t'
         && (($name // '') =~ /mode/ || ($name // '') =~ /`mods`/)) {
         _skip_next_assertions(1, 'i3-only binding event field; sway omits mode and mods');
+    } elsif (($ENV{SWAYWARD_I3_TEST} // '') eq '245-move-position-mouse.t'
+        && $tester->current_test < 2) {
+        _skip_next_assertions(1, 'i3 centers an oversized window off-screen; sway clamps it to the cursor output');
     }
     _skip_assertion() or $tester->is_eq($got, $expected, $name);
 }

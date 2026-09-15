@@ -90,6 +90,27 @@ fn output_target_name(target: &OutputTarget) -> &str {
     }
 }
 
+pub(crate) fn clamp_pointer_position(
+    mut position: smithay::utils::Point<f64, smithay::utils::Logical>,
+    size: smithay::utils::Size<f64, smithay::utils::Logical>,
+    output: Option<smithay::utils::Rectangle<f64, smithay::utils::Logical>>,
+) -> smithay::utils::Point<f64, smithay::utils::Logical> {
+    let Some(output) = output else {
+        return position;
+    };
+    let right = output.loc.x + output.size.w;
+    let bottom = output.loc.y + output.size.h;
+    position.x = position.x.max(output.loc.x);
+    position.y = position.y.max(output.loc.y);
+    if position.x + size.w > right {
+        position.x = right - size.w;
+    }
+    if position.y + size.h > bottom {
+        position.y = bottom - size.h;
+    }
+    position
+}
+
 pub(super) fn move_position(
     state: &mut State,
     target: Option<crate::window::mapped::MappedId>,
@@ -202,14 +223,63 @@ pub(super) fn move_position(
                 .get_pointer()
                 .ok_or("No cursor device")?
                 .current_location();
+            let Some(id) = window.clone().or_else(|| {
+                state
+                    .swayward
+                    .layout
+                    .focus()
+                    .map(|mapped| mapped.window.clone())
+            }) else {
+                return Err("Only floating containers can be moved to an absolute position");
+            };
             let Some((tile_size, workspace_origin)) = target_geometry() else {
                 return Err("Only floating containers can be moved to an absolute position");
             };
-            let position = pointer - tile_size.downscale(2.) - workspace_origin;
-            (
+            let mut position = pointer - tile_size.downscale(2.);
+            let cursor_output = state
+                .swayward
+                .global_space
+                .output_under(pointer)
+                .next()
+                .cloned();
+            let output_geometry = cursor_output
+                .as_ref()
+                .and_then(|output| state.swayward.global_space.output_geometry(output))
+                .map(|output| output.to_f64());
+            position = clamp_pointer_position(position, tile_size, output_geometry);
+            let target_output_origin = cursor_output
+                .as_ref()
+                .and_then(|output| state.swayward.global_space.output_geometry(output))
+                .map(|output| output.loc.to_f64());
+            let window_output = state
+                .swayward
+                .layout
+                .windows()
+                .find_map(|(monitor, mapped)| {
+                    (mapped.window == id)
+                        .then(|| monitor.map(|monitor| monitor.output().clone()))
+                        .flatten()
+                });
+            if let Some(output) = cursor_output
+                .as_ref()
+                .filter(|output| window_output.as_ref() != Some(*output))
+            {
+                state.swayward.layout.move_to_output(
+                    Some(&id),
+                    output,
+                    None,
+                    crate::layout::ActivateWindow::Yes,
+                );
+            }
+            let workspace_origin = target_output_origin.unwrap_or(workspace_origin);
+            let position = position - workspace_origin;
+            state.swayward.layout.move_floating_window(
+                Some(&id),
                 PositionChange::SetFixed(position.x),
                 PositionChange::SetFixed(position.y),
-            )
+                true,
+            );
+            return Ok(());
         }
     };
     state
@@ -557,4 +627,29 @@ pub(super) fn move_target_to_mark(
     }
     state.swayward.queue_redraw_all();
     success()
+}
+
+#[cfg(test)]
+mod tests {
+    use smithay::utils::{Point, Rectangle, Size};
+
+    use super::clamp_pointer_position;
+
+    #[test]
+    fn pointer_position_clamps_to_cursor_output_but_not_outside_outputs() {
+        let output = Rectangle::new(Point::from((1000., 50.)), Size::from((800., 600.)));
+        let size = Size::from((300., 200.));
+        assert_eq!(
+            clamp_pointer_position(Point::from((900., -50.)), size, Some(output)),
+            Point::from((1000., 50.))
+        );
+        assert_eq!(
+            clamp_pointer_position(Point::from((1700., 550.)), size, Some(output)),
+            Point::from((1500., 450.))
+        );
+        assert_eq!(
+            clamp_pointer_position(Point::from((850., 300.)), size, None),
+            Point::from((850., 300.))
+        );
+    }
 }
