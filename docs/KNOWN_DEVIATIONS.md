@@ -45,6 +45,27 @@ it because `bindsym` requires both a key and a command
 (`sway/sway/commands/bind.c:329-396`). The translator also rejects it as a
 malformed directive.
 
+### Include command substitution
+
+Sway expands each `include` argument with `wordexp(3)`. This supports tilde,
+variables, globs, and shell command substitution. Sway first changes to the
+parent config's directory, then restores the working directory
+(`sway/sway/config.c:594-625`). Command substitution means that loading a sway
+config can execute arbitrary commands.
+
+The `sway-to-kdl` translator is deliberately safer. It expands tilde, sway
+variables, and globs relative to the file containing the directive, and it
+recursively translates the resulting files. It refuses both backtick and
+`$(...)` command substitution without executing them. Translation is commonly
+run on a config before the user has reviewed it, so reproducing `wordexp` in
+full would turn a static migration tool into an arbitrary-code execution path.
+
+Sway also resolves each included name with `realpath` and keeps the canonical
+path in `config_chain`; a path already in that list is not loaded again
+(`sway/sway/config.c:555-591`). The translator likewise canonicalizes visited
+paths. Duplicate includes and cycles therefore terminate without translating a
+file twice.
+
 ### Focus wrapping modes
 
 Sway accepts `focus_wrapping yes|no|force|workspace`; its parser also treats the seven true boolean words as `yes`, compares `force` and `workspace` case-insensitively, and treats every other value as `no` (`sway/commands/focus_wrapping.c:6-22`; `common/util.c:40-52`). Swayward currently represents only `yes` and `force`. The config translator maps those exact modes, including the seven true words, and reports `no`, `workspace`, `toggle`, and other false-valued forms for manual conversion rather than changing their behavior. Both compositors default to `yes` (`sway/config.c:274`; `swayward-config/src/layout.rs`).

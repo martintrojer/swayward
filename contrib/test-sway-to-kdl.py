@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 import subprocess
 import tempfile
 import unittest
@@ -604,17 +605,65 @@ bindsym $missing+x nop
                 for item in result.stderr.splitlines()[1:]:
                     self.assertIn(item.strip(), result.stdout)
 
-    def test_include_is_recursive_and_cycles_are_reported(self):
+    def test_include_expands_absolute_relative_nested_tilde_glob_and_variables(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            home = root / "home"
+            home.mkdir()
+            fragments = root / "fragments"
+            fragments.mkdir()
+            (root / "absolute").write_text("bindsym Mod4+a nop absolute\n")
+            (root / "relative").write_text("bindsym Mod4+r nop relative\n")
+            (root / "nested").write_text("include relative\n")
+            (home / "tilde").write_text("bindsym Mod4+t nop tilde\n")
+            (fragments / "one").write_text("bindsym Mod4+g nop glob\n")
+            (root / "variable").write_text("bindsym Mod4+v nop variable\n")
+            (root / "config").write_text(
+                f"include {root / 'absolute'}\n"
+                "include nested\n"
+                "include ~/tilde\n"
+                "include fragments/*\n"
+                "set $file variable\n"
+                "include $file\n"
+            )
+            result = subprocess.run(
+                [SCRIPT, root / "config"],
+                text=True,
+                capture_output=True,
+                check=True,
+                env={**os.environ, "HOME": str(home)},
+            )
+        for command in ["absolute", "relative", "tilde", "glob", "variable"]:
+            with self.subTest(command=command):
+                self.assertIn(f'nop {command}', result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
+    def test_include_cycle_and_duplicate_real_paths_are_ignored(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "child").write_text("bindsym Mod4+h focus left\ninclude config\n")
-            (root / "config").write_text("include child\n")
+            (root / "config").write_text("include child\ninclude ./child\n")
             result = subprocess.run(
                 [SCRIPT, root / "config"], text=True, capture_output=True, check=True
             )
-        self.assertIn('Super+h { command "focus left"; }', result.stdout)
-        self.assertIn("include cycle", result.stdout)
-        self.assertIn("manual attention:", result.stderr)
+        self.assertEqual(result.stdout.count('Super+h { command "focus left"; }'), 1)
+        self.assertNotIn("include cycle", result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
+    def test_include_refuses_command_substitution_without_executing_it(self):
+        for command in ["`touch {marker}`", "$(touch {marker})"]:
+            with self.subTest(command=command), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                marker = root / "executed"
+                (root / "config").write_text(
+                    f"include {command.format(marker=marker)}\n"
+                )
+                result = subprocess.run(
+                    [SCRIPT, root / "config"], text=True, capture_output=True, check=True
+                )
+                self.assertFalse(marker.exists())
+                self.assertIn("command substitution is refused", result.stdout)
+                self.assertIn("manual attention: 1 directive(s)", result.stderr)
 
 
 if __name__ == "__main__":

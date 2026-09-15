@@ -63,14 +63,13 @@ class Translator:
     def parse(self, path: Path) -> None:
         path = path.expanduser().resolve()
         if path in self.visited:
-            self.warn(path, 0, "include", "include cycle")
             return
-        self.visited.add(path)
         try:
             lines = path.read_text().splitlines()
         except OSError as error:
             self.warn(path, 0, "include", f"cannot read include: {error}")
             return
+        self.visited.add(path)
 
         index = 0
         while index < len(lines):
@@ -377,7 +376,13 @@ class Translator:
 
     def translate_include(self, source: Path, line: int, text: str) -> None:
         pattern = text.removeprefix("include ").strip().strip('"\'')
-        matches = sorted(glob.glob(str(source.parent / pattern)))
+        if "`" in pattern or "$(" in pattern:
+            self.warn(source, line, text, "include command substitution is refused")
+            return
+        pattern_path = Path(pattern).expanduser()
+        if not pattern_path.is_absolute():
+            pattern_path = source.parent / pattern_path
+        matches = sorted(glob.glob(str(pattern_path)))
         if not matches:
             self.warn(source, line, text, "include matched no files")
         for included in matches:
