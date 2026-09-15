@@ -477,29 +477,17 @@ change added seven other files, the remaining 58 divide into 8 reachable
 candidates, 28 unreachable files, and 22 files for i3-only subsystems or
 lifecycle tests. A filename grep had estimated only five candidates.
 
-The **current green ceiling is 127 files**. Swayward is 28 files below it:
+The green ceiling is the number of files that could ever enter `passing.txt`
+without relaxing a documented oracle limit. Two workers measured it
+concurrently and reported 132 and then 127 as candidates were reclassified, so
+treat the figure as approximate and recompute it from this table rather than
+quoting it.
 
-- 99 files are already in `passing.txt`, including `295-net-wm-state-focused.t`.
-`511-scratchpad-configure-request.t` was added. After measuring `298`, the remaining 64 files divide
-into 14 reachable candidates, 28 unreachable files, and 22 files for i3-only
-subsystems or lifecycle tests. A filename grep had estimated only five
-candidates.
-
-The **current green ceiling is 132 files**. Swayward is 34 files below it:
-
-- 98 files are already in `passing.txt`.
-- 20 vendored files have only implementation or adapter gaps and no permanent
-  skip or unproven assertion: `139-ws-numbers.t`, `172-start-on-named-ws.t`,
-  `202-scratchpad-criteria.t`, `256-no-auto-back-and-forth.t`,
-  `258-keypress-release.t`, `287-edge-borders.t`, `290-keypress-numlock.t`,
-  `297-assign-workspace-to-output.t`, `319-gaps.t`, `503-workspace.t`,
-  `506-focus-right.t`, `514-ipc-workspace-multi-monitor.t`,
-  `515-create-workspace.t`, `519-mouse-warping.t`,
-  `522-rename-assigned-workspace.t`, `528-workspace-next-prev-reversed.t`,
-  `535-workspace-next-prev.t`, `539-disable_focus_wrapping.t`,
-  `541-resize-set-tiling.t`, and `549-focus-wrapping-gaps.t`.
-- 8 unvendored files remain reachable candidates in the audit below.
-- 14 unvendored files are reachable candidates in the audit below.
+As of this revision the table records 99 green files, 25 vendored files whose
+only obstacles are implementation or adapter gaps, and 9 unvendored files still
+marked as reachable candidates. That puts the ceiling near 133 and swayward
+about 34 files below it, but the gap-only and candidate counts move with every
+merge and the two categories have overlapped before.
 
 The ceiling holds the documented oracle limits fixed. It excludes every file
 with an i3-only assertion or an input that the harness cannot ask. It also does
