@@ -40,6 +40,10 @@ The 2026 rewrite used these groups:
 
 Keep generated snapshots with the code that requires them. A clean-looking snapshot-only commit is not useful if checking it out makes the tests fail. Prefer a bisectable commit over a narrower label.
 
+The same rule applies to tools that tests execute. The 2026-09 rewrite first grouped `contrib/sway-to-kdl` with documentation, which looked tidy: the translator is a tool, and its own suite is Python. But the Rust conformance tests translate real i3 configs through that script, so the code commit failed three tests until the tool arrived one commit later. Group a tool with the code that runs it.
+
+Verify every intermediate commit, not just the tip. Check out each one in a separate worktree with its own `CARGO_TARGET_DIR` and run the suite. A rewrite whose final tree is correct can still contain a commit that does not build.
+
 ## Replace a tree without leaving deleted files behind
 
 Do not use `git checkout <commit> -- .` to replace a tree. That command does not remove paths that are absent from the target, so stale files survive.
@@ -96,4 +100,10 @@ git -c lfs.locksverify=false push --force-with-lease origin main
 
 Never replace this command with `--force`. If the lease fails, stop. Fetch and inspect the remote changes before deciding how to continue.
 
-Keep `pre-squash-backup` until the rewritten history and upstream merge base have been verified. To undo locally, reset `main` to that branch.
+Keep `pre-squash-backup` until the rewritten history and upstream merge base have been verified. To undo locally, reset `main` to that branch. Number later backups (`pre-squash-backup2`) so earlier ones stay available.
+
+## Squash when no agent holds a workspace
+
+Rewriting `main` forces every worker to rebase, and a worker that rebases mid-task can lose uncommitted work. Do the rewrite when no workspaces exist. Before deleting a workspace, check it for unpushed commits and uncommitted changes, and fetch anything worth keeping onto a `salvage/*` branch in the main repository -- a `git status` that is clean in one worktree says nothing about the others.
+
+Salvaged work is not automatically mergeable. Rebase each branch and run the suite: incomplete work often fails its own new test, which is the signal to keep it on a branch rather than merge it.
