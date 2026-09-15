@@ -511,6 +511,13 @@ class Translator:
             "Alt": "Alt",
             "Mod2": "Num",
             "Super": "Super",
+            # sway spells an XKB group qualifier Group1..Group4, with Mode_switch
+            # as an alias for Group2. The typed KDL parser accepts the same names.
+            "Group1": "Group1",
+            "Group2": "Group2",
+            "Group3": "Group3",
+            "Group4": "Group4",
+            "Mode_switch": "Mode_switch",
             "button1": "MouseLeft",
             "button2": "MouseMiddle",
             "button3": "MouseRight",
