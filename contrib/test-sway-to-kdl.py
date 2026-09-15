@@ -265,19 +265,36 @@ bindsym $missing+x nop
                 self.assertIn("X11-only criterion", result.stdout)
                 self.assertIn("manual attention: 1 directive(s)", result.stderr)
 
-    def test_for_window_translates_map_time_unmap_actions(self):
-        for action in ["kill", "move scratchpad"]:
+    def test_for_window_translates_map_time_commands(self):
+        result = self.translate('for_window[app_id="mapped"] mark label\n')
+        self.assertIn('sway-for-window-command "mark label"', result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
+        for action in [
+            "kill",
+            "move scratchpad",
+            "mark label",
+            "mark --add label",
+            "mark --replace label",
+            "mark --add --toggle label",
+            "mark --replace --toggle label",
+        ]:
             with self.subTest(action=action):
-                result = self.translate(f'for_window [app_id="gone"] {action}\n')
+                result = self.translate(f'for_window [app_id="mapped"] {action}\n')
                 self.assertIn(f'sway-for-window-command "{action}"', result.stdout)
                 self.assertIn("manual attention: none", result.stderr)
+
+        for action in ["mark", "mark --add", "mark --unknown label"]:
+            with self.subTest(invalid=action):
+                result = self.translate(f'for_window [app_id="mapped"] {action}\n')
+                self.assertNotIn("sway-for-window-command", result.stdout)
+                self.assertIn("invalid mark command", result.stdout)
+                self.assertIn("manual attention: 1 directive(s)", result.stderr)
 
     def test_for_window_refuses_missing_rule_surfaces(self):
         for source, reason in [
             ('for_window [workspace="web"] floating enable\n', "workspace criterion"),
-            ('for_window [class="foo"] mark tagged\n', "command needs manual conversion"),
             ('for_window [class="foo"] exec notify-send mapped\n', "command needs manual conversion"),
-            ('for_window [class="foo"] kill, mark tagged\n', "command needs manual conversion"),
         ]:
             with self.subTest(source=source):
                 result = self.translate(source)

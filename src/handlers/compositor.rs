@@ -260,7 +260,6 @@ impl CompositorHandler for State {
 
                         self.swayward.queue_redraw(&output);
                     }
-                    crate::command::run_for_window(self, mapped_id);
                     let commands = self
                         .swayward
                         .layout
@@ -277,6 +276,7 @@ impl CompositorHandler for State {
                         );
                         let _ = crate::command::execute(self, &targeted);
                     }
+                    crate::command::run_for_window(self, mapped_id);
                     return;
                 }
 

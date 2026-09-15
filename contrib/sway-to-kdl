@@ -100,7 +100,7 @@ class Translator:
                 )
             elif match := re.match(r"(bindsym|bindcode)\s+(.+)", text):
                 self.translate_bind(path, line_no, match.group(1), match.group(2))
-            elif match := re.match(r"for_window\s+(\[[^]]+\])\s+(.+)", text):
+            elif match := re.match(r"for_window\s*(\[[^]]+\])\s+(.+)", text):
                 self.translate_for_window(path, line_no, match.group(1), match.group(2))
             elif match := re.fullmatch(r"no_focus\s+(\[[^]]+\])", text):
                 self.translate_no_focus(path, line_no, match.group(1))
@@ -542,6 +542,24 @@ class Translator:
             elif words == ["focus"]:
                 effects.append("    open-focused true")
             elif words == ["kill"] or words == ["move", "scratchpad"]:
+                effects.append(f"    sway-for-window-command {self.quote(directive)}")
+            elif words[:1] == ["mark"]:
+                options = words[1:-1]
+                if (
+                    len(words) < 2
+                    or words[-1].startswith("--")
+                    or any(
+                        option not in {"--add", "--replace", "--toggle"}
+                        for option in options
+                    )
+                ):
+                    self.warn(
+                        source,
+                        line,
+                        f"for_window {criteria} {command}",
+                        "invalid mark command",
+                    )
+                    return
                 effects.append(f"    sway-for-window-command {self.quote(directive)}")
             elif words[:2] == ["move", "workspace"] and len(words) == 3:
                 effects.append(f"    open-on-workspace {self.quote(words[2])}")

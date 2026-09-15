@@ -1647,6 +1647,44 @@ fn swap_con_id_and_mark_preserve_focus_and_reject_invalid_targets() {
 }
 
 #[test]
+fn map_time_marks_remain_globally_unique() {
+    let mut config = swayward_config::Config::default();
+    for app_id in ["first", "second"] {
+        config.window_rules.push(swayward_config::WindowRule {
+            matches: vec![swayward_config::window_rule::Match {
+                app_id: Some(format!("^{app_id}$").parse().unwrap()),
+                ..Default::default()
+            }],
+            sway_for_window_commands: vec!["mark --add shared".into()],
+            ..Default::default()
+        });
+    }
+    let mut f = Fixture::with_config(config);
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    for app_id in ["first", "second"] {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+
+    assert_eq!(
+        f.swayward()
+            .marks_by_window
+            .values()
+            .filter(|marks| marks.iter().any(|mark| mark == "shared"))
+            .count(),
+        1
+    );
+}
+
+#[test]
 fn marks_are_globally_unique_across_windows_and_containers() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));
