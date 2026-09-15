@@ -96,3 +96,5 @@
 537-move-single-to-output.t
 547-nested-variables.t
 550-split-redundant-containers.t
+183-config-variables.t
+201-config-parser.t

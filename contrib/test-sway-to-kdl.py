@@ -283,15 +283,27 @@ bindsym $missing+x nop
 '''
         )
         self.assertIn(r'match app-id="^foo\\\\w+$" title="^bar\\\\d+$"', result.stdout)
-        self.assertIn("border {", result.stdout)
-        self.assertIn("off", result.stdout)
+        self.assertIn('sway-border "none"', result.stdout)
         self.assertIn("manual attention: none", result.stderr)
 
     def test_for_window_translates_pixel_border(self):
         result = self.translate('for_window [class="foo"] border 1pixel\n')
-        self.assertIn("border {", result.stdout)
-        self.assertIn("on", result.stdout)
-        self.assertIn("width 1", result.stdout)
+        self.assertIn('sway-border "pixel"', result.stdout)
+        self.assertIn("sway-border-width 1", result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
+    def test_line_continuation_precedes_variable_expansion(self):
+        result = self.translate(
+            "set \\\n$var \\\nspecial title\n"
+            'for_window \\\n[title="$var"] \\\nborder \\\nnone\n'
+        )
+        self.assertIn('match title="special title"', result.stdout)
+        self.assertIn('sway-border "none"', result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
+    def test_last_line_without_newline_is_translated(self):
+        result = self.translate("set $ws workspace eggs\nbindsym Mod4+0 $ws")
+        self.assertIn('Super+0 { command "workspace eggs"; }', result.stdout)
         self.assertIn("manual attention: none", result.stderr)
 
     def test_hide_edge_borders_only_maps_the_exact_default(self):

@@ -615,13 +615,11 @@ class Translator:
             words = directive.split()
             if words[:1] == ["border"] and len(words) == 2:
                 if words[1] == "none":
-                    effects += ["    border {", "        off", "    }"]
+                    effects.append('    sway-border "none"')
                 elif pixels := re.fullmatch(r"(\d+)pixel", words[1]):
                     effects += [
-                        "    border {",
-                        "        on",
-                        f"        width {pixels.group(1)}",
-                        "    }",
+                        '    sway-border "pixel"',
+                        f"    sway-border-width {pixels.group(1)}",
                     ]
                 else:
                     self.warn(
