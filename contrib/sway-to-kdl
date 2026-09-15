@@ -379,6 +379,8 @@ class Translator:
             return
         properties_text = " " + " ".join(properties) if properties else ""
         key = self.translate_key(key)
+        if key.isdecimal():
+            key = self.quote(key)
         if key in self.binds:
             self.warn(source, line, rest, f"duplicate binding for {key}; kept the first")
             return

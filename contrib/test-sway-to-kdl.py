@@ -79,6 +79,24 @@ bindsym $missing+x nop
         for item in result.stderr.splitlines()[1:]:
             self.assertIn(item.strip(), result.stdout)
 
+    def test_numeric_bindsym_is_quoted_at_top_level_and_in_modes(self):
+        result = self.translate(
+            "bindsym 1 workspace number 1\n"
+            "mode resize {\n"
+            "    bindsym 2 workspace number 2\n"
+            "}\n"
+            "bindcode nope kill\n"
+        )
+        self.assertEqual(
+            result.stdout.count('"1" { command "workspace number 1"; }'), 1
+        )
+        self.assertEqual(
+            result.stdout.count('"2" { command "workspace number 2"; }'), 1
+        )
+        self.assertIn('mode "resize" {', result.stdout)
+        self.assertIn("bindcode key must be numeric", result.stdout)
+        self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
     def test_inner_gaps_accept_sway_units_and_clamp_negative_values(self):
         for value, expected in [("10", "10"), ("20px", "20"), ("14PX", "14"), ("-5px", "0")]:
             with self.subTest(value=value):
