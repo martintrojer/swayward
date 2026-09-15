@@ -185,6 +185,9 @@ sub is ($$;$) {
         } elsif ($name =~ /^floating border width/) {
             _skip_next_assertions(1, 'X11 pre-map utility classification and client-window border geometry are unavailable');
         }
+    } elsif (($ENV{SWAYWARD_I3_TEST} // '') eq '307-focus-next-prev.t'
+        && ($name // '') eq "Workspace 2 focused with 'focus next sibling'") {
+        _skip_next_assertions(1, 'i3-only workspace sibling traversal; sway treats next/prev without a container as a no-op');
     } elsif (($ENV{SWAYWARD_I3_TEST} // '') eq '510-focus-across-outputs.t'
         && ($tester->current_test == 2 || $tester->current_test >= 10)) {
         _skip_next_assertions(1, 'i3-only output-entry focus; sway selects the direction-facing branch');

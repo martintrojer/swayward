@@ -83,3 +83,5 @@
 512-move-wraps.t
 302-tree.t
 245-move-position-mouse.t
+
+307-focus-next-prev.t
