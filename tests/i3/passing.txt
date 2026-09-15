@@ -79,3 +79,4 @@
 309-crash-move-parent.t
 
 512-move-wraps.t
+302-tree.t
