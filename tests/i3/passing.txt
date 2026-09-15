@@ -98,3 +98,4 @@
 523-move-position-center.t
 537-move-single-to-output.t
 531-fullscreen-on-given-output.t
+527-focus-fallback.t

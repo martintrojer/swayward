@@ -17,6 +17,15 @@ use super::*;
 use crate::ipc::tree::{describe_outputs, describe_tree, describe_workspaces};
 use crate::layout::tiling_tree::{IpcNode, Layout as TreeLayout, NodeId};
 
+fn collect_focused_nodes(node: &swayward_ipc::Node, ids: &mut Vec<i64>) {
+    if node.focused {
+        ids.push(node.id);
+    }
+    for child in node.nodes.iter().chain(&node.floating_nodes) {
+        collect_focused_nodes(child, ids);
+    }
+}
+
 fn assert_same_shape(expected: &Value, actual: &Value, path: &str) {
     assert_eq!(
         json_type(expected),
@@ -1917,16 +1926,62 @@ fn marks_are_globally_unique_across_windows_and_containers() {
 }
 
 #[test]
-fn get_tree_has_one_focused_node_after_scratchpad_cycle() {
-    fn collect_focused_nodes(node: &swayward_ipc::Node, ids: &mut Vec<i64>) {
-        if node.focused {
-            ids.push(node.id);
-        }
-        for child in node.nodes.iter().chain(&node.floating_nodes) {
-            collect_focused_nodes(child, ids);
-        }
-    }
+fn closing_last_window_focuses_workspace_node() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
 
+    let mapped_id = f
+        .swayward()
+        .layout
+        .windows()
+        .find_map(|(_, mapped)| {
+            (mapped.toplevel().wl_surface().id().protocol_id() == surface.id().protocol_id())
+                .then(|| mapped.id())
+        })
+        .unwrap();
+    let focused_window = crate::ipc::tree::window_id(mapped_id);
+    let focused_workspace =
+        crate::ipc::tree::workspace_id(f.swayward().layout.active_workspace().unwrap().id().get());
+
+    let swayward = f.swayward();
+    let tree = describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &swayward.marks_by_window,
+        &swayward.marks_by_container,
+    );
+    let mut focused = Vec::new();
+    collect_focused_nodes(&tree, &mut focused);
+    assert_eq!(focused, [focused_window]);
+
+    let window = f.client(client).window(&surface);
+    window.attach_null();
+    window.commit();
+    f.double_roundtrip(client);
+
+    let swayward = f.swayward();
+    let tree = describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &swayward.marks_by_window,
+        &swayward.marks_by_container,
+    );
+    focused.clear();
+    collect_focused_nodes(&tree, &mut focused);
+    assert_eq!(focused, [focused_workspace]);
+}
+
+#[test]
+fn get_tree_has_one_focused_node_after_scratchpad_cycle() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));
     let client = f.add_client();

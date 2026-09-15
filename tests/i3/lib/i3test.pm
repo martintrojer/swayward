@@ -744,6 +744,20 @@ sub new {
 
 package i3test::X;
 sub input_focus { i3test::_control({ action => 'focused' })->{id} }
+sub get_property {
+    ($ENV{SWAYWARD_I3_TEST} // '') eq '527-focus-fallback.t'
+        or die "X11 properties are unavailable in the Wayland test adapter\n";
+    i3test::_skip_next_assertions(
+        1,
+        'i3-only EWMH support-window focus; sway falls back to the workspace',
+    );
+    return { sequence => 0 };
+}
+sub get_property_reply {
+    ($ENV{SWAYWARD_I3_TEST} // '') eq '527-focus-fallback.t'
+        or die "X11 properties are unavailable in the Wayland test adapter\n";
+    return { length => 0, value => '' };
+}
 sub root { bless {}, 'i3test::Root' }
 sub atom {
     my %args = @_[1 .. $#_];
