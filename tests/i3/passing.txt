@@ -31,6 +31,7 @@
 173-get-marks.t
 178-regress-workspace-open.t
 179-regress-multiple-ws.t
+183-config-variables.t
 186-regress-assign-focus-parent.t
 190-scratchpad-diff-ws.t
 191-resize-levels.t
@@ -38,6 +39,7 @@
 197-regression-move-vanish.t
 198-regression-scratchpad-crash.t
 199-ipc-mode-event.t
+201-config-parser.t
 203-regress-assign-and-move.t
 204-regress-scratchpad-move.t
 208-regress-floating-criteria.t
@@ -95,6 +97,5 @@
 531-fullscreen-on-given-output.t
 537-move-single-to-output.t
 547-nested-variables.t
+550-focus-workspace.t
 550-split-redundant-containers.t
-183-config-variables.t
-201-config-parser.t
