@@ -435,6 +435,7 @@ pub(crate) fn describe_tiling<'a, I>(
             id,
             layout,
             percent,
+            rect,
             focus,
             focused,
             fullscreen_mode,
@@ -472,7 +473,7 @@ pub(crate) fn describe_tiling<'a, I>(
                 ipc_layout(layout),
                 orientation(layout),
                 None,
-                workspace_rect,
+                offset_rect(rect, workspace_rect),
                 children,
                 vec![],
                 focus,
@@ -514,8 +515,23 @@ pub(crate) fn describe_tiling<'a, I>(
             node.current_border_width = i32::from(border.1);
             node.percent = percent;
             node.focused = focused;
-            node.deco_rect =
-                deco_rect.map_or_else(Rect::default, |rect| offset_rect(rect, workspace_rect));
+            let has_titlebar = deco_rect.is_some();
+            node.deco_rect = deco_rect.map_or_else(Rect::default, |rect| {
+                rect_from(rect.loc.x, rect.loc.y, rect.size.w, rect.size.h)
+            });
+            let border_width = match (node.border, has_titlebar) {
+                (NodeBorder::Normal | NodeBorder::Pixel, true) | (NodeBorder::Pixel, false) => {
+                    node.current_border_width
+                }
+                _ => 0,
+            };
+            let top = if has_titlebar { 0 } else { border_width };
+            node.window_rect = Rect {
+                x: border_width,
+                y: top,
+                width: (node.rect.width - border_width * 2).max(0),
+                height: (node.rect.height - border_width - top).max(0),
+            };
             Some(node)
         }
     }

@@ -4330,6 +4330,7 @@ fn stale_tree_leaf_is_omitted_without_panicking() {
         id: NodeId(0),
         layout: TreeLayout::SplitH,
         percent: None,
+        rect: Default::default(),
         focus: vec![NodeId(1)],
         focused: false,
         fullscreen_mode: 0,
@@ -4775,6 +4776,82 @@ fn live_ipc_rectangle_roles_match_sway_relationships() {
     let expected = nested_fixture_tree();
     let actual = nested_live_tree();
     assert_rectangle_roles_match_fixture(&expected, &actual, "$tree");
+}
+
+#[test]
+fn nested_tiling_rectangles_match_sway_roles() {
+    let tree = nested_live_tree();
+    let workspace = &tree["nodes"][1]["nodes"][0];
+    let top = &workspace["nodes"][0];
+    let nested = &workspace["nodes"][1];
+    let bottom_left = &nested["nodes"][0];
+    let bottom_right = &nested["nodes"][1];
+
+    assert_eq!(
+        nested["rect"]["x"],
+        bottom_left["rect"]["x"].as_i64().unwrap()
+            - bottom_left["deco_rect"]["x"].as_i64().unwrap()
+    );
+    assert!(nested["rect"]["x"].as_i64().unwrap() > top["rect"]["x"].as_i64().unwrap());
+    assert_eq!(
+        nested["rect"]["y"],
+        bottom_left["rect"]["y"].as_i64().unwrap()
+            - bottom_left["deco_rect"]["height"].as_i64().unwrap()
+    );
+    assert_eq!(nested["rect"]["width"], bottom_left["rect"]["width"]);
+    assert_eq!(
+        nested["rect"]["height"],
+        bottom_right["rect"]["y"].as_i64().unwrap()
+            + bottom_right["rect"]["height"].as_i64().unwrap()
+            - nested["rect"]["y"].as_i64().unwrap()
+    );
+    for window in [top, bottom_left, bottom_right] {
+        assert!(window["deco_rect"]["height"].as_i64().unwrap() > 0);
+        assert_eq!(window["window_rect"]["x"], 2);
+        assert_eq!(window["window_rect"]["y"], 0);
+        assert_eq!(
+            window["window_rect"]["width"].as_i64().unwrap(),
+            window["rect"]["width"].as_i64().unwrap() - 4
+        );
+        assert_eq!(
+            window["window_rect"]["height"].as_i64().unwrap(),
+            window["rect"]["height"].as_i64().unwrap() - 2
+        );
+    }
+}
+
+#[test]
+fn border_none_zeroes_deco_and_uses_the_whole_rect_for_window() {
+    let mut f = Fixture::new();
+    f.add_output(1, (800, 600));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+    assert!(crate::command::execute(f.niri_state(), "border none")[0].success);
+
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &Default::default(),
+        &Default::default(),
+    ))
+    .unwrap();
+    let window = &tree["nodes"][1]["nodes"][0]["nodes"][0];
+    assert_eq!(
+        window["deco_rect"],
+        serde_json::json!({"x": 0, "y": 0, "width": 0, "height": 0})
+    );
+    assert_eq!(window["window_rect"]["x"], 0);
+    assert_eq!(window["window_rect"]["y"], 0);
+    assert_eq!(window["window_rect"]["width"], window["rect"]["width"]);
+    assert_eq!(window["window_rect"]["height"], window["rect"]["height"]);
 }
 
 #[test]

@@ -431,7 +431,7 @@ impl<W: LayoutElement> TilingTree<W> {
     fn focus_extreme(&mut self, bottom: bool) {
         let geometries = self.compute_geometry();
         let focus = geometries
-            .nodes
+            .leaf_contents
             .iter()
             .min_by(|(_, a), (_, b)| {
                 let a = a.loc.y + if bottom { a.size.h } else { 0. };

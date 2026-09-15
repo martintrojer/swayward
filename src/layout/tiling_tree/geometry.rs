@@ -8,7 +8,8 @@ use crate::layout::titlebar::{Titlebar, TitlebarState};
 use crate::layout::LayoutElement;
 
 pub(crate) struct Geometry<I> {
-    pub nodes: HashMap<NodeId, Rectangle<f64, Logical>>,
+    pub leaf_contents: HashMap<NodeId, Rectangle<f64, Logical>>,
+    pub ipc_nodes: HashMap<NodeId, Rectangle<f64, Logical>>,
     pub titlebars: HashMap<NodeId, Titlebar<I>>,
 }
 
@@ -25,7 +26,8 @@ pub(crate) fn compute<W: LayoutElement>(
     fullscreen: &HashSet<NodeId>,
 ) -> Geometry<W::Id> {
     let mut result = Geometry {
-        nodes: HashMap::new(),
+        leaf_contents: HashMap::new(),
+        ipc_nodes: HashMap::new(),
         titlebars: HashMap::new(),
     };
     let gaps = gaps.max(0.);
@@ -102,6 +104,7 @@ fn assign<W: LayoutElement>(
     result: &mut Geometry<W::Id>,
 ) {
     let Some(node) = nodes.get(&id) else { return };
+    result.ipc_nodes.insert(id, rect);
     match &node.value {
         TreeNode::Leaf { tile } => {
             if !decorated_by_parent && !fullscreen.contains(&id) && tile.has_sway_titlebar() {
@@ -120,7 +123,8 @@ fn assign<W: LayoutElement>(
                 rect.loc.y += titlebar_height;
                 rect.size.h = (rect.size.h - titlebar_height).max(0.);
             }
-            result.nodes.insert(id, rect);
+            result.ipc_nodes.insert(id, rect);
+            result.leaf_contents.insert(id, rect);
         }
         TreeNode::Split {
             layout,

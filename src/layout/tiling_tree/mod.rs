@@ -159,6 +159,7 @@ pub enum IpcNode<I> {
         id: NodeId,
         layout: Layout,
         percent: Option<f64>,
+        rect: Rectangle<f64, Logical>,
         focus: Vec<NodeId>,
         focused: bool,
         fullscreen_mode: i32,
@@ -1358,11 +1359,11 @@ impl<W: LayoutElement> TilingTree<W> {
 
     fn animate_geometry_changes(&mut self, old: geometry::Geometry<W::Id>, skip: Option<NodeId>) {
         let new = self.compute_geometry();
-        for (id, old_rect) in old.nodes {
+        for (id, old_rect) in old.leaf_contents {
             if skip == Some(id) {
                 continue;
             }
-            let Some(new_rect) = new.nodes.get(&id) else {
+            let Some(new_rect) = new.leaf_contents.get(&id) else {
                 continue;
             };
             let offset = old_rect.loc - new_rect.loc;
@@ -1508,9 +1509,9 @@ impl<W: LayoutElement> TilingTree<W> {
         let geometries = self.compute_geometry();
         let mut leaves = Vec::new();
         self.collect_leaf_ids(id, &mut leaves);
-        let mut rect = *geometries.nodes.get(leaves.first()?)?;
+        let mut rect = *geometries.leaf_contents.get(leaves.first()?)?;
         for leaf in &leaves[1..] {
-            let next = geometries.nodes.get(leaf)?;
+            let next = geometries.leaf_contents.get(leaf)?;
             let right = (rect.loc.x + rect.size.w).max(next.loc.x + next.size.w);
             let bottom = (rect.loc.y + rect.size.h).max(next.loc.y + next.size.h);
             rect.loc.x = rect.loc.x.min(next.loc.x);
@@ -1581,7 +1582,7 @@ impl<W: LayoutElement> TilingTree<W> {
         for (id, node) in &mut self.nodes {
             if let TreeNode::Leaf { tile } = &mut node.value {
                 let transaction = transaction.clone();
-                if let Some(rect) = geometries.nodes.get(id) {
+                if let Some(rect) = geometries.leaf_contents.get(id) {
                     let mode = self.pending_modes.get(id).copied().unwrap_or(PendingMode {
                         fullscreen: None,
                         maximized: false,
