@@ -50,6 +50,7 @@ struct QueryState {
     outputs: String,
     marks: String,
     binding_modes: String,
+    binding_state: String,
 }
 
 struct EventStreamClient {
@@ -182,13 +183,15 @@ fn on_new_ipc_client(state: &mut State, stream: UnixStream) {
     let Some(server) = &state.swayward.ipc_server else {
         return;
     };
-    server.query_state.borrow_mut().binding_modes = binding_modes(&state.swayward.config.borrow());
+    let mut query_state = server.query_state.borrow_mut();
+    query_state.binding_modes = binding_modes(&state.swayward.config.borrow());
+    query_state.binding_state = binding_state(&state.swayward.binding_mode);
     refresh_query_state(
         &state.swayward.layout,
         &state.swayward.global_space,
         &state.swayward.marks_by_window,
         &state.swayward.marks_by_container,
-        &mut server.query_state.borrow_mut(),
+        &mut query_state,
     );
     let ctx = ClientCtx {
         query_state: server.query_state.clone(),
@@ -302,6 +305,7 @@ async fn dispatch(ctx: &ClientCtx, msg_type: MessageType, payload: &[u8]) -> Str
         MessageType::GetOutputs => ctx.query_state.borrow().outputs.clone(),
         MessageType::GetMarks => ctx.query_state.borrow().marks.clone(),
         MessageType::GetBindingModes => ctx.query_state.borrow().binding_modes.clone(),
+        MessageType::GetBindingState => ctx.query_state.borrow().binding_state.clone(),
         MessageType::RunCommand => {
             let input = match String::from_utf8(payload.to_vec()) {
                 Ok(input) => input,
@@ -350,6 +354,10 @@ fn binding_modes(config: &swayward_config::Config) -> String {
         .chain(config.binding_modes.iter().map(|mode| mode.name.as_str()))
         .collect::<Vec<_>>();
     serde_json::to_string(&modes).unwrap_or_else(|_| "[]".into())
+}
+
+fn binding_state(mode: &str) -> String {
+    serde_json::json!({"name": mode}).to_string()
 }
 
 fn serialize_outcomes(outcomes: &[CommandOutcome]) -> String {
@@ -649,12 +657,14 @@ impl State {
             .and_then(|server| serde_json::from_str(&server.query_state.borrow().tree).ok());
         self.ipc_refresh_workspaces();
         if let Some(server) = &self.swayward.ipc_server {
+            let mut query_state = server.query_state.borrow_mut();
+            query_state.binding_state = binding_state(&self.swayward.binding_mode);
             refresh_query_state(
                 &self.swayward.layout,
                 &self.swayward.global_space,
                 &self.swayward.marks_by_window,
                 &self.swayward.marks_by_container,
-                &mut server.query_state.borrow_mut(),
+                &mut query_state,
             );
         }
         self.ipc_refresh_windows(previous_tree.as_ref());

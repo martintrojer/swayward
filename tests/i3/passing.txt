@@ -67,6 +67,7 @@
 
 220-ipc-window-title.t
 265-ipc-mark.t
+311-get-binding-modes.t
 275-ipc-window-close.t
 276-ipc-window-move.t
 282-tabbed-floating-disable-crash.t

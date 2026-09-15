@@ -1082,6 +1082,24 @@ fn binding_modes_switch_binds_emit_events_and_list_over_ipc() {
         serde_json::from_str::<Value>(&payload).unwrap(),
         serde_json::json!(["default", "resize"])
     );
+
+    query
+        .write_all(&crate::ipc::wire::encode(MessageType::GetBindingState, ""))
+        .unwrap();
+    let (_, payload) = read_ipc_reply(&mut fixture, &mut query);
+    assert_eq!(
+        serde_json::from_str::<Value>(&payload).unwrap(),
+        serde_json::json!({"name": "default"})
+    );
+
+    assert!(crate::command::execute(fixture.niri_state(), "mode resize")[0].success);
+    query
+        .write_all(&crate::ipc::wire::encode(MessageType::GetBindingState, ""))
+        .unwrap();
+    let (_, payload) = read_ipc_reply(&mut fixture, &mut query);
+    let state = serde_json::from_str::<Value>(&payload).unwrap();
+    assert_eq!(state, serde_json::json!({"name": "resize"}));
+    assert_eq!(state.as_object().unwrap().len(), 1);
 }
 
 #[test]
