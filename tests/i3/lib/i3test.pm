@@ -330,8 +330,13 @@ sub open_window {
     die "a distinct X11 instance is unavailable in the Wayland test adapter\n"
         if exists($args{instance})
         && (!exists($args{wm_class}) || $args{instance} ne $args{wm_class});
-    die "before_map X11 property callbacks are unavailable in the Wayland test adapter\n"
-        if exists $args{before_map};
+    my $fullscreen_output;
+    if (exists $args{before_map}) {
+        die "before_map X11 property callbacks are unavailable in the Wayland test adapter\n"
+            unless ($ENV{SWAYWARD_I3_TEST} // '') eq '531-fullscreen-on-given-output.t'
+            && exists $args{rect};
+        $fullscreen_output = $args{rect}->x == 0 ? 'fake-0' : 'fake-1';
+    }
     my $name = $args{name} // 'Window ' . $window_count++;
     my $class = $args{wm_class} // $name;
     $name = decode_utf8($name) unless utf8::is_utf8($name);
@@ -346,6 +351,7 @@ sub open_window {
             action => 'create',
             name => $name,
             app_id => $class,
+            fullscreen_output => $fullscreen_output,
         })},
         name => $name,
     });

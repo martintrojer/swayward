@@ -239,12 +239,18 @@ fn socket_path(kind: &str) -> PathBuf {
 }
 
 fn create_window(fixture: &mut Fixture, client: super::client::ClientId, request: &Value) -> u32 {
+    let fullscreen_output = request["fullscreen_output"]
+        .as_str()
+        .map(|name| fixture.client(client).output(name));
     let window = fixture.client(client).create_window();
     if let Some(app_id) = request["app_id"].as_str() {
         window.xdg_toplevel.set_app_id(app_id.to_owned());
     }
     if let Some(name) = request["name"].as_str() {
         window.set_title(name);
+    }
+    if let Some(output) = fullscreen_output.as_ref() {
+        window.set_fullscreen(Some(output));
     }
     window.surface.id().protocol_id()
 }
@@ -476,6 +482,7 @@ fn translate_config(config: &str) -> Result<swayward_config::Config, String> {
 
 fn prepare_test_config(source: &str) -> Result<swayward_config::Config, String> {
     let mut config = translate_config(source)?;
+    config.layout.gaps = 0.;
     config.layout.border.off = false;
     config
         .input
@@ -514,6 +521,7 @@ fn handle_control(
             let source = request["config"].as_str().unwrap();
             match (fake_outputs(source), translate_config_file(source)) {
                 (Ok(outputs), Ok((path, mut config))) => {
+                    config.layout.gaps = 0.;
                     config.layout.border.off = false;
                     config.input.focus_follows_mouse.get_or_insert(
                         swayward_config::input::FocusFollowsMouse {
@@ -528,6 +536,7 @@ fn handle_control(
                     );
                     if let Some(outputs) = outputs {
                         fixture.replace_outputs(outputs);
+                        fixture.double_roundtrip(client);
                     }
                     *loaded_config_source = Some(source.to_owned());
                     json!({ "success": true })
