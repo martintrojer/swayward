@@ -648,6 +648,9 @@ sub cmp_tree {
 
 sub _translate_config_identity {
     my ($config) = @_;
+    # Some i3 tests use this exact block only to suppress the test-suite i3bar.
+    # Sway has no i3bar_command, and the headless fixture starts no bar.
+    $config =~ s/^bar \{\n    # Disable i3bar\.\n    i3bar_command :\n\}\n//m;
     $config =~ s/\b(?:class|instance)=([^\s"'\]]+)/app_id="$1"/g;
     $config =~ s/\b(?:class|instance)=/app_id=/g;
     $config;
