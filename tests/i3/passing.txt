@@ -85,3 +85,5 @@
 245-move-position-mouse.t
 
 307-focus-next-prev.t
+
+500-multi-monitor.t
