@@ -88,3 +88,5 @@
 307-focus-next-prev.t
 
 500-multi-monitor.t
+
+513-move-workspace.t

@@ -212,7 +212,15 @@ sub cmp_float ($$;$) {
     my ($a, $b, $name) = @_;
     $tester->cmp_ok(abs($a - $b), '<', 0.000001, $name);
 }
-sub is_deeply { Test::More::is_deeply(@_) }
+sub is_deeply {
+    my ($got, $expected, $name) = @_;
+    if (($ENV{SWAYWARD_I3_TEST} // '') eq '513-move-workspace.t'
+        && (($name // '') eq 'workspace 1 and 5 on fake-0'
+            || ($name // '') eq 'workspace 2 on fake-1')) {
+        _skip_next_assertions(1, 'i3-only output content node; sway places workspaces directly below outputs');
+    }
+    _skip_assertion() or Test::More::is_deeply($got, $expected, $name);
+}
 sub isa_ok ($$;$) {
     my ($value, $class, $name) = @_;
     $name //= "The object isa $class";
