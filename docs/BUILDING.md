@@ -21,7 +21,7 @@ distrobox enter swayward-dev -- bash -lc 'cd /var/home/martintrojer/hacking/sway
 distrobox enter swayward-dev -- bash -lc 'cd /var/home/martintrojer/hacking/swayward && cargo test --all'
 ```
 
-The baseline at commit `1f0ab41f` (fork base `9e72e491`) is:
+The initial post-fork baseline (fork base `9e72e491`) is:
 
 - `cargo build`: exit 0.
 - `cargo test --all`: exit 0, with 218 passed, 0 failed, and 0 ignored across all test binaries and doc tests.

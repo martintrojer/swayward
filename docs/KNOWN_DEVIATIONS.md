@@ -22,6 +22,33 @@ binds {
 Swayward also retains typed niri actions for features outside the current sway
 command subset.
 
+### Bound command validation
+
+Swayward validates every `command "..."` bind while it loads the KDL file. An
+invalid command makes the config load fail before the compositor applies that
+config (`swayward-config/src/binds.rs`; `swayward-ipc/src/command.rs`). This is
+a deliberate safety difference from sway: sway parses and stores a binding's
+command text, then validates the command only when the binding runs. For
+example, sway accepts `bindsym X resize` into its configuration and reports the
+missing resize arguments when `X` is pressed (`sway/sway/commands.c:131`;
+`sway/sway/commands/bind.c:389-463`; `sway/sway/commands/resize.c:558-570`).
+
+This difference can reject a sway configuration during migration even when the
+invalid binding is never used. Swayward keeps eager validation because a typed
+configuration should report broken actions at load time instead of preserving
+a latent runtime error. The sway-to-KDL translator reports incomplete or
+invalid bindings for manual correction; it does not omit them and apply a
+partial configuration.
+
+An empty binding such as `bindsym X` is invalid in both compositors. Sway rejects
+it because `bindsym` requires both a key and a command
+(`sway/sway/commands/bind.c:329-396`). The translator also rejects it as a
+malformed directive.
+
+### Focus wrapping modes
+
+Sway accepts `focus_wrapping yes|no|force|workspace`; its parser also treats the seven true boolean words as `yes`, compares `force` and `workspace` case-insensitively, and treats every other value as `no` (`sway/commands/focus_wrapping.c:6-22`; `common/util.c:40-52`). Swayward currently represents only `yes` and `force`. The config translator maps those exact modes, including the seven true words, and reports `no`, `workspace`, `toggle`, and other false-valued forms for manual conversion rather than changing their behavior. Both compositors default to `yes` (`sway/config.c:274`; `swayward-config/src/layout.rs`).
+
 ### Pointer focus and warping defaults
 
 Sway enables `focus_follows_mouse` by default (`sway/sway/config.c:272`).
@@ -37,6 +64,27 @@ Swayward leaves `warp-mouse-to-focus` disabled by default
 `warp-mouse-to-focus mode="center-xy"`. It reports `mouse_warping output` for
 manual conversion because swayward cannot express output-only warping without
 also enabling within-output window warps.
+
+### Edge-border hiding
+
+Sway has two independent edge-decoration settings. `hide_edge_borders` has six
+case-sensitive values: `none`, `vertical`, `horizontal`, `both`, `smart`, and
+`smart_no_gaps`; the optional `--i3` flag separately enables `hide_lone_tab`
+(`sway/commands/hide_edge_borders.c:7-45`). The directional modes suppress
+individual tiled-window edges at workspace boundaries. `smart` suppresses every
+edge only when the tiled view is the sole visible view, while `smart_no_gaps`
+does so only when the workspace's current outer gaps are also all zero. Floating
+windows are excluded (`sway/tree/view.c:309-409`). `hide_lone_tab` separately
+removes a singleton tabbed or stacked titlebar for non-normal border styles
+(`sway/desktop/transaction.c:316-347`; `sway/sway/ipc-json.c:543-555`).
+
+Swayward's border model has one symmetric width used by geometry and rendering,
+and its titlebar model has no singleton suppression setting. The translator
+therefore accepts only `hide_edge_borders none`, which is already swayward's
+behavior, and reports every other mode and every `--i3` form for manual
+conversion. It does not map them to `border off`, because that would incorrectly
+remove floating and multi-window borders. Swayward's shipped 4 px border and
+16 px gaps remain unchanged.
 
 ## Bars
 
@@ -106,6 +154,32 @@ Swayward follows sway. The command parser returns a well-formed failure for
 `open`, as required by the IPC compatibility decisions Q1, Q8, and Q11. It does
 not create i3 empty containers.
 
+### Directional output moves do not wrap
+
+I3 wraps `move container to output <direction>` from the edge output to the
+opposite edge. Sway resolves the destination with
+`wlr_output_layout_adjacent_output` and returns no destination when no output is
+adjacent (`sway/sway/tree/output.c:316-330`; `sway/sway/commands/move.c:277-309`).
+Swayward follows sway, so the two wrap assertions in `512-move-wraps.t` are
+skipped. This behavior is independent of the `focus_wrapping` configuration.
+A sway 1.11 run with two horizontal headless outputs confirmed the source: the
+first `move container to output right` moved the view from x=0 to x=800. The
+second command failed with `Can't move an empty workspace`, and the view stayed
+at x=800.
+
+### Workspace output lists
+
+I3 accepts `move workspace to output next` and lists of output names. It cycles
+each matched workspace through the configured list. Sway accepts only one output
+name, id, or geometric direction for this command. Its workspace mover resolves
+`argv[0]` and ignores later arguments (`sway/sway/commands/move.c:30-78,630-669`).
+Consequently, `next` is an unknown output and a list always selects its first
+valid name.
+
+Swayward follows sway's single-target grammar. The output-cycle assertions in
+`543-move-workspace-to-multiple-outputs.t` are skipped rather than adding i3-only
+selection semantics.
+
 ### Directional floating moves in percentage points
 
 The i3 command `move right 25 ppt` moves a floating container by 25 percent of
@@ -114,6 +188,65 @@ argument and ignores the trailing `ppt` token (`sway/commands/move.c:672-681`).
 It therefore moves the container by 25 pixels (`sway/commands/move.c:693-710`).
 Swayward follows sway's pixel-only directional movement rather than i3's
 percentage-point behavior.
+
+### Singleton layout containers after moves
+
+Sway preserves singleton stacked and tabbed containers after moving their other
+children away. Move paths call `container_reap_empty`, which destroys only
+containers with zero children (`sway/sway/tree/container.c:525-541`;
+`sway/sway/commands/move.c:225,410,612,722`). The separate
+`container_flatten` function removes singleton containers, but its only caller
+is the explicit `split none` command (`sway/sway/tree/container.c:543-556`;
+`sway/sway/commands/split.c:34-41`).
+
+A sway 1.11 capture with two headless 1024×768 outputs confirmed the call graph.
+After moving both leaves from a stacked container on the left output, GET_TREE
+reported two singleton stacked containers on the right output, one for each
+leaf. Swayward retains the same wrappers. I3's four top-level child-count
+expectations in `524-move.t` therefore do not apply.
+
+This rule is distinct from splitting a singleton horizontal or vertical
+container. In that case, sway changes the existing parent layout instead of
+creating another container (`sway/sway/tree/container.c:1565-1582`).
+
+### Workspace names beginning with `__`
+
+I3 reserves workspace names beginning with `__`: it excludes such names while
+collecting startup workspace bindings and rejects them in workspace switch,
+container move, and rename commands (`i3/src/workspace.c:231`;
+`i3/src/commands.c:318,912,2116`).
+
+Sway does not reserve that prefix. Its workspace command creates an arbitrary
+name when no workspace matches (`sway/sway/commands/workspace.c:223-227`), its
+move command likewise creates an arbitrary destination
+(`sway/sway/commands/move.c:450-504`), and rename rejects special command words
+rather than an `__` prefix (`sway/sway/commands/rename.c:72-82`). Startup
+workspace discovery also accepts arbitrary binding targets after excluding only
+workspace command words (`sway/sway/tree/workspace.c:356-490`). Sway's
+`__i3` output and `__i3_scratch` workspace are synthetic GET_TREE nodes, not
+reserved user-workspace identities (`sway/sway/ipc-json.c:459-499`).
+
+Swayward follows sway and permits names such as `__foo`. The i3 adapter excludes
+the synthetic `__i3` output when implementing `get_workspace_names`, but does
+not hide real user-created `__*` workspaces. Assertions requiring i3's prefix
+restriction are skipped rather than adding a workspace-name guard that sway
+does not have.
+
+### Numeric workspace output assignments
+
+Sway treats `workspace <name> output <output>` as a literal-name assignment.
+Its parser stores the joined name unchanged, and workspace creation finds the
+configuration with `strcmp` (`sway/commands/workspace.c:13-29,135-162`;
+`sway/tree/workspace.c:143-174`). Number-prefix lookup exists only in the
+separate runtime `workspace number <number>` path
+(`sway/commands/workspace.c:190-205`; `sway/tree/workspace.c:493-506`).
+
+I3 instead interprets a bare numeric configuration name as a number assignment,
+so `workspace 2 output fake-0` also routes `2:foo`. Swayward follows sway: only
+a workspace literally named `2` uses that assignment, while exact assignments
+such as `workspace 2:override output fake-1` still apply. A sway 1.11 run with
+two headless outputs confirmed that `2:foo` stays on the focused output while a
+literal workspace `2` is created on its configured output.
 
 ### Workspace rename edge cases
 
@@ -194,6 +327,18 @@ the adapter would make an upstream assertion observe a tree that a real sway IPC
 client never receives. Tests that directly traverse or inspect i3's `content`
 node are excluded as i3-only tree-structure tests.
 
+### Urgency for assigned windows
+
+When i3 assigns a new window to an invisible workspace, it marks the window
+urgent (`i3/src/manage.c:288-316`). Sway selects the assigned workspace before
+mapping and declines to focus a view whose target workspace is not active
+(`sway/sway/tree/view.c:628-665,696-732`), but its map path does not call
+`view_set_urgent` (`sway/sway/tree/view.c:930-969`).
+
+Swayward follows sway. Assignment to an invisible workspace does not make the
+window or workspace urgent. Assignment to a visible workspace, including one
+visible on another output, also leaves urgency clear.
+
 ### Marks applied to several matching containers
 
 The i3 command `[criteria] mark name` fails when the criteria match more than
@@ -260,4 +405,5 @@ rendering, geometry, focus, IPC, toggle-back, workspace-move, scratchpad and
 invariant work. That is a deliberate deferral, not an oversight: I5 makes the
 upstream diff a budget and Q7 keeps `floating.rs` close to niri so upstream
 merges stay viable. The conformance cost is recorded against
-`155-floating-split-size.t` in `tests/i3/README.md`.
+`155-floating-split-size.t`, `184-regress-float-split-resize.t`, and
+`206-fullscreen-scratchpad.t` in `tests/i3/README.md`.
