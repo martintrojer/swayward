@@ -155,8 +155,7 @@ fn execute_one(
                 return failure("Cannot move workspaces in a direction");
             };
             let fullscreen_floating = workspace.active_floating_is_fullscreen();
-            let floating = workspace.floating_is_active() || fullscreen_floating;
-            if floating {
+            if workspace.floating_is_active() || fullscreen_floating {
                 if fullscreen_floating {
                     return failure("Cannot move fullscreen floating container");
                 }
@@ -176,12 +175,21 @@ fn execute_one(
                 state.swayward.queue_redraw_all();
                 None
             } else {
-                Some(match direction {
-                    Direction::Left => Action::MoveColumnLeft,
-                    Direction::Right => Action::MoveColumnRight,
-                    Direction::Up => Action::MoveWindowUp,
-                    Direction::Down => Action::MoveWindowDown,
-                })
+                let Some(target) = focused_target(state) else {
+                    return success();
+                };
+                let outcome = move_direction(
+                    state,
+                    target,
+                    direction,
+                    pixels,
+                    crate::layout::ActivateWindow::Smart,
+                    true,
+                );
+                if !outcome.success {
+                    return outcome;
+                }
+                None
             }
         }
         Command::MovePosition(position) => {
@@ -520,6 +528,116 @@ use movement::{
     output_target_by_name_or_direction, select_resize_amount,
 };
 
+fn move_target_to_adjacent_output(
+    state: &mut State,
+    target: crate::window::mapped::MappedId,
+    direction: Direction,
+    activate: crate::layout::ActivateWindow,
+) {
+    let Some((reference, window)) =
+        state
+            .swayward
+            .layout
+            .windows()
+            .find_map(|(monitor, mapped)| {
+                (mapped.id() == target).then(|| {
+                    (
+                        monitor.map(|monitor| monitor.output()),
+                        mapped.window.clone(),
+                    )
+                })
+            })
+    else {
+        return;
+    };
+    let destination = OutputTarget::Direction(direction);
+    let reference_point = state.swayward.layout.window_center(&window);
+    if let Ok(output) = output_target(state, &destination, reference, reference_point) {
+        state
+            .swayward
+            .layout
+            .move_to_output(Some(&window), &output, None, activate);
+    }
+}
+
+fn move_direction(
+    state: &mut State,
+    target: CommandTarget,
+    direction: Direction,
+    pixels: Option<i32>,
+    activate: crate::layout::ActivateWindow,
+    focused: bool,
+) -> CommandOutcome {
+    if matches!(
+        target,
+        CommandTarget::Window(target)
+            if state.swayward.layout.windows().any(|(_, mapped)| {
+                mapped.id() == target
+                    && state.swayward.layout.fullscreen_mode(&mapped.window)
+                        == Some(crate::layout::tiling_tree::FullscreenMode::Global)
+            })
+    ) {
+        return success();
+    }
+    let layout_direction = match direction {
+        Direction::Left => crate::layout::tiling_tree::Direction::Left,
+        Direction::Right => crate::layout::tiling_tree::Direction::Right,
+        Direction::Up => crate::layout::tiling_tree::Direction::Up,
+        Direction::Down => crate::layout::tiling_tree::Direction::Down,
+    };
+    let moved_within_workspace = if focused {
+        let moved = match direction {
+            Direction::Left => state.swayward.layout.move_left(),
+            Direction::Right => state.swayward.layout.move_right(),
+            Direction::Up => state.swayward.layout.move_up(),
+            Direction::Down => state.swayward.layout.move_down(),
+        };
+        if !moved {
+            if let CommandTarget::Window(target) = target {
+                move_target_to_adjacent_output(state, target, direction, activate);
+            }
+        }
+        moved
+    } else {
+        match target {
+            CommandTarget::Window(target) => {
+                let window =
+                    state.swayward.layout.windows().find_map(|(_, mapped)| {
+                        (mapped.id() == target).then(|| mapped.window.clone())
+                    });
+                let Some(window) = window else {
+                    return failure("No matching node.");
+                };
+                let moved = state.swayward.layout.move_window_in_direction(
+                    &window,
+                    layout_direction,
+                    f64::from(pixels.unwrap_or(10)),
+                );
+                if !moved {
+                    move_target_to_adjacent_output(state, target, direction, activate);
+                }
+                moved
+            }
+            CommandTarget::Container(workspace, node) => state
+                .swayward
+                .layout
+                .move_tiling_node_in_direction(workspace, node, layout_direction),
+        }
+    };
+    state.swayward.queue_redraw_all();
+    if moved_within_workspace && focused {
+        if let CommandTarget::Window(window) = target {
+            state.ipc_refresh_layout();
+            if let Some(server) = &state.swayward.ipc_server {
+                server.send_event(swayward_ipc::legacy::Event::WindowMoved {
+                    id: crate::ipc::tree::window_id(window),
+                });
+            }
+        }
+    }
+    success()
+}
+
 fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget) -> CommandOutcome {
     match command {
         Command::Mark {
@@ -535,58 +653,17 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
             }
         }
         Command::MoveDirection { direction, pixels } => {
-            let layout_direction = match direction {
-                Direction::Left => crate::layout::tiling_tree::Direction::Left,
-                Direction::Right => crate::layout::tiling_tree::Direction::Right,
-                Direction::Up => crate::layout::tiling_tree::Direction::Up,
-                Direction::Down => crate::layout::tiling_tree::Direction::Down,
-            };
-            match target {
-                CommandTarget::Window(target) => {
-                    let window = state.swayward.layout.windows().find_map(|(_, mapped)| {
-                        (mapped.id() == target).then(|| mapped.window.clone())
-                    });
-                    let Some(window) = window else {
-                        return failure("No matching node.");
-                    };
-                    let moved = state.swayward.layout.move_window_in_direction(
-                        &window,
-                        layout_direction,
-                        f64::from(pixels.unwrap_or(10)),
-                    );
-                    if !moved {
-                        let destination = OutputTarget::Direction(*direction);
-                        let reference = state
-                            .swayward
-                            .layout
-                            .windows()
-                            .find_map(|(monitor, mapped)| {
-                                (mapped.id() == target)
-                                    .then(|| monitor.map(|monitor| monitor.output()))
-                            })
-                            .flatten();
-                        let reference_point = state.swayward.layout.window_center(&window);
-                        if let Ok(output) =
-                            output_target(state, &destination, reference, reference_point)
-                        {
-                            state.swayward.layout.move_to_output(
-                                Some(&window),
-                                &output,
-                                None,
-                                crate::layout::ActivateWindow::No,
-                            );
-                        }
-                    }
-                }
-                CommandTarget::Container(workspace, node) => {
-                    state.swayward.layout.move_tiling_node_in_direction(
-                        workspace,
-                        node,
-                        layout_direction,
-                    );
-                }
+            let outcome = move_direction(
+                state,
+                target,
+                *direction,
+                *pixels,
+                crate::layout::ActivateWindow::No,
+                false,
+            );
+            if !outcome.success {
+                return outcome;
             }
-            state.swayward.queue_redraw_all();
         }
         Command::MovePosition(position) => {
             let CommandTarget::Window(target) = target else {

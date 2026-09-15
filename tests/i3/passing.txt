@@ -78,6 +78,7 @@
 241-consistent-center.t
 
 507-workspace-move-crash.t
+516-move.t
 309-crash-move-parent.t
 315-all-criterion.t
 

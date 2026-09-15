@@ -3163,6 +3163,59 @@ fn resize_rejects_hidden_scratchpad_window_without_panicking() {
 }
 
 #[test]
+fn bare_directional_move_crosses_each_adjacent_output_without_wrapping() {
+    let mut f = Fixture::new();
+    for (name, position) in [
+        ("top-left", (0, 0)),
+        ("top-right", (800, 0)),
+        ("bottom-right", (800, 600)),
+        ("bottom-left", (0, 600)),
+    ] {
+        f.add_named_output_at(name.into(), (800, 600), Some(position));
+        assert!(crate::command::execute(
+            f.niri_state(),
+            &format!("focus output {name}, workspace {name}-workspace")
+        )
+        .iter()
+        .all(|outcome| outcome.success));
+    }
+
+    assert!(crate::command::execute(f.niri_state(), "workspace top-left-workspace")[0].success);
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+    let window_id = f.swayward().layout.focus().unwrap().id();
+
+    for (command, expected_output) in [
+        ("move right", "top-right"),
+        ("move down", "bottom-right"),
+        ("move left", "bottom-left"),
+        ("move up", "top-left"),
+    ] {
+        let outcome = crate::command::execute(f.niri_state(), command);
+        assert!(outcome[0].success, "{command}: {outcome:?}");
+        assert_eq!(
+            f.swayward()
+                .layout
+                .windows()
+                .find(|(_, mapped)| mapped.id() == window_id)
+                .unwrap()
+                .0
+                .unwrap()
+                .output_name(),
+            expected_output,
+            "{command}"
+        );
+    }
+}
+
+#[test]
 fn criteria_directional_move_crosses_outputs_without_changing_focus() {
     let mut f = Fixture::new();
     f.add_named_output_at("left".into(), (800, 600), Some((0, 0)));
