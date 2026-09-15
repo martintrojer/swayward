@@ -79,6 +79,41 @@ bindsym $missing+x nop
         for item in result.stderr.splitlines()[1:]:
             self.assertIn(item.strip(), result.stdout)
 
+    def test_mouse_button_bindsyms_map_exact_names_in_top_level_and_modes(self):
+        result = self.translate(
+            "bindsym button1 nop left\n"
+            "bindsym button2 nop middle\n"
+            "bindsym button3 nop right\n"
+            "bindsym button4 nop up\n"
+            "bindsym button5 nop down\n"
+            "mode test {\n"
+            "    bindsym button1 nop mode-left\n"
+            "}\n"
+        )
+        for trigger, command in [
+            ("MouseLeft", "nop left"),
+            ("MouseMiddle", "nop middle"),
+            ("MouseRight", "nop right"),
+            ("WheelScrollUp", "nop up"),
+            ("WheelScrollDown", "nop down"),
+            ("MouseLeft", "nop mode-left"),
+        ]:
+            self.assertIn(f'{trigger} {{ command "{command}"; }}', result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
+        result = self.translate("bindsym button10 nop unsupported\n")
+        self.assertNotIn("command", result.stdout)
+        self.assertIn("unsupported mouse button button10", result.stdout)
+        self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
+    def test_mouse_binding_scope_options_remain_fail_loud(self):
+        for option in ["--whole-window", "--release", "--border", "--exclude-titlebar"]:
+            with self.subTest(option=option):
+                result = self.translate(f"bindsym {option} button1 nop unsupported\n")
+                self.assertNotIn("command", result.stdout)
+                self.assertIn(f"unsupported bindsym option {option}", result.stdout)
+                self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
     def test_numeric_bindsym_is_quoted_at_top_level_and_in_modes(self):
         result = self.translate(
             "bindsym 1 workspace number 1\n"

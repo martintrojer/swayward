@@ -398,7 +398,11 @@ class Translator:
                 return
             key = f"code:{key}"
 
-        command = self.translate_command(command.strip())
+        command = command.strip()
+        if command.startswith(("--whole-window ", "--release ", "--border ", "--exclude-titlebar ")):
+            self.warn(source, line, rest, "mouse binding scope or release option is unsupported")
+            return
+        command = self.translate_command(command)
         if command is None:
             self.warn(
                 source,
@@ -409,6 +413,9 @@ class Translator:
             return
         properties_text = " " + " ".join(properties) if properties else ""
         key = self.translate_key(key)
+        if key is None:
+            self.warn(source, line, rest, f"unsupported mouse button {rest.split()[0]}")
+            return
         if key.isdecimal():
             key = self.quote(key)
         if key in self.binds:
@@ -419,9 +426,35 @@ class Translator:
         )
 
     @staticmethod
-    def translate_key(key: str) -> str:
-        aliases = {"Mod4": "Super", "Mod1": "Alt"}
-        return "+".join(aliases.get(part, part) for part in key.split("+"))
+    def translate_key(key: str) -> str | None:
+        aliases = {
+            "Mod4": "Super",
+            "Mod1": "Alt",
+            "button1": "MouseLeft",
+            "button2": "MouseMiddle",
+            "button3": "MouseRight",
+            "button4": "WheelScrollUp",
+            "button5": "WheelScrollDown",
+            "button6": "WheelScrollLeft",
+            "button7": "WheelScrollRight",
+            "button8": "MouseBack",
+            "button9": "MouseForward",
+            "BTN_LEFT": "MouseLeft",
+            "BTN_MIDDLE": "MouseMiddle",
+            "BTN_RIGHT": "MouseRight",
+            "BTN_SIDE": "MouseBack",
+            "BTN_BACK": "MouseBack",
+            "BTN_EXTRA": "MouseForward",
+            "BTN_FORWARD": "MouseForward",
+        }
+        parts = key.split("+")
+        if any(
+            (part.lower().startswith("button") or part.startswith("BTN_"))
+            and part not in aliases
+            for part in parts
+        ):
+            return None
+        return "+".join(aliases.get(part, part) for part in parts)
 
     @staticmethod
     def translate_command(command: str) -> str | None:
