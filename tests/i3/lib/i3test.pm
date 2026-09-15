@@ -185,6 +185,9 @@ sub is ($$;$) {
         } elsif ($name =~ /^floating border width/) {
             _skip_next_assertions(1, 'X11 pre-map utility classification and client-window border geometry are unavailable');
         }
+    } elsif (($ENV{SWAYWARD_I3_TEST} // '') eq '518-interpret-workspace-numbers.t'
+        && ($name // '') eq 'Workspaces should be assigned by number when the assignment is a plain number') {
+        _skip_next_assertions(1, 'i3-only number-prefix assignment; sway matches the configured workspace name literally');
     } elsif (($ENV{SWAYWARD_I3_TEST} // '') eq '307-focus-next-prev.t'
         && ($name // '') eq "Workspace 2 focused with 'focus next sibling'") {
         _skip_next_assertions(1, 'i3-only workspace sibling traversal; sway treats next/prev without a container as a no-op');

@@ -176,6 +176,22 @@ not hide real user-created `__*` workspaces. Assertions requiring i3's prefix
 restriction are skipped rather than adding a workspace-name guard that sway
 does not have.
 
+### Numeric workspace output assignments
+
+Sway treats `workspace <name> output <output>` as a literal-name assignment.
+Its parser stores the joined name unchanged, and workspace creation finds the
+configuration with `strcmp` (`sway/commands/workspace.c:13-29,135-162`;
+`sway/tree/workspace.c:143-174`). Number-prefix lookup exists only in the
+separate runtime `workspace number <number>` path
+(`sway/commands/workspace.c:190-205`; `sway/tree/workspace.c:493-506`).
+
+I3 instead interprets a bare numeric configuration name as a number assignment,
+so `workspace 2 output fake-0` also routes `2:foo`. Swayward follows sway: only
+a workspace literally named `2` uses that assignment, while exact assignments
+such as `workspace 2:override output fake-1` still apply. A sway 1.11 run with
+two headless outputs confirmed that `2:foo` stays on the focused output while a
+literal workspace `2` is created on its configured output.
+
 ### Workspace rename edge cases
 
 Sway parses `rename workspace to to bla` as the current-workspace form and uses
