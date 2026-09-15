@@ -79,6 +79,8 @@
 
 507-workspace-move-crash.t
 516-move.t
+505-scratchpad-resolution.t
+530-bug-2229.t
 309-crash-move-parent.t
 315-all-criterion.t
 
