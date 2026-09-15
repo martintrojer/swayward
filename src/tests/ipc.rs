@@ -2396,6 +2396,41 @@ fn multi_target_mark_moves_to_last_match_and_unmark_clears_every_match() {
 }
 
 #[test]
+fn semicolon_starts_a_new_criteria_scope() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let mut ids = Vec::new();
+    for app_id in ["first", "second"] {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+        ids.push(f.swayward().layout.focus().unwrap().id());
+    }
+
+    let outcomes = crate::command::execute(
+        f.niri_state(),
+        r#"[app_id="first"] mark first; [app_id="second"] mark second"#,
+    );
+
+    assert!(outcomes.iter().all(|outcome| outcome.success));
+    assert_eq!(
+        f.swayward().marks_by_window.get(&ids[0]).map(Vec::as_slice),
+        Some(["first".to_owned()].as_slice())
+    );
+    assert_eq!(
+        f.swayward().marks_by_window.get(&ids[1]).map(Vec::as_slice),
+        Some(["second".to_owned()].as_slice())
+    );
+}
+
+#[test]
 fn comma_chain_keeps_the_original_criteria_targets() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));

@@ -1262,18 +1262,37 @@ mod tests {
     }
 
     #[test]
-    fn comma_keeps_criteria_and_semicolon_clears_it() {
-        let parsed = parse(r#"[app_id="foo,bar"] focus left, focus right; focus up"#);
+    fn comma_keeps_criteria_and_semicolon_starts_a_new_scope() {
+        let parsed =
+            parse(r#"[app_id="foo,bar"] focus left, focus right; [app_id="baz"] focus up"#);
         assert_eq!(parsed.len(), 3);
         assert_eq!(
             parsed[0].as_ref().unwrap().criteria.as_deref(),
             Some(r#"[app_id="foo,bar"]"#)
         );
+        assert!(parsed[0].as_ref().unwrap().criteria_start);
         assert_eq!(
             parsed[1].as_ref().unwrap().criteria.as_deref(),
             Some(r#"[app_id="foo,bar"]"#)
         );
-        assert_eq!(parsed[2].as_ref().unwrap().criteria, None);
+        assert!(!parsed[1].as_ref().unwrap().criteria_start);
+        assert_eq!(
+            parsed[2].as_ref().unwrap().criteria.as_deref(),
+            Some(r#"[app_id="baz"]"#)
+        );
+        assert!(parsed[2].as_ref().unwrap().criteria_start);
+    }
+
+    #[test]
+    fn malformed_criteria_after_semicolon_uses_the_criteria_error() {
+        let parsed = parse(r#"[app_id="foo"] nop; [con_id=nope] nop"#);
+        assert_eq!(parsed.len(), 2);
+        let error = parsed[1].as_ref().unwrap_err();
+        assert_eq!(error.parse_error, Some(true));
+        assert_eq!(
+            error.error.as_deref(),
+            Some("The value for 'con_id' should be '__focused__' or numeric")
+        );
     }
 
     #[test]
