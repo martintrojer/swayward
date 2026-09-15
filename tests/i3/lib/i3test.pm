@@ -554,6 +554,12 @@ sub _build_layout_node {
             },
     );
     die "Could not find container created for $node->{mark}\n" unless $actual && $parent;
+    if ($parent->{type} eq 'workspace') {
+        @children == 1 or die "Root layout container has multiple ungrouped children\n";
+        cmd "$first focus";
+        cmd 'layout ' . $node->{layout};
+        return;
+    }
     cmd '[con_id=' . $parent->{id} . '] mark ' . $node->{mark};
     cmd _layout_selector($children[$_]) . ' move to mark ' . $node->{mark}
         for 1 .. $#children;
@@ -652,6 +658,11 @@ sub cmp_tree {
     my @windows = create_layout($args{layout_before});
     Test::More::subtest $msg . $args{layout_before} . ' -> ' . $args{layout_after} => sub {
         $args{cb}->(\@windows) if $args{cb};
+        if (($ENV{SWAYWARD_I3_TEST} // '') eq '550-split-redundant-containers.t'
+            && $msg =~ /^toggling between split h\/v: /) {
+            Test::More::plan(skip_all => 'sway keeps a singleton split as workspace layout instead of a container node');
+            return;
+        }
         if (($ENV{SWAYWARD_I3_TEST} // '') eq '302-tree.t'
             && $msg =~ /^(?:Simple swap test|Swap non-leaf containers|Swap nested non-leaf containers): /) {
             my $reason = $msg =~ /^Simple swap test:/

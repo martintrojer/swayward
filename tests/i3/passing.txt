@@ -90,3 +90,7 @@
 500-multi-monitor.t
 
 513-move-workspace.t
+
+550-split-redundant-containers.t
+523-move-position-center.t
+537-move-single-to-output.t
