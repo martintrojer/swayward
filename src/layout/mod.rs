@@ -396,6 +396,8 @@ pub struct Layout<W: LayoutElement> {
     overview_progress: Option<OverviewProgress>,
     /// Configurable properties of the layout.
     options: Rc<Options>,
+    /// Absolute workspace targets from default-mode binds, in declaration order.
+    initial_workspace_names: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -784,9 +786,51 @@ fn sway_workspace_identity(
     }
 }
 
+fn initial_workspace_name_from_action(action: &swayward_config::Action) -> Option<String> {
+    let target = match action {
+        swayward_config::Action::SwayCommand(command) => {
+            let parsed = crate::command::parse(command).into_iter().next()?.ok()?;
+            let crate::command::Command::Workspace { target, .. } = parsed.command else {
+                return None;
+            };
+            target
+        }
+        swayward_config::Action::FocusWorkspace(reference) => {
+            return match reference {
+                swayward_config::WorkspaceReference::Name(name) => Some(name.clone()),
+                swayward_config::WorkspaceReference::Index(index) => Some(index.to_string()),
+                swayward_config::WorkspaceReference::Id(_) => None,
+            };
+        }
+        _ => return None,
+    };
+    match target {
+        crate::command::WorkspaceTarget::Name(name) if !name.eq_ignore_ascii_case("number") => {
+            Some(name)
+        }
+        crate::command::WorkspaceTarget::Number(name) => Some(name),
+        _ => None,
+    }
+}
+
+fn initial_workspace_names(config: &Config) -> Vec<String> {
+    config
+        .binds
+        .0
+        .iter()
+        .filter_map(|bind| initial_workspace_name_from_action(&bind.action))
+        .collect()
+}
+
 impl<W: LayoutElement> Layout<W> {
     pub fn new(clock: Clock, config: &Config) -> Self {
-        Self::with_options_and_workspaces(clock, config, Options::from_config(config))
+        let initial_workspace_names = initial_workspace_names(config);
+        Self::with_options_and_workspaces(
+            clock,
+            config,
+            Options::from_config(config),
+            initial_workspace_names,
+        )
     }
 
     pub fn with_options(clock: Clock, options: Options) -> Self {
@@ -803,10 +847,16 @@ impl<W: LayoutElement> Layout<W> {
             overview_open: false,
             overview_progress: None,
             options: Rc::new(options),
+            initial_workspace_names: Vec::new(),
         }
     }
 
-    fn with_options_and_workspaces(clock: Clock, config: &Config, options: Options) -> Self {
+    fn with_options_and_workspaces(
+        clock: Clock,
+        config: &Config,
+        options: Options,
+        initial_workspace_names: Vec<String>,
+    ) -> Self {
         let opts = Rc::new(options);
 
         let workspaces = config
@@ -830,10 +880,43 @@ impl<W: LayoutElement> Layout<W> {
             overview_open: false,
             overview_progress: None,
             options: opts,
+            initial_workspace_names,
+        }
+    }
+
+    fn next_initial_workspace_name(&self) -> Option<String> {
+        let existing_names = self
+            .workspaces()
+            .filter_map(|(_, _, workspace)| workspace.sway_name())
+            .collect::<Vec<_>>();
+        self.initial_workspace_names
+            .iter()
+            .find(|name| {
+                !existing_names
+                    .iter()
+                    .any(|existing| existing.eq_ignore_ascii_case(name))
+            })
+            .cloned()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn initialize_workspaces_from_bindings(&mut self, config: &Config) {
+        self.initial_workspace_names = initial_workspace_names(config);
+        while let Some(name) = self.next_initial_workspace_name() {
+            let Some(workspace) = self
+                .workspaces_mut()
+                .find(|workspace| !workspace.has_sway_identity() && !workspace.has_windows())
+            else {
+                break;
+            };
+            let (name, number) =
+                sway_workspace_identity(crate::command::WorkspaceTarget::Name(name)).unwrap();
+            workspace.set_sway_identity(name, number);
         }
     }
 
     pub fn add_output(&mut self, output: Output, layout_config: Option<LayoutPart>) {
+        let initial_workspace_name = self.next_initial_workspace_name();
         self.monitor_set = match mem::take(&mut self.monitor_set) {
             MonitorSet::Normal {
                 mut monitors,
@@ -904,6 +987,7 @@ impl<W: LayoutElement> Layout<W> {
                     output,
                     workspaces,
                     ws_id_to_activate,
+                    initial_workspace_name.clone(),
                     self.clock.clone(),
                     self.options.clone(),
                     layout_config,
@@ -925,6 +1009,7 @@ impl<W: LayoutElement> Layout<W> {
                     output,
                     workspaces,
                     ws_id_to_activate,
+                    initial_workspace_name,
                     self.clock.clone(),
                     self.options.clone(),
                     layout_config,
@@ -4222,6 +4307,8 @@ impl<W: LayoutElement> Layout<W> {
     }
 
     pub fn update_config(&mut self, config: &Config) {
+        self.initial_workspace_names = initial_workspace_names(config);
+
         // Update workspace-specific config for all named workspaces.
         for ws in self.workspaces_mut() {
             let Some(name) = ws.name() else { continue };

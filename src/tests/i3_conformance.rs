@@ -540,6 +540,10 @@ fn handle_control(
                             },
                         );
                     }
+                    fixture
+                        .swayward()
+                        .layout
+                        .initialize_workspaces_from_bindings(&config);
                     fixture.niri_state().reload_config(Ok(config));
                     crate::utils::watcher::setup(
                         fixture.niri_state(),

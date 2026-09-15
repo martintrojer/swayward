@@ -298,6 +298,7 @@ impl<W: LayoutElement> Monitor<W> {
         output: Output,
         mut workspaces: Vec<Workspace<W>>,
         ws_id_to_activate: Option<WorkspaceId>,
+        initial_workspace_name: Option<String>,
         clock: Clock,
         base_options: Rc<Options>,
         layout_config: Option<LayoutPart>,
@@ -329,7 +330,15 @@ impl<W: LayoutElement> Monitor<W> {
             active_workspace_idx += 1;
         }
 
-        let ws = Workspace::new(output.clone(), clock.clone(), options.clone());
+        let mut ws = Workspace::new(output.clone(), clock.clone(), options.clone());
+        if workspaces.is_empty() {
+            if let Some(name) = initial_workspace_name {
+                let (name, number) =
+                    super::sway_workspace_identity(crate::command::WorkspaceTarget::Name(name))
+                        .unwrap();
+                ws.set_sway_identity(name, number);
+            }
+        }
         workspaces.push(ws);
 
         Self {

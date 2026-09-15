@@ -1121,7 +1121,10 @@ pub(super) fn type_key_chords(fixture: &mut Fixture, chords: &[&[u32]]) {
 #[test]
 fn pointer_button_binding_requires_the_configured_rendered_region() {
     let config = swayward_config::Config::parse_mem(
-        r#"binds { MouseLeft mouse-regions="contents" { command "workspace clicked"; }; }"#,
+        r#"binds {
+            X { command "workspace startup"; }
+            MouseLeft mouse-regions="contents" { command "workspace clicked"; }
+        }"#,
     )
     .unwrap();
     let mut fixture = Fixture::with_config(config);
@@ -1188,7 +1191,10 @@ fn release_mouse_binding_dispatches_only_on_release() {
 #[test]
 fn pointer_button_event_dispatches_a_real_mouse_binding() {
     let config = swayward_config::Config::parse_mem(
-        r#"binds { MouseLeft { command "workspace clicked"; }; }"#,
+        r#"binds {
+            X { command "workspace startup"; }
+            MouseLeft { command "workspace clicked"; }
+        }"#,
     )
     .unwrap();
     let mut fixture = Fixture::with_config(config);
@@ -4150,6 +4156,83 @@ fn closing_last_window_removes_inactive_named_workspace_from_ipc() {
             .filter(|workspace| workspace["num"] == 7)
             .count(),
         1
+    );
+}
+
+#[test]
+fn initial_workspace_name_comes_from_the_first_available_default_mode_binding() {
+    for (config, expected) in [
+        (
+            r#"binds {
+                code:24 { command "workspace keycode-first"; }
+                X { command "workspace keysym-second"; }
+            }"#,
+            "keycode-first",
+        ),
+        (
+            r#"binds {
+                X { command "workspace keysym-first"; }
+                code:24 { command "workspace keycode-second"; }
+            }"#,
+            "keysym-first",
+        ),
+        (
+            r#"binds {
+                X { command "workspace next"; }
+                Y { command "workspace prev"; }
+                Z { command "workspace next_on_output"; }
+                A { command "workspace prev_on_output"; }
+                B { command "workspace back_and_forth"; }
+                C { command "workspace current"; }
+                D { command "workspace number"; }
+                code:24 { command "workspace number 7: eggs"; }
+            }"#,
+            "7: eggs",
+        ),
+        (
+            r#"binds {
+                X { focus-workspace "typed"; }
+                Y { command "workspace string-second"; }
+            }"#,
+            "typed",
+        ),
+        (
+            r#"binds {
+                X { focus-workspace 7; }
+            }
+            mode "other" {
+                Y { command "workspace ignored-mode"; }
+            }"#,
+            "7",
+        ),
+    ] {
+        let config = swayward_config::Config::parse_mem(config).unwrap();
+        let mut f = Fixture::with_config(config);
+        f.add_output(1, (1920, 1080));
+        assert_eq!(
+            f.swayward().layout.active_workspace().unwrap().sway_name(),
+            Some(expected.to_owned())
+        );
+    }
+
+    let config = swayward_config::Config::parse_mem(
+        r#"binds {
+            X { command "workspace taken"; }
+            code:24 { command "workspace fresh"; }
+        }"#,
+    )
+    .unwrap();
+    let mut f = Fixture::with_config(config);
+    f.add_output(1, (1920, 1080));
+    assert_eq!(
+        f.swayward().layout.active_workspace().unwrap().sway_name(),
+        Some("taken".to_owned())
+    );
+    f.add_output(2, (1920, 1080));
+    f.niri_focus_output(2);
+    assert_eq!(
+        f.swayward().layout.active_workspace().unwrap().sway_name(),
+        Some("fresh".to_owned())
     );
 }
 

@@ -99,3 +99,4 @@
 547-nested-variables.t
 550-focus-workspace.t
 550-split-redundant-containers.t
+270-config-no-newline-end.t
