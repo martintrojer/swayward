@@ -79,6 +79,35 @@ bindsym $missing+x nop
         for item in result.stderr.splitlines()[1:]:
             self.assertIn(item.strip(), result.stdout)
 
+    def test_inner_gaps_accept_sway_units_and_clamp_negative_values(self):
+        for value, expected in [("10", "10"), ("20px", "20"), ("14PX", "14"), ("-5px", "0")]:
+            with self.subTest(value=value):
+                result = self.translate(f"gaps inner {value}\n")
+                self.assertIn(f"    gaps {expected}", result.stdout)
+                self.assertNotIn("px", result.stdout)
+                self.assertIn("manual attention: none", result.stderr)
+
+    def test_outer_gap_forms_remain_fail_loud(self):
+        for kind in ["outer", "horizontal", "vertical", "top", "right", "bottom", "left"]:
+            for value in ["10", "-10px"]:
+                with self.subTest(kind=kind, value=value):
+                    result = self.translate(f"gaps {kind} {value}\n")
+                    self.assertNotIn("struts {", result.stdout)
+                    self.assertIn("outer gaps affect floating geometry", result.stdout)
+                    self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
+    def test_gap_forms_refuse_unrepresentable_or_malformed_values(self):
+        for source in [
+            "gaps inner nope\n",
+            "gaps outer 2em\n",
+            "gaps diagonal 10\n",
+            "gaps outer all set 10px\n",
+            "workspace 2 gaps inner 10\n",
+        ]:
+            with self.subTest(source=source):
+                result = self.translate(source)
+                self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
     def test_assign_workspace_target_is_preserved(self):
         result = self.translate('assign [class="special"] workspace targetws\n')
         self.assertIn('open-on-workspace "targetws"', result.stdout)

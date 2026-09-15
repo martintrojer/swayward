@@ -22,7 +22,6 @@ class Translator:
         self.layout_settings: list[str] = []
         self.titlebar_font: str | None = None
         self.titlebar_colors: dict[str, tuple[str, str]] = {}
-        self.outer_gaps: str | None = None
         self.manual: list[str] = []
         self.visited: set[Path] = set()
 
@@ -119,10 +118,16 @@ class Translator:
                 text,
             ):
                 self.translate_client_colors(path, line_no, text, match.group(1), match.group(2))
-            elif match := re.fullmatch(r"gaps\s+inner\s+(.+)", text):
-                self.layout_settings.append(f"    gaps {match.group(1)}")
-            elif match := re.fullmatch(r"gaps\s+outer\s+(.+)", text):
-                self.outer_gaps = match.group(1)
+            elif match := re.fullmatch(
+                r"gaps\s+(inner|outer|horizontal|vertical|top|right|bottom|left)\s+(.+)",
+                text,
+                re.IGNORECASE,
+            ):
+                self.translate_gaps(path, line_no, text, match.group(1), match.group(2))
+            elif text.lower().startswith("gaps "):
+                self.warn(path, line_no, text, "unsupported runtime or malformed gaps directive")
+            elif re.match(r"workspace\s+.+?\s+gaps\s+", text, re.IGNORECASE):
+                self.warn(path, line_no, text, "workspace-specific gaps are unsupported")
             elif match := re.fullmatch(
                 r"(default_border|default_floating_border|new_window|new_float)\s+(.+)",
                 text,
@@ -597,6 +602,30 @@ class Translator:
             "}",
         ]
 
+    def translate_gaps(
+        self, source: Path, line: int, text: str, kind: str, raw_amount: str
+    ) -> None:
+        match = re.fullmatch(r"([+-]?\d+)(?:px)?", raw_amount, re.IGNORECASE)
+        if match is None:
+            self.warn(source, line, text, "gap amount must be an integer with optional px suffix")
+            return
+        amount = int(match.group(1))
+        kind = kind.lower()
+        if kind != "inner":
+            self.warn(
+                source,
+                line,
+                text,
+                "outer gaps affect floating geometry and have no exact swayward equivalent",
+            )
+            return
+        self.layout_settings = [
+            setting
+            for setting in self.layout_settings
+            if not setting.startswith("    gaps ")
+        ]
+        self.layout_settings.append(f"    gaps {max(amount, 0)}")
+
     def translate_device_block(
         self, source: Path, line: int, kind: str, selector: str, body: list[str]
     ) -> None:
@@ -829,15 +858,6 @@ class Translator:
                 ]
             titlebar.append("    }")
             self.layout_settings += titlebar
-        if self.outer_gaps is not None:
-            self.layout_settings += [
-                "    struts {",
-                f"        left {self.outer_gaps}",
-                f"        right {self.outer_gaps}",
-                f"        top {self.outer_gaps}",
-                f"        bottom {self.outer_gaps}",
-                "    }",
-            ]
         if self.layout_settings:
             output += ["", "layout {", *self.layout_settings, "}"]
         if self.sections:
