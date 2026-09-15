@@ -1065,6 +1065,14 @@ impl smithay::backend::input::InputBackend for TestInput {
     type SpecialEvent = ();
 }
 
+fn active_workspace_name(fixture: &mut Fixture) -> Option<String> {
+    fixture
+        .swayward()
+        .layout
+        .active_workspace()
+        .and_then(|workspace| workspace.name().cloned())
+}
+
 pub(super) fn pointer_button(fixture: &mut Fixture, button: u32, pressed: bool) {
     fixture.niri_state().process_input_event::<TestInput>(
         smithay::backend::input::InputEvent::PointerButton {
@@ -1143,49 +1151,45 @@ fn pointer_button_binding_requires_the_configured_rendered_region() {
 #[test]
 fn release_key_binding_dispatches_only_on_release_through_real_input() {
     let config = swayward_config::Config::parse_mem(
-        r#"binds { x release=true { command "workspace released"; }; }"#,
+        r#"binds { x release=true { command "rename workspace to released"; }; }"#,
     )
     .unwrap();
     let mut fixture = Fixture::with_config(config);
     fixture.add_output(1, (1280, 720));
 
     key_event(&mut fixture, 53, true);
-    assert!(fixture
-        .swayward()
-        .layout
-        .find_workspace_by_name("released")
-        .is_none());
+    assert_ne!(
+        active_workspace_name(&mut fixture),
+        Some("released".to_owned())
+    );
 
     key_event(&mut fixture, 53, false);
-    assert!(fixture
-        .swayward()
-        .layout
-        .find_workspace_by_name("released")
-        .is_some());
+    assert_eq!(
+        active_workspace_name(&mut fixture),
+        Some("released".to_owned())
+    );
 }
 
 #[test]
 fn release_mouse_binding_dispatches_only_on_release() {
     let config = swayward_config::Config::parse_mem(
-        r#"binds { MouseLeft release=true { command "workspace released"; }; }"#,
+        r#"binds { MouseLeft release=true { command "rename workspace to released"; }; }"#,
     )
     .unwrap();
     let mut fixture = Fixture::with_config(config);
     fixture.add_output(1, (1280, 720));
 
     pointer_button(&mut fixture, 0x110, true);
-    assert!(fixture
-        .swayward()
-        .layout
-        .find_workspace_by_name("released")
-        .is_none());
+    assert_ne!(
+        active_workspace_name(&mut fixture),
+        Some("released".to_owned())
+    );
 
     pointer_button(&mut fixture, 0x110, false);
-    assert!(fixture
-        .swayward()
-        .layout
-        .find_workspace_by_name("released")
-        .is_some());
+    assert_eq!(
+        active_workspace_name(&mut fixture),
+        Some("released".to_owned())
+    );
 }
 
 #[test]
