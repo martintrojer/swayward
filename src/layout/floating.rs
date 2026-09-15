@@ -595,6 +595,7 @@ impl<W: LayoutElement> FloatingSpace<W> {
             width,
             is_full_width: false,
             is_floating: true,
+            floating_working_area: Some(self.working_area),
         }
     }
 
@@ -1417,6 +1418,31 @@ impl<W: LayoutElement> FloatingSpace<W> {
         let height = resolve(height, self.working_area.size.h);
 
         Size::from((width, height))
+    }
+
+    pub fn remap_stored_tile_pos(
+        &self,
+        tile: &mut Tile<W>,
+        old_area: Option<Rectangle<f64, Logical>>,
+    ) {
+        let Some(old_area) = old_area.filter(|area| area.size.w > 0. && area.size.h > 0.) else {
+            tile.floating_pos = None;
+            return;
+        };
+        let Some(pos) = tile.floating_pos else {
+            return;
+        };
+        let old_pos = Data::scale_by_working_area(old_area, pos);
+        let size = tile.tile_size();
+        let old_center = old_pos + size.downscale(2.);
+        let relative_center = old_center - old_area.loc;
+        let new_center = Point::from((
+            self.working_area.loc.x
+                + relative_center.x * self.working_area.size.w / old_area.size.w,
+            self.working_area.loc.y
+                + relative_center.y * self.working_area.size.h / old_area.size.h,
+        ));
+        tile.floating_pos = Some(self.logical_to_size_frac(new_center - size.downscale(2.)));
     }
 
     pub fn stored_or_default_tile_pos(&self, tile: &Tile<W>) -> Option<Point<f64, Logical>> {

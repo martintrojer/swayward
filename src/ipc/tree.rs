@@ -356,7 +356,13 @@ fn describe_workspace_node(
             let (x, y) = layout.tile_pos_in_workspace_view.unwrap_or_default();
             let mut node = describe_window(
                 tile.window(),
-                rect_from(x, y, layout.tile_size.0, layout.tile_size.1),
+                offset_rect(
+                    Rectangle::new(
+                        (x, y).into(),
+                        (layout.tile_size.0, layout.tile_size.1).into(),
+                    ),
+                    rect,
+                ),
                 NodeType::FloatingCon,
                 "user_on",
                 Some(rect),

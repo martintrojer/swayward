@@ -4340,6 +4340,64 @@ fn floating_order(tree: &Value) -> (Vec<&str>, Vec<&str>) {
 }
 
 #[test]
+fn scratchpad_show_remaps_floating_center_between_asymmetric_outputs() {
+    let mut f = Fixture::new();
+    f.add_named_output_at("left".into(), (683, 768), Some((0, 0)));
+    f.add_named_output_at("right".into(), (1024, 768), Some((683, 0)));
+    assert!(
+        crate::command::execute(f.niri_state(), "focus output left, workspace left")[0].success
+    );
+    assert!(
+        crate::command::execute(f.niri_state(), "focus output right, workspace right")[0].success
+    );
+    assert!(crate::command::execute(f.niri_state(), "workspace left")[0].success);
+
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    let rect = |f: &mut Fixture| {
+        let swayward = f.swayward();
+        let tree = serde_json::to_value(describe_tree(
+            &swayward.layout,
+            &swayward.global_space,
+            &Default::default(),
+            &Default::default(),
+        ))
+        .unwrap();
+        find_json_node(&tree, "floating_con", true).unwrap()["rect"].clone()
+    };
+
+    assert!(crate::command::execute(f.niri_state(), "move scratchpad")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "scratchpad show")[0].success);
+    let window = f.client(client).window(&surface);
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+    assert!(crate::command::execute(f.niri_state(), "move position 40 px 100 px")[0].success);
+    let left = rect(&mut f);
+    assert!(crate::command::execute(f.niri_state(), "scratchpad show")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "focus output right")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "scratchpad show")[0].success);
+    let right = rect(&mut f);
+    assert_eq!(right["x"], 743, "left={left} right={right}");
+    assert_ne!(right["x"], left["x"]);
+
+    assert!(crate::command::execute(f.niri_state(), "move position 600 px 100 px")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "scratchpad show")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "focus output left")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "scratchpad show")[0].success);
+    let left_again = rect(&mut f);
+    assert_eq!(left_again["x"], 400);
+    assert_ne!(left_again["x"], right["x"]);
+}
+
+#[test]
 fn move_command_rejects_fullscreen_floating_windows() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));
@@ -4477,23 +4535,23 @@ fn move_position_centers_on_root_and_pointer() {
 
     assert!(crate::command::execute(f.niri_state(), "move position 150 75")[0].success);
     let relative = rect(&mut f);
-    assert_eq!(relative["x"], 150);
-    assert_eq!(relative["y"], 75);
+    assert_eq!(relative["x"], 250);
+    assert_eq!(relative["y"], 125);
 
     assert!(crate::command::execute(f.niri_state(), "move absolute position 150 75")[0].success);
     let absolute = rect(&mut f);
-    assert_eq!(absolute["x"], 50);
-    assert_eq!(absolute["y"], 25);
+    assert_eq!(absolute["x"], 150);
+    assert_eq!(absolute["y"], 75);
 
     assert!(crate::command::execute(f.niri_state(), "move absolute position center")[0].success);
     let centered = rect(&mut f);
     assert_eq!(
         centered["x"].as_i64(),
-        Some(((1000. - centered["width"].as_f64().unwrap()) / 2.).round() as i64)
+        Some((100. + (1000. - centered["width"].as_f64().unwrap()) / 2.).round() as i64)
     );
     assert_eq!(
         centered["y"].as_i64(),
-        Some(((800. - centered["height"].as_f64().unwrap()) / 2.).round() as i64)
+        Some((50. + (800. - centered["height"].as_f64().unwrap()) / 2.).round() as i64)
     );
 
     f.niri_state().move_cursor((300., 250.).into());
@@ -4501,11 +4559,11 @@ fn move_position_centers_on_root_and_pointer() {
     let pointer = rect(&mut f);
     assert_eq!(
         pointer["x"].as_i64(),
-        Some((200. - pointer["width"].as_f64().unwrap() / 2.).round() as i64)
+        Some((300. - pointer["width"].as_f64().unwrap() / 2.).round() as i64)
     );
     assert_eq!(
         pointer["y"].as_i64(),
-        Some((200. - pointer["height"].as_f64().unwrap() / 2.).round() as i64)
+        Some((250. - pointer["height"].as_f64().unwrap() / 2.).round() as i64)
     );
 }
 

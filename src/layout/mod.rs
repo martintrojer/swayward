@@ -528,6 +528,8 @@ pub struct RemovedTile<W: LayoutElement> {
     is_full_width: bool,
     /// Whether the tile was floating.
     is_floating: bool,
+    /// Working area whose coordinates the stored floating position uses.
+    floating_working_area: Option<Rectangle<f64, Logical>>,
 }
 
 /// Whether to activate a newly added window.
@@ -1256,6 +1258,7 @@ impl<W: LayoutElement> Layout<W> {
                             width: move_.width,
                             is_full_width: move_.is_full_width,
                             is_floating: false,
+                            floating_working_area: None,
                         });
                     }
                 }
@@ -3322,15 +3325,18 @@ impl<W: LayoutElement> Layout<W> {
             return;
         }
         let automatic_maximum = self.output_layout_size();
+        let mut floating_working_area = None;
         if let Some(workspace) = self.workspaces_mut().find(|ws| ws.has_window(&window)) {
             workspace.prepare_tiled_window_for_scratchpad(&window, automatic_maximum);
             if workspace.fullscreen_contains_window(&window) {
                 workspace.set_fullscreen(&window, false);
             }
+            floating_working_area = Some(workspace.working_area());
         }
-        let Some(removed) = self.remove_window(&window, Transaction::new()) else {
+        let Some(mut removed) = self.remove_window(&window, Transaction::new()) else {
             return;
         };
+        removed.floating_working_area = floating_working_area;
         if !self.scratchpad_windows.contains(&window) {
             self.scratchpad_windows.push(window);
         }
@@ -3398,6 +3404,7 @@ impl<W: LayoutElement> Layout<W> {
             .workspaces_mut()
             .find(|workspace| workspace.id() == active_workspace)
             .unwrap();
+        workspace.remap_floating_position(&mut removed.tile, removed.floating_working_area);
         workspace.add_tile(
             removed.tile,
             WorkspaceAddWindowTarget::Auto,
@@ -5358,6 +5365,7 @@ impl<W: LayoutElement> Layout<W> {
                     width,
                     is_full_width,
                     is_floating,
+                    floating_working_area: _,
                 } = self.remove_window(window, Transaction::new()).unwrap();
 
                 tile.stop_move_animations();

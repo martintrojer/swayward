@@ -936,6 +936,7 @@ impl<W: LayoutElement> Workspace<W> {
                 width: ColumnWidth::Proportion(0.5),
                 is_full_width: false,
                 is_floating,
+                floating_working_area: None,
             }
         };
 
@@ -1903,6 +1904,14 @@ impl<W: LayoutElement> Workspace<W> {
         let pos = self.working_area.loc
             + (self.working_area.size.to_point() - tile_size.to_point()).downscale(2.);
         tile.floating_pos = Some(self.floating.logical_to_size_frac(pos));
+    }
+
+    pub fn remap_floating_position(
+        &self,
+        tile: &mut Tile<W>,
+        old_area: Option<Rectangle<f64, Logical>>,
+    ) {
+        self.floating.remap_stored_tile_pos(tile, old_area);
     }
 
     pub fn toggle_window_floating(&mut self, id: Option<&W::Id>) {

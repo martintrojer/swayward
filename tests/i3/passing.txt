@@ -91,6 +91,7 @@
 307-focus-next-prev.t
 
 500-multi-monitor.t
+501-scratchpad.t
 
 513-move-workspace.t
 
