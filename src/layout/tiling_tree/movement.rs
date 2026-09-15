@@ -67,22 +67,35 @@ impl<W: LayoutElement> TilingTree<W> {
             .into_iter()
             .filter_map(|leaf| self.tile(leaf).map(|tile| tile.window().id().clone()))
             .collect::<Vec<_>>();
-        let (parent, after) = match self.nodes[&destination] {
+        let (parent, after, index) = match self.nodes[&destination] {
             Node {
                 parent: Some(parent),
                 value: TreeNode::Leaf { .. },
-            } => (parent, Some(destination)),
+            } => (parent, Some(destination), None),
             Node {
                 value: TreeNode::Split { .. },
                 ..
-            } => (destination, None),
+            } => {
+                let mut branch = id;
+                while let Some(parent) = self.nodes[&branch].parent {
+                    if parent == destination {
+                        break;
+                    }
+                    branch = parent;
+                }
+                (destination, None, self.child_index(destination, branch))
+            }
             _ => return false,
         };
         let old = self.compute_geometry();
         let Some(old_parent) = self.detach_subtree_only(id) else {
             return false;
         };
-        self.insert_child(parent, id, after);
+        if let Some(index) = index {
+            self.insert_child_at(parent, id, index);
+        } else {
+            self.insert_child(parent, id, after);
+        }
         self.reap_empty_from(old_parent);
         self.compact_tree();
         let insertion = usize::from(self.focus.is_some());

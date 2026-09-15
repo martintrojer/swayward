@@ -813,6 +813,32 @@ fn move_subtree_to_node_inserts_beside_a_leaf_and_into_a_split() {
 }
 
 #[test]
+fn move_subtree_to_ancestor_preserves_its_branch_position() {
+    let mut t = tree((1200., 800.), 0.);
+    let a = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let b = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    let c = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+    let parent = t.alloc(Node {
+        parent: Some(t.root),
+        value: TreeNode::Split {
+            layout: Layout::SplitH,
+            children: vec![b],
+            percents: vec![1.],
+        },
+    });
+    t.nodes.get_mut(&b).unwrap().parent = Some(parent);
+    t.nodes.get_mut(&t.root).unwrap().value = TreeNode::Split {
+        layout: Layout::SplitH,
+        children: vec![a, parent, c],
+        percents: vec![1. / 3.; 3],
+    };
+    assert!(t.move_subtree_to_node(b, t.root));
+
+    assert_eq!(t.root_children().unwrap(), &[a, b, c]);
+    t.check_invariants();
+}
+
+#[test]
 fn removing_a_sibling_collapses_the_implicit_container() {
     let mut t = tree((1920., 1080.), 0.);
     let a = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
