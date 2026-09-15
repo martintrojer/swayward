@@ -499,7 +499,7 @@ fn mouse_warping_maps_exact_modes_and_refuses_output() {
 }
 
 #[test]
-fn sway_workspace_output_uses_first_preference() {
+fn sway_workspace_output_refuses_unrepresentable_fallback_lists() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
@@ -523,19 +523,19 @@ fn sway_workspace_output_uses_first_preference() {
 
     assert!(output.status.success());
     let translated = String::from_utf8(output.stdout).unwrap();
-    // sway checks configured outputs in order and falls back normally when none exist.
-    assert!(
-        translated.contains("workspace \"7:web\" {\n    open-on-output \"missing\"\n}"),
-        "{translated}"
-    );
-    assert!(!translated.contains("open-on-output \"HDMI-A-1\""));
+    assert!(!translated.contains("workspace \"7:web\""), "{translated}");
     assert!(
         translated.contains("workspace \"chat room\" {\n    open-on-output \"DP-2\"\n}"),
         "{translated}"
     );
-    assert_eq!(
-        String::from_utf8(output.stderr).unwrap(),
-        "manual attention: none\n"
+    let diagnostics = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        diagnostics.contains("ordered workspace output fallbacks are not representable"),
+        "{diagnostics}"
+    );
+    assert!(
+        diagnostics.contains("manual attention: 1 directive(s)"),
+        "{diagnostics}"
     );
     Config::parse_mem(&translated).unwrap();
 }

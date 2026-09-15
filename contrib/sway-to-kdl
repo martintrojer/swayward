@@ -105,10 +105,19 @@ class Translator:
                 self.translate_no_focus(path, line_no, match.group(1))
             elif match := re.match(r"assign\s+(\[[^]]+\])\s+(?:→|->)?\s*(.+)", text):
                 self.translate_assign(path, line_no, match.group(1), match.group(2))
-            elif match := re.fullmatch(r"workspace\s+(.+?)\s+output\s+(\S+)(?:\s+.*)?", text):
+            elif match := re.fullmatch(r"workspace\s+(.+?)\s+output\s+(.+)", text):
+                outputs = match.group(2).split()
+                if len(outputs) != 1:
+                    self.warn(
+                        path,
+                        line_no,
+                        text,
+                        "ordered workspace output fallbacks are not representable",
+                    )
+                    continue
                 self.sections += [
                     f"workspace {self.quote(match.group(1).strip(chr(34)))} {{",
-                    f"    open-on-output {self.quote(match.group(2).strip(chr(34)))}",
+                    f"    open-on-output {self.quote(outputs[0].strip(chr(34)))}",
                     "}",
                 ]
             elif match := re.fullmatch(r"font\s+(?:pango:)?(.+)", text):
