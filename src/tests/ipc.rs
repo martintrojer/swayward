@@ -3296,6 +3296,61 @@ fn rename_workspace_updates_name_number_and_rejects_collisions() {
 }
 
 #[test]
+fn configured_border_width_matches_rendering_and_tree_for_tiled_and_floating_windows() {
+    let config =
+        swayward_config::Config::parse_mem(r#"layout { border { on; width 7; }; }"#).unwrap();
+    let mut f = Fixture::with_config(config);
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    for (node_type, floating) in [("con", false), ("floating_con", true)] {
+        if floating {
+            assert!(crate::command::execute(f.niri_state(), "floating enable")[0].success);
+        }
+        let swayward = f.swayward();
+        let tile = swayward
+            .layout
+            .active_workspace()
+            .unwrap()
+            .tiles()
+            .next()
+            .unwrap();
+        assert_eq!(tile.effective_border_width(), Some(7.));
+        let tree = serde_json::to_value(describe_tree(
+            &swayward.layout,
+            &swayward.global_space,
+            &swayward.marks_by_window,
+            &swayward.marks_by_container,
+        ))
+        .unwrap();
+        let node = find_json_node(&tree, node_type, false).unwrap();
+        assert_eq!(node["border"], "normal");
+        assert_eq!(node["current_border_width"], 7);
+    }
+
+    assert!(crate::command::execute(f.niri_state(), "border none")[0].success);
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &swayward.marks_by_window,
+        &swayward.marks_by_container,
+    ))
+    .unwrap();
+    let node = find_json_node(&tree, "floating_con", false).unwrap();
+    assert_eq!(node["border"], "none");
+    assert_eq!(node["current_border_width"], 0);
+}
+
+#[test]
 fn border_command_updates_rendering_and_tree_metadata() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));
@@ -5548,15 +5603,16 @@ fn nested_tiling_rectangles_match_sway_roles() {
     );
     for window in [top, bottom_left, bottom_right] {
         assert!(window["deco_rect"]["height"].as_i64().unwrap() > 0);
-        assert_eq!(window["window_rect"]["x"], 2);
+        assert_eq!(window["current_border_width"], 4);
+        assert_eq!(window["window_rect"]["x"], 4);
         assert_eq!(window["window_rect"]["y"], 0);
         assert_eq!(
             window["window_rect"]["width"].as_i64().unwrap(),
-            window["rect"]["width"].as_i64().unwrap() - 4
+            window["rect"]["width"].as_i64().unwrap() - 8
         );
         assert_eq!(
             window["window_rect"]["height"].as_i64().unwrap(),
-            window["rect"]["height"].as_i64().unwrap() - 2
+            window["rect"]["height"].as_i64().unwrap() - 4
         );
     }
 }

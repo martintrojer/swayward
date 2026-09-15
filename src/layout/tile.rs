@@ -1600,7 +1600,9 @@ impl<W: LayoutElement> Tile<W> {
     }
 
     pub fn sway_border(&self) -> (BorderStyle, u16) {
-        let (style, width) = self.sway_border.unwrap_or((BorderStyle::Normal, 2));
+        let (style, width) = self
+            .sway_border
+            .unwrap_or_else(|| (BorderStyle::Normal, self.border.width().round() as u16));
         (style, if style == BorderStyle::None { 0 } else { width })
     }
 
