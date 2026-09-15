@@ -1209,6 +1209,25 @@ fn layout_and_split_commands_preserve_a_focused_floating_window_and_the_tree() {
 }
 
 #[test]
+fn malformed_sway_criteria_reload_keeps_the_compositor_responsive() {
+    let mut fixture = Fixture::new();
+    fixture.add_output(1, (1920, 1080));
+    let malformed =
+        swayward_config::Config::parse_mem(r#"binds { Mod+H { command "[con_id=nope] nop"; }; }"#)
+            .map_err(|error| {
+                assert!(format!("{error:?}")
+                    .contains("The value for 'con_id' should be '__focused__' or numeric"));
+            });
+    assert!(malformed.is_err());
+
+    fixture.niri_state().reload_config(malformed);
+
+    let outcome = crate::command::execute(fixture.niri_state(), "nop");
+    assert_eq!(outcome.len(), 1);
+    assert!(outcome[0].success, "{outcome:?}");
+}
+
+#[test]
 fn for_window_applies_matching_command_when_window_maps() {
     let (mut fixture, socket) = ipc_fixture();
     fixture.add_output(1, (1920, 1080));
