@@ -342,6 +342,31 @@ bindsym $missing+x nop
                 self.assertIn("expected hide_edge_borders", result.stdout)
                 self.assertIn("manual attention: 1 directive(s)", result.stderr)
 
+    def test_popup_during_fullscreen_maps_all_modes_case_insensitively(self):
+        for value, expected in [
+            ("smart", "smart"),
+            ("IGNORE", "ignore"),
+            ("Leave_Fullscreen", "leave_fullscreen"),
+        ]:
+            with self.subTest(value=value):
+                result = self.translate(f"popup_during_fullscreen {value}\n")
+                self.assertIn(f'popup-during-fullscreen "{expected}"', result.stdout)
+                self.assertIn("manual attention: none", result.stderr)
+
+        for directive in [
+            "popup_during_fullscreen",
+            "popup_during_fullscreen smart ignore",
+            "popup_during_fullscreen all",
+        ]:
+            with self.subTest(directive=directive):
+                result = self.translate(directive + "\n")
+                self.assertNotIn("popup-during-fullscreen", result.stdout)
+                self.assertIn(
+                    "expected popup_during_fullscreen smart|ignore|leave_fullscreen",
+                    result.stdout,
+                )
+                self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
     def test_workspace_auto_back_and_forth_uses_sway_boolean_words(self):
         for value in ["1", "yes", "on", "true", "enable", "enabled", "active"]:
             with self.subTest(value=value):

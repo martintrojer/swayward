@@ -2,6 +2,46 @@ use crate::appearance::{Color, WorkspaceShadow, WorkspaceShadowPart, DEFAULT_BAC
 use crate::utils::{Flag, MergeWith};
 use crate::FloatOrInt;
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum PopupDuringFullscreen {
+    #[default]
+    Smart,
+    Ignore,
+    LeaveFullscreen,
+}
+
+impl<S> knuffel::Decode<S> for PopupDuringFullscreen
+where
+    S: knuffel::traits::ErrorSpan,
+{
+    fn decode_node(
+        node: &knuffel::ast::SpannedNode<S>,
+        ctx: &mut knuffel::decode::Context<S>,
+    ) -> Result<Self, knuffel::errors::DecodeError<S>> {
+        const EXPECTED: &str = "Expected 'popup_during_fullscreen smart|ignore|leave_fullscreen'";
+        let mut arguments = node.arguments.iter();
+        let Some(value) = arguments.next() else {
+            return Err(knuffel::errors::DecodeError::missing(node, EXPECTED));
+        };
+        let value: String = knuffel::traits::DecodeScalar::decode(value, ctx)?;
+        if arguments.next().is_some() || node.children.is_some() || !node.properties.is_empty() {
+            return Err(knuffel::errors::DecodeError::unexpected(
+                node, "node", EXPECTED,
+            ));
+        }
+        match value.to_ascii_lowercase().as_str() {
+            "smart" => Ok(Self::Smart),
+            "ignore" => Ok(Self::Ignore),
+            "leave_fullscreen" => Ok(Self::LeaveFullscreen),
+            _ => Err(knuffel::errors::DecodeError::unexpected(
+                &node.node_name,
+                "value",
+                EXPECTED,
+            )),
+        }
+    }
+}
+
 #[derive(knuffel::Decode, Debug, Clone, PartialEq, Eq)]
 pub struct SpawnAtStartup {
     #[knuffel(arguments)]

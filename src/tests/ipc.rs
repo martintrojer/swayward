@@ -3369,6 +3369,66 @@ fn dialog_rect_after_parent_move(animations_off: bool) -> Value {
     find_app(&tree).unwrap()["rect"].clone()
 }
 
+fn fullscreen_parent_after_child_map(
+    policy: swayward_config::PopupDuringFullscreen,
+) -> (bool, bool) {
+    let mut config = swayward_config::Config {
+        popup_during_fullscreen: policy,
+        ..Default::default()
+    };
+    config.animations.off = true;
+    let mut f = Fixture::with_config(config);
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+
+    let parent = f.client(client).create_window();
+    let parent_surface = parent.surface.clone();
+    let parent_toplevel = parent.xdg_toplevel.clone();
+    parent.commit();
+    f.roundtrip(client);
+    let parent = f.client(client).window(&parent_surface);
+    parent.attach_new_buffer();
+    parent.ack_last_and_commit();
+    f.double_roundtrip(client);
+    let parent_id = f.swayward().layout.focus().unwrap().id();
+    let parent_window = f.swayward().layout.focus().unwrap().window.clone();
+    f.swayward().layout.set_fullscreen(&parent_window, true);
+
+    let child = f.client(client).create_window();
+    child.set_parent(Some(&parent_toplevel));
+    let child_surface = child.surface.clone();
+    child.commit();
+    f.roundtrip(client);
+    let child = f.client(client).window(&child_surface);
+    child.attach_new_buffer();
+    child.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    (
+        f.swayward()
+            .layout
+            .fullscreen_mode(&parent_window)
+            .is_some(),
+        f.swayward().layout.focus().unwrap().id() != parent_id,
+    )
+}
+
+#[test]
+fn popup_during_fullscreen_policies_use_xdg_toplevel_parent() {
+    assert_eq!(
+        fullscreen_parent_after_child_map(swayward_config::PopupDuringFullscreen::Smart),
+        (true, true)
+    );
+    assert_eq!(
+        fullscreen_parent_after_child_map(swayward_config::PopupDuringFullscreen::Ignore),
+        (true, false)
+    );
+    assert_eq!(
+        fullscreen_parent_after_child_map(swayward_config::PopupDuringFullscreen::LeaveFullscreen),
+        (false, false)
+    );
+}
+
 #[test]
 fn dialog_placement_uses_parent_layout_position_during_animation() {
     assert_eq!(
