@@ -106,13 +106,24 @@ bindsym $missing+x nop
         self.assertIn("unsupported mouse button button10", result.stdout)
         self.assertIn("manual attention: 1 directive(s)", result.stderr)
 
-    def test_mouse_binding_scope_options_remain_fail_loud(self):
-        for option in ["--whole-window", "--release", "--border", "--exclude-titlebar"]:
+    def test_mouse_binding_regions_translate_and_other_options_remain_fail_loud(self):
+        for option, regions in [
+            ("--whole-window", "titlebar+border+contents"),
+            ("--border", "border"),
+            ("--exclude-titlebar", "border+contents"),
+        ]:
             with self.subTest(option=option):
-                result = self.translate(f"bindsym {option} button1 nop unsupported\n")
-                self.assertNotIn("command", result.stdout)
-                self.assertIn(f"unsupported bindsym option {option}", result.stdout)
-                self.assertIn("manual attention: 1 directive(s)", result.stderr)
+                result = self.translate(f"bindsym button1 {option} nop supported\n")
+                self.assertIn(
+                    f'MouseLeft mouse-regions="{regions}" {{ command "nop supported"; }}',
+                    result.stdout,
+                )
+                self.assertIn("manual attention: none", result.stderr)
+
+        result = self.translate("bindsym button1 --release nop unsupported\n")
+        self.assertNotIn("command", result.stdout)
+        self.assertIn("mouse binding scope or release option is unsupported", result.stdout)
+        self.assertIn("manual attention: 1 directive(s)", result.stderr)
 
     def test_numeric_bindsym_is_quoted_at_top_level_and_in_modes(self):
         result = self.translate(

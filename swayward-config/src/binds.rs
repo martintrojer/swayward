@@ -57,15 +57,30 @@ where
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Bind {
     pub key: Key,
     pub action: Action,
+    pub mouse_regions: MouseRegions,
     pub repeat: bool,
     pub cooldown: Option<Duration>,
     pub allow_when_locked: bool,
     pub allow_inhibiting: bool,
     pub hotkey_overlay_title: Option<Option<String>>,
+}
+
+impl std::fmt::Debug for Bind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Bind")
+            .field("key", &self.key)
+            .field("action", &self.action)
+            .field("repeat", &self.repeat)
+            .field("cooldown", &self.cooldown)
+            .field("allow_when_locked", &self.allow_when_locked)
+            .field("allow_inhibiting", &self.allow_inhibiting)
+            .field("hotkey_overlay_title", &self.hotkey_overlay_title)
+            .finish()
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
@@ -94,6 +109,15 @@ pub enum Trigger {
     TabletStylusButton1,
     TabletStylusButton2,
     TabletStylusButton3,
+}
+
+bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+    pub struct MouseRegions: u8 {
+        const TITLEBAR = 1;
+        const BORDER = 1 << 1;
+        const CONTENTS = 1 << 2;
+    }
 }
 
 bitflags! {
@@ -917,6 +941,7 @@ where
             .parse::<Key>()
             .map_err(|e| DecodeError::conversion(&node.node_name, e.wrap_err("invalid keybind")))?;
 
+        let mut mouse_regions = MouseRegions::empty();
         let mut repeat = true;
         let mut cooldown = None;
         let mut allow_when_locked = false;
@@ -925,6 +950,24 @@ where
         let mut hotkey_overlay_title = None;
         for (name, val) in &node.properties {
             match &***name {
+                "mouse-regions" => {
+                    let regions: String = knuffel::traits::DecodeScalar::decode(val, ctx)?;
+                    for region in regions.split('+') {
+                        mouse_regions |= match region {
+                            "titlebar" => MouseRegions::TITLEBAR,
+                            "border" => MouseRegions::BORDER,
+                            "contents" => MouseRegions::CONTENTS,
+                            _ => {
+                                ctx.emit_error(DecodeError::unexpected(
+                                    name,
+                                    "property",
+                                    "mouse-regions must contain titlebar, border, or contents",
+                                ));
+                                MouseRegions::empty()
+                            }
+                        };
+                    }
+                }
                 "repeat" => {
                     repeat = knuffel::traits::DecodeScalar::decode(val, ctx)?;
                 }
@@ -961,6 +1004,7 @@ where
         let dummy = Self {
             key,
             action: Action::Spawn(vec![]),
+            mouse_regions,
             repeat: true,
             cooldown: None,
             allow_when_locked: false,
@@ -1013,6 +1057,7 @@ where
                 return Ok(Self {
                     key,
                     action: Action::SwayCommand(command),
+                    mouse_regions,
                     repeat,
                     cooldown,
                     allow_when_locked,
@@ -1041,6 +1086,7 @@ where
                     Ok(Self {
                         key,
                         action,
+                        mouse_regions,
                         repeat,
                         cooldown,
                         allow_when_locked,

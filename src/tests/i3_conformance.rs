@@ -604,6 +604,18 @@ fn handle_control(
             }
             _ => json!({ "success": false, "error": "button and pressed are required" }),
         },
+        "pointer_axis" => match (
+            request["horizontal_v120"].as_f64(),
+            request["vertical_v120"].as_f64(),
+        ) {
+            (Some(horizontal), Some(vertical)) => {
+                super::ipc::pointer_axis(fixture, horizontal, vertical);
+                json!({ "success": true })
+            }
+            _ => {
+                json!({ "success": false, "error": "horizontal_v120 and vertical_v120 are required" })
+            }
+        },
         "key_event" => match (request["key"].as_u64(), request["pressed"].as_bool()) {
             (Some(key), Some(pressed)) => {
                 super::ipc::key_event(fixture, u32::try_from(key).unwrap(), pressed);

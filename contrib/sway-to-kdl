@@ -399,9 +399,19 @@ class Translator:
             key = f"code:{key}"
 
         command = command.strip()
-        if command.startswith(("--whole-window ", "--release ", "--border ", "--exclude-titlebar ")):
+        mouse_regions = {
+            "--whole-window": "titlebar+border+contents",
+            "--border": "border",
+            "--exclude-titlebar": "border+contents",
+        }
+        if command.startswith("--release "):
             self.warn(source, line, rest, "mouse binding scope or release option is unsupported")
             return
+        for option, regions in mouse_regions.items():
+            if command.startswith(option + " "):
+                properties.append(f'mouse-regions="{regions}"')
+                command = command.removeprefix(option).lstrip()
+                break
         command = self.translate_command(command)
         if command is None:
             self.warn(

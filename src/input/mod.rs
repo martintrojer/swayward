@@ -36,7 +36,8 @@ use smithay::utils::{Logical, Point, Rectangle, Transform, SERIAL_COUNTER};
 use smithay::wayland::keyboard_shortcuts_inhibit::KeyboardShortcutsInhibitor;
 use smithay::wayland::pointer_constraints::{with_pointer_constraint, PointerConstraint};
 use swayward_config::{
-    Action, Bind, Binds, Config, Key, ModKey, Modifiers, MruDirection, SwitchBinds, Trigger,
+    Action, Bind, Binds, Config, Key, ModKey, Modifiers, MouseRegions, MruDirection, SwitchBinds,
+    Trigger,
 };
 use swayward_ipc::LayoutSwitchTarget;
 use touch_overview_grab::TouchOverviewGrab;
@@ -49,7 +50,7 @@ use self::spatial_movement_grab::SpatialMovementGrab;
 #[cfg(feature = "dbus")]
 use crate::dbus::freedesktop_a11y::KbMonBlock;
 use crate::layout::scrolling::ScrollDirection;
-use crate::layout::{ActivateWindow, LayoutElement as _};
+use crate::layout::{ActivateWindow, HitType, LayoutElement as _};
 use crate::swayward::{CastTarget, PointerVisibility, State};
 use crate::ui::mru::{WindowMru, WindowMruUi};
 use crate::ui::screenshot_ui::ScreenshotUi;
@@ -3044,6 +3045,7 @@ impl State {
                     );
                     find_configured_bind(bindings, mod_key, trigger, mods)
                 })
+                .filter(|bind| self.mouse_bind_matches_region(bind))
                 .filter(|bind| {
                     !self.swayward.screenshot_ui.is_open()
                         || allowed_during_screenshot(&bind.action)
@@ -3315,6 +3317,29 @@ impl State {
         pointer.frame(self);
     }
 
+    fn mouse_bind_matches_region(&self, bind: &Bind) -> bool {
+        if bind.mouse_regions.is_empty() {
+            return true;
+        }
+
+        let contents = self
+            .swayward
+            .contents_under(self.swayward.seat.get_pointer().unwrap().current_location());
+        let (click_region, on_workspace) = match contents.window.as_ref().map(|(_, hit)| hit) {
+            Some(HitType::Input { .. }) => (MouseRegions::CONTENTS, false),
+            Some(HitType::Activate {
+                is_tab_indicator: true,
+            }) => (MouseRegions::TITLEBAR, false),
+            Some(HitType::Activate {
+                is_tab_indicator: false,
+            }) => (MouseRegions::BORDER, false),
+            None if contents.layer.is_none() => (MouseRegions::all(), true),
+            None => (MouseRegions::empty(), false),
+        };
+
+        mouse_regions_match(bind.mouse_regions, click_region, on_workspace)
+    }
+
     fn on_pointer_axis<I: InputBackend>(&mut self, event: I::PointerAxisEvent) {
         let pointer = &self.swayward.seat.get_pointer().unwrap();
 
@@ -3381,6 +3406,7 @@ impl State {
                                     modifiers: Modifiers::empty(),
                                 },
                                 action: Action::FocusColumnLeftUnderMouse,
+                                mouse_regions: MouseRegions::empty(),
                                 repeat: true,
                                 cooldown: None,
                                 allow_when_locked: false,
@@ -3393,6 +3419,7 @@ impl State {
                                     modifiers: Modifiers::empty(),
                                 },
                                 action: Action::FocusColumnRightUnderMouse,
+                                mouse_regions: MouseRegions::empty(),
                                 repeat: true,
                                 cooldown: None,
                                 allow_when_locked: false,
@@ -3413,21 +3440,25 @@ impl State {
                                 mod_key,
                                 Trigger::WheelScrollLeft,
                                 mods,
-                            )
-                            .filter(|bind| {
-                                !self.swayward.screenshot_ui.is_open()
-                                    || allowed_during_screenshot(&bind.action)
-                            });
+                            );
                             let bind_right = find_configured_bind(
                                 bindings,
                                 mod_key,
                                 Trigger::WheelScrollRight,
                                 mods,
-                            )
-                            .filter(|bind| {
-                                !self.swayward.screenshot_ui.is_open()
-                                    || allowed_during_screenshot(&bind.action)
-                            });
+                            );
+                            let bind_left = bind_left
+                                .filter(|bind| self.mouse_bind_matches_region(bind))
+                                .filter(|bind| {
+                                    !self.swayward.screenshot_ui.is_open()
+                                        || allowed_during_screenshot(&bind.action)
+                                });
+                            let bind_right = bind_right
+                                .filter(|bind| self.mouse_bind_matches_region(bind))
+                                .filter(|bind| {
+                                    !self.swayward.screenshot_ui.is_open()
+                                        || allowed_during_screenshot(&bind.action)
+                                });
                             (bind_left, bind_right)
                         };
 
@@ -3454,6 +3485,7 @@ impl State {
                                 modifiers: Modifiers::empty(),
                             },
                             action: Action::FocusWorkspaceUpUnderMouse,
+                            mouse_regions: MouseRegions::empty(),
                             repeat: true,
                             cooldown: Some(Duration::from_millis(50)),
                             allow_when_locked: false,
@@ -3466,6 +3498,7 @@ impl State {
                                 modifiers: Modifiers::empty(),
                             },
                             action: Action::FocusWorkspaceDownUnderMouse,
+                            mouse_regions: MouseRegions::empty(),
                             repeat: true,
                             cooldown: Some(Duration::from_millis(50)),
                             allow_when_locked: false,
@@ -3480,6 +3513,7 @@ impl State {
                                 modifiers: Modifiers::empty(),
                             },
                             action: Action::FocusColumnLeftUnderMouse,
+                            mouse_regions: MouseRegions::empty(),
                             repeat: true,
                             cooldown: Some(Duration::from_millis(50)),
                             allow_when_locked: false,
@@ -3492,6 +3526,7 @@ impl State {
                                 modifiers: Modifiers::empty(),
                             },
                             action: Action::FocusColumnRightUnderMouse,
+                            mouse_regions: MouseRegions::empty(),
                             repeat: true,
                             cooldown: Some(Duration::from_millis(50)),
                             allow_when_locked: false,
@@ -3512,17 +3547,21 @@ impl State {
                             mod_key,
                             Trigger::WheelScrollUp,
                             mods,
-                        )
-                        .filter(|bind| {
-                            !self.swayward.screenshot_ui.is_open()
-                                || allowed_during_screenshot(&bind.action)
-                        });
+                        );
                         let bind_down =
-                            find_configured_bind(bindings, mod_key, Trigger::WheelScrollDown, mods)
-                                .filter(|bind| {
-                                    !self.swayward.screenshot_ui.is_open()
-                                        || allowed_during_screenshot(&bind.action)
-                                });
+                            find_configured_bind(bindings, mod_key, Trigger::WheelScrollDown, mods);
+                        let bind_up = bind_up
+                            .filter(|bind| self.mouse_bind_matches_region(bind))
+                            .filter(|bind| {
+                                !self.swayward.screenshot_ui.is_open()
+                                    || allowed_during_screenshot(&bind.action)
+                            });
+                        let bind_down = bind_down
+                            .filter(|bind| self.mouse_bind_matches_region(bind))
+                            .filter(|bind| {
+                                !self.swayward.screenshot_ui.is_open()
+                                    || allowed_during_screenshot(&bind.action)
+                            });
                         (bind_up, bind_down)
                     };
 
@@ -4834,6 +4873,7 @@ fn should_intercept_key<'a>(
                         modifiers: Modifiers::empty(),
                     },
                     action,
+                    mouse_regions: MouseRegions::empty(),
                     repeat: true,
                     cooldown: None,
                     allow_when_locked: false,
@@ -4899,6 +4939,7 @@ fn find_bind<'a>(
                 modifiers: Modifiers::empty(),
             },
             action,
+            mouse_regions: MouseRegions::empty(),
             repeat: true,
             cooldown: None,
             allow_when_locked: false,
@@ -4921,6 +4962,14 @@ fn find_bind<'a>(
                 mods,
             )
         })
+}
+
+fn mouse_regions_match(
+    configured: MouseRegions,
+    click_region: MouseRegions,
+    on_workspace: bool,
+) -> bool {
+    click_region.intersects(configured) && (!on_workspace || configured.contains(click_region))
 }
 
 fn find_configured_bind<'a>(
@@ -5213,6 +5262,7 @@ fn hardcoded_overview_bind(raw: Keysym, mods: ModifiersState) -> Option<Bind> {
             modifiers: Modifiers::empty(),
         },
         action,
+        mouse_regions: MouseRegions::empty(),
         repeat,
         cooldown: None,
         allow_when_locked: false,
@@ -5648,6 +5698,23 @@ mod tests {
     use crate::animation::Clock;
 
     #[test]
+    fn mouse_region_matching_uses_intersection_except_for_workspace_background() {
+        let whole = MouseRegions::all();
+        assert!(mouse_regions_match(whole, MouseRegions::CONTENTS, false));
+        assert!(mouse_regions_match(whole, MouseRegions::all(), true));
+        assert!(!mouse_regions_match(
+            MouseRegions::BORDER,
+            MouseRegions::all(),
+            true
+        ));
+        assert!(!mouse_regions_match(
+            MouseRegions::TITLEBAR,
+            MouseRegions::CONTENTS,
+            false
+        ));
+    }
+
+    #[test]
     fn bindings_suppress_keys() {
         let close_keysym = Keysym::q;
         let bindings = Binds(vec![Bind {
@@ -5656,6 +5723,7 @@ mod tests {
                 modifiers: Modifiers::COMPOSITOR | Modifiers::CTRL,
             },
             action: Action::CloseWindow,
+            mouse_regions: MouseRegions::empty(),
             repeat: true,
             cooldown: None,
             allow_when_locked: false,
@@ -5842,6 +5910,7 @@ mod tests {
                     modifiers: Modifiers::COMPOSITOR,
                 },
                 action: Action::CloseWindow,
+                mouse_regions: MouseRegions::empty(),
                 repeat: true,
                 cooldown: None,
                 allow_when_locked: false,
@@ -5854,6 +5923,7 @@ mod tests {
                     modifiers: Modifiers::SUPER,
                 },
                 action: Action::FocusColumnLeft,
+                mouse_regions: MouseRegions::empty(),
                 repeat: true,
                 cooldown: None,
                 allow_when_locked: false,
@@ -5866,6 +5936,7 @@ mod tests {
                     modifiers: Modifiers::empty(),
                 },
                 action: Action::FocusWindowDown,
+                mouse_regions: MouseRegions::empty(),
                 repeat: true,
                 cooldown: None,
                 allow_when_locked: false,
@@ -5878,6 +5949,7 @@ mod tests {
                     modifiers: Modifiers::COMPOSITOR | Modifiers::SUPER,
                 },
                 action: Action::FocusWindowUp,
+                mouse_regions: MouseRegions::empty(),
                 repeat: true,
                 cooldown: None,
                 allow_when_locked: false,
@@ -5890,6 +5962,7 @@ mod tests {
                     modifiers: Modifiers::SUPER | Modifiers::ALT,
                 },
                 action: Action::FocusColumnRight,
+                mouse_regions: MouseRegions::empty(),
                 repeat: true,
                 cooldown: None,
                 allow_when_locked: false,

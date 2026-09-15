@@ -723,6 +723,26 @@ mod tests {
     }
 
     #[test]
+    fn mouse_bind_regions_parse() {
+        let config = Config::parse_mem(
+            r#"binds { MouseLeft mouse-regions="titlebar+border+contents" { command "focus"; }; }"#,
+        )
+        .unwrap();
+        assert_eq!(
+            config.binds.0[0].mouse_regions,
+            crate::binds::MouseRegions::TITLEBAR
+                | crate::binds::MouseRegions::BORDER
+                | crate::binds::MouseRegions::CONTENTS
+        );
+
+        let error = Config::parse_mem(
+            r#"binds { MouseLeft mouse-regions="workspace" { command "focus"; }; }"#,
+        )
+        .unwrap_err();
+        assert!(format!("{error:?}").contains("mouse-regions must contain"));
+    }
+
+    #[test]
     fn sway_command_bind_parses_and_invalid_command_fails_at_load_time() {
         let config = Config::parse_mem(
             "binds { Mod+H repeat=false cooldown-ms=150 allow-when-locked=true hotkey-overlay-title=\"Left\" { command \"focus left\"; }; }",

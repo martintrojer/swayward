@@ -206,6 +206,9 @@ sub is ($$;$) {
     } elsif (($ENV{SWAYWARD_I3_TEST} // '') eq '245-move-position-mouse.t'
         && $tester->current_test < 2) {
         _skip_next_assertions(1, 'i3 centers an oversized window off-screen; sway clamps it to the cursor output');
+    } elsif (($ENV{SWAYWARD_I3_TEST} // '') eq '320-mouse-bindings.t'
+        && ($name // '') eq 'button 5 no binding outside mode') {
+        _skip_next_assertions(1, 'native pointer motion changes focus before an unbound wheel event');
     }
     _skip_assertion() or $tester->is_eq($got, $expected, $name);
 }

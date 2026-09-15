@@ -953,6 +953,12 @@ struct TestButtonEvent {
     state: smithay::backend::input::ButtonState,
 }
 
+#[derive(Debug)]
+struct TestAxisEvent {
+    horizontal_v120: f64,
+    vertical_v120: f64,
+}
+
 impl smithay::backend::input::Event<TestInput> for TestKeyEvent {
     fn time(&self) -> smithay::backend::input::InputTime {
         smithay::backend::input::InputTime::from_millis(1)
@@ -970,6 +976,40 @@ impl smithay::backend::input::Event<TestInput> for TestButtonEvent {
 
     fn device(&self) -> TestDevice {
         TestDevice
+    }
+}
+
+impl smithay::backend::input::Event<TestInput> for TestAxisEvent {
+    fn time(&self) -> smithay::backend::input::InputTime {
+        smithay::backend::input::InputTime::from_millis(1)
+    }
+
+    fn device(&self) -> TestDevice {
+        TestDevice
+    }
+}
+
+impl smithay::backend::input::PointerAxisEvent<TestInput> for TestAxisEvent {
+    fn amount(&self, _axis: smithay::backend::input::Axis) -> Option<f64> {
+        None
+    }
+
+    fn amount_v120(&self, axis: smithay::backend::input::Axis) -> Option<f64> {
+        Some(match axis {
+            smithay::backend::input::Axis::Horizontal => self.horizontal_v120,
+            smithay::backend::input::Axis::Vertical => self.vertical_v120,
+        })
+    }
+
+    fn source(&self) -> smithay::backend::input::AxisSource {
+        smithay::backend::input::AxisSource::Wheel
+    }
+
+    fn relative_direction(
+        &self,
+        _axis: smithay::backend::input::Axis,
+    ) -> smithay::backend::input::AxisRelativeDirection {
+        smithay::backend::input::AxisRelativeDirection::Identical
     }
 }
 
@@ -1000,7 +1040,7 @@ impl smithay::backend::input::KeyboardKeyEvent<TestInput> for TestKeyEvent {
 impl smithay::backend::input::InputBackend for TestInput {
     type Device = TestDevice;
     type KeyboardKeyEvent = TestKeyEvent;
-    type PointerAxisEvent = smithay::backend::input::UnusedEvent;
+    type PointerAxisEvent = TestAxisEvent;
     type PointerButtonEvent = TestButtonEvent;
     type PointerMotionEvent = smithay::backend::input::UnusedEvent;
     type PointerMotionAbsoluteEvent = smithay::backend::input::UnusedEvent;
@@ -1040,6 +1080,17 @@ pub(super) fn pointer_button(fixture: &mut Fixture, button: u32, pressed: bool) 
     );
 }
 
+pub(super) fn pointer_axis(fixture: &mut Fixture, horizontal_v120: f64, vertical_v120: f64) {
+    fixture.niri_state().process_input_event::<TestInput>(
+        smithay::backend::input::InputEvent::PointerAxis {
+            event: TestAxisEvent {
+                horizontal_v120,
+                vertical_v120,
+            },
+        },
+    );
+}
+
 pub(super) fn key_event(fixture: &mut Fixture, key: u32, pressed: bool) {
     fixture.niri_state().process_input_event::<TestInput>(
         smithay::backend::input::InputEvent::Keyboard {
@@ -1065,6 +1116,25 @@ pub(super) fn type_key_chords(fixture: &mut Fixture, chords: &[&[u32]]) {
             key_event(fixture, key, false);
         }
     }
+}
+
+#[test]
+fn pointer_button_binding_requires_the_configured_rendered_region() {
+    let config = swayward_config::Config::parse_mem(
+        r#"binds { MouseLeft mouse-regions="contents" { command "workspace clicked"; }; }"#,
+    )
+    .unwrap();
+    let mut fixture = Fixture::with_config(config);
+    fixture.add_output(1, (1280, 720));
+
+    pointer_button(&mut fixture, 0x110, true);
+    pointer_button(&mut fixture, 0x110, false);
+
+    assert!(fixture
+        .swayward()
+        .layout
+        .find_workspace_by_name("clicked")
+        .is_none());
 }
 
 #[test]

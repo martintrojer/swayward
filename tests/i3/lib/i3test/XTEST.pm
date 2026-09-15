@@ -27,14 +27,28 @@ sub _control {
 
 sub xtest_button_press {
     my ($button, $x, $y) = @_;
-    i3test::$x->root->warp_pointer($x, $y);
-    _control({ action => 'pointer_button', button => $button, pressed => JSON::PP::true });
+    $i3test::x->root->warp_pointer($x, $y);
+    if ($button >= 4 && $button <= 7) {
+        my ($horizontal, $vertical) = (0, 0);
+        $vertical = $button == 4 ? -120 : 120 if $button <= 5;
+        $horizontal = $button == 6 ? -120 : 120 if $button >= 6;
+        _control({
+            action => 'pointer_axis',
+            horizontal_v120 => $horizontal,
+            vertical_v120 => $vertical,
+        });
+    } else {
+        my %codes = (1 => 0x110, 2 => 0x112, 3 => 0x111, 8 => 0x113, 9 => 0x114);
+        _control({ action => 'pointer_button', button => $codes{$button}, pressed => JSON::PP::true });
+    }
 }
 
 sub xtest_button_release {
     my ($button, $x, $y) = @_;
-    i3test::$x->root->warp_pointer($x, $y);
-    _control({ action => 'pointer_button', button => $button, pressed => JSON::PP::false });
+    return if $button >= 4 && $button <= 7;
+    $i3test::x->root->warp_pointer($x, $y);
+    my %codes = (1 => 0x110, 2 => 0x112, 3 => 0x111, 8 => 0x113, 9 => 0x114);
+    _control({ action => 'pointer_button', button => $codes{$button}, pressed => JSON::PP::false });
 }
 
 sub xtest_key_press {
