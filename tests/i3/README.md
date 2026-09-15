@@ -484,9 +484,9 @@ treat the figure as approximate and recompute it from this table rather than
 quoting it.
 
 As of this revision the table records 99 green files, 25 vendored files whose
-only obstacles are implementation or adapter gaps, and 9 unvendored files still
-marked as reachable candidates. That puts the ceiling near 133 and swayward
-about 34 files below it, but the gap-only and candidate counts move with every
+only obstacles are implementation or adapter gaps, and 7 unvendored files still
+marked as reachable candidates. That puts the ceiling near 131 and swayward
+about 32 files below it, but the gap-only and candidate counts move with every
 merge and the two categories have overlapped before.
 
 The ceiling holds the documented oracle limits fixed. It excludes every file
@@ -553,8 +553,6 @@ The categories use these source-backed boundaries:
 | `284-ewmh-visible-name.t` | unreachable | Every assertion reads `_NET_WM_VISIBLE_NAME` after `title_format`. Sway supports the command, but native xdg-shell has no visible-name property and GET_TREE reports the client title, not this XWM-owned atom (`sway/sway/commands/title_format.c:9-35`). |
 | `288-i3-floating-window-atom.t` | unreachable | Reads i3's proprietary `I3_FLOATING_WINDOW` X property. Sway does not publish an i3-private atom; portable floating state is already exposed through GET_TREE. |
 | `294-update-ewmh-atoms.t` | unreachable | Reads three X-root EWMH properties after workspace deletion and rename. Workspace IPC cannot prove root-property publication; see the X11 boundary above. |
-| `298-ipc-misbehaving-connection.t` | reachable but unvendored | The raw IPC backpressure behavior is portable. Sway uses nonblocking per-client write buffers and disconnects a client when its buffer exceeds 4 MB (`sway/sway/ipc-server.c:44-52,524-580,936-974`) rather than i3's `ipc_kill_timeout`. Track as `m6_candidate_ipc_backpressure`. |
-| `295-net-wm-state-focused.t` | reachable but unvendored | Its focus lifecycle has a direct native signal: sway sends the xdg-toplevel `activated` configure state from `set_activated` (`sway/sway/desktop/xdg_shell.c:188-192`). Track as `m6_candidate_wayland_state_equivalents`. |
 | `300-restart-non-utf8.t` | i3-only subsystem | The intended assertion follows an in-place restart with a live client. The harness cannot preserve that client through compositor replacement; see the lifecycle boundary above. |
 | `301-shape.t` | reachable but unvendored | The X Shape transport has a native equivalent for the tested hit behavior: `wl_surface.set_input_region` controls pointer acceptance, and Smithay commits it into surface state (`smithay/src/wayland/compositor/handlers.rs:249-266`). Track as `m6_candidate_wayland_shape`. |
 | `305-restart-reply.t` | i3-only subsystem | Its sole assertion requires the i3 runtime `restart` command. Sway's complete runtime command table has no restart entry (`sway/sway/commands.c:112-144`). |
