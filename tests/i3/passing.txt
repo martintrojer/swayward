@@ -102,3 +102,4 @@
 527-focus-fallback.t
 
 252-floating-size.t
+509-workspace_layout.t
