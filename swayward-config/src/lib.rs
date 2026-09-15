@@ -228,7 +228,12 @@ where
                     let mut config = config.borrow_mut();
                     let binds = &mut config.binds.0;
                     // Remove existing binds matching any new bind.
-                    binds.retain(|bind| !part.0.iter().any(|new| new.key == bind.key));
+                    binds.retain(|bind| {
+                        !part
+                            .0
+                            .iter()
+                            .any(|new| (new.key, new.release) == (bind.key, bind.release))
+                    });
                     // Add all new binds.
                     binds.extend(part.0);
                 }
@@ -720,6 +725,22 @@ mod tests {
             config.binding_modes[0].binds.0[1].action,
             Action::SwayCommand("mode default".into())
         );
+    }
+
+    #[test]
+    fn press_and_release_binds_can_share_a_trigger() {
+        let config = Config::parse_mem(
+            r#"binds {
+                Print { command "nop press"; }
+                Print release=true repeat=false { command "nop release"; }
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(config.binds.0.len(), 2);
+        assert!(!config.binds.0[0].release);
+        assert!(config.binds.0[1].release);
+        assert!(!config.binds.0[1].repeat);
     }
 
     #[test]

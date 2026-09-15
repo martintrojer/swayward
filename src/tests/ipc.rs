@@ -1138,6 +1138,54 @@ fn pointer_button_binding_requires_the_configured_rendered_region() {
 }
 
 #[test]
+fn release_key_binding_dispatches_only_on_release_through_real_input() {
+    let config = swayward_config::Config::parse_mem(
+        r#"binds { x release=true { command "workspace released"; }; }"#,
+    )
+    .unwrap();
+    let mut fixture = Fixture::with_config(config);
+    fixture.add_output(1, (1280, 720));
+
+    key_event(&mut fixture, 53, true);
+    assert!(fixture
+        .swayward()
+        .layout
+        .find_workspace_by_name("released")
+        .is_none());
+
+    key_event(&mut fixture, 53, false);
+    assert!(fixture
+        .swayward()
+        .layout
+        .find_workspace_by_name("released")
+        .is_some());
+}
+
+#[test]
+fn release_mouse_binding_dispatches_only_on_release() {
+    let config = swayward_config::Config::parse_mem(
+        r#"binds { MouseLeft release=true { command "workspace released"; }; }"#,
+    )
+    .unwrap();
+    let mut fixture = Fixture::with_config(config);
+    fixture.add_output(1, (1280, 720));
+
+    pointer_button(&mut fixture, 0x110, true);
+    assert!(fixture
+        .swayward()
+        .layout
+        .find_workspace_by_name("released")
+        .is_none());
+
+    pointer_button(&mut fixture, 0x110, false);
+    assert!(fixture
+        .swayward()
+        .layout
+        .find_workspace_by_name("released")
+        .is_some());
+}
+
+#[test]
 fn pointer_button_event_dispatches_a_real_mouse_binding() {
     let config = swayward_config::Config::parse_mem(
         r#"binds { MouseLeft { command "workspace clicked"; }; }"#,

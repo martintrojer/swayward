@@ -109,7 +109,7 @@ use smithay::wayland::xdg_foreign::XdgForeignState;
 use swayward_config::debug::PreviewRender;
 use swayward_config::output::MaxBpc;
 use swayward_config::{
-    Config, FloatOrInt, Key, Modifiers, OutputName, TrackLayout, WarpMouseToFocusMode,
+    Bind, Config, FloatOrInt, Key, Modifiers, OutputName, TrackLayout, WarpMouseToFocusMode,
     WorkspaceReference, Xkb,
 };
 use wayland_server::protocol::wl_output::WlOutput;
@@ -338,9 +338,11 @@ pub struct Swayward {
     pub seat: Seat<State>,
     /// Scancodes of the keys to suppress.
     pub suppressed_keys: HashSet<Keycode>,
+    pub held_release_bind: Option<Bind>,
     /// Button codes of the mouse buttons to suppress.
     pub suppressed_buttons: HashSet<u32>,
-    pub bind_cooldown_timers: HashMap<Key, RegistrationToken>,
+    pub held_release_buttons: HashMap<u32, Bind>,
+    pub bind_cooldown_timers: HashMap<(Key, bool), RegistrationToken>,
     pub bind_repeat_timer: Option<RegistrationToken>,
     pub keyboard_focus: KeyboardFocus,
     pub layer_shell_on_demand_focus: Option<LayerSurface>,
@@ -1654,6 +1656,8 @@ impl State {
 
         // Release the borrow.
         drop(old_config);
+        self.swayward.held_release_bind = None;
+        self.swayward.held_release_buttons.clear();
 
         // Now with a &mut self we can reload the xkb config.
         if let Some(mut xkb) = reload_xkb {
@@ -2633,7 +2637,9 @@ impl Swayward {
             popups: PopupManager::default(),
             popup_grab: None,
             suppressed_keys: HashSet::new(),
+            held_release_bind: None,
             suppressed_buttons: HashSet::new(),
+            held_release_buttons: HashMap::new(),
             bind_cooldown_timers: HashMap::new(),
             bind_repeat_timer: Option::default(),
             presentation_state,

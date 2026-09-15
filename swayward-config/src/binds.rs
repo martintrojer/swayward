@@ -62,6 +62,7 @@ pub struct Bind {
     pub key: Key,
     pub action: Action,
     pub mouse_regions: MouseRegions,
+    pub release: bool,
     pub repeat: bool,
     pub cooldown: Option<Duration>,
     pub allow_when_locked: bool,
@@ -867,13 +868,13 @@ impl Binds {
         node: &knuffel::ast::SpannedNode<S>,
         ctx: &mut knuffel::decode::Context<S>,
     ) -> Self {
-        let mut seen_keys: HashMap<Key, &knuffel::ast::SpannedNode<S>> = HashMap::new();
+        let mut seen_keys: HashMap<(Key, bool), &knuffel::ast::SpannedNode<S>> = HashMap::new();
         let mut binds = Vec::new();
 
         for child in node.children() {
             match <Bind as knuffel::Decode<S>>::decode_node(child, ctx) {
                 Err(e) => ctx.emit_error(e),
-                Ok(bind) => match seen_keys.entry(bind.key) {
+                Ok(bind) => match seen_keys.entry((bind.key, bind.release)) {
                     Entry::Occupied(entry) => {
                         // Even though it's technically incorrect, we use
                         // `DecodeError::Missing` here because it labels the bind with
@@ -942,6 +943,7 @@ where
             .map_err(|e| DecodeError::conversion(&node.node_name, e.wrap_err("invalid keybind")))?;
 
         let mut mouse_regions = MouseRegions::empty();
+        let mut release = false;
         let mut repeat = true;
         let mut cooldown = None;
         let mut allow_when_locked = false;
@@ -967,6 +969,9 @@ where
                             }
                         };
                     }
+                }
+                "release" => {
+                    release = knuffel::traits::DecodeScalar::decode(val, ctx)?;
                 }
                 "repeat" => {
                     repeat = knuffel::traits::DecodeScalar::decode(val, ctx)?;
@@ -996,6 +1001,10 @@ where
             }
         }
 
+        if release {
+            repeat = false;
+        }
+
         let mut children = node.children();
 
         // If the action is invalid but the key is fine, we still want to return something.
@@ -1005,6 +1014,7 @@ where
             key,
             action: Action::Spawn(vec![]),
             mouse_regions,
+            release,
             repeat: true,
             cooldown: None,
             allow_when_locked: false,
@@ -1058,6 +1068,7 @@ where
                     key,
                     action: Action::SwayCommand(command),
                     mouse_regions,
+                    release,
                     repeat,
                     cooldown,
                     allow_when_locked,
@@ -1087,6 +1098,7 @@ where
                         key,
                         action,
                         mouse_regions,
+                        release,
                         repeat,
                         cooldown,
                         allow_when_locked,

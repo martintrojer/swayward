@@ -404,6 +404,8 @@ class Translator:
                 properties.append("allow-when-locked=true")
             elif option == "--no-repeat":
                 properties.append("repeat=false")
+            elif option == "--release":
+                properties.extend(("release=true", "repeat=false"))
             else:
                 self.warn(source, line, rest, f"unsupported {kind} option {option}")
                 return
@@ -425,8 +427,8 @@ class Translator:
             "--exclude-titlebar": "border+contents",
         }
         if command.startswith("--release "):
-            self.warn(source, line, rest, "mouse binding scope or release option is unsupported")
-            return
+            properties.extend(("release=true", "repeat=false"))
+            command = command.removeprefix("--release").lstrip()
         for option, regions in mouse_regions.items():
             if command.startswith(option + " "):
                 properties.append(f'mouse-regions="{regions}"')
@@ -448,10 +450,11 @@ class Translator:
             return
         if key.isdecimal():
             key = self.quote(key)
-        if key in self.binds:
+        binding_key = (key, "release=true" in properties)
+        if binding_key in self.binds:
             self.warn(source, line, rest, f"duplicate binding for {key}; kept the first")
             return
-        self.binds[key] = (
+        self.binds[binding_key] = (
             f"    {key}{properties_text} {{ command {self.quote(command)}; }}"
         )
 

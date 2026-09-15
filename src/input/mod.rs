@@ -575,6 +575,7 @@ impl State {
 
                     should_intercept_key(
                         &mut this.swayward.suppressed_keys,
+                        &mut this.swayward.held_release_bind,
                         bindings,
                         mod_key,
                         key_code,
@@ -613,13 +614,11 @@ impl State {
             return;
         };
 
-        if !pressed {
-            return;
-        }
-
         self.handle_bind(bind.clone());
 
-        self.start_key_repeat(bind);
+        if pressed {
+            self.start_key_repeat(bind);
+        }
     }
 
     fn start_key_repeat(&mut self, bind: Bind) {
@@ -686,7 +685,11 @@ impl State {
         }
 
         if let Some(cooldown) = bind.cooldown {
-            match self.swayward.bind_cooldown_timers.entry(bind.key) {
+            match self
+                .swayward
+                .bind_cooldown_timers
+                .entry((bind.key, bind.release))
+            {
                 Entry::Occupied(_) => return,
                 Entry::Vacant(entry) => {
                     let timer = Timer::from_duration(cooldown);
@@ -697,7 +700,7 @@ impl State {
                             if state
                                 .swayward
                                 .bind_cooldown_timers
-                                .remove(&bind.key)
+                                .remove(&(bind.key, bind.release))
                                 .is_none()
                             {
                                 error!("bind cooldown timer entry disappeared");
@@ -2991,9 +2994,16 @@ impl State {
 
         let mod_key = self.backend.mod_key(&self.swayward.config.borrow());
 
-        // Ignore release events for mouse clicks that triggered a bind.
-        if self.swayward.suppressed_buttons.remove(&button_code) {
-            return;
+        if ButtonState::Released == button_state {
+            let suppressed = self.swayward.suppressed_buttons.remove(&button_code);
+            if let Some(bind) = self.swayward.held_release_buttons.remove(&button_code) {
+                self.handle_bind(bind);
+                return;
+            }
+            // Ignore release events for mouse clicks that triggered a press bind.
+            if suppressed {
+                return;
+            }
         }
 
         let mods = self.swayward.seat.get_keyboard().unwrap().modifier_state();
@@ -3035,7 +3045,7 @@ impl State {
                     Some(MouseButton::Forward) => Some(Trigger::MouseForward),
                     _ => None,
                 }
-                .and_then(|trigger| {
+                .map(|trigger| {
                     let config = self.swayward.config.borrow();
                     let bindings = make_binds_iter(
                         &config,
@@ -3043,9 +3053,34 @@ impl State {
                         &mut self.swayward.window_mru_ui,
                         modifiers,
                     );
-                    find_configured_bind(bindings, mod_key, trigger, mods)
+                    let release = find_configured_bind(
+                        bindings.clone().filter(|bind| bind.release),
+                        mod_key,
+                        trigger,
+                        mods,
+                    );
+                    let press = find_configured_bind(
+                        bindings.filter(|bind| !bind.release),
+                        mod_key,
+                        trigger,
+                        mods,
+                    );
+                    (press, release)
                 })
-                .filter(|bind| self.mouse_bind_matches_region(bind))
+                .map(|(press, release)| {
+                    (
+                        press.filter(|bind| self.mouse_bind_matches_region(bind)),
+                        release.filter(|bind| self.mouse_bind_matches_region(bind)),
+                    )
+                })
+                .and_then(|(press, release)| {
+                    if let Some(release) = release {
+                        self.swayward
+                            .held_release_buttons
+                            .insert(button_code, release);
+                    }
+                    press
+                })
                 .filter(|bind| {
                     !self.swayward.screenshot_ui.is_open()
                         || allowed_during_screenshot(&bind.action)
@@ -3053,7 +3088,14 @@ impl State {
                     self.swayward.suppressed_buttons.insert(button_code);
                     self.handle_bind(bind.clone());
                     return;
-                };
+                }
+                if self
+                    .swayward
+                    .held_release_buttons
+                    .contains_key(&button_code)
+                {
+                    return;
+                }
             }
 
             // We received an event for the regular pointer, so show it now.
@@ -3407,6 +3449,7 @@ impl State {
                                 },
                                 action: Action::FocusColumnLeftUnderMouse,
                                 mouse_regions: MouseRegions::empty(),
+                                release: false,
                                 repeat: true,
                                 cooldown: None,
                                 allow_when_locked: false,
@@ -3420,6 +3463,7 @@ impl State {
                                 },
                                 action: Action::FocusColumnRightUnderMouse,
                                 mouse_regions: MouseRegions::empty(),
+                                release: false,
                                 repeat: true,
                                 cooldown: None,
                                 allow_when_locked: false,
@@ -3486,6 +3530,7 @@ impl State {
                             },
                             action: Action::FocusWorkspaceUpUnderMouse,
                             mouse_regions: MouseRegions::empty(),
+                            release: false,
                             repeat: true,
                             cooldown: Some(Duration::from_millis(50)),
                             allow_when_locked: false,
@@ -3499,6 +3544,7 @@ impl State {
                             },
                             action: Action::FocusWorkspaceDownUnderMouse,
                             mouse_regions: MouseRegions::empty(),
+                            release: false,
                             repeat: true,
                             cooldown: Some(Duration::from_millis(50)),
                             allow_when_locked: false,
@@ -3514,6 +3560,7 @@ impl State {
                             },
                             action: Action::FocusColumnLeftUnderMouse,
                             mouse_regions: MouseRegions::empty(),
+                            release: false,
                             repeat: true,
                             cooldown: Some(Duration::from_millis(50)),
                             allow_when_locked: false,
@@ -3527,6 +3574,7 @@ impl State {
                             },
                             action: Action::FocusColumnRightUnderMouse,
                             mouse_regions: MouseRegions::empty(),
+                            release: false,
                             repeat: true,
                             cooldown: Some(Duration::from_millis(50)),
                             allow_when_locked: false,
@@ -4825,6 +4873,7 @@ impl State {
 #[allow(clippy::too_many_arguments)]
 fn should_intercept_key<'a>(
     suppressed_keys: &mut HashSet<Keycode>,
+    held_release_bind: &mut Option<Bind>,
     bindings: impl IntoIterator<Item = &'a Bind> + Clone,
     mod_key: ModKey,
     key_code: Keycode,
@@ -4836,15 +4885,37 @@ fn should_intercept_key<'a>(
     disable_power_key_handling: bool,
     is_inhibiting_shortcuts: bool,
 ) -> FilterResult<Option<Bind>> {
-    // Actions are only triggered on presses, release of the key
-    // shouldn't try to intercept anything unless we have marked
-    // the key to suppress.
-    if !pressed && !suppressed_keys.contains(&key_code) {
-        return FilterResult::Forward;
+    let bindings = bindings.into_iter().collect::<Vec<_>>();
+    let release_bind = find_bind(
+        bindings.iter().copied().filter(|bind| bind.release),
+        mod_key,
+        modified,
+        raw,
+        key_code,
+        mods,
+        disable_power_key_handling,
+    )
+    .filter(|bind| !is_inhibiting_shortcuts || !bind.allow_inhibiting)
+    .filter(|bind| !screenshot_ui.is_open() || allowed_during_screenshot(&bind.action));
+    if pressed {
+        if release_bind.is_some() {
+            *held_release_bind = release_bind;
+        }
+    } else if held_release_bind.as_ref().is_some_and(|bind| {
+        bind.key.trigger == Trigger::Keycode(key_code.raw() + 8)
+            || bind.key.trigger == Trigger::Keysym(modified)
+            || raw.is_some_and(|raw| bind.key.trigger == Trigger::Keysym(raw))
+            || find_configured_bind(std::iter::once(bind), mod_key, bind.key.trigger, mods)
+                .is_none()
+    }) {
+        suppressed_keys.remove(&key_code);
+        return FilterResult::Intercept(held_release_bind.take());
+    } else if release_bind.is_some() {
+        return FilterResult::Intercept(release_bind);
     }
 
     let mut final_bind = find_bind(
-        bindings,
+        bindings.iter().copied().filter(|bind| !bind.release),
         mod_key,
         modified,
         raw,
@@ -4874,6 +4945,7 @@ fn should_intercept_key<'a>(
                     },
                     action,
                     mouse_regions: MouseRegions::empty(),
+                    release: false,
                     repeat: true,
                     cooldown: None,
                     allow_when_locked: false,
@@ -4896,15 +4968,9 @@ fn should_intercept_key<'a>(
                 FilterResult::Intercept(Some(bind))
             }
         }
-        (_, false) => {
-            // By this point, we know that the key was suppressed on press. Even if we're inhibiting
-            // shortcuts, we should still suppress the release.
-            // But we don't need to check for shortcuts inhibition here, because
-            // if it was inhibited on press (forwarded to the client), it wouldn't be suppressed,
-            // so the release would already have been forwarded at the start of this function.
-            suppressed_keys.remove(&key_code);
-            FilterResult::Intercept(None)
-        }
+        (_, false) if suppressed_keys.remove(&key_code) => FilterResult::Intercept(None),
+        (_, false) => FilterResult::Forward,
+        (None, true) if held_release_bind.is_some() => FilterResult::Intercept(None),
         (None, true) => FilterResult::Forward,
     }
 }
@@ -4940,6 +5006,7 @@ fn find_bind<'a>(
             },
             action,
             mouse_regions: MouseRegions::empty(),
+            release: false,
             repeat: true,
             cooldown: None,
             allow_when_locked: false,
@@ -5263,6 +5330,7 @@ fn hardcoded_overview_bind(raw: Keysym, mods: ModifiersState) -> Option<Bind> {
         },
         action,
         mouse_regions: MouseRegions::empty(),
+        release: false,
         repeat,
         cooldown: None,
         allow_when_locked: false,
@@ -5692,7 +5760,7 @@ fn make_binds_iter<'a>(
 
 #[cfg(test)]
 mod tests {
-    use std::cell::Cell;
+    use std::cell::{Cell, RefCell};
 
     use super::*;
     use crate::animation::Clock;
@@ -5715,6 +5783,70 @@ mod tests {
     }
 
     #[test]
+    fn release_bindings_fire_only_when_the_chord_is_released() {
+        let keysym = Keysym::x;
+        let key_code = Keycode::from(keysym.raw() + 8);
+        let bindings = Binds(vec![Bind {
+            key: Key {
+                trigger: Trigger::Keysym(keysym),
+                modifiers: Modifiers::SHIFT,
+            },
+            action: Action::SwayCommand("nop release".into()),
+            mouse_regions: MouseRegions::empty(),
+            release: true,
+            repeat: false,
+            cooldown: None,
+            allow_when_locked: false,
+            allow_inhibiting: true,
+            hotkey_overlay_title: None,
+        }]);
+        let screenshot_ui = ScreenshotUi::new(Clock::default(), Default::default());
+        let mods = ModifiersState {
+            shift: true,
+            ..Default::default()
+        };
+        let mut suppressed_keys = HashSet::new();
+        let mut held_release_bind = None;
+
+        let press = should_intercept_key(
+            &mut suppressed_keys,
+            &mut held_release_bind,
+            &bindings.0,
+            ModKey::Super,
+            key_code,
+            keysym,
+            Some(keysym),
+            true,
+            mods,
+            &screenshot_ui,
+            false,
+            false,
+        );
+        assert!(matches!(press, FilterResult::Intercept(None)));
+        assert!(held_release_bind.is_some());
+
+        let release = should_intercept_key(
+            &mut suppressed_keys,
+            &mut held_release_bind,
+            &bindings.0,
+            ModKey::Super,
+            key_code,
+            keysym,
+            Some(keysym),
+            false,
+            mods,
+            &screenshot_ui,
+            false,
+            false,
+        );
+        assert!(matches!(
+            release,
+            FilterResult::Intercept(Some(Bind { release: true, .. }))
+        ));
+        assert!(held_release_bind.is_none());
+    }
+
+    #[test]
     fn bindings_suppress_keys() {
         let close_keysym = Keysym::q;
         let bindings = Binds(vec![Bind {
@@ -5724,6 +5856,7 @@ mod tests {
             },
             action: Action::CloseWindow,
             mouse_regions: MouseRegions::empty(),
+            release: false,
             repeat: true,
             cooldown: None,
             allow_when_locked: false,
@@ -5733,6 +5866,7 @@ mod tests {
 
         let comp_mod = ModKey::Super;
         let mut suppressed_keys = HashSet::new();
+        let held_release_bind = RefCell::new(None);
 
         let screenshot_ui = ScreenshotUi::new(Clock::default(), Default::default());
         let disable_power_key_handling = false;
@@ -5745,6 +5879,7 @@ mod tests {
         let close_key_event = |suppr: &mut HashSet<Keycode>, mods: ModifiersState, pressed| {
             should_intercept_key(
                 suppr,
+                &mut held_release_bind.borrow_mut(),
                 &bindings.0,
                 comp_mod,
                 close_key_code,
@@ -5762,6 +5897,7 @@ mod tests {
         let none_key_event = |suppr: &mut HashSet<Keycode>, mods: ModifiersState, pressed| {
             should_intercept_key(
                 suppr,
+                &mut held_release_bind.borrow_mut(),
                 &bindings.0,
                 comp_mod,
                 Keycode::from(Keysym::l.raw() + 8),
@@ -5911,6 +6047,7 @@ mod tests {
                 },
                 action: Action::CloseWindow,
                 mouse_regions: MouseRegions::empty(),
+                release: false,
                 repeat: true,
                 cooldown: None,
                 allow_when_locked: false,
@@ -5924,6 +6061,7 @@ mod tests {
                 },
                 action: Action::FocusColumnLeft,
                 mouse_regions: MouseRegions::empty(),
+                release: false,
                 repeat: true,
                 cooldown: None,
                 allow_when_locked: false,
@@ -5937,6 +6075,7 @@ mod tests {
                 },
                 action: Action::FocusWindowDown,
                 mouse_regions: MouseRegions::empty(),
+                release: false,
                 repeat: true,
                 cooldown: None,
                 allow_when_locked: false,
@@ -5950,6 +6089,7 @@ mod tests {
                 },
                 action: Action::FocusWindowUp,
                 mouse_regions: MouseRegions::empty(),
+                release: false,
                 repeat: true,
                 cooldown: None,
                 allow_when_locked: false,
@@ -5963,6 +6103,7 @@ mod tests {
                 },
                 action: Action::FocusColumnRight,
                 mouse_regions: MouseRegions::empty(),
+                release: false,
                 repeat: true,
                 cooldown: None,
                 allow_when_locked: false,
