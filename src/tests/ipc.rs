@@ -4729,6 +4729,69 @@ fn root_focus_lists_outputs_once_in_global_mru_order() {
 }
 
 #[test]
+fn criteria_focus_output_ignores_hidden_scratchpad_match_and_uses_seat_output() {
+    let mut f = Fixture::new();
+    f.add_named_output_at("left-head".into(), (800, 600), Some((0, 0)));
+    f.add_named_output_at("right-head".into(), (800, 600), Some((800, 0)));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+    let hidden = crate::ipc::tree::window_id(f.swayward().layout.focus().unwrap().id());
+    assert!(crate::command::execute(f.niri_state(), "move scratchpad")[0].success);
+
+    let command = format!(r#"[id="{hidden}"] focus output right-head"#);
+    assert!(crate::command::execute(f.niri_state(), &command)[0].success);
+    assert_eq!(
+        f.swayward().layout.active_output().unwrap().name(),
+        "right-head"
+    );
+
+    let command = format!(r#"[id="{hidden}"] focus output left"#);
+    assert!(crate::command::execute(f.niri_state(), &command)[0].success);
+    assert_eq!(
+        f.swayward().layout.active_output().unwrap().name(),
+        "left-head"
+    );
+    assert!(crate::command::execute(f.niri_state(), &command)[0].success);
+    assert_eq!(
+        f.swayward().layout.active_output().unwrap().name(),
+        "right-head"
+    );
+    assert_eq!(f.swayward().layout.scratchpad_windows().count(), 1);
+    assert!(crate::command::execute(f.niri_state(), "nop")[0].success);
+}
+
+#[test]
+fn criteria_focus_output_succeeds_without_an_output_and_keeps_scratchpad_hidden() {
+    let mut f = Fixture::new();
+    f.add_output(1, (800, 600));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+    let hidden = crate::ipc::tree::window_id(f.swayward().layout.focus().unwrap().id());
+    assert!(crate::command::execute(f.niri_state(), "move scratchpad")[0].success);
+    let output = f.swayward().layout.active_output().unwrap().clone();
+
+    let command = format!(r#"[id="{hidden}"] focus output left"#);
+    assert!(crate::command::execute(f.niri_state(), &command)[0].success);
+    assert_eq!(f.swayward().layout.active_output(), Some(&output));
+    assert_eq!(f.swayward().layout.scratchpad_windows().count(), 1);
+    assert!(crate::command::execute(f.niri_state(), "nop")[0].success);
+}
+
+#[test]
 fn focus_output_prefers_a_name_over_a_direction_and_resolves_directions() {
     let mut f = Fixture::new();
     f.add_named_output_at("origin".into(), (1280, 720), Some((0, 0)));

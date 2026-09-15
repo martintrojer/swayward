@@ -802,6 +802,11 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
                 return error;
             }
         }
+        Command::FocusOutput(identifier) => {
+            if let Err(error) = focus::output(state, identifier) {
+                return error;
+            }
+        }
         Command::Layout(value) => {
             if let Err(error) = layout::targeted(state, target, *value) {
                 return error;
