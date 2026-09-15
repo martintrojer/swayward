@@ -153,6 +153,26 @@ It therefore moves the container by 25 pixels (`sway/commands/move.c:693-710`).
 Swayward follows sway's pixel-only directional movement rather than i3's
 percentage-point behavior.
 
+### Singleton layout containers after moves
+
+Sway preserves singleton stacked and tabbed containers after moving their other
+children away. Move paths call `container_reap_empty`, which destroys only
+containers with zero children (`sway/sway/tree/container.c:525-541`;
+`sway/sway/commands/move.c:225,410,612,722`). The separate
+`container_flatten` function removes singleton containers, but its only caller
+is the explicit `split none` command (`sway/sway/tree/container.c:543-556`;
+`sway/sway/commands/split.c:34-41`).
+
+A sway 1.11 capture with two headless 1024×768 outputs confirmed the call graph.
+After moving both leaves from a stacked container on the left output, GET_TREE
+reported two singleton stacked containers on the right output, one for each
+leaf. Swayward retains the same wrappers. I3's four top-level child-count
+expectations in `524-move.t` therefore do not apply.
+
+This rule is distinct from splitting a singleton horizontal or vertical
+container. In that case, sway changes the existing parent layout instead of
+creating another container (`sway/sway/tree/container.c:1565-1582`).
+
 ### Workspace names beginning with `__`
 
 I3 reserves workspace names beginning with `__`: it excludes such names while
