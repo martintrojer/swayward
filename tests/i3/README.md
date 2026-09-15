@@ -191,7 +191,7 @@ full-suite runs took 42.15–43.08 seconds for the swayward test binary. The
 original 62-second failure remains unexplained, so the timeout remains 30
 seconds per vendored file rather than being raised without evidence.
 
-## Coverage
+## Coverage conventions
 
 The status `skip: i3-only tree structure` applies when a test requires the i3
 output-level `content` container. Sway places workspaces directly below outputs
@@ -300,7 +300,7 @@ without fabricating a tree that real sway clients do not see. See
 | `271-for_window_tilingfloating.t` | 20 | finished: 0 pass; 12 skip; 8 unproven | Of the six criteria, two are sway-supported current-state predicates: `tiling` and `floating` (`sway/sway/criteria.c:607-611`; `sway/sway/sway.5.scd:1044-1045,1068-1069`). The translator maps them exactly to KDL `is-floating=false|true`, and now preserves all valid `mark` flag combinations through the existing map-time command surface. Four are i3-only provenance predicates: `tiling_from=auto|user` and `floating_from=auto|user` (`i3/src/match.c:417-443`). A complete search of sway source and runtime documentation finds no provenance criterion, so those forms remain fail-loud and their 12 dependent assertions are skipped rather than conflating “was tiled or floating by policy” with current state. The eight current-state assertions remain unproven because this adapter's `open_floating_window` maps a native toplevel tiled and changes it afterward, unlike upstream's pre-map X11 utility type; native tests prove tiled-state map-time marks and global mark uniqueness. |
 | `208-regress-floating-criteria.t` | 1 | pass | The translator converts all three directives used by the test: `font`, X11-class `assign`, and X11-class `for_window`. The adapter creates the `xdg_toplevel` without mapping it until the test calls `map`; the criteria chain then runs before focus. The final X11-class focus command is rejected, but `does_i3_live` intentionally asserts only that this historical command sequence does not crash. |
 
-## Coverage
+## Coverage table
 
 | File | Assertions | Result | Notes |
 | --- | ---: | --- | --- |
@@ -437,6 +437,34 @@ All seven i3 files using `cmp_tree` avoid X11-only client operations and belong 
 | `550-focus-workspace.t` | 17 | pass | Criteria-targeted `focus workspace` selects the target window's workspace and preserves workspace auto-back-and-forth behavior. Both translated X11 class criteria and the adapter's established portable node identity exercise the existing single focus history. |
 
 The pinned oracle has 23 unvendored `regress` files after this batch. Five are dock-dependent (`150-regress-dock-restart.t`, `154-regress-multiple-dock.t`, `162-regress-dock-urgent.t`, `182-regress-focus-dock.t`, and `222-regress-dock-resize.t`), and six require an in-place compositor restart (`143-regress-floating-restart.t`, `150-regress-dock-restart.t`, `161-regress-borders-restart.t`, `168-regress-fullscreen-restart.t`, `188-regress-focus-restart.t`, and `267-regress-mark-restart.t`). Those classes are unproven by this Wayland harness. `150` belongs to both classes, leaving 13 other reachable candidates. The pinned checkout has `248-regress-urgency-clear.t`, not `248-regress-move-restart.t`.
+
+## A known intermittent failure
+
+The conformance runner occasionally fails one file per full-suite run and passes
+that same file in isolation. Two causes have been found and fixed:
+
+- A 30-second per-file deadline. `132-move-workspace.t` runs 160 assertions and
+  measures about 14s warm but 33s on a cold build cache, so the suite tripped it
+  while the file was still emitting passing assertions. The deadline is now 180s.
+- The harness leaked one control socket and one translated config per test. A
+  temp directory had accumulated over 7000 of them, and Unix socket paths are
+  capped near 108 bytes. Both are now removed through a `Drop` guard.
+
+A third symptom is still unexplained. It reports
+
+    connect /run/user/1000/swayward-ipc.i3-tests.<pid>.<n>.sock: No such file or directory
+
+from `tests/i3/lib/i3test.pm`, which opens a fresh connection per IPC request.
+Observed roughly once in four full-suite runs, in `132-move-workspace.t` and
+`255-multiple-marks.t`; every named file passed in isolation immediately
+afterwards. `IpcServer::drop` unlinks its socket path, and the conformance runner
+starts its server under the fixed name `i3-tests`, so a stale unlink is a
+plausible mechanism -- but the socket id is a process-global counter, which
+should make paths unique, and the theory is unconfirmed. It is recorded here
+rather than guessed at.
+
+If you see it, capture the whole run and note the file. Do not dismiss it: three
+earlier intermittent failures in this suite each turned out to be a real bug.
 
 ## Unvendored-file audit and green ceiling
 
