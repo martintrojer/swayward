@@ -263,10 +263,21 @@ where
                     let binds = &mut config.binds.0;
                     // Remove existing binds matching any new bind.
                     binds.retain(|bind| {
-                        !part
-                            .0
-                            .iter()
-                            .any(|new| (new.key, new.release) == (bind.key, bind.release))
+                        !part.0.iter().any(|new| {
+                            (
+                                new.key,
+                                new.group,
+                                new.release,
+                                new.allow_when_locked,
+                                new.allow_inhibiting,
+                            ) == (
+                                bind.key,
+                                bind.group,
+                                bind.release,
+                                bind.allow_when_locked,
+                                bind.allow_inhibiting,
+                            )
+                        })
                     });
                     // Add all new binds.
                     binds.extend(part.0);
@@ -787,6 +798,34 @@ mod tests {
             config.binding_modes[0].binds.0[1].action,
             Action::SwayCommand("mode default".into())
         );
+    }
+
+    #[test]
+    fn grouped_and_group_agnostic_binds_can_share_a_trigger() {
+        let config = Config::parse_mem(
+            r#"binds {
+                Q { command "nop wildcard"; }
+                Group2+Q { command "nop group-2"; }
+                Mode_switch+W { command "nop alias"; }
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(config.binds.0.len(), 3);
+        assert_eq!(config.binds.0[0].group, None);
+        assert_eq!(config.binds.0[1].group, Some(1));
+        assert_eq!(config.binds.0[2].group, Some(1));
+    }
+
+    #[test]
+    fn group_parser_rejects_invalid_and_duplicate_groups() {
+        for key in ["Group0+Q", "Group5+Q", "Group2+Group3+Q"] {
+            let error = Config::parse_mem(&format!(
+                "binds {{ {key} {{ command \"nop invalid\"; }}; }}"
+            ))
+            .unwrap_err();
+            assert!(format!("{error:?}").contains("Group1 to Group4"), "{key}");
+        }
     }
 
     #[test]

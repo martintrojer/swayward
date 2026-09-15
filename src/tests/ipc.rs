@@ -1126,6 +1126,73 @@ pub(super) fn type_key_chords(fixture: &mut Fixture, chords: &[&[u32]]) {
     }
 }
 
+fn set_xkb_layout(fixture: &mut Fixture, layout: u32) {
+    let keyboard = fixture.swayward().seat.get_keyboard().unwrap();
+    keyboard.with_xkb_state(fixture.niri_state(), |mut context| {
+        context.set_layout(smithay::input::keyboard::Layout(layout));
+    });
+}
+
+#[test]
+fn group_binding_overrides_wildcard_only_in_its_active_group() {
+    let config = swayward_config::Config::parse_mem(
+        r#"input { keyboard { xkb { layout "us,ru"; }; }; }
+        binds {
+            Q { command "workspace wildcard"; };
+            Group2+Q { command "workspace exact"; };
+        }"#,
+    )
+    .unwrap();
+    let mut fixture = Fixture::with_config(config);
+    fixture.add_output(1, (1280, 720));
+
+    type_key_chords(&mut fixture, &[&[24]]);
+    assert!(fixture
+        .swayward()
+        .layout
+        .find_workspace_by_name("wildcard")
+        .is_some());
+    assert!(fixture
+        .swayward()
+        .layout
+        .find_workspace_by_name("exact")
+        .is_none());
+
+    set_xkb_layout(&mut fixture, 1);
+    type_key_chords(&mut fixture, &[&[24]]);
+    assert!(fixture
+        .swayward()
+        .layout
+        .find_workspace_by_name("exact")
+        .is_some());
+}
+
+#[test]
+fn translated_keysym_binding_fires_in_its_xkb_layout() {
+    let config = swayward_config::Config::parse_mem(
+        r#"input { keyboard { xkb { layout "us,ru"; }; }; }
+        binds { Cyrillic_ef { command "workspace cyrillic"; }; }"#,
+    )
+    .unwrap();
+    let mut fixture = Fixture::with_config(config);
+    fixture.add_output(1, (1280, 720));
+
+    type_key_chords(&mut fixture, &[&[38]]);
+    assert!(fixture
+        .swayward()
+        .layout
+        .find_workspace_by_name("cyrillic")
+        .is_none());
+
+    set_xkb_layout(&mut fixture, 1);
+    type_key_chords(&mut fixture, &[&[38]]);
+    assert!(fixture
+        .swayward()
+        .layout
+        .find_workspace_by_name("cyrillic")
+        .is_some());
+}
+
 #[test]
 fn pointer_button_binding_requires_the_configured_rendered_region() {
     let config = swayward_config::Config::parse_mem(

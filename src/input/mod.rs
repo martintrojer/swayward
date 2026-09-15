@@ -484,6 +484,7 @@ impl State {
                 let key_code = event.key_code();
                 let modified = keysym.modified_sym();
                 let raw = keysym.raw_latin_sym_or_raw_current_sym();
+                let group = keysym.xkb().lock().unwrap().active_layout().0;
                 let modifiers = modifiers_from_state(*mods);
 
                 // After updating XKB state from accessibility-grabbed keys, return right away and
@@ -581,6 +582,7 @@ impl State {
                         key_code,
                         modified,
                         raw,
+                        group,
                         pressed,
                         *mods,
                         &this.swayward.screenshot_ui,
@@ -685,11 +687,13 @@ impl State {
         }
 
         if let Some(cooldown) = bind.cooldown {
-            match self
-                .swayward
-                .bind_cooldown_timers
-                .entry((bind.key, bind.release))
-            {
+            match self.swayward.bind_cooldown_timers.entry((
+                bind.key,
+                bind.group,
+                bind.release,
+                bind.allow_when_locked,
+                bind.allow_inhibiting,
+            )) {
                 Entry::Occupied(_) => return,
                 Entry::Vacant(entry) => {
                     let timer = Timer::from_duration(cooldown);
@@ -700,7 +704,13 @@ impl State {
                             if state
                                 .swayward
                                 .bind_cooldown_timers
-                                .remove(&(bind.key, bind.release))
+                                .remove(&(
+                                    bind.key,
+                                    bind.group,
+                                    bind.release,
+                                    bind.allow_when_locked,
+                                    bind.allow_inhibiting,
+                                ))
                                 .is_none()
                             {
                                 error!("bind cooldown timer entry disappeared");
@@ -3445,6 +3455,7 @@ impl State {
                                 },
                                 action: Action::FocusColumnLeftUnderMouse,
                                 mouse_regions: MouseRegions::empty(),
+                                group: None,
                                 release: false,
                                 repeat: true,
                                 cooldown: None,
@@ -3459,6 +3470,7 @@ impl State {
                                 },
                                 action: Action::FocusColumnRightUnderMouse,
                                 mouse_regions: MouseRegions::empty(),
+                                group: None,
                                 release: false,
                                 repeat: true,
                                 cooldown: None,
@@ -3526,6 +3538,7 @@ impl State {
                             },
                             action: Action::FocusWorkspaceUpUnderMouse,
                             mouse_regions: MouseRegions::empty(),
+                            group: None,
                             release: false,
                             repeat: true,
                             cooldown: Some(Duration::from_millis(50)),
@@ -3540,6 +3553,7 @@ impl State {
                             },
                             action: Action::FocusWorkspaceDownUnderMouse,
                             mouse_regions: MouseRegions::empty(),
+                            group: None,
                             release: false,
                             repeat: true,
                             cooldown: Some(Duration::from_millis(50)),
@@ -3556,6 +3570,7 @@ impl State {
                             },
                             action: Action::FocusColumnLeftUnderMouse,
                             mouse_regions: MouseRegions::empty(),
+                            group: None,
                             release: false,
                             repeat: true,
                             cooldown: Some(Duration::from_millis(50)),
@@ -3570,6 +3585,7 @@ impl State {
                             },
                             action: Action::FocusColumnRightUnderMouse,
                             mouse_regions: MouseRegions::empty(),
+                            group: None,
                             release: false,
                             repeat: true,
                             cooldown: Some(Duration::from_millis(50)),
@@ -4875,6 +4891,7 @@ fn should_intercept_key<'a>(
     key_code: Keycode,
     modified: Keysym,
     raw: Option<Keysym>,
+    group: u32,
     pressed: bool,
     mods: ModifiersState,
     screenshot_ui: &ScreenshotUi,
@@ -4888,11 +4905,12 @@ fn should_intercept_key<'a>(
         modified,
         raw,
         key_code,
+        group,
         mods,
+        screenshot_ui.is_open(),
+        is_inhibiting_shortcuts,
         disable_power_key_handling,
-    )
-    .filter(|bind| !is_inhibiting_shortcuts || !bind.allow_inhibiting)
-    .filter(|bind| !screenshot_ui.is_open() || allowed_during_screenshot(&bind.action));
+    );
     if pressed {
         if release_bind.is_some() {
             *held_release_bind = release_bind;
@@ -4916,7 +4934,10 @@ fn should_intercept_key<'a>(
         modified,
         raw,
         key_code,
+        group,
         mods,
+        screenshot_ui.is_open(),
+        is_inhibiting_shortcuts,
         disable_power_key_handling,
     );
 
@@ -4941,6 +4962,7 @@ fn should_intercept_key<'a>(
                     },
                     action,
                     mouse_regions: MouseRegions::empty(),
+                    group: None,
                     release: false,
                     repeat: true,
                     cooldown: None,
@@ -4977,7 +4999,10 @@ fn find_bind<'a>(
     modified: Keysym,
     raw: Option<Keysym>,
     key_code: Keycode,
+    group: u32,
     mods: ModifiersState,
+    locked: bool,
+    inhibited: bool,
     disable_power_key_handling: bool,
 ) -> Option<Bind> {
     use keysyms::*;
@@ -5002,6 +5027,7 @@ fn find_bind<'a>(
             },
             action,
             mouse_regions: MouseRegions::empty(),
+            group: None,
             release: false,
             repeat: true,
             cooldown: None,
@@ -5016,15 +5042,12 @@ fn find_bind<'a>(
         });
     }
 
-    raw.and_then(|raw| find_configured_bind(bindings.clone(), mod_key, Trigger::Keysym(raw), mods))
-        .or_else(|| {
-            find_configured_bind(
-                bindings,
-                mod_key,
-                Trigger::Keycode(key_code.raw() + 8),
-                mods,
-            )
-        })
+    let triggers = [
+        Trigger::Keycode(key_code.raw() + 8),
+        Trigger::Keysym(modified),
+        Trigger::Keysym(raw.unwrap_or(modified)),
+    ];
+    find_configured_bind_with_context(bindings, mod_key, &triggers, mods, group, locked, inhibited)
 }
 
 fn mouse_regions_match(
@@ -5036,37 +5059,65 @@ fn mouse_regions_match(
 }
 
 fn find_configured_bind<'a>(
-    bindings: impl IntoIterator<Item = &'a Bind>,
+    bindings: impl IntoIterator<Item = &'a Bind> + Clone,
     mod_key: ModKey,
     trigger: Trigger,
     mods: ModifiersState,
 ) -> Option<Bind> {
-    // Handle configured binds.
-    let mut modifiers = modifiers_from_state(mods);
+    find_configured_bind_with_context(bindings, mod_key, &[trigger], mods, 0, false, false)
+}
 
-    let mod_down = modifiers_from_state(mods).contains(mod_key.to_modifiers());
+fn find_configured_bind_with_context<'a>(
+    bindings: impl IntoIterator<Item = &'a Bind> + Clone,
+    mod_key: ModKey,
+    triggers: &[Trigger],
+    mods: ModifiersState,
+    group: u32,
+    locked: bool,
+    inhibited: bool,
+) -> Option<Bind> {
+    let mut modifiers = modifiers_from_state(mods);
+    let mod_down = modifiers.contains(mod_key.to_modifiers());
     if mod_down {
         modifiers |= Modifiers::COMPOSITOR;
     }
 
+    let mut best = None;
+    let mut best_rank = None;
     for bind in bindings {
-        if bind.key.trigger != trigger {
-            continue;
-        }
+        for trigger in triggers {
+            if bind.key.trigger != *trigger
+                || bind
+                    .group
+                    .is_some_and(|bind_group| u32::from(bind_group) != group)
+                || (locked && !bind.allow_when_locked)
+                || (inhibited && bind.allow_inhibiting)
+            {
+                continue;
+            }
 
-        let mut bind_modifiers = bind.key.modifiers;
-        if bind_modifiers.contains(Modifiers::COMPOSITOR) {
-            bind_modifiers |= mod_key.to_modifiers();
-        } else if bind_modifiers.contains(mod_key.to_modifiers()) {
-            bind_modifiers |= Modifiers::COMPOSITOR;
-        }
+            let mut bind_modifiers = bind.key.modifiers;
+            if bind_modifiers.contains(Modifiers::COMPOSITOR) {
+                bind_modifiers |= mod_key.to_modifiers();
+            } else if bind_modifiers.contains(mod_key.to_modifiers()) {
+                bind_modifiers |= Modifiers::COMPOSITOR;
+            }
+            if bind_modifiers != modifiers {
+                continue;
+            }
 
-        if bind_modifiers == modifiers {
-            return Some(bind.clone());
+            let rank = (
+                bind.group.is_some(),
+                bind.allow_when_locked == locked,
+                (!bind.allow_inhibiting) == inhibited,
+            );
+            if best_rank.is_none_or(|current| rank > current) {
+                best = Some(bind.clone());
+                best_rank = Some(rank);
+            }
         }
     }
-
-    None
+    best
 }
 
 fn find_configured_switch_action(
@@ -5326,6 +5377,7 @@ fn hardcoded_overview_bind(raw: Keysym, mods: ModifiersState) -> Option<Bind> {
         },
         action,
         mouse_regions: MouseRegions::empty(),
+        group: None,
         release: false,
         repeat,
         cooldown: None,
@@ -5778,6 +5830,76 @@ mod tests {
         ));
     }
 
+    fn binding(command: &str, group: Option<u8>) -> Bind {
+        Bind {
+            key: Key {
+                trigger: Trigger::Keysym(Keysym::q),
+                modifiers: Modifiers::empty(),
+            },
+            action: Action::SwayCommand(command.into()),
+            mouse_regions: MouseRegions::empty(),
+            group,
+            release: false,
+            repeat: true,
+            cooldown: None,
+            allow_when_locked: false,
+            allow_inhibiting: true,
+            hotkey_overlay_title: None,
+        }
+    }
+
+    #[test]
+    fn exact_xkb_group_beats_the_wildcard_and_wrong_groups_do_not_match() {
+        let wildcard = binding("nop wildcard", None);
+        let group_2 = binding("nop group-2", Some(1));
+        let bindings = [&wildcard, &group_2];
+        assert_eq!(
+            find_configured_bind_with_context(
+                bindings,
+                ModKey::Super,
+                &[Trigger::Keysym(Keysym::q)],
+                ModifiersState::default(),
+                1,
+                false,
+                false,
+            )
+            .as_ref(),
+            Some(&group_2)
+        );
+        assert_eq!(
+            find_configured_bind_with_context(
+                [&group_2],
+                ModKey::Super,
+                &[Trigger::Keysym(Keysym::q)],
+                ModifiersState::default(),
+                0,
+                false,
+                false,
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn group_agnostic_binding_matches_every_xkb_group() {
+        let wildcard = binding("nop wildcard", None);
+        for group in [0, 1, 3] {
+            assert_eq!(
+                find_configured_bind_with_context(
+                    [&wildcard],
+                    ModKey::Super,
+                    &[Trigger::Keysym(Keysym::q)],
+                    ModifiersState::default(),
+                    group,
+                    false,
+                    false,
+                )
+                .as_ref(),
+                Some(&wildcard),
+            );
+        }
+    }
+
     #[test]
     fn release_bindings_fire_only_when_the_chord_is_released() {
         let keysym = Keysym::x;
@@ -5789,6 +5911,7 @@ mod tests {
             },
             action: Action::SwayCommand("nop release".into()),
             mouse_regions: MouseRegions::empty(),
+            group: None,
             release: true,
             repeat: false,
             cooldown: None,
@@ -5812,6 +5935,7 @@ mod tests {
             key_code,
             keysym,
             Some(keysym),
+            0,
             true,
             mods,
             &screenshot_ui,
@@ -5829,6 +5953,7 @@ mod tests {
             key_code,
             keysym,
             Some(keysym),
+            0,
             false,
             mods,
             &screenshot_ui,
@@ -5852,6 +5977,7 @@ mod tests {
             },
             action: Action::CloseWindow,
             mouse_regions: MouseRegions::empty(),
+            group: None,
             release: false,
             repeat: true,
             cooldown: None,
@@ -5881,6 +6007,7 @@ mod tests {
                 close_key_code,
                 close_keysym,
                 Some(close_keysym),
+                0,
                 pressed,
                 mods,
                 &screenshot_ui,
@@ -5899,6 +6026,7 @@ mod tests {
                 Keycode::from(Keysym::l.raw() + 8),
                 Keysym::l,
                 Some(Keysym::l),
+                0,
                 pressed,
                 mods,
                 &screenshot_ui,
@@ -6043,6 +6171,7 @@ mod tests {
                 },
                 action: Action::CloseWindow,
                 mouse_regions: MouseRegions::empty(),
+                group: None,
                 release: false,
                 repeat: true,
                 cooldown: None,
@@ -6057,6 +6186,7 @@ mod tests {
                 },
                 action: Action::FocusColumnLeft,
                 mouse_regions: MouseRegions::empty(),
+                group: None,
                 release: false,
                 repeat: true,
                 cooldown: None,
@@ -6071,6 +6201,7 @@ mod tests {
                 },
                 action: Action::FocusWindowDown,
                 mouse_regions: MouseRegions::empty(),
+                group: None,
                 release: false,
                 repeat: true,
                 cooldown: None,
@@ -6085,6 +6216,7 @@ mod tests {
                 },
                 action: Action::FocusWindowUp,
                 mouse_regions: MouseRegions::empty(),
+                group: None,
                 release: false,
                 repeat: true,
                 cooldown: None,
@@ -6099,6 +6231,7 @@ mod tests {
                 },
                 action: Action::FocusColumnRight,
                 mouse_regions: MouseRegions::empty(),
+                group: None,
                 release: false,
                 repeat: true,
                 cooldown: None,

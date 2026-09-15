@@ -62,6 +62,8 @@ pub struct Bind {
     pub key: Key,
     pub action: Action,
     pub mouse_regions: MouseRegions,
+    /// Zero-based XKB layout group. `None` matches every active group.
+    pub group: Option<u8>,
     pub release: bool,
     pub repeat: bool,
     pub cooldown: Option<Duration>,
@@ -75,6 +77,7 @@ impl std::fmt::Debug for Bind {
         f.debug_struct("Bind")
             .field("key", &self.key)
             .field("action", &self.action)
+            .field("group", &self.group)
             .field("repeat", &self.repeat)
             .field("cooldown", &self.cooldown)
             .field("allow_when_locked", &self.allow_when_locked)
@@ -868,13 +871,22 @@ impl Binds {
         node: &knuffel::ast::SpannedNode<S>,
         ctx: &mut knuffel::decode::Context<S>,
     ) -> Self {
-        let mut seen_keys: HashMap<(Key, bool), &knuffel::ast::SpannedNode<S>> = HashMap::new();
+        let mut seen_keys: HashMap<
+            (Key, Option<u8>, bool, bool, bool),
+            &knuffel::ast::SpannedNode<S>,
+        > = HashMap::new();
         let mut binds = Vec::new();
 
         for child in node.children() {
             match <Bind as knuffel::Decode<S>>::decode_node(child, ctx) {
                 Err(e) => ctx.emit_error(e),
-                Ok(bind) => match seen_keys.entry((bind.key, bind.release)) {
+                Ok(bind) => match seen_keys.entry((
+                    bind.key,
+                    bind.group,
+                    bind.release,
+                    bind.allow_when_locked,
+                    bind.allow_inhibiting,
+                )) {
                     Entry::Occupied(entry) => {
                         // Even though it's technically incorrect, we use
                         // `DecodeError::Missing` here because it labels the bind with
@@ -937,8 +949,30 @@ where
             ));
         }
 
-        let key = node
-            .node_name
+        let mut key_name = node.node_name.to_string();
+        let mut group = None;
+        let mut key_parts = key_name.split('+').collect::<Vec<_>>();
+        key_parts.retain(|part| {
+            let value = if *part == "Mode_switch" {
+                Some("2")
+            } else {
+                part.strip_prefix("Group")
+            };
+            let Some(value) = value else {
+                return true;
+            };
+            match value.parse::<u8>() {
+                Ok(value @ 1..=4) if group.is_none() => group = Some(value - 1),
+                _ => ctx.emit_error(DecodeError::unexpected(
+                    &node.node_name,
+                    "keybind",
+                    "exactly one XKB group from Group1 to Group4 is allowed",
+                )),
+            }
+            false
+        });
+        key_name = key_parts.join("+");
+        let key = key_name
             .parse::<Key>()
             .map_err(|e| DecodeError::conversion(&node.node_name, e.wrap_err("invalid keybind")))?;
 
@@ -1014,6 +1048,7 @@ where
             key,
             action: Action::Spawn(vec![]),
             mouse_regions,
+            group,
             release,
             repeat: true,
             cooldown: None,
@@ -1068,6 +1103,7 @@ where
                     key,
                     action: Action::SwayCommand(command),
                     mouse_regions,
+                    group,
                     release,
                     repeat,
                     cooldown,
@@ -1098,6 +1134,7 @@ where
                         key,
                         action,
                         mouse_regions,
+                        group,
                         release,
                         repeat,
                         cooldown,

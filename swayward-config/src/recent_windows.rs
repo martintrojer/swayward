@@ -150,6 +150,7 @@ impl From<MruBind> for Bind {
             key: x.key,
             action: Action::from(x.action),
             mouse_regions: MouseRegions::empty(),
+            group: None,
             release: false,
             repeat: true,
             cooldown: None,

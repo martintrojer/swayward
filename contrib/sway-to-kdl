@@ -435,10 +435,12 @@ class Translator:
             self.warn(source, line, rest, f"malformed {kind}")
             return
         if kind == "bindcode":
-            if not key.isdecimal():
+            parts = key.split("+")
+            code = parts.pop()
+            if not code.isdecimal():
                 self.warn(source, line, rest, "bindcode key must be numeric")
                 return
-            key = f"code:{key}"
+            key = "+".join([*parts, f"code:{code}"])
 
         command = command.strip()
         mouse_regions = {

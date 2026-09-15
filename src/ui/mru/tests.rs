@@ -31,6 +31,7 @@ fn bind(trigger: Keysym, action: Action) -> Bind {
         },
         action,
         mouse_regions: MouseRegions::empty(),
+        group: None,
         release: false,
         repeat: true,
         cooldown: None,
