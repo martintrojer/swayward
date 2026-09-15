@@ -1170,6 +1170,10 @@ impl<W: LayoutElement> Workspace<W> {
         }
     }
 
+    pub fn focus_next_prev_sibling(&mut self, next: bool) -> bool {
+        !self.floating_is_active.get() && self.tiling.focus_next_prev_sibling(next)
+    }
+
     pub fn focus_child(&mut self) -> bool {
         if self.is_workspace_focused() && self.floating_is_active == FloatingActive::NoButRaised {
             self.floating_is_active = FloatingActive::Yes;

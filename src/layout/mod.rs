@@ -2174,6 +2174,11 @@ impl<W: LayoutElement> Layout<W> {
         }
     }
 
+    pub fn focus_next_prev_sibling(&mut self, next: bool) -> bool {
+        self.active_workspace_mut()
+            .is_some_and(|workspace| workspace.focus_next_prev_sibling(next))
+    }
+
     pub fn focused_tiling_node(&self) -> Option<tiling_tree::NodeId> {
         self.active_workspace()?.focused_tiling_node()
     }

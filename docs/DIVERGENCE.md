@@ -53,14 +53,14 @@ swayward-ipc/src/command.rs, src/command.rs, src/layout/mod.rs, src/layout/monit
 swayward-ipc/src/command.rs, src/command.rs — parse and execute sway's container and workspace move-to-output forms by output name or direction.
 swayward-ipc/src/command.rs, src/command.rs, src/layout/mod.rs, src/layout/workspace.rs, src/layout/tiling_tree/mod.rs — move windows and container subtrees to marked destinations using sway's sibling-versus-child insertion rules while preserving subtree focus and marks; enforce global mark uniqueness across window and split-container storage; swap tiling nodes selected by `con_id` or mark within or across workspaces while preserving focus order, geometry shares, marks, and fullscreen state at the occupied positions.
 swayward-ipc/src/command.rs, src/command.rs — parse and execute sway's focus-output command, including multi-word names and directional output lookup.
-swayward-ipc/src/command.rs — map sway's zero-argument `splith`, `splitv`, and `splitt` aliases to the existing split commands.
+swayward-ipc/src/command.rs — map sway's zero-argument `splith`, `splitv`, and `splitt` aliases to the existing split commands, and parse `focus next|prev sibling` without conflating its no-descent semantics with bare next/prev.
 (workspace-wide) — run `cargo fmt --all` after the rename changed identifier sort order; no behavioural change.
 
 ## Deliberate behavioural deviations from sway
 
 src/layout/workspace.rs — retire niri's horizontal viewport offset and its gesture state; the i3 tree always occupies the workspace view.
 docs/wiki/, docs/mkdocs.yaml — retire scroll-layout documentation and rebrand retained niri subsystem guides for swayward.
-src/layout/mod.rs, src/layout/workspace.rs, src/layout/tiling_tree/mod.rs — expose stable focused-node identity and targeted container layout mutation for sway command contexts, and wrap workspace-level insertions in sway's configured stacking or tabbed default layout.
+src/layout/mod.rs, src/layout/workspace.rs, src/layout/tiling_tree/mod.rs — expose stable focused-node identity and targeted container layout mutation for sway command contexts, implement sibling-only next/prev focus without descending into the selected container, and wrap workspace-level insertions in sway's configured stacking or tabbed default layout.
 src/ipc/server.rs — emit sway-shaped workspace, window, binding-mode, and tick subscription payloads for waybar-compatible event streams, including ordered workspace init, focus, rename, empty, close, move, floating, fullscreen, title, mark, new, and urgency events.
 swayward-config/src/binds.rs, src/input/mod.rs — add validated sway command-string binds while retaining inherited typed actions for unsupported compositor features.
 swayward-config/src/binds.rs, src/input/mod.rs, src/ui/hotkey_overlay.rs — accept numeric bindcode triggers so translated sway bindcode directives remain functional.

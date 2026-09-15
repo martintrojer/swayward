@@ -946,6 +946,25 @@ fn parent_and_child_focus_walk_the_tree_and_layout_the_selected_parent() {
 }
 
 #[test]
+fn focus_next_sibling_stops_at_container_while_bare_next_descends() {
+    let mut t = tree((1200., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let second = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.split(second, Layout::SplitV);
+    let third = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+    let nested = t.nodes[&third].parent.unwrap();
+
+    t.set_focus(first);
+    assert!(t.focus_next_prev_sibling(true));
+    assert_eq!(t.focus(), Some(nested));
+
+    t.set_focus(first);
+    assert!(t.focus_right());
+    assert_eq!(t.focus(), Some(third));
+    t.check_invariants();
+}
+
+#[test]
 fn split_parent_preserves_stacked_child_focus_axis() {
     let mut t = tree((1200., 800.), 0.);
     let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);

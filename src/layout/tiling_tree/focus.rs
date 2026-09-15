@@ -147,6 +147,62 @@ impl<W: LayoutElement> TilingTree<W> {
         target.is_some()
     }
 
+    pub fn focus_next_prev_sibling(&mut self, next: bool) -> bool {
+        let Some(focus) = self.focus else {
+            return false;
+        };
+        let Some(parent) = self.nodes.get(&focus).and_then(|node| node.parent) else {
+            return false;
+        };
+        let TreeNode::Split { layout, .. } = &self.nodes[&parent].value else {
+            return false;
+        };
+        let direction_layout = match layout {
+            Layout::SplitH | Layout::Tabbed => Layout::SplitH,
+            Layout::SplitV | Layout::Stacked => Layout::SplitV,
+        };
+        let mut current = focus;
+        let mut wrap = None;
+        while let Some(parent) = self.nodes.get(&current).and_then(|node| node.parent) {
+            let TreeNode::Split {
+                layout, children, ..
+            } = &self.nodes[&parent].value
+            else {
+                return false;
+            };
+            if Self::layouts_parallel(*layout, direction_layout) {
+                let index = children.iter().position(|child| *child == current).unwrap();
+                let target = if next {
+                    children.get(index + 1).copied()
+                } else {
+                    index
+                        .checked_sub(1)
+                        .and_then(|index| children.get(index).copied())
+                };
+                if target.is_some() {
+                    self.set_focus_id(target);
+                    return true;
+                }
+                if children.len() > 1 && wrap.is_none() {
+                    wrap = if next {
+                        children.first().copied()
+                    } else {
+                        children.last().copied()
+                    };
+                    if self.options.layout.focus_wrapping == swayward_config::FocusWrapping::Force {
+                        self.set_focus_id(wrap);
+                        return true;
+                    }
+                }
+            }
+            current = parent;
+        }
+        if wrap.is_some() {
+            self.set_focus_id(wrap);
+        }
+        wrap.is_some()
+    }
+
     pub fn focus_direction(&mut self, dir: Direction) -> bool {
         let Some(mut current) = self.focus else {
             return false;

@@ -139,6 +139,8 @@ pub enum Command {
     FocusChild,
     FocusNext,
     FocusPrev,
+    FocusNextSibling,
+    FocusPrevSibling,
     FocusFloating,
     FocusTiling,
     FocusModeToggle,
@@ -495,6 +497,15 @@ fn parse_focus(args: &[&str]) -> Result<Command, String> {
             [] => Err("Expected 'focus output <direction|name>'.".into()),
             output => Ok(Command::FocusOutput(join_words(output))),
         };
+    }
+    if let [direction, sibling] = args {
+        if sibling.eq_ignore_ascii_case("sibling") {
+            return match direction.to_ascii_lowercase().as_str() {
+                "next" => Ok(Command::FocusNextSibling),
+                "prev" => Ok(Command::FocusPrevSibling),
+                _ => Err("Expected 'focus next|prev [sibling]'".into()),
+            };
+        }
     }
     let arg = one(
         args,

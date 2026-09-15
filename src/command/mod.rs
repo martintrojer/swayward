@@ -129,6 +129,14 @@ fn execute_one(
         }
         Command::FocusNext => Some(Action::FocusColumnRightOrFirst),
         Command::FocusPrev => Some(Action::FocusColumnLeftOrLast),
+        Command::FocusNextSibling => {
+            focus::next_prev_sibling(state, true);
+            None
+        }
+        Command::FocusPrevSibling => {
+            focus::next_prev_sibling(state, false);
+            None
+        }
         Command::FocusFloating => Some(focus::floating(state)),
         Command::FocusTiling => Some(focus::tiling(state)),
         Command::FocusModeToggle => Some(Action::SwitchFocusBetweenFloatingAndTiling),
@@ -987,6 +995,10 @@ mod tests {
         for input in ["focus tiling", "focus floating", "focus mode_toggle"] {
             assert!(parse(input)[0].is_ok(), "{input}");
         }
+        assert_eq!(command("focus next"), Command::FocusNext);
+        assert_eq!(command("focus prev"), Command::FocusPrev);
+        assert_eq!(command("focus next sibling"), Command::FocusNextSibling);
+        assert_eq!(command("focus prev sibling"), Command::FocusPrevSibling);
     }
 
     #[test]

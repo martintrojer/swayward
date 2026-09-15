@@ -48,6 +48,12 @@ pub(super) fn child(state: &mut State) {
     state.swayward.queue_redraw_all();
 }
 
+pub(super) fn next_prev_sibling(state: &mut State, next: bool) {
+    if state.swayward.layout.focus_next_prev_sibling(next) {
+        state.swayward.queue_redraw_all();
+    }
+}
+
 pub(super) fn floating(state: &mut State) -> Action {
     state.swayward.layout.disable_active_workspace_fullscreen();
     Action::FocusFloating
