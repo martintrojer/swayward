@@ -48,6 +48,7 @@ our @EXPORT = qw(
     isa_ok
     kill_all_windows
     launch_with_config
+    listen_for_binding
     note
     create_layout
     exit_gracefully
@@ -259,6 +260,16 @@ sub _read_reply {
     substr($header, 0, 6) eq 'i3-ipc' or die 'bad IPC magic';
     my ($length, $reply_type) = unpack('LL', substr($header, 6));
     return ($reply_type, decode_json(_read_exact($socket, $length)));
+}
+
+sub listen_for_binding {
+    my ($callback) = @_;
+    my @events = events_for($callback, 'binding');
+    $tester->is_eq(scalar @events, 1, 'Received precisely one event');
+    $tester->is_eq($events[0]->{change}, 'run', 'change is "run"');
+    my $command = $events[0]->{binding}->{command};
+    $command =~ s/^nop //;
+    return $command;
 }
 
 sub events_for {
