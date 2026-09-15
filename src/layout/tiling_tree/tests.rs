@@ -1678,6 +1678,26 @@ fn directional_resize_skips_an_unusable_same_axis_boundary() {
 }
 
 #[test]
+fn sway_set_size_uses_the_matching_axis_branch_extent() {
+    let mut t = tree((1000., 800.), 0.);
+    let left = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let top_right = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.split(top_right, Layout::SplitV);
+    let bottom_right = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+
+    t.set_window_size_sway(&3, None, Some(SizeChange::SetProportion(75.)));
+    assert_eq!(
+        t.sibling_percents(top_right, bottom_right),
+        Some((0.25, 0.75))
+    );
+
+    t.set_window_size_sway(&3, Some(SizeChange::SetFixed(200)), None);
+    assert_eq!(t.geometry(bottom_right).unwrap().size.w, 200.);
+    assert_eq!(t.geometry(left).unwrap().size.w, 800.);
+    t.check_invariants();
+}
+
+#[test]
 fn interactive_resize_finds_an_adjacent_ancestor_sibling() {
     let mut t = tree((1000., 800.), 0.);
     let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);

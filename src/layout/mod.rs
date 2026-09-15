@@ -4362,6 +4362,37 @@ impl<W: LayoutElement> Layout<W> {
         workspace.set_window_width(window, change, automatic_maximum);
     }
 
+    pub fn set_tiling_node_size_sway(
+        &mut self,
+        workspace_id: workspace::WorkspaceId,
+        node: tiling_tree::NodeId,
+        width: Option<SizeChange>,
+        height: Option<SizeChange>,
+    ) {
+        if let Some(workspace) = self
+            .workspaces_mut()
+            .find(|workspace| workspace.id() == workspace_id)
+        {
+            workspace.set_tiling_node_size_sway(node, width, height);
+        }
+    }
+
+    pub fn set_window_size_sway(
+        &mut self,
+        window: &W::Id,
+        width: Option<SizeChange>,
+        height: Option<SizeChange>,
+    ) {
+        if self.is_scratchpad_hidden(window) {
+            return;
+        }
+        let automatic_maximum = self.output_layout_size();
+        let Some(workspace) = self.workspaces_mut().find(|ws| ws.has_window(window)) else {
+            return;
+        };
+        workspace.set_window_size_sway(window, width, height, automatic_maximum);
+    }
+
     pub fn set_window_height(&mut self, window: Option<&W::Id>, change: SizeChange) {
         if window.is_some_and(|window| self.is_scratchpad_hidden(window)) {
             return;

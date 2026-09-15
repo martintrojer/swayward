@@ -186,6 +186,10 @@ pub enum Command {
         first: ResizeAmount,
         second: Option<ResizeAmount>,
     },
+    ResizeSet {
+        width: Option<ResizeAmount>,
+        height: Option<ResizeAmount>,
+    },
     Reload,
     Mode(String),
     Nop,
@@ -829,7 +833,13 @@ fn parse_workspace(args: &[&str]) -> Result<WorkspaceTarget, String> {
 }
 
 fn parse_resize(args: &[&str]) -> Result<Command, String> {
-    let [operation, axis, rest @ ..] = args else {
+    let [operation, rest @ ..] = args else {
+        return Err(resize_usage());
+    };
+    if operation.eq_ignore_ascii_case("set") {
+        return parse_resize_set(rest);
+    }
+    let [axis, rest @ ..] = rest else {
         return Err(resize_usage());
     };
     let grow = if operation.eq_ignore_ascii_case("grow") {
@@ -885,6 +895,39 @@ fn parse_resize(args: &[&str]) -> Result<Command, String> {
         first,
         second,
     })
+}
+
+fn parse_resize_set(mut args: &[&str]) -> Result<Command, String> {
+    let usage = || {
+        "Expected 'resize set [width] <width> [px|ppt]' or 'resize set height <height> [px|ppt]' or 'resize set [width] <width> [px|ppt] [height] <height> [px|ppt]".to_owned()
+    };
+    if args.is_empty() {
+        return Err(usage());
+    }
+
+    let mut width = None;
+    if args.len() >= 2 && args[0] == "width" && args[1] != "height" {
+        args = &args[1..];
+    }
+    if args[0] != "height" {
+        let (amount, consumed) = parse_resize_amount(args).map_err(|_| usage())?;
+        width = Some(amount);
+        args = &args[consumed..];
+    }
+
+    let mut height = None;
+    if !args.is_empty() {
+        if args.len() >= 2 && args[0] == "height" {
+            args = &args[1..];
+        }
+        let (amount, consumed) = parse_resize_amount(args).map_err(|_| usage())?;
+        if consumed != args.len() {
+            return Err(usage());
+        }
+        height = Some(amount);
+    }
+
+    Ok(Command::ResizeSet { width, height })
 }
 
 fn parse_move_distance(value: &str) -> Result<i32, String> {

@@ -417,6 +417,15 @@ fn execute_one(
                 Some(Action::CloseWindow)
             }
         }
+        Command::ResizeSet { width, height } => {
+            let Some(target) = focused_target(state) else {
+                return success();
+            };
+            if let Err(error) = window::resize_set(state, target, width, height) {
+                return error;
+            }
+            None
+        }
         Command::Resize {
             grow,
             axis,
@@ -774,6 +783,11 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
         }
         Command::Kill => {
             if let Err(error) = window::kill(state, target) {
+                return error;
+            }
+        }
+        Command::ResizeSet { width, height } => {
+            if let Err(error) = window::resize_set(state, target, *width, *height) {
                 return error;
             }
         }
@@ -1460,6 +1474,60 @@ mod tests {
                 Some("Invalid distance specified"),
                 "{input}"
             );
+        }
+    }
+
+    #[test]
+    fn parses_sway_resize_set_forms_and_rejects_trailing_junk() {
+        let amount = |amount, unit| ResizeAmount { amount, unit };
+        for (input, width, height) in [
+            (
+                "resize set 201 131",
+                Some(amount(201, ResizeUnit::Default)),
+                Some(amount(131, ResizeUnit::Default)),
+            ),
+            (
+                "resize set width 80 ppt",
+                Some(amount(80, ResizeUnit::PercentagePoints)),
+                None,
+            ),
+            (
+                "resize set height 200 px",
+                None,
+                Some(amount(200, ResizeUnit::Pixels)),
+            ),
+            (
+                "resize set 75 ppt 200 px",
+                Some(amount(75, ResizeUnit::PercentagePoints)),
+                Some(amount(200, ResizeUnit::Pixels)),
+            ),
+            (
+                "resize set 0 ppt 75 ppt",
+                Some(amount(0, ResizeUnit::PercentagePoints)),
+                Some(amount(75, ResizeUnit::PercentagePoints)),
+            ),
+            (
+                "resize set 75 ppt 0 ppt",
+                Some(amount(75, ResizeUnit::PercentagePoints)),
+                Some(amount(0, ResizeUnit::PercentagePoints)),
+            ),
+            (
+                "resize set -1 px -2 ppt",
+                Some(amount(-1, ResizeUnit::Pixels)),
+                Some(amount(-2, ResizeUnit::PercentagePoints)),
+            ),
+        ] {
+            assert_eq!(
+                command(input),
+                Command::ResizeSet { width, height },
+                "{input}"
+            );
+        }
+        for input in [
+            "resize set width height 10",
+            "resize set 100 px height 200 px junk",
+        ] {
+            assert!(parse(input)[0].is_err(), "{input}");
         }
     }
 

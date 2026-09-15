@@ -100,3 +100,5 @@
 537-move-single-to-output.t
 531-fullscreen-on-given-output.t
 527-focus-fallback.t
+
+252-floating-size.t

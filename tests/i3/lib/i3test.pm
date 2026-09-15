@@ -287,7 +287,7 @@ sub cmd_nosync {
     }
     $command =~ s/\b(?:class|instance)=/app_id=/g;
     my $settle_configures = scalar(
-        $command =~ /\b(?:resize\s+(?:grow|shrink)|floating\s+enable|move(?:\s+to)?\s+scratchpad|scratchpad\s+show)\b/i
+        $command =~ /\b(?:resize\s+(?:grow|shrink|set)|floating\s+enable|move(?:\s+to)?\s+scratchpad|scratchpad\s+show)\b/i
     );
     _control({ action => 'prepare_resize' }) if $settle_configures;
     my $reply = _request(0, $command);

@@ -100,6 +100,32 @@ impl<W: LayoutElement> TilingTree<W> {
         }
     }
 
+    pub fn set_window_size_sway(
+        &mut self,
+        window: &W::Id,
+        width: Option<SizeChange>,
+        height: Option<SizeChange>,
+    ) {
+        let Some(id) = self.node_for_window(window) else {
+            return;
+        };
+        self.set_node_size_sway(id, width, height);
+    }
+
+    pub fn set_node_size_sway(
+        &mut self,
+        id: NodeId,
+        width: Option<SizeChange>,
+        height: Option<SizeChange>,
+    ) {
+        if let Some(change) = width {
+            self.resize_node_dimension_sway(id, true, change);
+        }
+        if let Some(change) = height {
+            self.resize_node_dimension_sway(id, false, change);
+        }
+    }
+
     pub fn resize_window_edge(
         &mut self,
         window: Option<&W::Id>,
@@ -330,6 +356,62 @@ impl<W: LayoutElement> TilingTree<W> {
                     if let Some(neighbor) = neighbor {
                         self.resize_adjacent(branch, neighbor, delta);
                     }
+                }
+                return;
+            }
+            branch = parent_id;
+            parent = *grandparent;
+        }
+    }
+
+    fn resize_node_dimension_sway(&mut self, id: NodeId, width: bool, change: SizeChange) {
+        let wanted = if width {
+            Layout::SplitH
+        } else {
+            Layout::SplitV
+        };
+        let mut branch = id;
+        let mut parent = self.nodes.get(&id).and_then(|node| node.parent);
+        while let Some(parent_id) = parent {
+            let Some(Node {
+                parent: grandparent,
+                value:
+                    TreeNode::Split {
+                        layout,
+                        children,
+                        percents,
+                    },
+            }) = self.nodes.get(&parent_id)
+            else {
+                return;
+            };
+            if *layout == wanted && children.len() > 1 {
+                let Some(index) = children.iter().position(|child| *child == branch) else {
+                    return;
+                };
+                let Some(parent_rect) = self.node_geometry(parent_id) else {
+                    return;
+                };
+                let parent_extent = if width {
+                    parent_rect.size.w
+                } else {
+                    parent_rect.size.h
+                };
+                let available =
+                    (parent_extent - self.gaps * children.len().saturating_sub(1) as f64).max(1.);
+                let current = percents[index] * available;
+                let target = match change {
+                    SizeChange::SetFixed(value) => f64::from(value),
+                    SizeChange::SetProportion(value) => parent_extent * value / 100.,
+                    SizeChange::AdjustFixed(_) | SizeChange::AdjustProportion(_) => return,
+                };
+                let neighbor = children.get(index + 1).copied().or_else(|| {
+                    index
+                        .checked_sub(1)
+                        .and_then(|index| children.get(index).copied())
+                });
+                if let Some(neighbor) = neighbor {
+                    self.resize_adjacent(branch, neighbor, (target - current) / available);
                 }
                 return;
             }

@@ -878,6 +878,54 @@ impl<W: LayoutElement> FloatingSpace<W> {
         win.request_size_once(win_size, animate);
     }
 
+    pub fn set_window_outer_width(
+        &mut self,
+        id: &W::Id,
+        change: SizeChange,
+        automatic_maximum: Size<i32, Logical>,
+    ) {
+        let Some(idx) = self.idx_of(id) else { return };
+        let change = match change {
+            SizeChange::SetFixed(value) => SizeChange::SetFixed(
+                self.tiles[idx]
+                    .window_width_for_tile_width(f64::from(value))
+                    .round() as i32,
+            ),
+            SizeChange::SetProportion(value) => SizeChange::SetFixed(
+                self.tiles[idx]
+                    .window_width_for_tile_width((self.working_area.size.w * value / 100.).trunc())
+                    .round() as i32,
+            ),
+            change => change,
+        };
+        self.set_window_width(Some(id), change, true, automatic_maximum);
+    }
+
+    pub fn set_window_outer_height(
+        &mut self,
+        id: &W::Id,
+        change: SizeChange,
+        automatic_maximum: Size<i32, Logical>,
+    ) {
+        let Some(idx) = self.idx_of(id) else { return };
+        let change = match change {
+            SizeChange::SetFixed(value) => SizeChange::SetFixed(
+                self.tiles[idx]
+                    .window_height_for_tile_height(f64::from(value))
+                    .round() as i32,
+            ),
+            SizeChange::SetProportion(value) => SizeChange::SetFixed(
+                self.tiles[idx]
+                    .window_height_for_tile_height(
+                        (self.working_area.size.h * value / 100.).trunc(),
+                    )
+                    .round() as i32,
+            ),
+            change => change,
+        };
+        self.set_window_height(Some(id), change, true, automatic_maximum);
+    }
+
     pub fn resize_window_edge(&mut self, id: Option<&W::Id>, edge: ResizeEdge, change: SizeChange) {
         let Some(id) = id.or(self.active_window_id.as_ref()).cloned() else {
             return;

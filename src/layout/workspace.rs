@@ -1646,6 +1646,36 @@ impl<W: LayoutElement> Workspace<W> {
         }
     }
 
+    pub fn set_tiling_node_size_sway(
+        &mut self,
+        node: crate::layout::tiling_tree::NodeId,
+        width: Option<SizeChange>,
+        height: Option<SizeChange>,
+    ) {
+        self.tiling.set_node_size_sway(node, width, height);
+    }
+
+    pub fn set_window_size_sway(
+        &mut self,
+        window: &W::Id,
+        width: Option<SizeChange>,
+        height: Option<SizeChange>,
+        automatic_maximum: Size<i32, Logical>,
+    ) {
+        if self.is_floating(window) {
+            if let Some(change) = width {
+                self.floating
+                    .set_window_outer_width(window, change, automatic_maximum);
+            }
+            if let Some(change) = height {
+                self.floating
+                    .set_window_outer_height(window, change, automatic_maximum);
+            }
+        } else {
+            self.tiling.set_window_size_sway(window, width, height);
+        }
+    }
+
     pub fn set_window_height(
         &mut self,
         window: Option<&W::Id>,
