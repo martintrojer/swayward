@@ -41,10 +41,12 @@ scenario setup.
 
 ## Event fixtures
 
-The files in `events/` were captured from a separate headless sway 1.11 session
-on 2026-09-13. Three read-only `swaymsg -t subscribe -m` clients recorded the
-raw workspace, window, and mode event streams. The JSON files contain the first
-captured payload for each `change` value, formatted only with `jq -S .`.
+The files in `events/` were captured from separate headless sway 1.11 sessions
+on 2026-09-13 and 2026-09-14. Read-only `swaymsg -t subscribe -m` clients
+recorded raw workspace, window, mode, and binding event streams. The JSON files
+contain the first captured payload for each `change` value, formatted only with
+`jq -S .`. `binding.run.json` used `bindsym Shift+Ctrl+t nop` and injected the
+chord through sway's virtual-keyboard protocol.
 
 The `*.sequence.json` files preserve complete ordered workspace event lists from
 the same sway 1.11 installation. `workspace-switch-empty` captures a switch to
@@ -63,6 +65,7 @@ The capture produced all requested workspace changes: `init`, `empty`, `focus`,
 `move`, `rename`, `urgent`, and `reload`. It also produced all requested window
 changes: `new`, `close`, `focus`, `title`, `fullscreen_mode`, `move`, `floating`,
 `urgent`, and `mark`. Mode fixtures cover `resize` and the return to `default`.
+The binding fixture covers sway's complete `change: "run"` keyboard payload.
 
 The headless conformance test uses `workspace.reload.json`, `window.focus.json`,
 and `mode.default.json` because those states match deterministic harness events.
