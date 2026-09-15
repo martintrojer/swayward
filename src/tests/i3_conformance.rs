@@ -936,6 +936,12 @@ fn i3_config_translation_never_applies_a_partial_or_invalid_config() {
 
     let invalid = translate_config("mode \"default\" {\n bindsym X resize\n}\n").unwrap_err();
     assert!(invalid.contains("Expected 'resize grow|shrink"));
+
+    let command = format!("invalid-command {}", "x".repeat(5000));
+    let source = format!("bindsym X {command}\n");
+    let invalid = translate_config(&source).unwrap_err();
+    assert!(invalid.contains("Unknown/invalid command 'invalid-command'"));
+    assert!(invalid.contains(&"x".repeat(5000)));
 }
 
 #[test]

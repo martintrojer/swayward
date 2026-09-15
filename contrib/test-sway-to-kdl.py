@@ -314,6 +314,16 @@ bindsym $missing+x nop
         self.assertIn('sway-border "none"', result.stdout)
         self.assertIn("manual attention: none", result.stderr)
 
+    def test_overlong_valid_and_invalid_continued_bindings_are_not_truncated(self):
+        payload = "x" * 5000
+        valid = self.translate(f"bindsym X nop \\\n{payload}\n")
+        self.assertIn(f'command "nop  {payload}"', valid.stdout)
+        self.assertIn("manual attention: none", valid.stderr)
+
+        invalid = self.translate(f"bindsym X invalid-{payload[:8]} \\\n{payload}\n")
+        self.assertIn(f'command "invalid-{payload[:8]}  {payload}"', invalid.stdout)
+        self.assertIn("manual attention: none", invalid.stderr)
+
     def test_last_line_without_newline_is_translated(self):
         result = self.translate("set $ws workspace eggs\nbindsym Mod4+0 $ws")
         self.assertIn('Super+0 { command "workspace eggs"; }', result.stdout)
