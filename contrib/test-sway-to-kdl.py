@@ -267,6 +267,16 @@ bindsym $missing+x nop
                 result = self.translate(source)
                 self.assertIn("manual attention: 1 directive(s)", result.stderr)
 
+    def test_bind_input_device_strips_quotes_and_preserves_spaces_and_colons(self):
+        result = self.translate(
+            'bindsym --input-device="123:456:keyboard with spaces" x nop exact\n'
+        )
+        self.assertIn(
+            'x input-device="123:456:keyboard with spaces" { command "nop exact"; }',
+            result.stdout,
+        )
+        self.assertIn("manual attention: none", result.stderr)
+
     def test_bind_groups_are_preserved_for_symbols_and_codes(self):
         result = self.translate(
             "bindsym Group2+x nop symbol\n"

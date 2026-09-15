@@ -1836,6 +1836,7 @@ fn make_preset_opened_binds() -> Vec<Bind> {
             },
             action,
             mouse_regions: MouseRegions::empty(),
+            input_device: "*".into(),
             group: None,
             release: false,
             repeat: true,

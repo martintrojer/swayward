@@ -425,6 +425,7 @@ impl State {
         consumed_by_a11y: &mut bool,
     ) {
         let mod_key = self.backend.mod_key(&self.swayward.config.borrow());
+        let input_device = event.device().sway_identifier();
 
         let serial = SERIAL_COUNTER.next_serial();
         let time = Event::time(&event);
@@ -580,6 +581,7 @@ impl State {
                         &mut this.swayward.held_release_bind,
                         bindings,
                         mod_key,
+                        &input_device,
                         key_code,
                         modified,
                         raw,
@@ -691,6 +693,7 @@ impl State {
         if let Some(cooldown) = bind.cooldown {
             match self.swayward.bind_cooldown_timers.entry((
                 bind.key,
+                bind.input_device.clone(),
                 bind.group,
                 bind.release,
                 bind.allow_when_locked,
@@ -699,6 +702,14 @@ impl State {
                 Entry::Occupied(_) => return,
                 Entry::Vacant(entry) => {
                     let timer = Timer::from_duration(cooldown);
+                    let cooldown_key = (
+                        bind.key,
+                        bind.input_device.clone(),
+                        bind.group,
+                        bind.release,
+                        bind.allow_when_locked,
+                        bind.allow_inhibiting,
+                    );
                     let token = self
                         .swayward
                         .event_loop
@@ -706,13 +717,7 @@ impl State {
                             if state
                                 .swayward
                                 .bind_cooldown_timers
-                                .remove(&(
-                                    bind.key,
-                                    bind.group,
-                                    bind.release,
-                                    bind.allow_when_locked,
-                                    bind.allow_inhibiting,
-                                ))
+                                .remove(&cooldown_key)
                                 .is_none()
                             {
                                 error!("bind cooldown timer entry disappeared");
@@ -2999,6 +3004,7 @@ impl State {
         let serial = SERIAL_COUNTER.next_serial();
 
         let button = event.button();
+        let input_device = event.device().sway_identifier();
 
         let button_code = event.button_code();
 
@@ -3008,7 +3014,11 @@ impl State {
 
         if ButtonState::Released == button_state {
             let suppressed = self.swayward.suppressed_buttons.remove(&button_code);
-            if let Some(bind) = self.swayward.held_release_buttons.remove(&button_code) {
+            if let Some(bind) = self
+                .swayward
+                .held_release_buttons
+                .remove(&(input_device.clone(), button_code))
+            {
                 self.handle_bind(bind);
                 return;
             }
@@ -3063,17 +3073,19 @@ impl State {
                         &mut self.swayward.window_mru_ui,
                         modifiers,
                     );
-                    let release = find_configured_bind(
+                    let release = find_configured_bind_for_device(
                         bindings.clone().filter(|bind| bind.release),
                         mod_key,
                         trigger,
                         mods,
+                        &input_device,
                     );
-                    let press = find_configured_bind(
+                    let press = find_configured_bind_for_device(
                         bindings.filter(|bind| !bind.release),
                         mod_key,
                         trigger,
                         mods,
+                        &input_device,
                     );
                     (press, release)
                 })
@@ -3089,7 +3101,7 @@ impl State {
                     if let Some(release) = release {
                         self.swayward
                             .held_release_buttons
-                            .insert(button_code, release);
+                            .insert((input_device.clone(), button_code), release);
                     }
                     press
                 }) {
@@ -3100,7 +3112,7 @@ impl State {
                 if self
                     .swayward
                     .held_release_buttons
-                    .contains_key(&button_code)
+                    .contains_key(&(input_device, button_code))
                 {
                     return;
                 }
@@ -3394,6 +3406,7 @@ impl State {
         let pointer = &self.swayward.seat.get_pointer().unwrap();
 
         let source = event.source();
+        let input_device = event.device().sway_identifier();
 
         let mod_key = self.backend.mod_key(&self.swayward.config.borrow());
 
@@ -3457,6 +3470,7 @@ impl State {
                                 },
                                 action: Action::FocusColumnLeftUnderMouse,
                                 mouse_regions: MouseRegions::empty(),
+                                input_device: "*".into(),
                                 group: None,
                                 release: false,
                                 repeat: true,
@@ -3472,6 +3486,7 @@ impl State {
                                 },
                                 action: Action::FocusColumnRightUnderMouse,
                                 mouse_regions: MouseRegions::empty(),
+                                input_device: "*".into(),
                                 group: None,
                                 release: false,
                                 repeat: true,
@@ -3489,17 +3504,19 @@ impl State {
                                 &mut self.swayward.window_mru_ui,
                                 modifiers,
                             );
-                            let bind_left = find_configured_bind(
+                            let bind_left = find_configured_bind_for_device(
                                 bindings.clone(),
                                 mod_key,
                                 Trigger::WheelScrollLeft,
                                 mods,
+                                &input_device,
                             );
-                            let bind_right = find_configured_bind(
+                            let bind_right = find_configured_bind_for_device(
                                 bindings,
                                 mod_key,
                                 Trigger::WheelScrollRight,
                                 mods,
+                                &input_device,
                             );
                             let bind_left = bind_left
                                 .filter(|bind| self.mouse_bind_matches_region(bind))
@@ -3540,6 +3557,7 @@ impl State {
                             },
                             action: Action::FocusWorkspaceUpUnderMouse,
                             mouse_regions: MouseRegions::empty(),
+                            input_device: "*".into(),
                             group: None,
                             release: false,
                             repeat: true,
@@ -3555,6 +3573,7 @@ impl State {
                             },
                             action: Action::FocusWorkspaceDownUnderMouse,
                             mouse_regions: MouseRegions::empty(),
+                            input_device: "*".into(),
                             group: None,
                             release: false,
                             repeat: true,
@@ -3572,6 +3591,7 @@ impl State {
                             },
                             action: Action::FocusColumnLeftUnderMouse,
                             mouse_regions: MouseRegions::empty(),
+                            input_device: "*".into(),
                             group: None,
                             release: false,
                             repeat: true,
@@ -3587,6 +3607,7 @@ impl State {
                             },
                             action: Action::FocusColumnRightUnderMouse,
                             mouse_regions: MouseRegions::empty(),
+                            input_device: "*".into(),
                             group: None,
                             release: false,
                             repeat: true,
@@ -3604,14 +3625,20 @@ impl State {
                             &mut self.swayward.window_mru_ui,
                             modifiers,
                         );
-                        let bind_up = find_configured_bind(
+                        let bind_up = find_configured_bind_for_device(
                             bindings.clone(),
                             mod_key,
                             Trigger::WheelScrollUp,
                             mods,
+                            &input_device,
                         );
-                        let bind_down =
-                            find_configured_bind(bindings, mod_key, Trigger::WheelScrollDown, mods);
+                        let bind_down = find_configured_bind_for_device(
+                            bindings,
+                            mod_key,
+                            Trigger::WheelScrollDown,
+                            mods,
+                            &input_device,
+                        );
                         let bind_up = bind_up
                             .filter(|bind| self.mouse_bind_matches_region(bind))
                             .filter(|bind| {
@@ -3770,22 +3797,28 @@ impl State {
                         &mut self.swayward.window_mru_ui,
                         modifiers,
                     );
-                    let bind_left = find_configured_bind(
+                    let bind_left = find_configured_bind_for_device(
                         bindings.clone(),
                         mod_key,
                         Trigger::TouchpadScrollLeft,
                         mods,
+                        &input_device,
                     )
                     .filter(|bind| {
                         !self.swayward.screenshot_ui.is_open()
                             || allowed_during_screenshot(&bind.action)
                     });
-                    let bind_right =
-                        find_configured_bind(bindings, mod_key, Trigger::TouchpadScrollRight, mods)
-                            .filter(|bind| {
-                                !self.swayward.screenshot_ui.is_open()
-                                    || allowed_during_screenshot(&bind.action)
-                            });
+                    let bind_right = find_configured_bind_for_device(
+                        bindings,
+                        mod_key,
+                        Trigger::TouchpadScrollRight,
+                        mods,
+                        &input_device,
+                    )
+                    .filter(|bind| {
+                        !self.swayward.screenshot_ui.is_open()
+                            || allowed_during_screenshot(&bind.action)
+                    });
                     drop(config);
 
                     if let Some(right) = bind_right {
@@ -3812,22 +3845,28 @@ impl State {
                         &mut self.swayward.window_mru_ui,
                         modifiers,
                     );
-                    let bind_up = find_configured_bind(
+                    let bind_up = find_configured_bind_for_device(
                         bindings.clone(),
                         mod_key,
                         Trigger::TouchpadScrollUp,
                         mods,
+                        &input_device,
                     )
                     .filter(|bind| {
                         !self.swayward.screenshot_ui.is_open()
                             || allowed_during_screenshot(&bind.action)
                     });
-                    let bind_down =
-                        find_configured_bind(bindings, mod_key, Trigger::TouchpadScrollDown, mods)
-                            .filter(|bind| {
-                                !self.swayward.screenshot_ui.is_open()
-                                    || allowed_during_screenshot(&bind.action)
-                            });
+                    let bind_down = find_configured_bind_for_device(
+                        bindings,
+                        mod_key,
+                        Trigger::TouchpadScrollDown,
+                        mods,
+                        &input_device,
+                    )
+                    .filter(|bind| {
+                        !self.swayward.screenshot_ui.is_open()
+                            || allowed_during_screenshot(&bind.action)
+                    });
                     drop(config);
 
                     if let Some(down) = bind_down {
@@ -4263,6 +4302,7 @@ impl State {
                     let mod_key = self.backend.mod_key(&self.swayward.config.borrow());
                     let mods = self.swayward.seat.get_keyboard().unwrap().modifier_state();
                     let modifiers = modifiers_from_state(mods);
+                    let input_device = event.device().sway_identifier();
 
                     if self
                         .swayward
@@ -4272,7 +4312,13 @@ impl State {
                         let bind = {
                             let config = self.swayward.config.borrow();
                             let bindings = config.binds.0.iter();
-                            find_configured_bind(bindings, mod_key, trigger, mods)
+                            find_configured_bind_for_device(
+                                bindings,
+                                mod_key,
+                                trigger,
+                                mods,
+                                &input_device,
+                            )
                         }
                         .filter(|bind| {
                             !self.swayward.screenshot_ui.is_open()
@@ -4890,6 +4936,7 @@ fn should_intercept_key<'a>(
     held_release_bind: &mut Option<Bind>,
     bindings: impl IntoIterator<Item = &'a Bind> + Clone,
     mod_key: ModKey,
+    input_device: &str,
     key_code: Keycode,
     modified: Keysym,
     raw: Option<Keysym>,
@@ -4905,6 +4952,7 @@ fn should_intercept_key<'a>(
     let release_bind = find_bind(
         bindings.iter().copied().filter(|bind| bind.release),
         mod_key,
+        input_device,
         modified,
         raw,
         key_code,
@@ -4934,6 +4982,7 @@ fn should_intercept_key<'a>(
     let mut final_bind = find_bind(
         bindings.iter().copied().filter(|bind| !bind.release),
         mod_key,
+        input_device,
         modified,
         raw,
         key_code,
@@ -4965,6 +5014,7 @@ fn should_intercept_key<'a>(
                     },
                     action,
                     mouse_regions: MouseRegions::empty(),
+                    input_device: "*".into(),
                     group: None,
                     release: false,
                     repeat: true,
@@ -5000,6 +5050,7 @@ fn should_intercept_key<'a>(
 fn find_bind<'a>(
     bindings: impl IntoIterator<Item = &'a Bind> + Clone,
     mod_key: ModKey,
+    input_device: &str,
     modified: Keysym,
     raw: Option<Keysym>,
     key_code: Keycode,
@@ -5031,6 +5082,7 @@ fn find_bind<'a>(
             },
             action,
             mouse_regions: MouseRegions::empty(),
+            input_device: "*".into(),
             group: None,
             release: false,
             repeat: true,
@@ -5051,6 +5103,7 @@ fn find_bind<'a>(
         mod_key,
         &[Trigger::Keysym(modified)],
         mods,
+        input_device,
         group,
         locked,
         inhibited,
@@ -5069,6 +5122,7 @@ fn find_bind<'a>(
                 mod_key,
                 &[Trigger::Keysym(raw)],
                 mods,
+                input_device,
                 group,
                 locked,
                 inhibited,
@@ -5080,6 +5134,7 @@ fn find_bind<'a>(
                 mod_key,
                 &[Trigger::Keycode(key_code.raw())],
                 mods,
+                input_device,
                 group,
                 locked,
                 inhibited,
@@ -5101,14 +5156,35 @@ fn find_configured_bind<'a>(
     trigger: Trigger,
     mods: ModifiersState,
 ) -> Option<Bind> {
-    find_configured_bind_with_context(bindings, mod_key, &[trigger], mods, 0, false, false)
+    find_configured_bind_for_device(bindings, mod_key, trigger, mods, "*")
 }
 
+fn find_configured_bind_for_device<'a>(
+    bindings: impl IntoIterator<Item = &'a Bind> + Clone,
+    mod_key: ModKey,
+    trigger: Trigger,
+    mods: ModifiersState,
+    input_device: &str,
+) -> Option<Bind> {
+    find_configured_bind_with_context(
+        bindings,
+        mod_key,
+        &[trigger],
+        mods,
+        input_device,
+        0,
+        false,
+        false,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
 fn find_configured_bind_with_context<'a>(
     bindings: impl IntoIterator<Item = &'a Bind> + Clone,
     mod_key: ModKey,
     triggers: &[Trigger],
     mods: ModifiersState,
+    input_device: &str,
     group: u32,
     locked: bool,
     inhibited: bool,
@@ -5143,7 +5219,12 @@ fn find_configured_bind_with_context<'a>(
                 bind_modifiers |= Modifiers::COMPOSITOR;
             }
 
+            let exact_input = bind.input_device == input_device;
+            if !exact_input && bind.input_device != "*" {
+                continue;
+            }
             let rank = (
+                exact_input,
                 bind.group.is_some(),
                 bind_locked == locked,
                 (!bind.allow_inhibiting) == inhibited,
@@ -5436,6 +5517,7 @@ fn hardcoded_overview_bind(raw: Keysym, mods: ModifiersState) -> Option<Bind> {
         },
         action,
         mouse_regions: MouseRegions::empty(),
+        input_device: "*".into(),
         group: None,
         release: false,
         repeat,
@@ -5897,6 +5979,7 @@ mod tests {
             },
             action: Action::SwayCommand(command.into()),
             mouse_regions: MouseRegions::empty(),
+            input_device: "*".into(),
             group,
             release: false,
             repeat: true,
@@ -5918,6 +6001,7 @@ mod tests {
                 ModKey::Super,
                 &[Trigger::Keysym(Keysym::q)],
                 ModifiersState::default(),
+                "*",
                 1,
                 false,
                 false,
@@ -5931,11 +6015,35 @@ mod tests {
                 ModKey::Super,
                 &[Trigger::Keysym(Keysym::q)],
                 ModifiersState::default(),
+                "*",
                 0,
                 false,
                 false,
             ),
             None
+        );
+    }
+
+    #[test]
+    fn exact_input_beats_group_lock_and_inhibition_matches() {
+        let wildcard = binding("nop wildcard", Some(1));
+        let mut exact = binding("nop exact", None);
+        exact.input_device = "0:0:keyboard".into();
+        let bindings = [&wildcard, &exact];
+
+        assert_eq!(
+            find_configured_bind_with_context(
+                bindings,
+                ModKey::Super,
+                &[Trigger::Keysym(Keysym::q)],
+                ModifiersState::default(),
+                "0:0:keyboard",
+                1,
+                false,
+                false,
+            )
+            .as_ref(),
+            Some(&exact)
         );
     }
 
@@ -5949,6 +6057,7 @@ mod tests {
                     ModKey::Super,
                     &[Trigger::Keysym(Keysym::q)],
                     ModifiersState::default(),
+                    "*",
                     group,
                     false,
                     false,
@@ -5970,6 +6079,7 @@ mod tests {
             },
             action: Action::SwayCommand("nop release".into()),
             mouse_regions: MouseRegions::empty(),
+            input_device: "*".into(),
             group: None,
             release: true,
             repeat: false,
@@ -5991,6 +6101,7 @@ mod tests {
             &mut held_release_bind,
             &bindings.0,
             ModKey::Super,
+            "*",
             key_code,
             keysym,
             Some(keysym),
@@ -6010,6 +6121,7 @@ mod tests {
             &mut held_release_bind,
             &bindings.0,
             ModKey::Super,
+            "*",
             key_code,
             keysym,
             Some(keysym),
@@ -6037,6 +6149,7 @@ mod tests {
             },
             action: Action::CloseWindow,
             mouse_regions: MouseRegions::empty(),
+            input_device: "*".into(),
             group: None,
             release: false,
             repeat: true,
@@ -6074,6 +6187,7 @@ mod tests {
             },
             action: Action::CloseWindow,
             mouse_regions: MouseRegions::empty(),
+            input_device: "*".into(),
             group: None,
             release: false,
             repeat: true,
@@ -6101,6 +6215,7 @@ mod tests {
                 &mut held_release_bind.borrow_mut(),
                 &bindings.0,
                 comp_mod,
+                "*",
                 close_key_code,
                 close_keysym,
                 Some(close_keysym),
@@ -6121,6 +6236,7 @@ mod tests {
                 &mut held_release_bind.borrow_mut(),
                 &bindings.0,
                 comp_mod,
+                "*",
                 Keycode::from(Keysym::l.raw() + 8),
                 Keysym::l,
                 Some(Keysym::l),
@@ -6270,6 +6386,7 @@ mod tests {
                 },
                 action: Action::CloseWindow,
                 mouse_regions: MouseRegions::empty(),
+                input_device: "*".into(),
                 group: None,
                 release: false,
                 repeat: true,
@@ -6285,6 +6402,7 @@ mod tests {
                 },
                 action: Action::FocusColumnLeft,
                 mouse_regions: MouseRegions::empty(),
+                input_device: "*".into(),
                 group: None,
                 release: false,
                 repeat: true,
@@ -6300,6 +6418,7 @@ mod tests {
                 },
                 action: Action::FocusWindowDown,
                 mouse_regions: MouseRegions::empty(),
+                input_device: "*".into(),
                 group: None,
                 release: false,
                 repeat: true,
@@ -6315,6 +6434,7 @@ mod tests {
                 },
                 action: Action::FocusWindowUp,
                 mouse_regions: MouseRegions::empty(),
+                input_device: "*".into(),
                 group: None,
                 release: false,
                 repeat: true,
@@ -6330,6 +6450,7 @@ mod tests {
                 },
                 action: Action::FocusColumnRight,
                 mouse_regions: MouseRegions::empty(),
+                input_device: "*".into(),
                 group: None,
                 release: false,
                 repeat: true,

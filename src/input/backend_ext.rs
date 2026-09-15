@@ -17,6 +17,23 @@ where
 }
 
 pub trait NiriInputDevice: input::Device {
+    fn sway_identifier(&self) -> String {
+        let (product, vendor) = self.usb_id().unwrap_or((0, 0));
+        let name = self
+            .name()
+            .trim()
+            .chars()
+            .map(|ch| {
+                if ch == ' ' || ch.is_control() {
+                    '_'
+                } else {
+                    ch
+                }
+            })
+            .collect::<String>();
+        format!("{vendor}:{product}:{name}")
+    }
+
     // FIXME: this should maybe be per-event, not per-device,
     // but it's not clear that this matters in practice?
     // it might be more obvious once we implement it for libinput

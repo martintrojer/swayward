@@ -31,6 +31,7 @@ fn bind(trigger: Keysym, action: Action) -> Bind {
         },
         action,
         mouse_regions: MouseRegions::empty(),
+        input_device: "*".into(),
         group: None,
         release: false,
         repeat: true,

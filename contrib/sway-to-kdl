@@ -420,6 +420,12 @@ class Translator:
         properties: list[str] = []
         rest = rest.strip()
         while rest.startswith("--"):
+            input_match = re.match(r'--input-device=(?:"([^"]*)"|\'([^\']*)\'|(\S+))\s+', rest)
+            if input_match:
+                device = next(value for value in input_match.groups() if value is not None)
+                properties.append(f"input-device={self.quote(device)}")
+                rest = rest[input_match.end() :]
+                continue
             option, separator, rest = rest.partition(" ")
             if not separator:
                 self.warn(source, line, rest, f"malformed {kind}")
@@ -491,7 +497,11 @@ class Translator:
             return
         if key.isdecimal():
             key = self.quote(key)
-        binding_key = (key, "release=true" in properties)
+        input_device = next(
+            (prop for prop in properties if prop.startswith("input-device=")),
+            'input-device="*"',
+        )
+        binding_key = (key, input_device, "release=true" in properties)
         if binding_key in self.binds:
             self.warn(source, line, rest, f"duplicate binding for {key}; kept the first")
             return

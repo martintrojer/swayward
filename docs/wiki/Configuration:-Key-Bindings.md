@@ -43,6 +43,16 @@ Set `allow-when-locked=true` only on a `spawn` bind that must work while the
 session is locked. Set `allow-inhibiting=false` on an escape bind that must work
 while an application inhibits shortcuts.
 
+Set `input-device` to limit a binding to one input device. Its value uses sway's
+`vendor:product:name` identifier, with spaces in the device name replaced by
+underscores. The default `"*"` matches every device.
+
+```kdl
+binds {
+    x input-device="1234:5678:Example_Keyboard" { command "nop"; }
+}
+```
+
 ## Pointer bindings
 
 Mouse buttons and wheel directions can appear in bindings:

@@ -62,6 +62,8 @@ pub struct Bind {
     pub key: Key,
     pub action: Action,
     pub mouse_regions: MouseRegions,
+    /// Sway-compatible input identifier, or `"*"` to match every device.
+    pub input_device: String,
     /// Zero-based XKB layout group. `None` matches every active group.
     pub group: Option<u8>,
     pub release: bool,
@@ -872,7 +874,7 @@ impl Binds {
         node: &knuffel::ast::SpannedNode<S>,
         ctx: &mut knuffel::decode::Context<S>,
     ) -> Self {
-        type BindIdentity = (Key, Option<u8>, bool, bool, bool);
+        type BindIdentity = (Key, String, Option<u8>, bool, bool, bool);
         let mut seen_keys: HashMap<BindIdentity, &knuffel::ast::SpannedNode<S>> = HashMap::new();
         let mut binds = Vec::new();
 
@@ -881,6 +883,7 @@ impl Binds {
                 Err(e) => ctx.emit_error(e),
                 Ok(bind) => match seen_keys.entry((
                     bind.key,
+                    bind.input_device.clone(),
                     bind.group,
                     bind.release,
                     bind.allow_when_locked,
@@ -976,6 +979,7 @@ where
             .map_err(|e| DecodeError::conversion(&node.node_name, e.wrap_err("invalid keybind")))?;
 
         let mut mouse_regions = MouseRegions::empty();
+        let mut input_device = "*".to_owned();
         let mut release = false;
         let mut repeat = true;
         let mut cooldown = None;
@@ -1002,6 +1006,9 @@ where
                             }
                         };
                     }
+                }
+                "input-device" => {
+                    input_device = knuffel::traits::DecodeScalar::decode(val, ctx)?;
                 }
                 "release" => {
                     release = knuffel::traits::DecodeScalar::decode(val, ctx)?;
@@ -1047,6 +1054,7 @@ where
             key,
             action: Action::Spawn(vec![]),
             mouse_regions,
+            input_device: input_device.clone(),
             group,
             release,
             repeat: true,
@@ -1102,6 +1110,7 @@ where
                     key,
                     action: Action::SwayCommand(command),
                     mouse_regions,
+                    input_device,
                     group,
                     release,
                     repeat,
@@ -1133,6 +1142,7 @@ where
                         key,
                         action,
                         mouse_regions,
+                        input_device,
                         group,
                         release,
                         repeat,

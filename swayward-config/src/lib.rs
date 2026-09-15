@@ -268,12 +268,14 @@ where
                         !part.0.iter().any(|new| {
                             (
                                 new.key,
+                                &new.input_device,
                                 new.group,
                                 new.release,
                                 new.allow_when_locked,
                                 new.allow_inhibiting,
                             ) == (
                                 bind.key,
+                                &bind.input_device,
                                 bind.group,
                                 bind.release,
                                 bind.allow_when_locked,
@@ -803,6 +805,24 @@ mod tests {
         assert_eq!(
             config.binding_modes[0].binds.0[1].action,
             Action::SwayCommand("mode default".into())
+        );
+    }
+
+    #[test]
+    fn device_specific_and_wildcard_binds_can_share_a_trigger() {
+        let config = Config::parse_mem(
+            r#"binds {
+                x { command "nop wildcard"; }
+                x input-device="123:456:keyboard with spaces" { command "nop exact"; }
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(config.binds.0.len(), 2);
+        assert_eq!(config.binds.0[0].input_device, "*");
+        assert_eq!(
+            config.binds.0[1].input_device,
+            "123:456:keyboard with spaces"
         );
     }
 

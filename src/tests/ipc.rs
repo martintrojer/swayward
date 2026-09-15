@@ -923,8 +923,8 @@ fn marks_round_trip_through_commands_get_marks_and_tree() {
 #[derive(Debug)]
 struct TestInput;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct TestDevice;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct TestDevice(&'static str);
 
 impl crate::input::backend_ext::NiriInputDevice for TestDevice {
     fn output(&self, _state: &crate::swayward::State) -> Option<smithay::output::Output> {
@@ -934,11 +934,11 @@ impl crate::input::backend_ext::NiriInputDevice for TestDevice {
 
 impl smithay::backend::input::Device for TestDevice {
     fn id(&self) -> String {
-        "test-keyboard".into()
+        self.0.into()
     }
 
     fn name(&self) -> String {
-        "test keyboard".into()
+        self.0.into()
     }
 
     fn has_capability(&self, capability: smithay::backend::input::DeviceCapability) -> bool {
@@ -960,6 +960,7 @@ impl smithay::backend::input::Device for TestDevice {
 
 #[derive(Debug)]
 struct TestKeyEvent {
+    device: TestDevice,
     key: u32,
     count: u32,
     state: smithay::backend::input::KeyState,
@@ -967,12 +968,14 @@ struct TestKeyEvent {
 
 #[derive(Debug)]
 struct TestButtonEvent {
+    device: TestDevice,
     button: u32,
     state: smithay::backend::input::ButtonState,
 }
 
 #[derive(Debug)]
 struct TestAxisEvent {
+    device: TestDevice,
     horizontal_v120: f64,
     vertical_v120: f64,
 }
@@ -983,7 +986,7 @@ impl smithay::backend::input::Event<TestInput> for TestKeyEvent {
     }
 
     fn device(&self) -> TestDevice {
-        TestDevice
+        self.device
     }
 }
 
@@ -993,7 +996,7 @@ impl smithay::backend::input::Event<TestInput> for TestButtonEvent {
     }
 
     fn device(&self) -> TestDevice {
-        TestDevice
+        self.device
     }
 }
 
@@ -1003,7 +1006,7 @@ impl smithay::backend::input::Event<TestInput> for TestAxisEvent {
     }
 
     fn device(&self) -> TestDevice {
-        TestDevice
+        self.device
     }
 }
 
@@ -1092,9 +1095,14 @@ fn active_workspace_name(fixture: &mut Fixture) -> Option<String> {
 }
 
 pub(super) fn pointer_button(fixture: &mut Fixture, button: u32, pressed: bool) {
+    pointer_button_from(fixture, TestDevice("test keyboard"), button, pressed);
+}
+
+fn pointer_button_from(fixture: &mut Fixture, device: TestDevice, button: u32, pressed: bool) {
     fixture.niri_state().process_input_event::<TestInput>(
         smithay::backend::input::InputEvent::PointerButton {
             event: TestButtonEvent {
+                device,
                 button,
                 state: if pressed {
                     smithay::backend::input::ButtonState::Pressed
@@ -1110,6 +1118,7 @@ pub(super) fn pointer_axis(fixture: &mut Fixture, horizontal_v120: f64, vertical
     fixture.niri_state().process_input_event::<TestInput>(
         smithay::backend::input::InputEvent::PointerAxis {
             event: TestAxisEvent {
+                device: TestDevice("test keyboard"),
                 horizontal_v120,
                 vertical_v120,
             },
@@ -1118,9 +1127,14 @@ pub(super) fn pointer_axis(fixture: &mut Fixture, horizontal_v120: f64, vertical
 }
 
 pub(super) fn key_event(fixture: &mut Fixture, key: u32, pressed: bool) {
+    key_event_from(fixture, TestDevice("test keyboard"), key, pressed);
+}
+
+fn key_event_from(fixture: &mut Fixture, device: TestDevice, key: u32, pressed: bool) {
     fixture.niri_state().process_input_event::<TestInput>(
         smithay::backend::input::InputEvent::Keyboard {
             event: TestKeyEvent {
+                device,
                 key,
                 count: u32::from(pressed),
                 state: if pressed {
@@ -1142,6 +1156,90 @@ pub(super) fn type_key_chords(fixture: &mut Fixture, chords: &[&[u32]]) {
             key_event(fixture, key, false);
         }
     }
+}
+
+#[test]
+fn mouse_input_device_binding_prefers_exact_device_and_wildcard_matches_another() {
+    let config = swayward_config::Config::parse_mem(
+        r#"binds {
+            MouseLeft { command "rename workspace to wildcard-mouse"; }
+            MouseLeft input-device="0:0:first_mouse" { command "rename workspace to exact-mouse"; }
+            MouseRight input-device="0:0:first_mouse" { command "rename workspace to wrong-mouse"; }
+        }"#,
+    )
+    .unwrap();
+    let mut fixture = Fixture::with_config(config);
+    fixture.add_output(1, (1280, 720));
+
+    for pressed in [true, false] {
+        pointer_button_from(&mut fixture, TestDevice("first mouse"), 0x110, pressed);
+    }
+    assert_eq!(
+        active_workspace_name(&mut fixture).as_deref(),
+        Some("exact-mouse")
+    );
+
+    for pressed in [true, false] {
+        pointer_button_from(&mut fixture, TestDevice("second mouse"), 0x111, pressed);
+    }
+    assert_ne!(
+        active_workspace_name(&mut fixture).as_deref(),
+        Some("wrong-mouse")
+    );
+
+    for pressed in [true, false] {
+        pointer_button_from(&mut fixture, TestDevice("second mouse"), 0x110, pressed);
+    }
+    assert_eq!(
+        active_workspace_name(&mut fixture).as_deref(),
+        Some("wildcard-mouse")
+    );
+}
+
+#[test]
+fn device_identifier_matches_sways_libinput_format() {
+    use crate::input::backend_ext::NiriInputDevice as _;
+
+    let device = TestDevice("  keyboard with spaces  ");
+    assert_eq!(device.sway_identifier(), "0:0:keyboard_with_spaces");
+}
+
+#[test]
+fn input_device_binding_prefers_exact_device_and_wildcard_matches_another() {
+    let config = swayward_config::Config::parse_mem(
+        r#"binds {
+            x { command "rename workspace to wildcard"; }
+            x input-device="0:0:first_keyboard" { command "rename workspace to exact"; }
+            z input-device="0:0:first_keyboard" { command "rename workspace to wrong"; }
+        }"#,
+    )
+    .unwrap();
+    let mut fixture = Fixture::with_config(config);
+    fixture.add_output(1, (1280, 720));
+
+    for pressed in [true, false] {
+        key_event_from(&mut fixture, TestDevice("first keyboard"), 53, pressed);
+    }
+    assert_eq!(
+        active_workspace_name(&mut fixture).as_deref(),
+        Some("exact")
+    );
+
+    for pressed in [true, false] {
+        key_event_from(&mut fixture, TestDevice("second keyboard"), 52, pressed);
+    }
+    assert_ne!(
+        active_workspace_name(&mut fixture).as_deref(),
+        Some("wrong")
+    );
+
+    for pressed in [true, false] {
+        key_event_from(&mut fixture, TestDevice("second keyboard"), 53, pressed);
+    }
+    assert_eq!(
+        active_workspace_name(&mut fixture).as_deref(),
+        Some("wildcard")
+    );
 }
 
 fn set_xkb_layout(fixture: &mut Fixture, layout: u32) {
@@ -1586,6 +1684,7 @@ fn command_bind_executes_the_sway_command_path() {
     fixture.niri_state().process_input_event::<TestInput>(
         smithay::backend::input::InputEvent::Keyboard {
             event: TestKeyEvent {
+                device: TestDevice("test keyboard"),
                 key: 133,
                 count: 1,
                 state: smithay::backend::input::KeyState::Pressed,
@@ -1604,6 +1703,7 @@ fn command_bind_executes_the_sway_command_path() {
     fixture.niri_state().process_input_event::<TestInput>(
         smithay::backend::input::InputEvent::Keyboard {
             event: TestKeyEvent {
+                device: TestDevice("test keyboard"),
                 key: 10,
                 count: 2,
                 state: smithay::backend::input::KeyState::Pressed,
