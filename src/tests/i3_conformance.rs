@@ -756,7 +756,11 @@ fn run_i3_test(test: &str) {
         .unwrap();
 
     let started = Instant::now();
-    let deadline = started + Duration::from_secs(30);
+    // Generous enough that a cold build cache and a loaded machine cannot trip
+    // it: 132-move-workspace.t runs 160 assertions in ~14s warm but has been
+    // measured at 33s cold, and the suite runs these files in parallel. A
+    // genuinely hung test still fails, just later.
+    let deadline = started + Duration::from_secs(180);
     let mut loaded_config_source = None;
     loop {
         fixture.dispatch();
