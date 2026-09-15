@@ -77,6 +77,7 @@
 
 507-workspace-move-crash.t
 309-crash-move-parent.t
+315-all-criterion.t
 
 512-move-wraps.t
 302-tree.t
