@@ -1126,6 +1126,55 @@ pub(super) fn type_key_chords(fixture: &mut Fixture, chords: &[&[u32]]) {
     }
 }
 
+fn set_xkb_layout(fixture: &mut Fixture, layout: u32) {
+    let keyboard = fixture.swayward().seat.get_keyboard().unwrap();
+    keyboard.with_xkb_state(fixture.niri_state(), |mut context| {
+        context.set_layout(smithay::input::keyboard::Layout(layout));
+    });
+}
+
+#[test]
+fn group_binding_overrides_wildcard_only_in_its_active_group() {
+    let config = swayward_config::Config::parse_mem(
+        r#"input { keyboard { xkb { layout "us,ru,us"; }; }; }
+        binds {
+            x { command "rename workspace to wildcard"; };
+            Group2+x { command "rename workspace to exact"; };
+        }"#,
+    )
+    .unwrap();
+    let mut fixture = Fixture::with_config(config);
+    fixture.add_output(1, (1280, 720));
+
+    type_key_chords(&mut fixture, &[&[53]]);
+    assert_eq!(active_workspace_name(&mut fixture).as_deref(), Some("wildcard"));
+
+    set_xkb_layout(&mut fixture, 1);
+    type_key_chords(&mut fixture, &[&[53]]);
+    assert_eq!(active_workspace_name(&mut fixture).as_deref(), Some("exact"));
+    set_xkb_layout(&mut fixture, 2);
+    type_key_chords(&mut fixture, &[&[53]]);
+    assert_eq!(active_workspace_name(&mut fixture).as_deref(), Some("wildcard"));
+}
+
+#[test]
+fn translated_keysym_binding_fires_in_its_xkb_layout() {
+    let config = swayward_config::Config::parse_mem(
+        r#"input { keyboard { xkb { layout "us,ru"; }; }; }
+        binds { Cyrillic_ze { command "rename workspace to cyrillic"; }; }"#,
+    )
+    .unwrap();
+    let mut fixture = Fixture::with_config(config);
+    fixture.add_output(1, (1280, 720));
+
+    type_key_chords(&mut fixture, &[&[33]]);
+    assert_ne!(active_workspace_name(&mut fixture).as_deref(), Some("cyrillic"));
+
+    set_xkb_layout(&mut fixture, 1);
+    type_key_chords(&mut fixture, &[&[33]]);
+    assert_eq!(active_workspace_name(&mut fixture).as_deref(), Some("cyrillic"));
+}
+
 #[test]
 fn pointer_button_binding_requires_the_configured_rendered_region() {
     let config = swayward_config::Config::parse_mem(

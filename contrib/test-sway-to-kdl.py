@@ -267,6 +267,17 @@ bindsym $missing+x nop
                 result = self.translate(source)
                 self.assertIn("manual attention: 1 directive(s)", result.stderr)
 
+    def test_bind_groups_are_preserved_for_symbols_and_codes(self):
+        result = self.translate(
+            "bindsym Group2+x nop symbol\n"
+            "bindsym Mode_switch+y nop alias\n"
+            "bindcode Group3+42 nop code\n"
+        )
+        self.assertIn('Group2+x { command "nop symbol"; }', result.stdout)
+        self.assertIn('Mode_switch+y { command "nop alias"; }', result.stdout)
+        self.assertIn('Group3+code:42 { command "nop code"; }', result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
     def test_assign_workspace_target_is_preserved(self):
         result = self.translate('assign [class="special"] workspace targetws\n')
         self.assertIn('open-on-workspace "targetws"', result.stdout)

@@ -342,7 +342,7 @@ pub struct Swayward {
     /// Button codes of the mouse buttons to suppress.
     pub suppressed_buttons: HashSet<u32>,
     pub held_release_buttons: HashMap<u32, Bind>,
-    pub bind_cooldown_timers: HashMap<(Key, bool), RegistrationToken>,
+    pub bind_cooldown_timers: HashMap<(Key, Option<u8>, bool, bool, bool), RegistrationToken>,
     pub bind_repeat_timer: Option<RegistrationToken>,
     pub keyboard_focus: KeyboardFocus,
     pub layer_shell_on_demand_focus: Option<LayerSurface>,
