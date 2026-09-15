@@ -238,6 +238,16 @@ fn socket_path(kind: &str) -> PathBuf {
     ))
 }
 
+/// A uniquely named scratch file. Callers are responsible for removing it; the
+/// translated config outlives its creator because the reload watcher reads it.
+fn scratch_path(kind: &str, extension: &str) -> PathBuf {
+    std::env::temp_dir().join(format!(
+        "swayward-i3-{kind}-{}-{}.{extension}",
+        std::process::id(),
+        NEXT_SOCKET.fetch_add(1, Ordering::Relaxed)
+    ))
+}
+
 fn create_window(fixture: &mut Fixture, client: super::client::ClientId, request: &Value) -> u32 {
     let fullscreen_output = request["fullscreen_output"]
         .as_str()
@@ -440,7 +450,7 @@ fn fake_outputs(config: &str) -> Result<Option<Vec<FakeOutput>>, String> {
 
 fn translate_config_file(config: &str) -> Result<(PathBuf, swayward_config::Config), String> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = socket_path("config");
+    let path = scratch_path("config", "kdl");
     let config = config
         .lines()
         .filter(|line| {
@@ -466,11 +476,16 @@ fn translate_config_file(config: &str) -> Result<(PathBuf, swayward_config::Conf
         return Err(format!("i3 config translation was incomplete:\n{stderr}"));
     }
     let translated = String::from_utf8(output.stdout).map_err(|error| error.to_string())?;
-    let path = socket_path("translated-config");
+    let path = scratch_path("translated-config", "kdl");
     std::fs::write(&path, translated).map_err(|error| error.to_string())?;
-    let config = swayward_config::Config::load(&path)
-        .config
-        .map_err(|error| format!("{error:?}"))?;
+    let config = match swayward_config::Config::load(&path).config {
+        Ok(config) => config,
+        Err(error) => {
+            // A config swayward refuses to load still left a file behind.
+            let _ = std::fs::remove_file(&path);
+            return Err(format!("{error:?}"));
+        }
+    };
     Ok((path, config))
 }
 
@@ -515,6 +530,7 @@ fn handle_control(
     fixture: &mut Fixture,
     client: super::client::ClientId,
     loaded_config_source: &mut Option<String>,
+    scratch: &mut Vec<PathBuf>,
     stream: UnixStream,
 ) {
     let mut request = String::new();
@@ -527,6 +543,7 @@ fn handle_control(
             let source = request["config"].as_str().unwrap();
             match (fake_outputs(source), translate_config_file(source)) {
                 (Ok(outputs), Ok((path, mut config))) => {
+                    scratch.push(path.clone());
                     config.layout.gaps = 0.;
                     config.layout.border.off = false;
                     if !source.lines().any(|line| {
@@ -738,6 +755,20 @@ fn run_i3_test(test: &str) {
     let control_path = socket_path("control");
     let control = UnixListener::bind(&control_path).unwrap();
     control.set_nonblocking(true).unwrap();
+    // Remove the socket even when a test panics or times out. Without this the
+    // whole suite leaks one file per conformance test per run, and a run left
+    // over 7000 of them in the temp directory. Unix socket paths are limited to
+    // about 108 bytes, so an accumulating temp directory eventually makes bind
+    // fail in whichever file happens to run next.
+    struct Scratch(Vec<PathBuf>);
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            for path in &self.0 {
+                let _ = std::fs::remove_file(path);
+            }
+        }
+    }
+    let mut scratch = Scratch(vec![control_path.clone()]);
 
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mut child = Command::new("perl")
@@ -769,9 +800,13 @@ fn run_i3_test(test: &str) {
     loop {
         fixture.dispatch();
         match control.accept() {
-            Ok((stream, _)) => {
-                handle_control(&mut fixture, client, &mut loaded_config_source, stream)
-            }
+            Ok((stream, _)) => handle_control(
+                &mut fixture,
+                client,
+                &mut loaded_config_source,
+                &mut scratch.0,
+                stream,
+            ),
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
             Err(error) => panic!("test control accept failed: {error}"),
         }
