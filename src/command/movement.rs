@@ -312,6 +312,59 @@ pub(super) fn select_resize_amount(
         .unwrap_or(first)
 }
 
+pub(super) fn move_workspace_to_output(
+    state: &mut State,
+    target: Option<CommandTarget>,
+    output_target_name: &OutputTarget,
+) -> CommandOutcome {
+    let workspace_id = match target {
+        Some(CommandTarget::Window(target)) => {
+            let Some(window) = state
+                .swayward
+                .layout
+                .windows()
+                .find_map(|(_, mapped)| (mapped.id() == target).then(|| mapped.window.clone()))
+            else {
+                return failure("No matching node.");
+            };
+            state.swayward.layout.window_workspace_id(&window)
+        }
+        Some(CommandTarget::Container(workspace, _)) => Some(workspace),
+        None => state
+            .swayward
+            .layout
+            .active_workspace()
+            .map(|workspace| workspace.id()),
+    };
+    let Some(workspace_id) = workspace_id else {
+        return failure("No workspace to move");
+    };
+    let Some((reference, workspace_idx)) = state
+        .swayward
+        .layout
+        .workspaces()
+        .find(|(_, _, workspace)| workspace.id() == workspace_id)
+        .and_then(|(monitor, index, _)| monitor.map(|monitor| (monitor.output().clone(), index)))
+    else {
+        return failure("No workspace to move");
+    };
+    let reference_point = state
+        .swayward
+        .global_space
+        .output_geometry(&reference)
+        .map(crate::utils::center);
+    let output = match output_target(state, output_target_name, Some(&reference), reference_point) {
+        Ok(output) => output,
+        Err(error) => return failure(error),
+    };
+    state
+        .swayward
+        .layout
+        .move_workspace_to_output_by_id(workspace_idx, Some(reference), &output);
+    state.swayward.queue_redraw_all();
+    success()
+}
+
 pub(super) fn move_target_to_workspace(
     state: &mut State,
     target: CommandTarget,

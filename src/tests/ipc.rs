@@ -2969,6 +2969,66 @@ fn criteria_targeted_move_workspace_moves_all_matches_without_changing_focus() {
 }
 
 #[test]
+fn criteria_move_workspace_to_output_uses_the_matched_workspace() {
+    let mut f = Fixture::new();
+    f.add_named_output_at("left".into(), (100, 100), Some((0, 0)));
+    f.add_named_output_at("middle".into(), (100, 100), Some((100, 0)));
+    f.add_named_output_at("right".into(), (100, 100), Some((200, 0)));
+    let client = f.add_client();
+
+    assert!(
+        crate::command::execute(f.niri_state(), "focus output middle, workspace target")
+            .iter()
+            .all(|outcome| outcome.success)
+    );
+    let window = f.client(client).create_window();
+    window.xdg_toplevel.set_app_id("moveme".into());
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+    assert!(crate::command::execute(f.niri_state(), "focus output left")[0].success);
+
+    let workspace_output = |f: &mut Fixture| {
+        f.swayward()
+            .layout
+            .workspaces()
+            .find(|(_, _, workspace)| workspace.sway_name().as_deref() == Some("target"))
+            .and_then(|(monitor, _, _)| monitor.map(|monitor| monitor.output_name().clone()))
+            .unwrap()
+    };
+
+    let outcome = crate::command::execute(
+        f.niri_state(),
+        r#"[app_id="moveme"] move workspace to output right"#,
+    );
+    assert!(outcome[0].success, "{outcome:?}");
+    assert_eq!(workspace_output(&mut f), "right");
+
+    let outcome = crate::command::execute(
+        f.niri_state(),
+        r#"[workspace="target"] move workspace to middle"#,
+    );
+    assert!(outcome[0].success, "{outcome:?}");
+    assert_eq!(workspace_output(&mut f), "middle");
+
+    let outcome = crate::command::execute(
+        f.niri_state(),
+        r#"[workspace="target"] move workspace to output missing"#,
+    );
+    assert!(!outcome[0].success);
+    assert_eq!(
+        outcome[0].error.as_deref(),
+        Some("Can't find output with name/direction 'missing'")
+    );
+    assert_eq!(workspace_output(&mut f), "middle");
+    assert_eq!(f.swayward().layout.active_output().unwrap().name(), "left");
+}
+
+#[test]
 fn cross_workspace_swap_exchanges_positions_marks_and_fullscreen() {
     let mut f = Fixture::new();
     f.add_output_at(1, (600, 800), Some((0, 0)));

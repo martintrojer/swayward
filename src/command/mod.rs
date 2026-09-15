@@ -251,12 +251,10 @@ fn execute_one(
             None
         }
         Command::MoveWorkspaceToOutput(target) => {
-            let output = match output_target(state, &target, None, None) {
-                Ok(output) => output,
-                Err(error) => return failure(error),
-            };
-            state.swayward.layout.move_workspace_to_output(&output);
-            state.swayward.queue_redraw_all();
+            let outcome = move_workspace_to_output(state, None, &target);
+            if !outcome.success {
+                return outcome;
+            }
             None
         }
         Command::MoveScratchpad => {
@@ -533,8 +531,8 @@ fn execute_one(
 }
 
 use movement::{
-    move_position, move_target_to_mark, move_target_to_workspace, output_target,
-    output_target_by_name_or_direction, select_resize_amount,
+    move_position, move_target_to_mark, move_target_to_workspace, move_workspace_to_output,
+    output_target, output_target_by_name_or_direction, select_resize_amount,
 };
 
 fn move_target_to_adjacent_output(
@@ -691,6 +689,12 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
         }
         Command::MoveToMark(mark) => {
             let outcome = move_target_to_mark(state, target, mark);
+            if !outcome.success {
+                return outcome;
+            }
+        }
+        Command::MoveWorkspaceToOutput(output_target_name) => {
+            let outcome = move_workspace_to_output(state, Some(target), output_target_name);
             if !outcome.success {
                 return outcome;
             }
