@@ -597,6 +597,20 @@ fn handle_control(
         "activate" => json!({
             "success": activate_window(fixture, client, request["id"].as_i64().unwrap())
         }),
+        "pointer_button" => match (request["button"].as_u64(), request["pressed"].as_bool()) {
+            (Some(button), Some(pressed)) => {
+                super::ipc::pointer_button(fixture, u32::try_from(button).unwrap(), pressed);
+                json!({ "success": true })
+            }
+            _ => json!({ "success": false, "error": "button and pressed are required" }),
+        },
+        "key_event" => match (request["key"].as_u64(), request["pressed"].as_bool()) {
+            (Some(key), Some(pressed)) => {
+                super::ipc::key_event(fixture, u32::try_from(key).unwrap(), pressed);
+                json!({ "success": true })
+            }
+            _ => json!({ "success": false, "error": "key and pressed are required" }),
+        },
         "type_key_chords" => {
             let chords = request["chords"]
                 .as_array()

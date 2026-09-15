@@ -924,7 +924,11 @@ impl smithay::backend::input::Device for TestDevice {
     }
 
     fn has_capability(&self, capability: smithay::backend::input::DeviceCapability) -> bool {
-        capability == smithay::backend::input::DeviceCapability::Keyboard
+        matches!(
+            capability,
+            smithay::backend::input::DeviceCapability::Keyboard
+                | smithay::backend::input::DeviceCapability::Pointer
+        )
     }
 
     fn usb_id(&self) -> Option<(u32, u32)> {
@@ -943,6 +947,12 @@ struct TestKeyEvent {
     state: smithay::backend::input::KeyState,
 }
 
+#[derive(Debug)]
+struct TestButtonEvent {
+    button: u32,
+    state: smithay::backend::input::ButtonState,
+}
+
 impl smithay::backend::input::Event<TestInput> for TestKeyEvent {
     fn time(&self) -> smithay::backend::input::InputTime {
         smithay::backend::input::InputTime::from_millis(1)
@@ -950,6 +960,26 @@ impl smithay::backend::input::Event<TestInput> for TestKeyEvent {
 
     fn device(&self) -> TestDevice {
         TestDevice
+    }
+}
+
+impl smithay::backend::input::Event<TestInput> for TestButtonEvent {
+    fn time(&self) -> smithay::backend::input::InputTime {
+        smithay::backend::input::InputTime::from_millis(1)
+    }
+
+    fn device(&self) -> TestDevice {
+        TestDevice
+    }
+}
+
+impl smithay::backend::input::PointerButtonEvent<TestInput> for TestButtonEvent {
+    fn button_code(&self) -> u32 {
+        self.button
+    }
+
+    fn state(&self) -> smithay::backend::input::ButtonState {
+        self.state
     }
 }
 
@@ -971,7 +1001,7 @@ impl smithay::backend::input::InputBackend for TestInput {
     type Device = TestDevice;
     type KeyboardKeyEvent = TestKeyEvent;
     type PointerAxisEvent = smithay::backend::input::UnusedEvent;
-    type PointerButtonEvent = smithay::backend::input::UnusedEvent;
+    type PointerButtonEvent = TestButtonEvent;
     type PointerMotionEvent = smithay::backend::input::UnusedEvent;
     type PointerMotionAbsoluteEvent = smithay::backend::input::UnusedEvent;
     type GestureSwipeBeginEvent = smithay::backend::input::UnusedEvent;
@@ -995,31 +1025,65 @@ impl smithay::backend::input::InputBackend for TestInput {
     type SpecialEvent = ();
 }
 
+pub(super) fn pointer_button(fixture: &mut Fixture, button: u32, pressed: bool) {
+    fixture.niri_state().process_input_event::<TestInput>(
+        smithay::backend::input::InputEvent::PointerButton {
+            event: TestButtonEvent {
+                button,
+                state: if pressed {
+                    smithay::backend::input::ButtonState::Pressed
+                } else {
+                    smithay::backend::input::ButtonState::Released
+                },
+            },
+        },
+    );
+}
+
+pub(super) fn key_event(fixture: &mut Fixture, key: u32, pressed: bool) {
+    fixture.niri_state().process_input_event::<TestInput>(
+        smithay::backend::input::InputEvent::Keyboard {
+            event: TestKeyEvent {
+                key,
+                count: u32::from(pressed),
+                state: if pressed {
+                    smithay::backend::input::KeyState::Pressed
+                } else {
+                    smithay::backend::input::KeyState::Released
+                },
+            },
+        },
+    );
+}
+
 pub(super) fn type_key_chords(fixture: &mut Fixture, chords: &[&[u32]]) {
     for chord in chords {
         for &key in *chord {
-            fixture.niri_state().process_input_event::<TestInput>(
-                smithay::backend::input::InputEvent::Keyboard {
-                    event: TestKeyEvent {
-                        key,
-                        count: 1,
-                        state: smithay::backend::input::KeyState::Pressed,
-                    },
-                },
-            );
+            key_event(fixture, key, true);
         }
         for &key in chord.iter().rev() {
-            fixture.niri_state().process_input_event::<TestInput>(
-                smithay::backend::input::InputEvent::Keyboard {
-                    event: TestKeyEvent {
-                        key,
-                        count: 0,
-                        state: smithay::backend::input::KeyState::Released,
-                    },
-                },
-            );
+            key_event(fixture, key, false);
         }
     }
+}
+
+#[test]
+fn pointer_button_event_dispatches_a_real_mouse_binding() {
+    let config = swayward_config::Config::parse_mem(
+        r#"binds { MouseLeft { command "workspace clicked"; }; }"#,
+    )
+    .unwrap();
+    let mut fixture = Fixture::with_config(config);
+    fixture.add_output(1, (1280, 720));
+
+    pointer_button(&mut fixture, 0x110, true);
+    pointer_button(&mut fixture, 0x110, false);
+
+    assert!(fixture
+        .swayward()
+        .layout
+        .find_workspace_by_name("clicked")
+        .is_some());
 }
 
 #[test]
