@@ -3081,6 +3081,38 @@ fn dialog_placement_uses_parent_layout_position_during_animation() {
 }
 
 #[test]
+fn disabled_focus_follows_mouse_keeps_focus_when_pointer_crosses_outputs() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1024, 768));
+    f.add_output(2, (1024, 768));
+    let client = f.add_client();
+
+    f.niri_focus_output(2);
+    let focused = f.client(client).create_window();
+    focused.commit();
+    let surface = focused.surface.clone();
+    f.roundtrip(client);
+    let focused = f.client(client).window(&surface);
+    focused.attach_new_buffer();
+    focused.ack_last_and_commit();
+    f.double_roundtrip(client);
+    let focused_id = f.swayward().layout.focus().unwrap().id();
+
+    let location = (500., 0.).into();
+    let under = f.swayward().contents_under(location);
+    f.swayward().handle_focus_follows_mouse(&under);
+    f.niri_state().move_cursor(location);
+
+    assert_eq!(f.swayward().layout.focus().unwrap().id(), focused_id);
+    let active = f.swayward().layout.active_output().unwrap().clone();
+    assert_eq!(active, f.niri_output(2));
+    assert_eq!(
+        f.swayward().seat.get_pointer().unwrap().current_location(),
+        location
+    );
+}
+
+#[test]
 fn dialog_with_hidden_scratchpad_parent_does_not_panic() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));

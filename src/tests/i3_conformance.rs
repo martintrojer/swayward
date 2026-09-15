@@ -484,12 +484,18 @@ fn prepare_test_config(source: &str) -> Result<swayward_config::Config, String> 
     let mut config = translate_config(source)?;
     config.layout.gaps = 0.;
     config.layout.border.off = false;
-    config
-        .input
-        .focus_follows_mouse
-        .get_or_insert(swayward_config::input::FocusFollowsMouse {
-            max_scroll_amount: None,
-        });
+    if !source.lines().any(|line| {
+        line.split_whitespace()
+            .next()
+            .is_some_and(|word| word.eq_ignore_ascii_case("focus_follows_mouse"))
+    }) {
+        config
+            .input
+            .focus_follows_mouse
+            .get_or_insert(swayward_config::input::FocusFollowsMouse {
+                max_scroll_amount: None,
+            });
+    }
     Ok(config)
 }
 
@@ -523,11 +529,17 @@ fn handle_control(
                 (Ok(outputs), Ok((path, mut config))) => {
                     config.layout.gaps = 0.;
                     config.layout.border.off = false;
-                    config.input.focus_follows_mouse.get_or_insert(
-                        swayward_config::input::FocusFollowsMouse {
-                            max_scroll_amount: None,
-                        },
-                    );
+                    if !source.lines().any(|line| {
+                        line.split_whitespace()
+                            .next()
+                            .is_some_and(|word| word.eq_ignore_ascii_case("focus_follows_mouse"))
+                    }) {
+                        config.input.focus_follows_mouse.get_or_insert(
+                            swayward_config::input::FocusFollowsMouse {
+                                max_scroll_amount: None,
+                            },
+                        );
+                    }
                     fixture.niri_state().reload_config(Ok(config));
                     crate::utils::watcher::setup(
                         fixture.niri_state(),

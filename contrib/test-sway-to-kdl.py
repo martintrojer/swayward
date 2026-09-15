@@ -350,6 +350,27 @@ bindsym $missing+x nop
                 self.assertIn(reason, result.stdout)
                 self.assertIn("manual attention: 1 directive(s)", result.stderr)
 
+    def test_focus_follows_mouse_maps_exact_modes_and_refuses_always(self):
+        result = self.translate("focus_follows_mouse no\n")
+        self.assertNotIn("focus-follows-mouse", result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
+        result = self.translate("focus_follows_mouse yes\n")
+        self.assertIn("focus-follows-mouse", result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
+        result = self.translate("focus_follows_mouse always\n")
+        self.assertNotIn("focus-follows-mouse", result.stdout)
+        self.assertIn("focus_follows_mouse always", result.stdout)
+        self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
+        for value in ["No", "YeS", "invalid"]:
+            with self.subTest(value=value):
+                result = self.translate(f"focus_follows_mouse {value}\n")
+                self.assertNotIn("focus-follows-mouse", result.stdout)
+                self.assertIn("expected focus_follows_mouse no|yes|always", result.stdout)
+                self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
     def test_mouse_warping_maps_exact_modes_and_refuses_output(self):
         for value, expected in [
             ("none", None),

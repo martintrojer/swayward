@@ -16,7 +16,8 @@ class Translator:
         self.variables: dict[str, str] = {}
         self.binds: dict[str, str] = {}
         self.binding_modes: list[tuple[str, list[str]]] = []
-        self.inputs: dict[str, list[str]] = {}
+        # Sway defaults focus_follows_mouse to yes; swayward defaults it off.
+        self.inputs: dict[str, list[str]] = {"": ["focus-follows-mouse"]}
         self.sections: list[str] = []
         self.blur_settings: dict[str, str] = {}
         self.layout_settings: list[str] = []
@@ -204,6 +205,28 @@ class Translator:
                     "workspace-auto-back-and-forth" if enabled
                     else "workspace-auto-back-and-forth false"
                 )
+            elif match := re.fullmatch(r"focus_follows_mouse\s+(\S+)", text):
+                value = match.group(1)
+                settings = self.inputs.setdefault("", [])
+                settings[:] = [item for item in settings if item != "focus-follows-mouse"]
+                if value == "yes":
+                    settings.append("focus-follows-mouse")
+                elif value == "no":
+                    pass
+                elif value == "always":
+                    self.warn(
+                        path,
+                        line_no,
+                        text,
+                        "focus_follows_mouse always has no exact swayward equivalent",
+                    )
+                else:
+                    self.warn(
+                        path,
+                        line_no,
+                        text,
+                        "expected focus_follows_mouse no|yes|always",
+                    )
             elif match := re.fullmatch(r"focus_wrapping\s+(\S+)", text, re.IGNORECASE):
                 value = match.group(1).lower()
                 if value in {"1", "yes", "on", "true", "enable", "enabled", "active"}:
@@ -280,11 +303,9 @@ class Translator:
         if value == "none":
             return
         if value == "container":
-            self.sections += [
-                "input {",
-                '    warp-mouse-to-focus mode="center-xy"',
-                "}",
-            ]
+            self.inputs.setdefault("", []).append(
+                'warp-mouse-to-focus mode="center-xy"'
+            )
             return
         reason = (
             "mouse_warping output has no exact swayward equivalent"
