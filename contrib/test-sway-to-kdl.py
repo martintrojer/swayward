@@ -79,6 +79,51 @@ bindsym $missing+x nop
         for item in result.stderr.splitlines()[1:]:
             self.assertIn(item.strip(), result.stdout)
 
+    def test_empty_bind_command_fails_loud(self):
+        result = self.translate("bindsym X\n")
+        self.assertNotIn('X { command', result.stdout)
+        self.assertIn("malformed bindsym", result.stdout)
+        self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
+    def test_explicit_default_mode_is_preserved(self):
+        result = self.translate('mode "default" {\n    bindsym X nop\n}\n')
+        self.assertIn('mode "default" {', result.stdout)
+        self.assertIn('X { command "nop"; }', result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
+    def test_nested_variable_names_are_accepted_without_recursive_expansion(self):
+        result = self.translate(
+            "set $long_variable_name_with_short_value 1\n"
+            "set $$long_variable_name_with_short_value 2\n"
+            "set $$$long_variable_name_with_short_value 3\n"
+        )
+        self.assertIn("manual attention: none", result.stderr)
+
+        result = self.translate("set $a $b\nset $b expanded\nbindsym X nop $a\n")
+        self.assertIn("variable value could not be fully expanded", result.stdout)
+        self.assertIn("undefined variable", result.stdout)
+        self.assertIn("manual attention: 2 directive(s)", result.stderr)
+
+        result = self.translate("set $x expanded\nbindsym X nop $$x\n")
+        self.assertIn('X { command "nop $x"; }', result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
+    def test_bare_resize_command_is_preserved_for_typed_validation(self):
+        result = self.translate('mode "default" {\n    bindsym X resize\n}\n')
+        self.assertIn('X { command "resize"; }', result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
+    def test_workspace_layout_maps_all_sway_values_and_refuses_invalid_values(self):
+        for value in ["default", "stacking", "tabbed"]:
+            with self.subTest(value=value):
+                result = self.translate(f"workspace_layout {value}\n")
+                self.assertIn(f'workspace-layout "{value}"', result.stdout)
+                self.assertIn("manual attention: none", result.stderr)
+        result = self.translate("workspace_layout splitv\n")
+        self.assertNotIn("workspace-layout", result.stdout)
+        self.assertIn("unsupported workspace layout", result.stdout)
+        self.assertIn("manual attention: 1 directive(s)", result.stderr)
+
     def test_mouse_button_bindsyms_map_exact_names_in_top_level_and_modes(self):
         result = self.translate(
             "bindsym button1 nop left\n"

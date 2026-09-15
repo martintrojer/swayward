@@ -31,9 +31,28 @@ class Translator:
         return json.dumps(value)
 
     def expand(self, text: str) -> str:
-        for name in sorted(self.variables, key=len, reverse=True):
-            text = text.replace(name, self.variables[name])
-        return text
+        variables = sorted(self.variables, key=len, reverse=True)
+        output: list[str] = []
+        index = 0
+        while index < len(text):
+            if text[index : index + 2] == "$$":
+                output.append(r"\$")
+                index += 2
+                continue
+            if text[index : index + 2] == r"\$":
+                output.append(r"\$")
+                index += 2
+                continue
+            name = next(
+                (name for name in variables if text.startswith(name, index)), None
+            )
+            if name is not None:
+                output.append(self.variables[name])
+                index += len(name)
+                continue
+            output.append(text[index])
+            index += 1
+        return "".join(output)
 
     def warn(self, source: Path, line: int, text: str, reason: str) -> None:
         location = f"{source}:{line}" if line else str(source)
@@ -64,17 +83,18 @@ class Translator:
                 text = text[:-1] + " " + lines[index].strip()
                 index += 1
 
-            if match := re.fullmatch(r"set\s+(\$\w+)\s+(.+)", text):
+            if match := re.fullmatch(r"set\s+(\$+\w+)\s+(.+)", text):
                 value = self.expand(match.group(2).strip())
-                if re.search(r"\$\w+", value):
+                if re.search(r"(?<!\\)\$\w+", value):
                     self.warn(path, line_no, text, "variable value could not be fully expanded")
                 else:
-                    self.variables[match.group(1)] = value
+                    self.variables[match.group(1)] = value.replace(r"\$", "$")
                 continue
             text = self.expand(text)
-            if re.search(r"\$\w+", text):
+            if re.search(r"(?<!\\)\$\w+", text):
                 self.warn(path, line_no, text, "undefined variable")
                 continue
+            text = text.replace(r"\$", "$")
 
             if text.startswith("include "):
                 self.translate_include(path, line_no, text)

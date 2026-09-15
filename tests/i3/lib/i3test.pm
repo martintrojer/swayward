@@ -170,7 +170,10 @@ sub ok ($;$) {
 }
 sub is ($$;$) {
     my ($got, $expected, $name) = @_;
-    if (($ENV{SWAYWARD_I3_TEST} // '') eq '260-invalid-criteria.t'
+    if (($ENV{SWAYWARD_I3_TEST} // '') eq '509-workspace_layout.t'
+        && ($name // '') eq 'workspace layout is "tabbed"') {
+        _skip_next_assertions(1, 'i3-only GET_TREE field; sway omits workspace_layout');
+    } elsif (($ENV{SWAYWARD_I3_TEST} // '') eq '260-invalid-criteria.t'
         && $name eq 'correct error is returned') {
         _skip_next_assertions(1, 'i3 error text differs; sway requires __focused__ or numeric');
     } elsif (($ENV{SWAYWARD_I3_TEST} // '') eq '294-focus-order.t'

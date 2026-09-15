@@ -920,6 +920,32 @@ fn i3_config_translation_rejects_unhandled_directives() {
     assert!(error.contains("unhandled: mystery value"));
 }
 
+#[test]
+fn i3_config_translation_rejects_empty_bind_commands() {
+    let error = translate_config("bindsym X\n").unwrap_err();
+    assert!(error.contains("malformed bindsym"));
+}
+
+#[test]
+fn explicit_default_binding_mode_loads() {
+    let config = translate_config("mode \"default\" {\n    bindsym X nop\n}\n").unwrap();
+    let mode = config
+        .binding_modes
+        .iter()
+        .find(|mode| mode.name == "default")
+        .unwrap();
+    assert_eq!(mode.binds.0.len(), 1);
+}
+
+#[test]
+fn workspace_layout_config_wraps_new_windows() {
+    let config = translate_config("workspace_layout tabbed\n").unwrap();
+    assert_eq!(
+        config.layout.workspace_layout,
+        swayward_config::WorkspaceLayout::Tabbed
+    );
+}
+
 fn passing_tests() -> impl Iterator<Item = &'static str> {
     PASSING
         .lines()

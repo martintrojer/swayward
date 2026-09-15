@@ -94,4 +94,5 @@
 530-bug-2229.t
 531-fullscreen-on-given-output.t
 537-move-single-to-output.t
+547-nested-variables.t
 550-split-redundant-containers.t
