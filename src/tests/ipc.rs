@@ -1209,6 +1209,46 @@ fn layout_and_split_commands_preserve_a_focused_floating_window_and_the_tree() {
 }
 
 #[test]
+fn reload_rereads_config_and_emits_the_sway_workspace_event() {
+    static NEXT_CONFIG: AtomicU64 = AtomicU64::new(0);
+
+    let (mut fixture, socket) = ipc_fixture();
+    fixture.add_output(1, (1920, 1080));
+    let path = std::env::temp_dir().join(format!(
+        "swayward-reload-test-{}-{}.kdl",
+        std::process::id(),
+        NEXT_CONFIG.fetch_add(1, Ordering::Relaxed)
+    ));
+    std::fs::write(&path, "layout { gaps 7; }").unwrap();
+    crate::utils::watcher::setup(
+        fixture.niri_state(),
+        &swayward_config::ConfigPath::Explicit(path.clone()),
+        Vec::new(),
+    );
+
+    let mut subscriber = UnixStream::connect(socket).unwrap();
+    subscriber
+        .write_all(&crate::ipc::wire::encode(
+            MessageType::Subscribe,
+            r#"["workspace"]"#,
+        ))
+        .unwrap();
+    let _ = read_ipc_reply(&mut fixture, &mut subscriber);
+
+    assert!(crate::command::execute(fixture.niri_state(), "reload")[0].success);
+    let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
+    assert_eq!(event_type, 1 << 31);
+    let expected: Value = serde_json::from_str(include_str!(
+        "../../tests/fixtures/sway/events/workspace.reload.json"
+    ))
+    .unwrap();
+    assert_eq!(serde_json::from_str::<Value>(&payload).unwrap(), expected);
+    assert_eq!(fixture.swayward().config.borrow().layout.gaps, 7.);
+
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
 fn malformed_sway_criteria_reload_keeps_the_compositor_responsive() {
     let mut fixture = Fixture::new();
     fixture.add_output(1, (1920, 1080));

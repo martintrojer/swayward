@@ -1195,6 +1195,11 @@ impl State {
         let event = Event::ConfigLoaded { failed };
         state.apply(event.clone());
         server.send_event(event);
+        if !failed {
+            server.send_event(Event::WorkspacesChanged {
+                workspaces: state.workspaces.workspaces.values().cloned().collect(),
+            });
+        }
     }
 
     pub fn ipc_screenshot_taken(&mut self, path: Option<String>) {

@@ -301,6 +301,7 @@ bindsym $missing+x nop
 
         for action in [
             "kill",
+            "reload",
             "move scratchpad",
             "mark label",
             "mark --add label",

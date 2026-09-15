@@ -546,7 +546,7 @@ class Translator:
                 effects.append('    default-column-display "tabbed"')
             elif words == ["focus"]:
                 effects.append("    open-focused true")
-            elif words == ["kill"] or words == ["move", "scratchpad"]:
+            elif words in (["kill"], ["reload"], ["move", "scratchpad"]):
                 effects.append(f"    sway-for-window-command {self.quote(directive)}")
             elif words[:1] == ["mark"]:
                 options = words[1:-1]

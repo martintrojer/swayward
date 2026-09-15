@@ -432,7 +432,7 @@ fn fake_outputs(config: &str) -> Result<Option<Vec<FakeOutput>>, String> {
         .map(Some)
 }
 
-fn translate_config(config: &str) -> Result<swayward_config::Config, String> {
+fn translate_config_file(config: &str) -> Result<(PathBuf, swayward_config::Config), String> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = socket_path("config");
     let config = config
@@ -460,7 +460,18 @@ fn translate_config(config: &str) -> Result<swayward_config::Config, String> {
         return Err(format!("i3 config translation was incomplete:\n{stderr}"));
     }
     let translated = String::from_utf8(output.stdout).map_err(|error| error.to_string())?;
-    swayward_config::Config::parse_mem(&translated).map_err(|error| format!("{error:?}"))
+    let path = socket_path("translated-config");
+    std::fs::write(&path, translated).map_err(|error| error.to_string())?;
+    let config = swayward_config::Config::load(&path)
+        .config
+        .map_err(|error| format!("{error:?}"))?;
+    Ok((path, config))
+}
+
+fn translate_config(config: &str) -> Result<swayward_config::Config, String> {
+    let (path, config) = translate_config_file(config)?;
+    let _ = std::fs::remove_file(path);
+    Ok(config)
 }
 
 fn handle_control(fixture: &mut Fixture, client: super::client::ClientId, stream: UnixStream) {
@@ -472,8 +483,8 @@ fn handle_control(fixture: &mut Fixture, client: super::client::ClientId, stream
     let reply = match request["action"].as_str().unwrap() {
         "config" => {
             let source = request["config"].as_str().unwrap();
-            match (fake_outputs(source), translate_config(source)) {
-                (Ok(outputs), Ok(mut config)) => {
+            match (fake_outputs(source), translate_config_file(source)) {
+                (Ok(outputs), Ok((path, mut config))) => {
                     config.layout.border.off = false;
                     config.input.focus_follows_mouse.get_or_insert(
                         swayward_config::input::FocusFollowsMouse {
@@ -481,6 +492,11 @@ fn handle_control(fixture: &mut Fixture, client: super::client::ClientId, stream
                         },
                     );
                     fixture.niri_state().reload_config(Ok(config));
+                    crate::utils::watcher::setup(
+                        fixture.niri_state(),
+                        &swayward_config::ConfigPath::Explicit(path),
+                        Vec::new(),
+                    );
                     if let Some(outputs) = outputs {
                         fixture.replace_outputs(outputs);
                     }
