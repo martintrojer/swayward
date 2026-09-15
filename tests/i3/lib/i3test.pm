@@ -721,6 +721,9 @@ sub cmp_tree {
 
 sub _translate_config_identity {
     my ($config) = @_;
+    # Sway uses a fixed write-buffer ceiling instead of i3's timeout.
+    $config =~ s/^ipc_kill_timeout 500\n//m
+        if ($ENV{SWAYWARD_I3_TEST} // '') eq '298-ipc-misbehaving-connection.t';
     # Some i3 tests use this exact block only to suppress the test-suite i3bar.
     # Sway has no i3bar_command, and the headless fixture starts no bar.
     $config =~ s/^bar \{\n    # Disable i3bar\.\n    i3bar_command :\n\}\n//m;

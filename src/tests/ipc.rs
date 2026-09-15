@@ -511,6 +511,50 @@ fn get_config_returns_raw_top_level_config_after_reload() {
 }
 
 #[test]
+fn non_reading_event_subscriber_is_disconnected_without_blocking_ipc() {
+    let (mut fixture, socket) = ipc_fixture();
+    let mut subscriber = UnixStream::connect(&socket).unwrap();
+    subscriber
+        .write_all(&crate::ipc::wire::encode(
+            MessageType::Subscribe,
+            r#"["tick"]"#,
+        ))
+        .unwrap();
+    let (_, reply) = read_ipc_reply(&mut fixture, &mut subscriber);
+    assert_eq!(reply, r#"{"success": true}"#);
+
+    let payload = "x".repeat(1024 * 1024);
+    for _ in 0..4 {
+        fixture.swayward().ipc_server.as_ref().unwrap().send_event(
+            swayward_ipc::legacy::Event::Tick {
+                payload: payload.clone(),
+                first: false,
+            },
+        );
+        fixture.dispatch();
+    }
+
+    subscriber.set_nonblocking(true).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(1);
+    let mut buffer = [0; 64 * 1024];
+    loop {
+        fixture.dispatch();
+        match subscriber.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(_) => (),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                assert!(Instant::now() < deadline, "subscriber was not disconnected");
+            }
+            Err(error) => panic!("error reading subscriber: {error}"),
+        }
+    }
+
+    let mut liveness = UnixStream::connect(&socket).unwrap();
+    let reply = query_ipc(&mut fixture, &mut liveness, MessageType::GetVersion);
+    assert_eq!(reply["variant"], "swayward");
+}
+
+#[test]
 fn event_subscription_does_not_block_a_concurrent_query() {
     let (mut fixture, socket) = ipc_fixture();
     let mut subscriber = UnixStream::connect(&socket).unwrap();

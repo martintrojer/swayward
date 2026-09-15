@@ -257,6 +257,7 @@ without fabricating a tree that real sway clients do not see. See
 | `196-randr-output-names.t` | 1 | skip: i3 executable and config language | Despite its name, the file only shells out to `i3 -C` with an i3 `workspace 2 output DVI-I_1/digital` directive and checks i3's output for an error. It does not create or query a RandR output. Swayward's compositor-free validator consumes KDL, and the translator already handles workspace output preferences. Sway documents and dispatches `-C`/`--validate` without starting the compositor (`sway/sway/main.c:206-220,248-249,351-359`). |
 | `282-tabbed-floating-disable-crash.t` | 1 | pass | Floating and then tiling an unfocused marked leaf from a tabbed workspace does not panic. The sequence is reachable without floating-container support: swayward detaches and reinserts the selected leaf while preserving its tiling parent. No command is rejected. |
 | `293-sticky-output-crash.t` | 3 | pass | With two real headless outputs, switching to a new workspace on the other output and then back does not crash while a sticky floating window follows workspace changes on its original output. All commands parse, the remote workspace remains empty, and the sticky window appears on the new local workspace, matching sway's floating-only sticky migration (`sway/tree/container.c:1705-1711`; `sway/input/seat.c:1209-1222`). |
+| `298-ipc-misbehaving-connection.t` | 2 | finished: 1 pass; 1 unproven | The unchanged file's 500 workspace switches complete without a rejected command or compositor stall after the adapter removes only i3's `ipc_kill_timeout 500`; sway has no timeout setting and instead queues nonblocking writes from an initial 128-byte allocation, doubles the allocation, and disconnects when the new size exceeds 4 MB (`sway/sway/ipc-server.c:172-197,524-568,946-964`). Those small workspace events do not exceed sway's threshold, so the file's one-second EOF assertion is i3-only and remains unproven. Native IPC coverage drives the real subscribed non-reading socket with four 1 MiB tick events, verifies a separate GET_VERSION request while the socket is backpressured, and observes EOF after the 4 MiB power-of-two boundary is crossed. |
 | `507-workspace-move-crash.t` | 2 | pass | With exactly one workspace on each of two real headless outputs, `move workspace to output fake-1` executes without rejection or panic and the compositor remains responsive. This exercises the historical cross-output crash premise directly. |
 | `307-focus-next-prev.t` | 9 | finished: 8 pass; 1 skip | Bare `focus next|prev` derive their direction from the focused node's parent layout, and all container-level `focus next|prev sibling` commands parse and stop at the sibling container. Assertion 9 expects i3's dedicated sibling command to move between workspace siblings (`i3/src/commands.c:1327-1358`). Sway instead derives next/prev direction only from a container's parent; with a workspace focused there is no container, so it returns success with no direction and no focus change before its explicit-direction workspace branch (`sway/commands/focus.c:17-50,439-467`). The assertion is skipped as i3-only and independent of the deferred workspace-order model. |
 | `308-focus_wrapping.t` | 7 reached | 5 pass; 2 fail; remainder unproven | In the measurable `yes` phase, normal directional focus and all four nested wrapping/non-wrapping checks pass. The vertical and horizontal workspace-leave cases stay on `left-top` instead of selecting `left-bottom` and `right-top`. Sway searches an adjacent output before applying a saved local wrap candidate unless mode is `force` (`sway/commands/focus.c:158-220`). Translation then stops loudly at `focus_wrapping no`; swayward has no exact `no` or `workspace` mode, so later phases remain unproven rather than weakened. |
@@ -479,6 +480,14 @@ lifecycle tests. A filename grep had estimated only five candidates.
 The **current green ceiling is 127 files**. Swayward is 28 files below it:
 
 - 99 files are already in `passing.txt`, including `295-net-wm-state-focused.t`.
+`511-scratchpad-configure-request.t` was added. After measuring `298`, the remaining 64 files divide
+into 14 reachable candidates, 28 unreachable files, and 22 files for i3-only
+subsystems or lifecycle tests. A filename grep had estimated only five
+candidates.
+
+The **current green ceiling is 132 files**. Swayward is 34 files below it:
+
+- 98 files are already in `passing.txt`.
 - 20 vendored files have only implementation or adapter gaps and no permanent
   skip or unproven assertion: `139-ws-numbers.t`, `172-start-on-named-ws.t`,
   `202-scratchpad-criteria.t`, `256-no-auto-back-and-forth.t`,
@@ -490,6 +499,7 @@ The **current green ceiling is 127 files**. Swayward is 28 files below it:
   `535-workspace-next-prev.t`, `539-disable_focus_wrapping.t`,
   `541-resize-set-tiling.t`, and `549-focus-wrapping-gaps.t`.
 - 8 unvendored files remain reachable candidates in the audit below.
+- 14 unvendored files are reachable candidates in the audit below.
 
 The ceiling holds the documented oracle limits fixed. It excludes every file
 with an i3-only assertion or an input that the harness cannot ask. It also does
@@ -556,6 +566,7 @@ The categories use these source-backed boundaries:
 | `288-i3-floating-window-atom.t` | unreachable | Reads i3's proprietary `I3_FLOATING_WINDOW` X property. Sway does not publish an i3-private atom; portable floating state is already exposed through GET_TREE. |
 | `294-update-ewmh-atoms.t` | unreachable | Reads three X-root EWMH properties after workspace deletion and rename. Workspace IPC cannot prove root-property publication; see the X11 boundary above. |
 | `298-ipc-misbehaving-connection.t` | reachable but unvendored | The raw IPC backpressure behavior is portable. Sway uses nonblocking per-client write buffers and disconnects a client when its buffer exceeds 4 MB (`sway/sway/ipc-server.c:44-52,524-580,936-974`) rather than i3's `ipc_kill_timeout`. Track as `m6_candidate_ipc_backpressure`. |
+| `295-net-wm-state-focused.t` | reachable but unvendored | Its focus lifecycle has a direct native signal: sway sends the xdg-toplevel `activated` configure state from `set_activated` (`sway/sway/desktop/xdg_shell.c:188-192`). Track as `m6_candidate_wayland_state_equivalents`. |
 | `300-restart-non-utf8.t` | i3-only subsystem | The intended assertion follows an in-place restart with a live client. The harness cannot preserve that client through compositor replacement; see the lifecycle boundary above. |
 | `301-shape.t` | reachable but unvendored | The X Shape transport has a native equivalent for the tested hit behavior: `wl_surface.set_input_region` controls pointer acceptance, and Smithay commits it into surface state (`smithay/src/wayland/compositor/handlers.rs:249-266`). Track as `m6_candidate_wayland_shape`. |
 | `305-restart-reply.t` | i3-only subsystem | Its sole assertion requires the i3 runtime `restart` command. Sway's complete runtime command table has no restart entry (`sway/sway/commands.c:112-144`). |

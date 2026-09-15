@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::{env, io, process};
 
 use anyhow::Context;
-use async_channel::{Receiver, Sender, TrySendError};
+use async_channel::{Receiver, Sender};
 use calloop::io::Async;
 use directories::BaseDirs;
 use futures_util::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
@@ -30,8 +30,8 @@ use crate::swayward::State;
 use crate::utils::{version, with_toplevel_role};
 use crate::window::Mapped;
 
-#[allow(dead_code)]
-const EVENT_STREAM_BUFFER_SIZE: usize = 64;
+const INITIAL_WRITE_BUFFER_SIZE: usize = 128;
+const MAX_WRITE_BUFFER_SIZE: usize = 4_000_000;
 const MAX_PAYLOAD_SIZE: u32 = 16 * 1024 * 1024;
 static IPC_SOCKET_ID: AtomicU64 = AtomicU64::new(0);
 
@@ -140,13 +140,8 @@ impl IpcServer {
         let mut streams = self.event_streams.borrow_mut();
         let mut to_remove = Vec::new();
         for (idx, stream) in streams.iter_mut().enumerate() {
-            match stream.events.try_send(event.clone()) {
-                Ok(()) => (),
-                Err(TrySendError::Closed(_)) => to_remove.push(idx),
-                Err(TrySendError::Full(_)) => {
-                    warn!("disconnecting IPC event stream client because it is reading events too slowly");
-                    to_remove.push(idx);
-                }
+            if stream.events.try_send(event.clone()).is_err() {
+                to_remove.push(idx);
             }
         }
         for idx in to_remove.into_iter().rev() {
@@ -266,7 +261,7 @@ async fn handle_client(ctx: ClientCtx, stream: Async<'static, UnixStream>) -> an
                 .write_all(&encode(msg_type, r#"{"success": true}"#))
                 .await
                 .context("error writing IPC reply")?;
-            let (events_tx, events_rx) = async_channel::bounded(EVENT_STREAM_BUFFER_SIZE);
+            let (events_tx, events_rx) = async_channel::unbounded();
             let (disconnect_tx, disconnect_rx) = async_channel::bounded(1);
             ctx.event_streams.borrow_mut().push(EventStreamSender {
                 events: events_tx,
@@ -436,10 +431,18 @@ async fn handle_event_stream_client(client: EventStreamClient) -> anyhow::Result
     enum StreamInput {
         Header([u8; HEADER_SIZE]),
         Event(Event),
+        Written(io::Result<usize>),
     }
 
+    let mut write_buffer = Vec::new();
+    let mut write_buffer_size = INITIAL_WRITE_BUFFER_SIZE;
     loop {
         let mut header = [0; HEADER_SIZE];
+        let write_ready = if write_buffer.is_empty() {
+            futures_util::future::Either::Left(futures_util::future::pending())
+        } else {
+            futures_util::future::Either::Right(write.write(&write_buffer))
+        };
         let input = select_biased! {
             _ = disconnect.recv().fuse() => return Ok(()),
             result = read.read_exact(&mut header).fuse() => match result {
@@ -448,12 +451,23 @@ async fn handle_event_stream_client(client: EventStreamClient) -> anyhow::Result
                 Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => return Ok(()),
                 Err(error) => return Err(error).context("error reading IPC event stream"),
             },
+            result = write_ready.fuse() => StreamInput::Written(result),
             result = events.recv().fuse() => match result {
                 Ok(event) => StreamInput::Event(event),
                 Err(_) => return Ok(()),
             },
         };
         let event = match input {
+            StreamInput::Written(Ok(written)) => {
+                write_buffer.drain(..written);
+                continue;
+            }
+            StreamInput::Written(Err(error)) if error.kind() == io::ErrorKind::BrokenPipe => {
+                return Ok(());
+            }
+            StreamInput::Written(Err(error)) => {
+                return Err(error).context("error writing IPC event");
+            }
             StreamInput::Header(header) => {
                 let (msg_type, payload_len) = decode_header(&header)?;
                 if msg_type != MessageType::Subscribe || payload_len > MAX_PAYLOAD_SIZE {
@@ -471,17 +485,19 @@ async fn handle_event_stream_client(client: EventStreamClient) -> anyhow::Result
                         "workspace" | "mode" | "window" | "binding" | "tick"
                     )
                 }) {
-                    write
-                        .write_all(&encode(msg_type, r#"{"success": false}"#))
-                        .await
-                        .context("error writing IPC reply")?;
+                    queue_ipc_message(
+                        &mut write_buffer,
+                        &mut write_buffer_size,
+                        &encode(msg_type, r#"{"success": false}"#),
+                    )?;
                     continue;
                 }
                 subscriptions.extend(requested);
-                write
-                    .write_all(&encode(msg_type, r#"{"success": true}"#))
-                    .await
-                    .context("error writing IPC reply")?;
+                queue_ipc_message(
+                    &mut write_buffer,
+                    &mut write_buffer_size,
+                    &encode(msg_type, r#"{"success": true}"#),
+                )?;
                 continue;
             }
             StreamInput::Event(event) => event,
@@ -582,14 +598,23 @@ async fn handle_event_stream_client(client: EventStreamClient) -> anyhow::Result
         };
         let payload = serde_json::to_string(&payload).context("error formatting event")?;
         let buf = crate::ipc::wire::encode_raw(msg_type, &payload);
-
-        match write.write_all(&buf).await {
-            Ok(()) => write.flush().await.context("error flushing IPC event")?,
-            // Normal client disconnection.
-            Err(err) if err.kind() == io::ErrorKind::BrokenPipe => return Ok(()),
-            res @ Err(_) => res.context("error writing event")?,
-        }
+        queue_ipc_message(&mut write_buffer, &mut write_buffer_size, &buf)?;
     }
+}
+
+fn queue_ipc_message(
+    buffer: &mut Vec<u8>,
+    buffer_size: &mut usize,
+    message: &[u8],
+) -> anyhow::Result<()> {
+    while buffer.len() + message.len() >= *buffer_size {
+        *buffer_size *= 2;
+    }
+    if *buffer_size > MAX_WRITE_BUFFER_SIZE {
+        anyhow::bail!("IPC client write buffer too big ({buffer_size}), disconnecting client");
+    }
+    buffer.extend_from_slice(message);
+    Ok(())
 }
 
 fn make_ipc_window(
@@ -1232,5 +1257,25 @@ impl State {
         let event = Event::ScreenshotCaptured { path };
         state.apply(event.clone());
         server.send_event(event);
+    }
+}
+
+#[cfg(test)]
+mod write_buffer_tests {
+    use super::*;
+
+    #[test]
+    fn write_buffer_doubles_and_rejects_the_first_size_above_four_mb() {
+        let mut buffer = Vec::new();
+        let mut size = INITIAL_WRITE_BUFFER_SIZE;
+        queue_ipc_message(&mut buffer, &mut size, &[0; 100]).unwrap();
+        assert_eq!(size, 128);
+        queue_ipc_message(&mut buffer, &mut size, &[0; 28]).unwrap();
+        assert_eq!(size, 256);
+
+        buffer.resize(2_097_151, 0);
+        size = 2_097_152;
+        assert!(queue_ipc_message(&mut buffer, &mut size, &[0]).is_err());
+        assert_eq!(size, 4_194_304);
     }
 }
