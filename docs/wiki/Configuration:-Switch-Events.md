@@ -25,7 +25,7 @@ Currently, only the [`spawn` action](./Configuration:-Key-Bindings.md#spawn) are
 
 These events correspond to closing and opening of the laptop lid.
 
-Note that niri will already automatically turn the internal laptop monitor on and off in accordance with the laptop lid.
+Note that swayward will already automatically turn the internal laptop monitor on and off in accordance with the laptop lid.
 
 ```kdl
 switch-events {
@@ -48,3 +48,7 @@ switch-events {
     tablet-mode-off { spawn "bash" "-c" "gsettings set org.gnome.desktop.a11y.applications screen-keyboard-enabled false"; }
 }
 ```
+
+---
+
+*This page is adapted from the niri documentation.*

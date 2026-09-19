@@ -690,9 +690,9 @@ retry, sleep, or catch-and-continue path.
 
 The suite finishes at 2349 passes and 875 documented skips, so 27.1% of i3's
 assertions will never pass here. That is not a backlog. Each skip carries a
-reason and a `sway` or `i3` citation, and an independent adversarial audit of
-all 185 distinct reason texts (`docs/SKIP_AUDIT.md`) upheld 183 and overturned
-2, which were converted back to failures and then fixed. Grouped by cause:
+reason and a `sway` or `i3` citation. An adversarial audit of all 185 distinct
+reason texts upheld 183 and overturned 2, which became failures and were then
+fixed. Grouped by cause:
 
 | Assertions | Cause |
 | ---: | --- |
