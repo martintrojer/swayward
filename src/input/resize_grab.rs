@@ -15,7 +15,7 @@ use smithay::input::{tablet, SeatHandler};
 use smithay::utils::{IsAlive, Logical, Point, SERIAL_COUNTER};
 
 use crate::input::AnyStartData;
-use crate::niri::State;
+use crate::swayward::State;
 
 pub struct ResizeGrab {
     start_data: AnyStartData<State>,
@@ -37,11 +37,11 @@ impl ResizeGrab {
     }
 
     fn on_ungrab(&mut self, state: &mut State) {
-        state.niri.layout.interactive_resize_end(&self.window);
+        state.swayward.layout.interactive_resize_end(&self.window);
 
         if !self.start_data.is_touch() {
             state
-                .niri
+                .swayward
                 .cursor_manager
                 .set_cursor_image(CursorImageStatus::default_named());
         }
@@ -53,7 +53,7 @@ impl ResizeGrab {
         }
 
         let delta = self.new_location - self.start_data.location();
-        data.niri
+        data.swayward
             .layout
             .interactive_resize_update(&self.window, delta)
     }

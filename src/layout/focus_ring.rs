@@ -1,13 +1,14 @@
 use std::iter::zip;
 
-use niri_config::{CornerRadius, Gradient, GradientRelativeTo};
 use smithay::backend::renderer::element::{Element as _, Kind};
 use smithay::utils::{Logical, Point, Rectangle, Size};
+use swayward_config::{CornerRadius, Gradient, GradientRelativeTo};
 
-use crate::niri_render_elements;
 use crate::render_helpers::border::BorderRenderElement;
 use crate::render_helpers::renderer::NiriRenderer;
 use crate::render_helpers::solid_color::{SolidColorBuffer, SolidColorRenderElement};
+use crate::swayward_render_elements;
+use crate::utils::ResizeEdge;
 
 #[derive(Debug)]
 pub struct FocusRing {
@@ -18,11 +19,12 @@ pub struct FocusRing {
     full_size: Size<f64, Logical>,
     is_border: bool,
     use_border_shader: bool,
-    config: niri_config::FocusRing,
+    config: swayward_config::FocusRing,
     thicken_corners: bool,
+    edges: ResizeEdge,
 }
 
-niri_render_elements! {
+swayward_render_elements! {
     FocusRingRenderElement => {
         SolidColor = SolidColorRenderElement,
         Gradient = BorderRenderElement,
@@ -30,7 +32,7 @@ niri_render_elements! {
 }
 
 impl FocusRing {
-    pub fn new(config: niri_config::FocusRing) -> Self {
+    pub fn new(config: swayward_config::FocusRing) -> Self {
         Self {
             buffers: Default::default(),
             locations: Default::default(),
@@ -41,10 +43,11 @@ impl FocusRing {
             use_border_shader: false,
             config,
             thicken_corners: true,
+            edges: ResizeEdge::all(),
         }
     }
 
-    pub fn update_config(&mut self, config: niri_config::FocusRing) {
+    pub fn update_config(&mut self, config: swayward_config::FocusRing) {
         self.config = config;
     }
 
@@ -246,8 +249,23 @@ impl FocusRing {
         };
 
         if self.is_border {
-            for ((buf, border), loc) in zip(zip(&self.buffers, &self.borders), self.locations) {
-                push(buf, border, location + loc);
+            let edges = [
+                ResizeEdge::TOP,
+                ResizeEdge::BOTTOM,
+                ResizeEdge::LEFT,
+                ResizeEdge::RIGHT,
+                ResizeEdge::TOP_LEFT,
+                ResizeEdge::TOP_RIGHT,
+                ResizeEdge::BOTTOM_RIGHT,
+                ResizeEdge::BOTTOM_LEFT,
+            ];
+            for (((buf, border), loc), edge) in zip(
+                zip(zip(&self.buffers, &self.borders), self.locations),
+                edges,
+            ) {
+                if self.edges.intersects(edge) {
+                    push(buf, border, location + loc);
+                }
             }
         } else {
             push(
@@ -270,7 +288,11 @@ impl FocusRing {
         self.thicken_corners = value;
     }
 
-    pub fn config(&self) -> &niri_config::FocusRing {
+    pub fn set_edges(&mut self, edges: ResizeEdge) {
+        self.edges = edges;
+    }
+
+    pub fn config(&self) -> &swayward_config::FocusRing {
         &self.config
     }
 }

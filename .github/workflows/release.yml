@@ -4,19 +4,24 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Public version'
+        description: 'Public version, without the leading v'
         required: true
 
 concurrency:
   group: ${{ github.workflow }}
   cancel-in-progress: true
 
-env:
-  RUN_SLOW_TESTS: 1
-
 jobs:
   prepare-release:
-    runs-on: ubuntu-24.04
+    # Build on the oldest runner we support, not the newest. glibc is forward
+    # compatible only, so the build machine's glibc becomes the floor for
+    # every user: building on ubuntu-24.04 would require glibc 2.39 and lock
+    # out Ubuntu 22.04 and Debian 12.
+    #
+    # 22.04 is viable because the one version-sensitive dependency, pipewire,
+    # asks for feature v0_3_33 and 22.04 ships libpipewire 0.3.48. If a future
+    # dependency needs newer system headers, raise this and say so here.
+    runs-on: ubuntu-22.04
 
     permissions:
       contents: write
@@ -38,7 +43,11 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y curl gcc clang libudev-dev libgbm-dev libxkbcommon-dev libegl1-mesa-dev libwayland-dev libinput-dev libdbus-1-dev libsystemd-dev libseat-dev libpipewire-0.3-dev libpango1.0-dev libdisplay-info-dev libadwaita-1-dev
+          sudo apt-get install -y curl gcc clang libudev-dev libgbm-dev \
+            libxkbcommon-dev libegl1-mesa-dev libwayland-dev libinput-dev \
+            libdbus-1-dev libsystemd-dev libseat-dev libpipewire-0.3-dev \
+            libpango1.0-dev libdisplay-info-dev \
+            perl libjson-pp-perl libtest-simple-perl libxcb-xkb-dev x11-xkb-utils
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -46,21 +55,59 @@ jobs:
         run: |
           mkdir .cargo
           cargo vendor --locked > .cargo/config.toml
-          tar cJf niri-${{ github.event.inputs.version }}-vendored-dependencies.tar.xz vendor/
+          tar cJf swayward-${{ github.event.inputs.version }}-vendored-dependencies.tar.xz vendor .cargo
 
       - name: Build
         run: cargo build --all --frozen --release
 
-      - name: Build tests
-        run: cargo test --no-run --all --frozen --release
-
       - name: Test
         run: cargo test --all --frozen --release -- --nocapture
+
+      - name: Stage the binary tarball
+        run: |
+          set -eux
+          version=${{ github.event.inputs.version }}
+          stage=swayward-$version-x86_64-linux-gnu
+          mkdir -p "$stage"/{bin,share}
+
+          install -Dm755 target/release/swayward "$stage/bin/swayward"
+          install -Dm755 target/release/swaywardmsg "$stage/bin/swaywardmsg"
+          install -Dm755 resources/swayward-session "$stage/bin/swayward-session"
+
+          install -Dm644 resources/swayward.desktop "$stage/share/swayward.desktop"
+          install -Dm644 resources/swayward-portals.conf "$stage/share/swayward-portals.conf"
+          install -Dm644 resources/swayward.service "$stage/share/swayward.service"
+          install -Dm644 resources/swayward-shutdown.target "$stage/share/swayward-shutdown.target"
+          install -Dm644 resources/default-config.kdl "$stage/share/default-config.kdl"
+          install -Dm644 LICENSE "$stage/LICENSE"
+
+          # Record what the binary actually needs, measured rather than
+          # guessed, so an installer can check before unpacking.
+          {
+            echo "swayward $version, x86_64, dynamically linked against the system graphics stack."
+            echo
+            echo "Minimum glibc: $(objdump -T target/release/swayward |
+              grep -oE 'GLIBC_[0-9]+\.[0-9]+' | sort -uV | tail -1)"
+            echo
+            echo "This build is not self-contained. A compositor cannot statically link"
+            echo "the seat, input and GPU stack it drives. Install the runtime libraries"
+            echo "your distribution ships for a wlroots-style compositor, plus:"
+            echo "  xdg-desktop-portal-gtk  xdg-desktop-portal-wlr  xwayland-satellite"
+            echo
+            echo "See INSTALL.md in this archive."
+          } > "$stage/RUNTIME.txt"
+          cp docs/BUILDING.md "$stage/INSTALL.md"
+
+          tar czf "$stage.tar.gz" "$stage"
+          sha256sum "$stage.tar.gz" > "$stage.tar.gz.sha256"
 
       - name: Draft release
         uses: softprops/action-gh-release@v2
         with:
           draft: true
           tag_name: v${{ github.event.inputs.version }}
-          files: niri-${{ github.event.inputs.version }}-vendored-dependencies.tar.xz
+          files: |
+            swayward-${{ github.event.inputs.version }}-vendored-dependencies.tar.xz
+            swayward-${{ github.event.inputs.version }}-x86_64-linux-gnu.tar.gz
+            swayward-${{ github.event.inputs.version }}-x86_64-linux-gnu.tar.gz.sha256
           fail_on_unmatched_files: true

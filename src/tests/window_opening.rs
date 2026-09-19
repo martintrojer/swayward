@@ -1,8 +1,8 @@
 use std::fmt::{self, Write as _};
 
 use insta::assert_snapshot;
-use niri_config::Config;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use swayward_config::Config;
 
 use super::*;
 use crate::layout::LayoutElement as _;
@@ -33,8 +33,127 @@ fn simple_no_workspaces() {
     let window = f.client(id).window(&surface);
     assert_snapshot!(
         window.format_recent_configures(),
-        @"size: 100 × 688, bounds: 1248 × 688, states: []"
+        @"size: 1248 × 688, bounds: 1248 × 688, states: []"
     );
+}
+
+#[test]
+fn production_windows_are_constructed_only_from_xdg_toplevels() {
+    fn visit(path: &std::path::Path, constructors: &mut Vec<String>) {
+        for entry in std::fs::read_dir(path).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                if path.file_name().is_some_and(|name| name == "tests") {
+                    continue;
+                }
+                visit(&path, constructors);
+            } else if path.extension().is_some_and(|extension| extension == "rs") {
+                let source = std::fs::read_to_string(&path).unwrap();
+                for line in source.lines().filter(|line| line.contains("Window::new_")) {
+                    constructors.push(format!("{}: {line}", path.display()));
+                }
+            }
+        }
+    }
+
+    let mut constructors = Vec::new();
+    visit(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+        &mut constructors,
+    );
+    assert_eq!(
+        constructors.len(),
+        1,
+        "production Window constructors changed: {constructors:#?}"
+    );
+    assert!(
+        constructors[0].contains("Window::new_wayland_window(surface)"),
+        "production Window must retain the xdg-toplevel role: {constructors:#?}"
+    );
+}
+
+#[test]
+fn commits_before_mapping_and_after_unmapping_keep_wayland_role_invariants() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+
+    let id = f.add_client();
+    let window = f.client(id).create_window();
+    let surface = window.surface.clone();
+
+    // Repeated pre-map commits must remain in the Unmapped path, whose Window was constructed
+    // from this xdg-toplevel and therefore has a Wayland toplevel role.
+    window.commit();
+    window.commit();
+    f.double_roundtrip(id);
+    assert_eq!(f.swayward().unmapped_windows.len(), 1);
+
+    let window = f.client(id).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(id);
+    assert!(f.swayward().unmapped_windows.is_empty());
+    assert_eq!(f.swayward().layout.windows().count(), 1);
+
+    let window = f.client(id).window(&surface);
+    window.attach_null();
+    window.commit();
+    f.double_roundtrip(id);
+    assert!(f.swayward().layout.windows().next().is_none());
+    assert_eq!(f.swayward().unmapped_windows.len(), 1);
+
+    // A later commit still takes the unmapped path and can issue a fresh initial configure.
+    f.client(id).window(&surface).commit();
+    f.double_roundtrip(id);
+    assert_eq!(f.swayward().unmapped_windows.len(), 1);
+}
+
+#[test]
+fn commit_after_unmapped_toplevel_role_is_destroyed_is_safe() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+
+    let id = f.add_client();
+    let window = f.client(id).create_window();
+    let surface = window.surface.clone();
+    window.commit();
+    f.double_roundtrip(id);
+    assert_eq!(f.swayward().unmapped_windows.len(), 1);
+
+    f.client(id).window(&surface).destroy_role();
+    f.roundtrip(id);
+    assert!(f.swayward().unmapped_windows.is_empty());
+
+    f.client(id).window(&surface).commit();
+    f.double_roundtrip(id);
+    assert!(f.swayward().layout.windows().next().is_none());
+    assert!(f.swayward().unmapped_windows.is_empty());
+}
+
+#[test]
+fn commit_after_mapped_toplevel_role_is_destroyed_is_safe() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+
+    let id = f.add_client();
+    let window = f.client(id).create_window();
+    let surface = window.surface.clone();
+    window.commit();
+    f.roundtrip(id);
+    let window = f.client(id).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(id);
+    assert_eq!(f.swayward().layout.windows().count(), 1);
+
+    f.client(id).window(&surface).destroy_role();
+    f.roundtrip(id);
+    assert!(f.swayward().layout.windows().next().is_none());
+
+    f.client(id).window(&surface).commit();
+    f.double_roundtrip(id);
+    assert!(f.swayward().layout.windows().next().is_none());
+    assert!(f.swayward().unmapped_windows.is_empty());
 }
 
 #[test]
@@ -51,7 +170,7 @@ fn simple() {
     let window = f.client(id).window(&surface);
     assert_snapshot!(
         window.format_recent_configures(),
-        @"size: 936 × 1048, bounds: 1888 × 1048, states: []"
+        @"size: 1888 × 1048, bounds: 1888 × 1048, states: []"
     );
 
     window.attach_new_buffer();
@@ -61,7 +180,7 @@ fn simple() {
     let window = f.client(id).window(&surface);
     assert_snapshot!(
         window.format_recent_configures(),
-        @"size: 936 × 1048, bounds: 1888 × 1048, states: [Activated]"
+        @"size: 1888 × 1048, bounds: 1888 × 1048, states: [Activated]"
     );
 }
 
@@ -159,6 +278,256 @@ impl fmt::Display for DefaultSize {
             DefaultSize::Fixed(fixed) => write!(f, "F{fixed}"),
         }
     }
+}
+
+#[test]
+fn assigned_window_on_another_output_does_not_steal_focus() {
+    let config = Config::parse_mem(
+        r#"
+window-rule {
+    match app-id="assigned"
+    open-on-output "headless-2"
+}
+"#,
+    )
+    .unwrap();
+    let mut f = Fixture::with_config(config);
+    f.add_output(1, (1280, 720));
+    f.add_output(2, (1280, 720));
+    f.niri_focus_output(1);
+    let client = f.add_client();
+
+    let focused = f.client(client).create_window();
+    focused.xdg_toplevel.set_app_id("focused".into());
+    focused.xdg_toplevel.set_title("focused".into());
+    focused.commit();
+    let focused_surface = focused.surface.clone();
+    f.roundtrip(client);
+    let focused = f.client(client).window(&focused_surface);
+    focused.attach_new_buffer();
+    focused.ack_last_and_commit();
+    f.double_roundtrip(client);
+    let focused = f.swayward().layout.focus().unwrap().id();
+
+    let assigned = f.client(client).create_window();
+    assigned.xdg_toplevel.set_app_id("assigned".into());
+    assigned.xdg_toplevel.set_title("assigned".into());
+    assigned.commit();
+    let assigned_surface = assigned.surface.clone();
+    f.roundtrip(client);
+    let assigned = f.client(client).window(&assigned_surface);
+    assigned.attach_new_buffer();
+    assigned.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    assert_eq!(f.swayward().layout.focus().unwrap().id(), focused);
+    assert_eq!(
+        f.swayward().layout.active_output().unwrap().name(),
+        "headless-1"
+    );
+    let assigned_output = f
+        .swayward()
+        .layout
+        .windows()
+        .find(|(_, mapped)| mapped.id() != focused)
+        .and_then(|(monitor, _)| monitor)
+        .unwrap();
+    assert_eq!(assigned_output.output_name(), "headless-2");
+}
+
+#[test]
+fn assigned_window_on_another_workspace_does_not_steal_focus() {
+    let config = Config::parse_mem(
+        r#"
+window-rule {
+    match app-id="assigned"
+    open-on-workspace "target"
+}
+"#,
+    )
+    .unwrap();
+    let mut f = Fixture::with_config(config);
+    f.add_output(1, (1280, 720));
+    let client = f.add_client();
+
+    let focused = f.client(client).create_window();
+    focused.xdg_toplevel.set_app_id("focused".into());
+    focused.commit();
+    let focused_surface = focused.surface.clone();
+    f.roundtrip(client);
+    let focused = f.client(client).window(&focused_surface);
+    focused.attach_new_buffer();
+    focused.ack_last_and_commit();
+    f.double_roundtrip(client);
+    let focused = f.swayward().layout.focus().unwrap().id();
+
+    let assigned = f.client(client).create_window();
+    assigned.xdg_toplevel.set_app_id("assigned".into());
+    assigned.commit();
+    let assigned_surface = assigned.surface.clone();
+    f.roundtrip(client);
+    let assigned = f.client(client).window(&assigned_surface);
+    assigned.attach_new_buffer();
+    assigned.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    let swayward = f.swayward();
+    let (_, target) = swayward.layout.find_workspace_by_name("target").unwrap();
+    assert!(target.windows().any(|window| window.id() != focused));
+    assert_eq!(swayward.layout.focus().unwrap().id(), focused);
+}
+
+#[test]
+fn sway_default_floating_border_applies_to_initial_floats() {
+    let config = Config::parse_mem(
+        r#"
+window-rule {
+    match app-id="floating"
+    open-floating true
+}
+window-rule {
+    sway-floating-border "pixel"
+    sway-floating-border-width 3
+}
+"#,
+    )
+    .unwrap();
+    let mut f = Fixture::with_config(config);
+    f.add_output(1, (1280, 720));
+    let client = f.add_client();
+
+    let window = f.client(client).create_window();
+    window.xdg_toplevel.set_app_id("floating".into());
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    let swayward = f.swayward();
+    let mapped = swayward.layout.windows().next().unwrap().1;
+    let id = mapped.window.clone();
+    assert!(swayward.layout.active_workspace().unwrap().is_floating(&id));
+    assert_eq!(
+        swayward.layout.window_border(&id),
+        Some((swayward_ipc::command::BorderStyle::Pixel, 3))
+    );
+}
+
+#[test]
+fn workspace_number_rule_matches_digit_prefix_but_not_a_longer_number() {
+    let config = Config::parse_mem(
+        r#"
+window-rule {
+    match app-id="numbered"
+    open-on-workspace-number "2"
+}
+window-rule {
+    match app-id="named"
+    open-on-workspace "2"
+}
+"#,
+    )
+    .unwrap();
+    let mut f = Fixture::with_config(config);
+    f.add_output(1, (1280, 720));
+    // Create "21" first so a longer number exists that the rule must not
+    // match, and pin it with a window. An empty workspace that focus has left
+    // is destroyed (measured on sway 1.11; see 115-ipc-workspaces.t), so "21"
+    // cannot be kept alive merely by having been visited.
+    f.swayward()
+        .layout
+        .activate_sway_workspace(crate::command::WorkspaceTarget::Name("21".into()))
+        .unwrap();
+    let keeper = f.add_client();
+    let window = f.client(keeper).create_window();
+    window.xdg_toplevel.set_app_id("keeper".into());
+    window.commit();
+    let keeper_surface = window.surface.clone();
+    f.roundtrip(keeper);
+    let window = f.client(keeper).window(&keeper_surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(keeper);
+    f.swayward()
+        .layout
+        .activate_sway_workspace(crate::command::WorkspaceTarget::Name("2: targetws".into()))
+        .unwrap();
+    let client = f.add_client();
+    {
+        let swayward = f.swayward();
+        let names = crate::ipc::tree::describe_workspaces(&swayward.layout, &swayward.global_space)
+            .iter()
+            .map(|w| (w.name.clone(), w.num))
+            .collect::<Vec<_>>();
+        eprintln!("DEBUGWS ipc={names:?}");
+        let raw = swayward
+            .layout
+            .workspaces()
+            .map(|(_, index, ws)| (index, ws.sway_name(), ws.number()))
+            .collect::<Vec<_>>();
+        eprintln!("DEBUGRAW {raw:?}");
+    }
+
+    for app_id in ["numbered", "named"] {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+        if app_id == "numbered" {
+            assert_eq!(
+                f.swayward()
+                    .layout
+                    .find_workspace_by_name("2: targetws")
+                    .unwrap()
+                    .1
+                    .windows()
+                    .count(),
+                1
+            );
+            assert_eq!(
+                f.swayward()
+                    .layout
+                    .find_workspace_by_name("21")
+                    .unwrap()
+                    .1
+                    .windows()
+                    .count(),
+                // Only the keeper pinning "21" alive: the rule must not send
+                // the "numbered" window to this longer number.
+                1
+            );
+        }
+    }
+
+    assert_eq!(
+        f.swayward()
+            .layout
+            .find_workspace_by_name("2: targetws")
+            .unwrap()
+            .1
+            .windows()
+            .count(),
+        1
+    );
+    assert_eq!(
+        f.swayward()
+            .layout
+            .workspaces()
+            .find(|(_, _, workspace)| workspace.sway_name().as_deref() == Some("2"))
+            .unwrap()
+            .2
+            .windows()
+            .count(),
+        1
+    );
 }
 
 #[test]
@@ -378,8 +747,8 @@ window-rule {{
         f.double_roundtrip(id);
     }
 
-    let niri = f.niri();
-    let (mon, ws_idx, ws, mapped) = niri
+    let swayward = f.swayward();
+    let (mon, ws_idx, ws, mapped) = swayward
         .layout
         .workspaces()
         .find_map(|(mon, ws_idx, ws)| {
@@ -405,7 +774,7 @@ window-rule {{
     // If the window ended up fullscreen, unfullscreen it and output the configure.
     let mut post_unfullscreen = String::new();
     if is_fullscreen {
-        f.niri().layout.set_fullscreen(&win, false);
+        f.swayward().layout.set_fullscreen(&win, false);
         f.double_roundtrip(id);
 
         let window = f.client(id).window(&surface);
@@ -436,14 +805,11 @@ post-map configures:
 
 #[test]
 fn target_size() {
-    if std::env::var_os("RUN_SLOW_TESTS").is_none() {
-        eprintln!("ignoring slow test");
-        return;
-    }
-
     store_and_increase_nofile_rlimit();
 
-    // Here we test a massive powerset of settings that can affect the window size:
+    // Exercise the inherited sizing-rule powerset against tree semantics. Niri's default,
+    // fixed, and proportional column widths, per-window heights, and within-column tab strip
+    // geometry do not constrain a sole i3 leaf: after mapping it fills the working area.
     //
     // * want fullscreen
     // * open-fullscreen
@@ -655,11 +1021,11 @@ layout {
 
     // If the window ended up fullscreen, unfullscreen it and output the configure.
     let mut post_unfullscreen = String::new();
-    let mapped = f.niri().layout.windows().next().unwrap().1;
+    let mapped = f.swayward().layout.windows().next().unwrap().1;
     let is_fullscreen = mapped.sizing_mode().is_fullscreen();
     let win = mapped.window.clone();
     if is_fullscreen {
-        f.niri().layout.set_fullscreen(&win, false);
+        f.swayward().layout.set_fullscreen(&win, false);
         f.double_roundtrip(id);
 
         let window = f.client(id).window(&surface);
@@ -838,11 +1204,11 @@ window-rule {
 
     // If the window ended up fullscreen, unfullscreen it and output the configure.
     let mut post_unfullscreen = String::new();
-    let mapped = f.niri().layout.windows().next().unwrap().1;
+    let mapped = f.swayward().layout.windows().next().unwrap().1;
     let is_fullscreen = mapped.sizing_mode().is_fullscreen();
     let win = mapped.window.clone();
     if is_fullscreen {
-        f.niri().layout.set_fullscreen(&win, false);
+        f.swayward().layout.set_fullscreen(&win, false);
         f.double_roundtrip(id);
 
         let window = f.client(id).window(&surface);
@@ -858,11 +1224,11 @@ window-rule {
 
     // If the window ended up maximized, unmaximize it and output the configure.
     let mut post_unmaximize = String::new();
-    let mapped = f.niri().layout.windows().next().unwrap().1;
+    let mapped = f.swayward().layout.windows().next().unwrap().1;
     let is_maximized = mapped.sizing_mode().is_maximized();
     let win = mapped.window.clone();
     if is_maximized {
-        f.niri().layout.set_maximized(&win, false);
+        f.swayward().layout.set_maximized(&win, false);
         f.double_roundtrip(id);
 
         let window = f.client(id).window(&surface);

@@ -46,7 +46,36 @@ pub struct VirtualPointerUserData {
     seat: Option<WlSeat>,
     output: Option<Output>,
 
-    axis_frame: Mutex<Option<AxisFrame>>,
+    axis_frame: Mutex<PendingAxisFrame>,
+}
+
+#[derive(Debug, Default)]
+struct PendingAxisFrame {
+    frame: Option<AxisFrame>,
+    source: Option<AxisSource>,
+}
+
+impl PendingAxisFrame {
+    fn finish(&mut self) -> Option<AxisFrame> {
+        self.source = None;
+        self.frame.take()
+    }
+
+    fn mutate(&mut self, time: Option<u32>, f: impl FnOnce(AxisFrame) -> AxisFrame) {
+        let source = self.source;
+        self.frame = self
+            .frame
+            .or(time.map(InputTime::from_millis).map(AxisFrame::new))
+            .map(|frame| source.map_or(frame, |source| frame.source(source)))
+            .map(f);
+    }
+
+    fn set_source(&mut self, source: AxisSource) {
+        self.source = Some(source);
+        if let Some(frame) = self.frame.take() {
+            self.frame = Some(frame.source(source));
+        }
+    }
 }
 
 impl VirtualPointer {
@@ -63,15 +92,11 @@ impl VirtualPointer {
     }
 
     fn finish_axis_frame(&self) -> Option<AxisFrame> {
-        self.data().axis_frame.lock().unwrap().take()
+        self.data().axis_frame.lock().unwrap().finish()
     }
 
     fn mutate_axis_frame(&self, time: Option<u32>, f: impl FnOnce(AxisFrame) -> AxisFrame) {
-        let mut frame = self.data().axis_frame.lock().unwrap();
-
-        *frame = frame
-            .or(time.map(InputTime::from_millis).map(AxisFrame::new))
-            .map(f);
+        self.data().axis_frame.lock().unwrap().mutate(time, f);
     }
 }
 
@@ -151,21 +176,25 @@ impl Event<VirtualPointerInputBackend> for VirtualPointerMotionAbsoluteEvent {
     }
 }
 
+fn normalized_absolute_coordinate(value: u32, extent: u32) -> Option<f64> {
+    (extent != 0).then(|| value as f64 / extent as f64)
+}
+
 impl AbsolutePositionEvent<VirtualPointerInputBackend> for VirtualPointerMotionAbsoluteEvent {
     fn x(&self) -> f64 {
-        self.x as f64 / self.x_extent as f64
+        normalized_absolute_coordinate(self.x, self.x_extent).unwrap_or_default()
     }
 
     fn y(&self) -> f64 {
-        self.y as f64 / self.y_extent as f64
+        normalized_absolute_coordinate(self.y, self.y_extent).unwrap_or_default()
     }
 
     fn x_transformed(&self, width: i32) -> f64 {
-        (self.x as i64 * width as i64) as f64 / self.x_extent as f64
+        self.x() * f64::from(width)
     }
 
     fn y_transformed(&self, height: i32) -> f64 {
-        (self.y as i64 * height as i64) as f64 / self.y_extent as f64
+        self.y() * f64::from(height)
     }
 }
 
@@ -218,6 +247,14 @@ fn tuple_axis<T>(tuple: (T, T), axis: Axis) -> T {
     }
 }
 
+fn axis_source_or_default(source: Option<AxisSource>) -> AxisSource {
+    source.unwrap_or(AxisSource::Wheel)
+}
+
+fn discrete_to_v120(discrete: i32) -> i32 {
+    discrete.saturating_mul(120)
+}
+
 impl PointerAxisEvent<VirtualPointerInputBackend> for VirtualPointerAxisEvent {
     fn amount(&self, axis: Axis) -> Option<f64> {
         Some(tuple_axis(self.frame.axis, axis))
@@ -228,10 +265,7 @@ impl PointerAxisEvent<VirtualPointerInputBackend> for VirtualPointerAxisEvent {
     }
 
     fn source(&self) -> AxisSource {
-        self.frame.source.unwrap_or_else(|| {
-            warn!("AxisSource: no source set, giving bogus value");
-            AxisSource::Continuous
-        })
+        axis_source_or_default(self.frame.source)
     }
 
     fn relative_direction(&self, axis: Axis) -> AxisRelativeDirection {
@@ -363,7 +397,7 @@ where
             VirtualPointerUserData {
                 seat,
                 output,
-                axis_frame: Mutex::new(None),
+                axis_frame: Mutex::new(PendingAxisFrame::default()),
             },
         );
         state
@@ -409,6 +443,9 @@ where
                 x_extent,
                 y_extent,
             } => {
+                if x_extent == 0 || y_extent == 0 {
+                    return;
+                }
                 let event = VirtualPointerMotionAbsoluteEvent {
                     pointer,
                     time,
@@ -479,7 +516,12 @@ where
                     }
                 };
 
-                pointer.mutate_axis_frame(None, |frame| frame.source(axis_source));
+                pointer
+                    .data()
+                    .axis_frame
+                    .lock()
+                    .unwrap()
+                    .set_source(axis_source);
             }
             zwlr_virtual_pointer_v1::Request::AxisStop { time, axis } => {
                 let axis = match axis {
@@ -516,7 +558,9 @@ where
                     }
                 };
                 pointer.mutate_axis_frame(Some(time), |frame| {
-                    frame.value(axis, value).v120(axis, discrete * 120)
+                    frame
+                        .value(axis, value)
+                        .v120(axis, discrete_to_v120(discrete))
                 });
             }
             zwlr_virtual_pointer_v1::Request::Destroy => {}
@@ -539,5 +583,125 @@ where
             .virtual_pointer_manager_state()
             .virtual_pointers
             .remove(resource);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io;
+    use std::sync::{Arc, Mutex};
+
+    use tracing_subscriber::fmt::MakeWriter;
+
+    use super::*;
+
+    #[derive(Clone, Default)]
+    struct Log(Arc<Mutex<Vec<u8>>>);
+
+    impl io::Write for Log {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'a> MakeWriter<'a> for Log {
+        type Writer = Self;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            self.clone()
+        }
+    }
+
+    #[test]
+    fn absolute_coordinates_are_normalized_without_output_scale() {
+        assert_eq!(normalized_absolute_coordinate(1, 0), None);
+        assert_eq!(normalized_absolute_coordinate(900, 1200), Some(0.75));
+        assert_eq!(normalized_absolute_coordinate(701, 701), Some(1.));
+    }
+
+    #[test]
+    fn axis_frames_are_isolated_and_unfinished_frames_are_dropped() {
+        let mut first = PendingAxisFrame::default();
+        let mut second = PendingAxisFrame::default();
+
+        first.mutate(Some(1), |frame| {
+            frame
+                .value(Axis::Vertical, 2.)
+                .source(AxisSource::Finger)
+                .relative_direction(Axis::Vertical, AxisRelativeDirection::Inverted)
+        });
+        second.mutate(Some(2), |frame| frame.value(Axis::Horizontal, 3.));
+
+        let first_frame = first.finish().unwrap();
+        assert_eq!(first_frame.time, InputTime::from_millis(1));
+        assert_eq!(first_frame.axis, (0., 2.));
+        assert_eq!(first_frame.source, Some(AxisSource::Finger));
+        assert_eq!(
+            first_frame.relative_direction,
+            (
+                AxisRelativeDirection::Identical,
+                AxisRelativeDirection::Inverted
+            )
+        );
+        assert!(first.finish().is_none());
+
+        let second_frame = second.finish().unwrap();
+        assert_eq!(second_frame.time, InputTime::from_millis(2));
+        assert_eq!(second_frame.axis, (3., 0.));
+
+        {
+            let mut unfinished = PendingAxisFrame::default();
+            unfinished.mutate(Some(3), |frame| frame.value(Axis::Vertical, 4.));
+        }
+    }
+
+    #[test]
+    fn axis_source_before_axis_applies_to_the_frame() {
+        let mut pending = PendingAxisFrame::default();
+        pending.set_source(AxisSource::Continuous);
+        pending.mutate(Some(1), |frame| frame.value(Axis::Vertical, 2.));
+
+        assert_eq!(
+            pending.finish().unwrap().source,
+            Some(AxisSource::Continuous)
+        );
+    }
+
+    #[test]
+    fn axis_source_does_not_leak_into_the_next_frame() {
+        let mut pending = PendingAxisFrame::default();
+        pending.set_source(AxisSource::Continuous);
+        pending.mutate(Some(1), |frame| frame.value(Axis::Vertical, 2.));
+        let _ = pending.finish().unwrap();
+        pending.mutate(Some(2), |frame| frame.value(Axis::Vertical, 3.));
+
+        assert_eq!(pending.finish().unwrap().source, None);
+    }
+
+    #[test]
+    fn discrete_axis_conversion_does_not_overflow() {
+        assert_eq!(discrete_to_v120(1), 120);
+        assert_eq!(discrete_to_v120(i32::MAX), i32::MAX);
+        assert_eq!(discrete_to_v120(i32::MIN), i32::MIN);
+    }
+
+    #[test]
+    fn omitted_axis_source_defaults_to_wheel_without_a_warning() {
+        let log = Log::default();
+        let subscriber = tracing_subscriber::fmt()
+            .without_time()
+            .with_ansi(false)
+            .with_writer(log.clone())
+            .finish();
+
+        let source = tracing::subscriber::with_default(subscriber, || axis_source_or_default(None));
+
+        assert_eq!(source, AxisSource::Wheel);
+        assert_eq!(&*log.0.lock().unwrap(), b"");
     }
 }

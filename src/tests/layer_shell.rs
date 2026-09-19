@@ -1,11 +1,682 @@
 use insta::assert_snapshot;
+use smithay::desktop::layer_map_for_output;
 use smithay::reexports::wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::Layer;
 use smithay::reexports::wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
     Anchor, KeyboardInteractivity,
 };
+use smithay::reexports::wayland_server::Resource as _;
+use smithay::utils::Rectangle;
+use wayland_client::Proxy as _;
 
 use super::*;
-use crate::tests::client::{LayerConfigureProps, LayerMargin};
+use crate::tests::client::{ClientId, LayerConfigureProps, LayerMargin};
+
+fn focused_surface_id(f: &mut Fixture) -> u32 {
+    f.swayward()
+        .keyboard_focus
+        .surface()
+        .unwrap()
+        .id()
+        .protocol_id()
+}
+
+fn map_layer(
+    f: &mut Fixture,
+    client: ClientId,
+    layer_kind: Layer,
+    namespace: &str,
+    props: LayerConfigureProps,
+) -> wayland_client::protocol::wl_surface::WlSurface {
+    let layer = f.client(client).create_layer(None, layer_kind, namespace);
+    let surface = layer.surface.clone();
+    layer.set_configure_props(props);
+    layer.commit();
+    f.double_roundtrip(client);
+
+    let layer = f.client(client).layer(&surface);
+    let size = layer.configures_received.last().unwrap().1.size;
+    layer.attach_new_buffer();
+    layer.set_size(size.0 as u16, size.1 as u16);
+    layer.ack_last_and_commit();
+    f.double_roundtrip(client);
+    surface
+}
+
+#[test]
+fn exclusive_layers_shrink_tiling_before_non_exclusive_layers_are_arranged() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1280, 800));
+    let client = f.add_client();
+    let all = Anchor::Left | Anchor::Right | Anchor::Top | Anchor::Bottom;
+
+    let neutral = map_layer(
+        &mut f,
+        client,
+        Layer::Top,
+        "neutral",
+        LayerConfigureProps {
+            anchor: Some(all),
+            exclusive_zone: Some(0),
+            ..Default::default()
+        },
+    );
+    let negative = map_layer(
+        &mut f,
+        client,
+        Layer::Background,
+        "negative",
+        LayerConfigureProps {
+            anchor: Some(all),
+            exclusive_zone: Some(-1),
+            ..Default::default()
+        },
+    );
+    map_layer(
+        &mut f,
+        client,
+        Layer::Bottom,
+        "bottom-dock",
+        LayerConfigureProps {
+            anchor: Some(Anchor::Left | Anchor::Right | Anchor::Top),
+            size: Some((0, 30)),
+            exclusive_zone: Some(30),
+            ..Default::default()
+        },
+    );
+    map_layer(
+        &mut f,
+        client,
+        Layer::Overlay,
+        "top-dock",
+        LayerConfigureProps {
+            anchor: Some(Anchor::Left | Anchor::Right | Anchor::Top),
+            size: Some((0, 40)),
+            exclusive_zone: Some(40),
+            ..Default::default()
+        },
+    );
+
+    let output = f.niri_output(1);
+    let map = layer_map_for_output(&output);
+    let geometry = |namespace| {
+        map.layers()
+            .find(|layer| layer.namespace() == namespace)
+            .and_then(|layer| map.layer_geometry(layer))
+            .unwrap()
+    };
+    assert_eq!(geometry("top-dock").loc.y, 0);
+    assert_eq!(geometry("bottom-dock").loc.y, 40);
+    drop(map);
+
+    let area = f
+        .swayward()
+        .layout
+        .active_workspace()
+        .unwrap()
+        .working_area();
+    assert_eq!(area.loc, (0., 70.).into());
+    assert_eq!(area.size, (1280., 730.).into());
+    assert_eq!(
+        f.client(client)
+            .layer(&neutral)
+            .configures_received
+            .last()
+            .unwrap()
+            .1
+            .size,
+        (1280, 730)
+    );
+    assert_eq!(
+        f.client(client)
+            .layer(&negative)
+            .configures_received
+            .last()
+            .unwrap()
+            .1
+            .size,
+        (1280, 800)
+    );
+}
+
+#[test]
+fn layer_anchors_produce_sway_geometry() {
+    let mut f = Fixture::new();
+    f.add_output(1, (800, 600));
+    let client = f.add_client();
+    let cases = [
+        ("top", Anchor::Top, (100, 50), (350, 0, 100, 50)),
+        ("bottom", Anchor::Bottom, (100, 50), (350, 550, 100, 50)),
+        ("left", Anchor::Left, (100, 50), (0, 275, 100, 50)),
+        ("right", Anchor::Right, (100, 50), (700, 275, 100, 50)),
+        (
+            "top-left",
+            Anchor::Top | Anchor::Left,
+            (100, 50),
+            (0, 0, 100, 50),
+        ),
+        (
+            "bottom-right",
+            Anchor::Bottom | Anchor::Right,
+            (100, 50),
+            (700, 550, 100, 50),
+        ),
+        (
+            "top-edge",
+            Anchor::Top | Anchor::Left | Anchor::Right,
+            (0, 50),
+            (0, 0, 800, 50),
+        ),
+        (
+            "left-edge",
+            Anchor::Top | Anchor::Bottom | Anchor::Left,
+            (100, 0),
+            (0, 0, 100, 600),
+        ),
+        (
+            "opposing-horizontal",
+            Anchor::Left | Anchor::Right,
+            (0, 50),
+            (0, 275, 800, 50),
+        ),
+        (
+            "fill",
+            Anchor::Top | Anchor::Right | Anchor::Bottom | Anchor::Left,
+            (0, 0),
+            (0, 0, 800, 600),
+        ),
+    ];
+
+    for (namespace, anchor, size, _) in cases {
+        map_layer(
+            &mut f,
+            client,
+            Layer::Top,
+            namespace,
+            LayerConfigureProps {
+                anchor: Some(anchor),
+                size: Some(size),
+                exclusive_zone: Some(-1),
+                ..Default::default()
+            },
+        );
+    }
+
+    let output = f.niri_output(1);
+    let map = layer_map_for_output(&output);
+    for (namespace, _, _, (x, y, width, height)) in cases {
+        let layer = map
+            .layers()
+            .find(|layer| layer.namespace() == namespace)
+            .unwrap();
+        assert_eq!(
+            map.layer_geometry(layer).unwrap(),
+            Rectangle::new((x, y).into(), (width, height).into()),
+            "wrong geometry for {namespace}"
+        );
+    }
+}
+
+#[test]
+fn exclusive_zone_is_released_when_a_layer_unmaps() {
+    let mut f = Fixture::new();
+    f.add_output(1, (800, 600));
+    let client = f.add_client();
+    let surface = map_layer(
+        &mut f,
+        client,
+        Layer::Top,
+        "bar",
+        LayerConfigureProps {
+            anchor: Some(Anchor::Top | Anchor::Left | Anchor::Right),
+            size: Some((0, 30)),
+            exclusive_zone: Some(30),
+            ..Default::default()
+        },
+    );
+    assert_eq!(
+        f.swayward()
+            .layout
+            .active_workspace()
+            .unwrap()
+            .working_area(),
+        Rectangle::new((0., 30.).into(), (800., 570.).into())
+    );
+
+    let layer = f.client(client).layer(&surface);
+    layer.attach_null();
+    layer.commit();
+    f.double_roundtrip(client);
+
+    assert_eq!(
+        f.swayward()
+            .layout
+            .active_workspace()
+            .unwrap()
+            .working_area(),
+        Rectangle::new((0., 0.).into(), (800., 600.).into())
+    );
+}
+
+#[test]
+fn reconfiguring_a_dock_without_changing_its_zone_preserves_tiled_geometry() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1280, 800));
+    let client = f.add_client();
+    let surface = map_layer(
+        &mut f,
+        client,
+        Layer::Top,
+        "dock",
+        LayerConfigureProps {
+            anchor: Some(Anchor::Left | Anchor::Right | Anchor::Top),
+            size: Some((0, 30)),
+            exclusive_zone: Some(30),
+            ..Default::default()
+        },
+    );
+    let window = f.client(client).create_window();
+    window.commit();
+    let window_surface = window.surface.clone();
+    f.double_roundtrip(client);
+    let window = f.client(client).window(&window_surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+    let _ = f
+        .client(client)
+        .window(&window_surface)
+        .recent_configures()
+        .count();
+
+    let before = f
+        .swayward()
+        .layout
+        .active_workspace()
+        .unwrap()
+        .working_area();
+
+    let layer = f.client(client).layer(&surface);
+    layer.set_configure_props(LayerConfigureProps {
+        size: Some((0, 40)),
+        ..Default::default()
+    });
+    layer.commit();
+    f.double_roundtrip(client);
+
+    let after = f
+        .swayward()
+        .layout
+        .active_workspace()
+        .unwrap()
+        .working_area();
+    assert_eq!(after, before);
+    assert_eq!(
+        f.client(client)
+            .window(&window_surface)
+            .recent_configures()
+            .count(),
+        0
+    );
+
+    let layer = f.client(client).layer(&surface);
+    layer.set_configure_props(LayerConfigureProps {
+        exclusive_zone: Some(40),
+        ..Default::default()
+    });
+    layer.commit();
+    f.double_roundtrip(client);
+    let changed = f
+        .swayward()
+        .layout
+        .active_workspace()
+        .unwrap()
+        .working_area();
+    assert_eq!(changed.loc.y, 40.);
+    assert_eq!(changed.size.h, 760.);
+    assert!(f
+        .client(client)
+        .window(&window_surface)
+        .recent_configures()
+        .next()
+        .is_some());
+}
+
+#[test]
+fn criteria_do_not_match_layer_surfaces() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1280, 800));
+    let client = f.add_client();
+    let surface = map_layer(
+        &mut f,
+        client,
+        Layer::Top,
+        "dock",
+        LayerConfigureProps {
+            anchor: Some(Anchor::Left | Anchor::Right | Anchor::Top),
+            size: Some((0, 30)),
+            exclusive_zone: Some(30),
+            ..Default::default()
+        },
+    );
+
+    let outcome = crate::command::execute(f.niri_state(), r#"[title="dock"] kill"#);
+    assert!(!outcome[0].success);
+    assert_eq!(outcome[0].error.as_deref(), Some("No matching node."));
+    assert!(!f.client(client).layer(&surface).close_requested);
+}
+
+#[test]
+fn layer_surface_size_and_exclusive_zone_reconfigure_without_moving_outputs() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1280, 800));
+    f.add_output(2, (1024, 768));
+    let client = f.add_client();
+    let output = f.niri_output(1);
+    f.roundtrip(client);
+    let wl_output = f.client(client).output(&output.name());
+    let layer = f
+        .client(client)
+        .create_layer(Some(&wl_output), Layer::Top, "dock");
+    let surface = layer.surface.clone();
+    layer.set_configure_props(LayerConfigureProps {
+        anchor: Some(Anchor::Left | Anchor::Right | Anchor::Top),
+        size: Some((0, 30)),
+        exclusive_zone: Some(30),
+        ..Default::default()
+    });
+    layer.commit();
+    f.double_roundtrip(client);
+    let layer = f.client(client).layer(&surface);
+    let size = layer.configures_received.last().unwrap().1.size;
+    layer.attach_new_buffer();
+    layer.set_size(size.0 as u16, size.1 as u16);
+    layer.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    let map = layer_map_for_output(&output);
+    let layer = map
+        .layers()
+        .find(|layer| layer.namespace() == "dock")
+        .unwrap();
+    assert_eq!(map.layer_geometry(layer).unwrap().size, (1280, 30).into());
+    drop(map);
+    assert_eq!(
+        f.swayward()
+            .layout
+            .active_workspace()
+            .unwrap()
+            .working_area(),
+        Rectangle::new((0., 30.).into(), (1280., 770.).into())
+    );
+
+    let layer = f.client(client).layer(&surface);
+    layer.set_configure_props(LayerConfigureProps {
+        size: Some((0, 40)),
+        ..Default::default()
+    });
+    layer.commit();
+    f.double_roundtrip(client);
+    let layer = f.client(client).layer(&surface);
+    let size = layer.configures_received.last().unwrap().1.size;
+    layer.set_size(size.0 as u16, size.1 as u16);
+    layer.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    let map = layer_map_for_output(&output);
+    let layer = map
+        .layers()
+        .find(|layer| layer.namespace() == "dock")
+        .unwrap();
+    assert_eq!(map.layer_geometry(layer).unwrap().size, (1280, 40).into());
+    drop(map);
+    assert_eq!(
+        f.swayward()
+            .layout
+            .active_workspace()
+            .unwrap()
+            .working_area(),
+        Rectangle::new((0., 30.).into(), (1280., 770.).into())
+    );
+
+    drop(wl_output);
+    let second = f.niri_output(2);
+    assert!(layer_map_for_output(&second)
+        .layers()
+        .all(|layer| layer.namespace() != "dock"));
+}
+
+#[test]
+fn keyboard_interactivity_controls_focus_and_unmap_restores_window_focus() {
+    let mut f = Fixture::new();
+    f.add_output(1, (800, 600));
+    let client = f.add_client();
+
+    let window = f.client(client).create_window();
+    window.commit();
+    let window_surface = window.surface.clone();
+    f.double_roundtrip(client);
+    let window = f.client(client).window(&window_surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+    assert_eq!(
+        focused_surface_id(&mut f),
+        window_surface.id().protocol_id()
+    );
+
+    let none = map_layer(
+        &mut f,
+        client,
+        Layer::Overlay,
+        "none",
+        LayerConfigureProps {
+            size: Some((100, 50)),
+            kb_interactivity: Some(KeyboardInteractivity::None),
+            ..Default::default()
+        },
+    );
+    assert_eq!(
+        focused_surface_id(&mut f),
+        window_surface.id().protocol_id()
+    );
+
+    let on_demand = map_layer(
+        &mut f,
+        client,
+        Layer::Overlay,
+        "on-demand",
+        LayerConfigureProps {
+            size: Some((100, 50)),
+            kb_interactivity: Some(KeyboardInteractivity::OnDemand),
+            ..Default::default()
+        },
+    );
+    assert_eq!(focused_surface_id(&mut f), on_demand.id().protocol_id());
+
+    let exclusive = map_layer(
+        &mut f,
+        client,
+        Layer::Overlay,
+        "exclusive",
+        LayerConfigureProps {
+            size: Some((100, 50)),
+            kb_interactivity: Some(KeyboardInteractivity::Exclusive),
+            ..Default::default()
+        },
+    );
+    assert_eq!(focused_surface_id(&mut f), exclusive.id().protocol_id());
+
+    let layer = f.client(client).layer(&exclusive);
+    layer.attach_null();
+    layer.commit();
+    f.double_roundtrip(client);
+    assert_eq!(focused_surface_id(&mut f), on_demand.id().protocol_id());
+
+    let layer = f.client(client).layer(&on_demand);
+    layer.attach_null();
+    layer.commit();
+    f.double_roundtrip(client);
+    assert_eq!(
+        focused_surface_id(&mut f),
+        window_surface.id().protocol_id()
+    );
+    assert_ne!(focused_surface_id(&mut f), none.id().protocol_id());
+}
+
+#[test]
+fn layers_are_arranged_in_sway_order_and_runtime_changes_restack() {
+    let mut f = Fixture::new();
+    f.add_output(1, (800, 600));
+    let client = f.add_client();
+    let background = map_layer(
+        &mut f,
+        client,
+        Layer::Background,
+        "background",
+        LayerConfigureProps {
+            size: Some((100, 50)),
+            ..Default::default()
+        },
+    );
+    for (layer, namespace) in [
+        (Layer::Overlay, "overlay"),
+        (Layer::Bottom, "bottom"),
+        (Layer::Top, "top"),
+    ] {
+        map_layer(
+            &mut f,
+            client,
+            layer,
+            namespace,
+            LayerConfigureProps {
+                size: Some((100, 50)),
+                ..Default::default()
+            },
+        );
+    }
+
+    let output = f.niri_output(1);
+    let namespaces = layer_map_for_output(&output)
+        .layers()
+        .map(|layer| layer.namespace().to_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(namespaces, ["overlay", "top", "bottom", "background"]);
+
+    let layer = f.client(client).layer(&background);
+    layer.set_configure_props(LayerConfigureProps {
+        layer: Some(Layer::Overlay),
+        ..Default::default()
+    });
+    layer.commit();
+    f.double_roundtrip(client);
+    let output = f.niri_output(1);
+    let namespaces = layer_map_for_output(&output)
+        .layers()
+        .map(|layer| layer.namespace().to_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(namespaces, ["overlay", "background", "top", "bottom"]);
+}
+
+#[test]
+fn requests_after_layer_surfaces_output_is_removed_are_safe() {
+    let mut f = Fixture::new();
+    f.add_output(1, (800, 600));
+    f.add_output(2, (1024, 768));
+    let client = f.add_client();
+    f.double_roundtrip(client);
+
+    let wl_output = f.client(client).output("headless-2");
+    let layer = f
+        .client(client)
+        .create_layer(Some(&wl_output), Layer::Top, "removed-output-layer");
+    let surface = layer.surface.clone();
+    layer.set_configure_props(LayerConfigureProps {
+        anchor: Some(Anchor::Left | Anchor::Right | Anchor::Top),
+        size: Some((0, 30)),
+        ..Default::default()
+    });
+    layer.commit();
+    f.double_roundtrip(client);
+
+    let removed = f.niri_output(2);
+    f.swayward().remove_output(&removed);
+    f.double_roundtrip(client);
+    assert!(f.client(client).layer(&surface).close_requested);
+
+    let layer = f.client(client).layer(&surface);
+    layer.set_configure_props(LayerConfigureProps {
+        size: Some((0, 40)),
+        exclusive_zone: Some(40),
+        layer: Some(Layer::Overlay),
+        ..Default::default()
+    });
+    layer.commit();
+    f.double_roundtrip(client);
+
+    assert!(f.client(client).connection.protocol_error().is_none());
+}
+
+#[test]
+fn layer_popup_is_constrained_and_parent_unmap_is_safe() {
+    let mut f = Fixture::new();
+    f.add_output(1, (800, 600));
+    let client = f.add_client();
+    let parent_surface = map_layer(
+        &mut f,
+        client,
+        Layer::Overlay,
+        "popup-parent",
+        LayerConfigureProps {
+            anchor: Some(Anchor::Top | Anchor::Right | Anchor::Bottom | Anchor::Left),
+            size: Some((0, 0)),
+            ..Default::default()
+        },
+    );
+
+    let parent = f
+        .client(client)
+        .layer(&parent_surface)
+        .layer_surface
+        .clone();
+    let popup = f.client(client).create_layer_popup(&parent, (0, 0));
+    let popup_surface = popup.surface.clone();
+    popup.surface.commit();
+    f.double_roundtrip(client);
+    assert_eq!(
+        f.client(client)
+            .popup(&popup_surface)
+            .configures_received
+            .last(),
+        Some(&(0, 0, 100, 100))
+    );
+
+    let popup = f.client(client).popup(&popup_surface).xdg_popup.clone();
+    f.client(client)
+        .state
+        .reposition_popup_at(&popup, 42, Some((800, 600)));
+    f.client(client).connection.flush().unwrap();
+    f.double_roundtrip(client);
+    let popup = f.client(client).popup(&popup_surface);
+    assert_eq!(popup.repositioned, [42]);
+    assert_eq!(
+        popup.configures_received.last(),
+        Some(&(700, 500, 100, 100))
+    );
+
+    let parent = f.client(client).layer(&parent_surface);
+    parent.attach_null();
+    parent.commit();
+    f.double_roundtrip(client);
+
+    let popup = f.client(client).popup(&popup_surface).xdg_popup.clone();
+    f.client(client)
+        .state
+        .reposition_popup_at(&popup, 43, Some((750, 550)));
+    f.client(client).connection.flush().unwrap();
+    f.dispatch();
+    f.client(client).dispatch_unchecked();
+    assert!(f.client(client).connection.protocol_error().is_none());
+}
 
 #[test]
 fn simple_top_anchor() {

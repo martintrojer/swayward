@@ -15,23 +15,21 @@ use clap::{CommandFactory, Parser};
 use clap_complete::Shell;
 use clap_complete_nushell::Nushell;
 use directories::ProjectDirs;
-use niri::cli::{Cli, CompletionShell, Sub};
+use sd_notify::NotifyState;
+use smithay::reexports::wayland_server::Display;
+use swayward::cli::{Cli, CompletionShell, Sub};
 #[cfg(feature = "dbus")]
-use niri::dbus;
-use niri::ipc::client::handle_msg;
-use niri::niri::State;
-use niri::utils::spawning::{
+use swayward::dbus;
+use swayward::swayward::State;
+use swayward::utils::spawning::{
     spawn, spawn_sh, store_and_increase_nofile_rlimit, CHILD_DISPLAY, CHILD_ENV,
     REMOVE_ENV_RUST_BACKTRACE, REMOVE_ENV_RUST_LIB_BACKTRACE,
 };
-use niri::utils::{cause_panic, version, watcher, xwayland, IS_SYSTEMD_SERVICE};
-use niri_config::{Config, ConfigPath};
-use niri_ipc::socket::SOCKET_PATH_ENV;
-use sd_notify::NotifyState;
-use smithay::reexports::wayland_server::Display;
+use swayward::utils::{cause_panic, version, watcher, xwayland, IS_SYSTEMD_SERVICE};
+use swayward_config::{Config, ConfigPath};
 use tracing_subscriber::EnvFilter;
 
-const DEFAULT_LOG_FILTER: &str = "niri=debug,smithay::backend::renderer::gles=error";
+const DEFAULT_LOG_FILTER: &str = "swayward=debug,smithay::backend::renderer::gles=error";
 
 #[cfg(feature = "profile-with-tracy-allocations")]
 #[global_allocator]
@@ -69,6 +67,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let cli = Cli::parse();
+    let headless_outputs = headless_output_count(env::var_os("WLR_HEADLESS_OUTPUTS").as_deref())?;
 
     if cli.session {
         // If we're starting as a session, assume that the intention is to start on a TTY unless
@@ -91,7 +90,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // Set the current desktop for xdg-desktop-portal.
-        env::set_var("XDG_CURRENT_DESKTOP", "niri");
+        env::set_var("XDG_CURRENT_DESKTOP", "swayward");
         // Ensure the session type is set to Wayland for xdg-autostart and Qt apps.
         env::set_var("XDG_SESSION_TYPE", "wayland");
     }
@@ -106,9 +105,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 info!("config is valid");
                 return Ok(());
             }
-            Sub::Msg { msg, json } => {
-                handle_msg(msg, json)?;
-                return Ok(());
+            Sub::Msg { .. } => {
+                return Err("the legacy msg client was removed; use swaymsg".into());
             }
             Sub::Panic => cause_panic(),
             Sub::Completions { shell } => {
@@ -117,7 +115,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         clap_complete::generate(
                             Nushell,
                             &mut Cli::command(),
-                            "niri",
+                            "swayward",
                             &mut io::stdout(),
                         );
                     }
@@ -126,7 +124,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         clap_complete::generate(
                             generator,
                             &mut Cli::command(),
-                            "niri",
+                            "swayward",
                             &mut io::stdout(),
                         );
                     }
@@ -137,9 +135,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Needs to be done before starting Tracy, so that it applies to Tracy's threads.
-    niri::utils::signals::block_early().unwrap();
+    swayward::utils::signals::block_early().unwrap();
 
-    // Avoid starting Tracy for the `niri msg` code path since starting/stopping Tracy is a bit
+    // Avoid starting Tracy for the `swayward msg` code path since starting/stopping Tracy is a bit
     // slow.
     tracy_client::Client::start();
 
@@ -152,7 +150,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Load the config.
     let config_path = config_path(cli.config);
-    env::remove_var("NIRI_CONFIG");
+    env::remove_var("SWAYWARD_CONFIG");
     let (config_created_at, config_load_result) = config_path.load_or_create();
     let config_errored = config_load_result.config.is_err();
     let mut config = config_load_result.config.unwrap_or_else(|err| {
@@ -171,7 +169,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut event_loop = EventLoop::<State>::try_new().unwrap();
 
     // Handle Ctrl+C and other signals.
-    niri::utils::signals::listen(&event_loop.handle());
+    swayward::utils::signals::listen(&event_loop.handle());
 
     // Create the compositor.
     let display = Display::new().unwrap();
@@ -184,30 +182,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         event_loop.handle(),
         event_loop.get_signal(),
         display,
-        false,
+        headless_outputs.is_some(),
         true,
         cli.session,
-    )
-    .unwrap();
+    )?;
+
+    if let Some(count) = headless_outputs {
+        let (backend, swayward) = (&mut state.backend, &mut state.swayward);
+        for n in 1..=count {
+            backend.headless().add_output(swayward, n, (1280, 720));
+        }
+    }
 
     // Set WAYLAND_DISPLAY for children.
-    let socket_name = state.niri.socket_name.as_deref().unwrap();
+    let socket_name = state.swayward.socket_name.as_deref().unwrap();
     env::set_var("WAYLAND_DISPLAY", socket_name);
     info!(
         "listening on Wayland socket: {}",
         socket_name.to_string_lossy()
     );
 
-    // Set NIRI_SOCKET for children.
-    if let Some(ipc) = &state.niri.ipc_server {
+    // Set sway-compatible IPC socket variables for children.
+    if let Some(ipc) = &state.swayward.ipc_server {
         let socket_path = ipc.socket_path.as_deref().unwrap();
-        env::set_var(SOCKET_PATH_ENV, socket_path);
+        for (name, value) in ipc_socket_environment(socket_path) {
+            env::set_var(name, value);
+        }
         info!("IPC listening on: {}", socket_path.to_string_lossy());
     }
 
     // Setup xwayland-satellite integration.
     xwayland::satellite::setup(&mut state);
-    if let Some(satellite) = &state.niri.satellite {
+    if let Some(satellite) = &state.swayward.satellite {
         let name = satellite.display_name();
         *CHILD_DISPLAY.write().unwrap() = Some(name.to_owned());
         env::set_var("DISPLAY", name);
@@ -223,8 +229,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Inhibit power key handling so we can suspend on it.
         #[cfg(feature = "dbus")]
-        if !state.niri.config.borrow().input.disable_power_key_handling {
-            if let Err(err) = state.niri.inhibit_power_key() {
+        if !state
+            .swayward
+            .config
+            .borrow()
+            .input
+            .disable_power_key_handling
+        {
+            if let Err(err) = state.swayward.inhibit_power_key() {
                 warn!("error inhibiting power key: {err:?}");
             }
         }
@@ -235,10 +247,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(feature = "dbus")]
     if cli.session {
-        state.niri.a11y.start();
+        state.swayward.a11y.start();
     }
 
-    if env::var_os("NIRI_DISABLE_SYSTEM_MANAGER_NOTIFY").is_none_or(|x| x != "1") {
+    if env::var_os("SWAYWARD_DISABLE_SYSTEM_MANAGER_NOTIFY").is_none_or(|x| x != "1") {
         // Notify systemd we're ready.
         if let Err(err) = sd_notify::notify(&[NotifyState::Ready]) {
             warn!("error notifying systemd: {err:?}");
@@ -264,10 +276,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Show the config error notification right away if needed.
     if config_errored {
-        state.niri.config_error_notification.show();
+        state.swayward.config_error_notification.show();
         state.ipc_config_loaded(true);
     } else if let Some(path) = config_created_at {
-        state.niri.config_error_notification.show_created(path);
+        state.swayward.config_error_notification.show_created(path);
     }
 
     // Run the compositor.
@@ -278,13 +290,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+fn ipc_socket_environment(path: &std::path::Path) -> [(&'static str, &std::path::Path); 2] {
+    [("SWAYSOCK", path), ("I3SOCK", path)]
+}
+
+fn headless_output_count(value: Option<&std::ffi::OsStr>) -> Result<Option<u8>, String> {
+    value
+        .map(|value| {
+            value
+                .to_str()
+                .and_then(|value| value.parse().ok())
+                .ok_or_else(|| "WLR_HEADLESS_OUTPUTS must be an integer from 0 to 255".to_owned())
+        })
+        .transpose()
+}
+
 fn import_environment() {
     let variables = [
         "WAYLAND_DISPLAY",
         "DISPLAY",
         "XDG_CURRENT_DESKTOP",
         "XDG_SESSION_TYPE",
-        SOCKET_PATH_ENV,
+        "SWAYSOCK",
+        "I3SOCK",
     ]
     .join(" ");
 
@@ -330,13 +358,13 @@ fn import_environment() {
 }
 
 fn env_config_path() -> Option<PathBuf> {
-    env::var_os("NIRI_CONFIG")
+    env::var_os("SWAYWARD_CONFIG")
         .filter(|x| !x.is_empty())
         .map(PathBuf::from)
 }
 
 fn default_config_path() -> Option<PathBuf> {
-    let Some(dirs) = ProjectDirs::from("", "", "niri") else {
+    let Some(dirs) = ProjectDirs::from("", "", "swayward") else {
         warn!("error retrieving home directory");
         return None;
     };
@@ -347,7 +375,7 @@ fn default_config_path() -> Option<PathBuf> {
 }
 
 fn system_config_path() -> PathBuf {
-    PathBuf::from("/etc/niri/config.kdl")
+    PathBuf::from("/etc/swayward/config.kdl")
 }
 
 fn config_path(cli_path: Option<PathBuf>) -> ConfigPath {
@@ -421,5 +449,30 @@ impl Drop for ShutdownTracy {
         unsafe {
             tracy_client::sys::___tracy_shutdown_profiler();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ipc_socket_is_advertised_under_both_sway_names() {
+        let path = std::path::Path::new("/tmp/swayward-test.sock");
+        assert_eq!(
+            ipc_socket_environment(path),
+            [("SWAYSOCK", path), ("I3SOCK", path)]
+        );
+    }
+
+    #[test]
+    fn wlr_headless_outputs_selects_headless_backend() {
+        assert_eq!(
+            headless_output_count(Some(std::ffi::OsStr::new("2"))).unwrap(),
+            Some(2)
+        );
+        assert_eq!(headless_output_count(None).unwrap(), None);
+        assert!(headless_output_count(Some(std::ffi::OsStr::new("invalid"))).is_err());
+        assert!(headless_output_count(Some(std::ffi::OsStr::new("256"))).is_err());
     }
 }

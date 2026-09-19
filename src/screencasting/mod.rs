@@ -17,9 +17,9 @@ use smithay::utils::{Physical, Point, Scale, Size};
 use zbus::object_server::SignalEmitter;
 
 use crate::dbus::mutter_screen_cast::{self, CursorMode, ScreenCastToNiri, StreamTargetId};
-use crate::niri::{CastTarget, Niri, OutputRenderElements, PointerRenderElements, State};
-use crate::niri_render_elements;
 use crate::render_helpers::{RenderCtx, RenderTarget};
+use crate::swayward::{CastTarget, OutputRenderElements, PointerRenderElements, State, Swayward};
+use crate::swayward_render_elements;
 use crate::utils::{get_monotonic_time, CastSessionId, CastStreamId};
 use crate::window::mapped::{MappedId, WindowCastRenderElements};
 
@@ -84,13 +84,13 @@ impl State {
             .context("no GBM device available")?;
 
         // Ensure PipeWire is initialized.
-        if self.niri.casting.pipewire.is_none() {
+        if self.swayward.casting.pipewire.is_none() {
             let pw = PipeWire::new(
-                self.niri.event_loop.clone(),
-                self.niri.casting.pw_to_niri.clone(),
+                self.swayward.event_loop.clone(),
+                self.swayward.casting.pw_to_niri.clone(),
             )
             .context("error initializing PipeWire")?;
-            self.niri.casting.pipewire = Some(pw);
+            self.swayward.casting.pipewire = Some(pw);
         }
 
         let mut render_formats = self
@@ -101,7 +101,7 @@ impl State {
             .unwrap_or_default();
 
         {
-            let config = self.niri.config.borrow();
+            let config = self.swayward.config.borrow();
             if config.debug.force_pipewire_invalid_modifier {
                 render_formats = render_formats
                     .into_iter()
@@ -115,11 +115,11 @@ impl State {
 
     pub fn on_pw_msg(&mut self, msg: PwToNiri) {
         match msg {
-            PwToNiri::StopCast { session_id } => self.niri.stop_cast(session_id),
+            PwToNiri::StopCast { session_id } => self.swayward.stop_cast(session_id),
             PwToNiri::Redraw { stream_id } => self.redraw_cast(stream_id),
             PwToNiri::FatalError => {
                 warn!("stopping PipeWire due to fatal error");
-                let casting = &mut self.niri.casting;
+                let casting = &mut self.swayward.casting;
                 if let Some(pw) = casting.pipewire.take() {
                     let mut ids = HashSet::new();
                     for cast in &casting.pending_dynamic_casts {
@@ -129,9 +129,9 @@ impl State {
                         ids.insert(cast.session_id);
                     }
                     for id in ids {
-                        self.niri.stop_cast(id);
+                        self.swayward.stop_cast(id);
                     }
-                    self.niri.event_loop.remove(pw.token);
+                    self.swayward.event_loop.remove(pw.token);
                 }
             }
         }
@@ -140,7 +140,7 @@ impl State {
     fn redraw_cast(&mut self, stream_id: CastStreamId) {
         let _span = tracy_client::span!("State::redraw_cast");
 
-        let casts = &mut self.niri.casting.casts;
+        let casts = &mut self.swayward.casting.casts;
         let Some(idx) = casts.iter().position(|cast| cast.stream_id == stream_id) else {
             warn!("cast to redraw is missing");
             return;
@@ -158,7 +158,7 @@ impl State {
             }
             CastTarget::Output { output, .. } => {
                 if let Some(output) = output.upgrade() {
-                    self.niri.queue_redraw(&output);
+                    self.swayward.queue_redraw(&output);
                 }
                 return;
             }
@@ -166,20 +166,20 @@ impl State {
         };
 
         // Lack of partial borrowing strikes again...
-        let mut casts = mem::take(&mut self.niri.casting.casts);
+        let mut casts = mem::take(&mut self.swayward.casting.casts);
         let cast = &mut casts[idx];
         let mut stop = false;
         // Use a loop {} so we can break instead of early-return.
         #[allow(clippy::never_loop)]
         loop {
-            let mut windows = self.niri.layout.windows();
+            let mut windows = self.swayward.layout.windows();
             let Some((_, mapped)) = windows.find(|(_, mapped)| mapped.id().get() == id) else {
                 break;
             };
 
             // Use the cached output since it will be present even if the output was
             // currently disconnected.
-            let Some(output) = self.niri.casting.mapped_cast_output.get(&mapped.window) else {
+            let Some(output) = self.swayward.casting.mapped_cast_output.get(&mapped.window) else {
                 break;
             };
 
@@ -203,21 +203,25 @@ impl State {
                 let mut elements = Vec::new();
                 let mut pointer_location = Point::default();
 
-                if self.niri.pointer_visibility.is_visible() {
+                if self.swayward.pointer_visibility.is_visible() {
                     if let Some((pointer_pos, win_pos)) =
-                        self.niri.pointer_pos_for_window_cast(mapped)
+                        self.swayward.pointer_pos_for_window_cast(mapped)
                     {
                         // Pointer location must be relative to the screencast buffer.
                         // - win_pos is the position of the main window surface in output-local
                         //   coordinates
                         // - bbox.loc moves us relative to the screencast buffer
                         let buf_pos = win_pos + bbox.loc.to_f64().to_logical(scale);
-                        let output_pos =
-                            self.niri.global_space.output_geometry(output).unwrap().loc;
+                        let output_pos = self
+                            .swayward
+                            .global_space
+                            .output_geometry(output)
+                            .unwrap()
+                            .loc;
                         pointer_location = pointer_pos - output_pos.to_f64() - buf_pos;
 
                         let pos = buf_pos.to_physical_precise_round(scale).upscale(-1);
-                        self.niri.render_pointer(renderer, output, &mut |elem| {
+                        self.swayward.render_pointer(renderer, output, &mut |elem| {
                             let elem =
                                 RelocateRenderElement::from_element(elem, pos, Relocate::Relative);
                             elements.push(CastRenderElement::from(elem));
@@ -247,10 +251,10 @@ impl State {
             break;
         }
         let session_id = cast.session_id;
-        self.niri.casting.casts = casts;
+        self.swayward.casting.casts = casts;
 
         if stop {
-            self.niri.stop_cast(session_id);
+            self.swayward.stop_cast(session_id);
         }
     }
 
@@ -268,9 +272,11 @@ impl State {
                 }
             }
             CastTarget::Window { id } => {
-                let mut windows = self.niri.layout.windows();
+                let mut windows = self.swayward.layout.windows();
                 if let Some((_, mapped)) = windows.find(|(_, mapped)| mapped.id().get() == *id) {
-                    if let Some(output) = self.niri.casting.mapped_cast_output.get(&mapped.window) {
+                    if let Some(output) =
+                        self.swayward.casting.mapped_cast_output.get(&mapped.window)
+                    {
                         refresh = Some(output.current_mode().unwrap().refresh as u32);
                     }
                 }
@@ -279,7 +285,7 @@ impl State {
 
         let mut to_redraw = Vec::new();
         let mut to_stop = Vec::new();
-        for cast in &mut self.niri.casting.casts {
+        for cast in &mut self.swayward.casting.casts {
             if !cast.dynamic_target {
                 continue;
             }
@@ -307,7 +313,7 @@ impl State {
     }
 
     fn start_pending_dynamic_casts(&mut self, target: &CastTarget) {
-        let pending = &self.niri.casting.pending_dynamic_casts;
+        let pending = &self.swayward.casting.pending_dynamic_casts;
         if pending.is_empty() {
             return;
         }
@@ -325,7 +331,7 @@ impl State {
                 cast_params_for_output(&output)
             }
             CastTarget::Window { id } => {
-                let Some((size, refresh)) = self.niri.cast_params_for_window(*id) else {
+                let Some((size, refresh)) = self.swayward.cast_params_for_window(*id) else {
                     return;
                 };
                 (size, refresh)
@@ -337,23 +343,23 @@ impl State {
             Err(err) => {
                 warn!("error starting pending screencasts: {err:?}");
                 let mut ids = HashSet::new();
-                for pending in self.niri.casting.pending_dynamic_casts.drain(..) {
+                for pending in self.swayward.casting.pending_dynamic_casts.drain(..) {
                     ids.insert(pending.session_id);
                 }
                 for id in ids {
-                    self.niri.stop_cast(id);
+                    self.swayward.stop_cast(id);
                 }
                 return;
             }
         };
-        let pw = self.niri.casting.pipewire.as_ref().unwrap();
+        let pw = self.swayward.casting.pipewire.as_ref().unwrap();
 
         // Alpha is always true since the dynamic target can change between window & output.
         let alpha = true;
 
         // Start each pending cast.
         let mut to_stop = HashSet::new();
-        for pending in self.niri.casting.pending_dynamic_casts.drain(..) {
+        for pending in self.swayward.casting.pending_dynamic_casts.drain(..) {
             let res = pw.start_cast(
                 gbm.clone(),
                 render_formats.clone(),
@@ -369,7 +375,7 @@ impl State {
             match res {
                 Ok(mut cast) => {
                     cast.dynamic_target = true;
-                    self.niri.casting.casts.push(cast);
+                    self.swayward.casting.casts.push(cast);
                 }
                 Err(err) => {
                     warn!("error starting pending screencast: {err:?}");
@@ -379,7 +385,7 @@ impl State {
         }
 
         for session_id in to_stop {
-            self.niri.stop_cast(session_id);
+            self.swayward.stop_cast(session_id);
         }
     }
 
@@ -397,11 +403,11 @@ impl State {
 
                 let (target, size, refresh, alpha) = match target {
                     StreamTargetId::Output { name } => {
-                        let global_space = &self.niri.global_space;
+                        let global_space = &self.swayward.global_space;
                         let output = global_space.outputs().find(|out| out.name() == name);
                         let Some(output) = output else {
                             warn!("error starting screencast: requested output is missing");
-                            self.niri.stop_cast(session_id);
+                            self.swayward.stop_cast(session_id);
                             return;
                         };
 
@@ -409,21 +415,24 @@ impl State {
                         (CastTarget::output(output), size, refresh, false)
                     }
                     StreamTargetId::Window { id }
-                        if id == self.niri.casting.dynamic_cast_id_for_portal.get() =>
+                        if id == self.swayward.casting.dynamic_cast_id_for_portal.get() =>
                     {
                         debug!("delaying dynamic cast until target is set");
-                        self.niri.casting.pending_dynamic_casts.push(PendingCast {
-                            session_id,
-                            stream_id,
-                            cursor_mode,
-                            signal_ctx,
-                        });
+                        self.swayward
+                            .casting
+                            .pending_dynamic_casts
+                            .push(PendingCast {
+                                session_id,
+                                stream_id,
+                                cursor_mode,
+                                signal_ctx,
+                            });
                         return;
                     }
                     StreamTargetId::Window { id } => {
-                        let Some((size, refresh)) = self.niri.cast_params_for_window(id) else {
+                        let Some((size, refresh)) = self.swayward.cast_params_for_window(id) else {
                             warn!("error starting screencast: requested window is missing");
-                            self.niri.stop_cast(session_id);
+                            self.swayward.stop_cast(session_id);
                             return;
                         };
                         (CastTarget::Window { id }, size, refresh, true)
@@ -434,11 +443,11 @@ impl State {
                     Ok(x) => x,
                     Err(err) => {
                         warn!("error starting screencast: {err:?}");
-                        self.niri.stop_cast(session_id);
+                        self.swayward.stop_cast(session_id);
                         return;
                     }
                 };
-                let pw = self.niri.casting.pipewire.as_ref().unwrap();
+                let pw = self.swayward.casting.pipewire.as_ref().unwrap();
 
                 let res = pw.start_cast(
                     gbm,
@@ -454,20 +463,20 @@ impl State {
                 );
                 match res {
                     Ok(cast) => {
-                        self.niri.casting.casts.push(cast);
+                        self.swayward.casting.casts.push(cast);
                     }
                     Err(err) => {
                         warn!("error starting screencast: {err:?}");
-                        self.niri.stop_cast(session_id);
+                        self.swayward.stop_cast(session_id);
                     }
                 }
             }
-            ScreenCastToNiri::StopCast { session_id } => self.niri.stop_cast(session_id),
+            ScreenCastToNiri::StopCast { session_id } => self.swayward.stop_cast(session_id),
         }
     }
 }
 
-impl Niri {
+impl Swayward {
     pub fn refresh_mapped_cast_window_rules(&mut self) {
         // O(N^2) but should be fine since there aren't many casts usually.
         self.layout.with_windows_mut(|mapped, _| {
@@ -538,7 +547,7 @@ impl Niri {
         output: &Output,
         target_presentation_time: Duration,
     ) {
-        let _span = tracy_client::span!("Niri::render_for_screen_cast");
+        let _span = tracy_client::span!("Swayward::render_for_screen_cast");
 
         let weak = output.downgrade();
         let size = output.current_mode().unwrap().size;
@@ -626,7 +635,7 @@ impl Niri {
         output: &Output,
         target_presentation_time: Duration,
     ) {
-        let _span = tracy_client::span!("Niri::render_windows_for_screen_cast");
+        let _span = tracy_client::span!("Swayward::render_windows_for_screen_cast");
 
         let scale = Scale::from(output.current_scale().fractional_scale());
 
@@ -706,7 +715,7 @@ impl Niri {
     }
 
     pub fn stop_cast(&mut self, session_id: CastSessionId) {
-        let _span = tracy_client::span!("Niri::stop_cast");
+        let _span = tracy_client::span!("Swayward::stop_cast");
         let _span = debug_span!("stop_cast", %session_id).entered();
 
         self.casting
@@ -741,7 +750,7 @@ impl Niri {
     }
 
     pub fn stop_casts_for_target(&mut self, target: CastTarget) {
-        let _span = tracy_client::span!("Niri::stop_casts_for_target");
+        let _span = tracy_client::span!("Swayward::stop_casts_for_target");
 
         // This is O(N^2) but it shouldn't be a problem I think.
         let mut saw_dynamic = false;
@@ -794,7 +803,7 @@ fn cast_params_for_output(output: &Output) -> (Size<i32, Physical>, u32) {
     (size, refresh)
 }
 
-niri_render_elements! {
+swayward_render_elements! {
     CastRenderElement<R> => {
         Output = OutputRenderElements<R>,
         Window = WindowCastRenderElements<R>,

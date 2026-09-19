@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""Count TAP assertions from a conformance log, ignoring panic echoes.
+
+A Rust test failure repeats the whole child TAP stream inside its panic
+message, so counting every `ok` and `not ok` line in a log inflates the
+total. That mistake has been made repeatedly here, in both directions, and
+the convention that avoids it lives in prose in `tests/i3/README.md`. This
+applies the convention mechanically.
+
+Usage:
+    SWAYWARD_I3_TEST=NNN-name.t cargo test -p swayward --lib i3_conformance \\
+        -- --nocapture 2>&1 | contrib/tap-count
+    contrib/tap-count path/to/log
+
+Output is one line per stream found, with the authoritative first stream
+marked, plus the numbers to quote in a coverage row.
+"""
+
+from __future__ import annotations
+
+import re
+import sys
+
+PLAN = re.compile(r"^1\.\.(\d+)\s*$")
+RESULT = re.compile(r"^(not ok|ok) (\d+)(.*)$")
+
+
+def split_streams(lines: list[str]) -> list[list[tuple[str, int]]]:
+    """Group results into streams, starting a new one when numbering restarts.
+
+    TAP reports a skip as `ok N # skip reason`, so counting `ok` lines alone
+    overstates the passes. Classify those separately.
+    """
+    streams: list[list[tuple[str, int]]] = []
+    current: list[tuple[str, int]] = []
+    previous = 0
+    for line in lines:
+        match = RESULT.match(line)
+        if not match:
+            continue
+        status, number, trailer = match.group(1), int(match.group(2)), match.group(3)
+        if status == "ok" and re.search(r"#\s*skip", trailer, re.IGNORECASE):
+            status = "skip"
+        if number <= previous and current:
+            streams.append(current)
+            current = []
+        current.append((status, number))
+        previous = number
+    if current:
+        streams.append(current)
+    return streams
+
+
+def main() -> int:
+    if len(sys.argv) > 2:
+        print(__doc__, file=sys.stderr)
+        return 2
+    if len(sys.argv) == 2:
+        with open(sys.argv[1], encoding="utf-8", errors="replace") as handle:
+            lines = handle.read().splitlines()
+    else:
+        lines = sys.stdin.read().splitlines()
+
+    # Only an unindented plan is the file's own; indented plans are subtests.
+    plans = [int(m.group(1)) for m in (PLAN.match(line) for line in lines) if m]
+    streams = split_streams(lines)
+
+    if not streams:
+        print("no TAP results found")
+        return 1
+
+    def tally(stream: list[tuple[str, int]]) -> tuple[int, int, int]:
+        passed = sum(1 for status, _ in stream if status == "ok")
+        skipped = sum(1 for status, _ in stream if status == "skip")
+        return passed, skipped, len(stream) - passed - skipped
+
+    for index, stream in enumerate(streams):
+        passed, skipped, failed = tally(stream)
+        label = "authoritative" if index == 0 else "panic echo, ignore"
+        skips = f", {skipped} skip" if skipped else ""
+        print(
+            f"stream {index + 1}: {len(stream)} checks, {passed} ok{skips}, "
+            f"{failed} not ok  ({label})"
+        )
+
+    first = streams[0]
+    passed, skipped, failed = tally(first)
+    parts = [f"{passed} pass"]
+    if skipped:
+        parts.append(f"{skipped} skip")
+    if failed:
+        parts.append(f"{failed} fail")
+    verdict = "; ".join(parts)
+    print()
+    if plans:
+        print(f"plan: 1..{plans[0]}")
+        if len(first) < plans[0]:
+            print(f"report: {len(first)} of {plans[0]} reached; {verdict}")
+        else:
+            print(f"report: {verdict}")
+    else:
+        print("plan: none emitted (the file aborts before done_testing)")
+        print(f"report: {len(first)} reached; {verdict}")
+    if skipped:
+        print(
+            f"note: {skipped} assertions are TAP skips, so the runner can exit zero "
+            "while the file still does not pass in full"
+        )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

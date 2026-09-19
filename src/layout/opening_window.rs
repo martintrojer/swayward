@@ -12,10 +12,10 @@ use smithay::backend::renderer::Texture;
 use smithay::utils::{Logical, Point, Rectangle, Scale, Size};
 
 use crate::animation::Animation;
-use crate::niri_render_elements;
 use crate::render_helpers::offscreen::{OffscreenBuffer, OffscreenData, OffscreenRenderElement};
 use crate::render_helpers::shader_element::ShaderRenderElement;
 use crate::render_helpers::shaders::{mat3_uniform, ProgramType, Shaders};
+use crate::swayward_render_elements;
 
 #[derive(Debug)]
 pub struct OpenAnimation {
@@ -24,7 +24,7 @@ pub struct OpenAnimation {
     buffer: OffscreenBuffer,
 }
 
-niri_render_elements! {
+swayward_render_elements! {
     OpeningWindowRenderElement => {
         Offscreen = RelocateRenderElement<RescaleRenderElement<OffscreenRenderElement>>,
         Shader = ShaderRenderElement,

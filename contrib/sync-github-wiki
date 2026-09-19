@@ -1,0 +1,160 @@
+#!/usr/bin/env python3
+"""Audit and publish the tracked documentation to the GitHub wiki."""
+
+from __future__ import annotations
+
+import argparse
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path, PurePosixPath
+from urllib.parse import unquote
+
+REPOSITORY = "martintrojer/swayward"
+REMOTE = f"git@github.com:{REPOSITORY}.wiki.git"
+EXTRA_PAGES = (
+    "SWAY_COMPATIBILITY.md",
+    "SWAY_CONFIG_MIGRATION.md",
+    "KNOWN_DEVIATIONS.md",
+    "IPC_ORACLE_COVERAGE.md",
+)
+LINK_RE = re.compile(r"!?\[[^]]*\]\(([^)]+)\)|<[^>]+(?:src|href)=[\"']([^\"']+)[\"']")
+
+# Wiki page names contain colons ("Configuration:-Input.md"), which a naive URL parse
+# misreads as a URL scheme. Treat a target as external only when it really is.
+EXTERNAL_RE = re.compile(r"^(?:[a-z][a-z0-9+.-]*:)?//|^(?:https?|mailto|ftp):", re.IGNORECASE)
+
+
+def is_external(target: str) -> bool:
+    return bool(EXTERNAL_RE.match(target)) or target.startswith("#")
+
+
+
+def publication(root: Path) -> dict[str, bytes]:
+    wiki = root / "docs" / "wiki"
+    files = {
+        path.relative_to(wiki).as_posix(): path.read_bytes()
+        for path in wiki.rglob("*")
+        if path.is_file()
+    }
+    for name in EXTRA_PAGES:
+        files[name] = (root / "docs" / name).read_bytes()
+    pages = set(files)
+    return {
+        name: wiki_links(content, pages) if name.endswith(".md") else content
+        for name, content in files.items()
+    }
+
+
+def wiki_links(content: bytes, pages: set[str]) -> bytes:
+    """Rewrite `Page.md` links into the extensionless form the wiki serves.
+
+    GitHub wiki pages have no `.md` extension: `/wiki/Getting-Started.md`
+    302-redirects to raw.githubusercontent.com and serves unrendered markdown.
+    The tracked copies keep the extension so they stay navigable in the repo
+    file browser, so the rewrite happens at publication time. Assets keep their
+    extension, and anything that is not a published page is left alone.
+    """
+    text = content.decode()
+
+    def replace(match: re.Match[str]) -> str:
+        target = (match.group(1) or match.group(2)).strip().strip("<>")
+        path = target.split(maxsplit=1)[0]
+        if is_external(path):
+            return match.group(0)
+        base, _, fragment = path.partition("#")
+        # Tracked pages link each other as `./Page.md` as well as `Page.md`.
+        key = unquote(base)
+        while key.startswith("./"):
+            key = key[2:]
+        if not base.endswith(".md") or key not in pages:
+            return match.group(0)
+        rewritten = key[: -len(".md")] + (f"#{fragment}" if fragment else "")
+        return match.group(0).replace(path, rewritten, 1)
+
+    return LINK_RE.sub(replace, text).encode()
+
+
+def audit_links(files: dict[str, bytes]) -> list[str]:
+    errors = []
+    names = set(files)
+    for name, content in files.items():
+        if not name.endswith(".md"):
+            continue
+        text = content.decode()
+        for match in LINK_RE.finditer(text):
+            target = (match.group(1) or match.group(2)).strip().strip("<>")
+            target = target.split(maxsplit=1)[0]
+            if is_external(target):
+                continue
+            path = unquote(target.partition("#")[0])
+            if not path:
+                continue
+            resolved = (PurePosixPath(name).parent / path).as_posix()
+            while resolved.startswith("./"):
+                resolved = resolved[2:]
+            # Page links are published without the `.md` extension, so accept
+            # either form: the wiki URL `Foo` or the tracked file `Foo.md`.
+            if resolved not in names and f"{resolved}.md" not in names:
+                line_number = text.count("\n", 0, match.start()) + 1
+                errors.append(f"{name}:{line_number}: missing wiki target {target}")
+    return errors
+
+
+def run(*args: str, cwd: Path | None = None, check: bool = True) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(args, cwd=cwd, check=check, text=True, capture_output=True)
+
+
+def write_publication(destination: Path, files: dict[str, bytes]) -> None:
+    for child in destination.iterdir():
+        if child.name != ".git":
+            shutil.rmtree(child) if child.is_dir() else child.unlink()
+    for name, content in files.items():
+        target = destination / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check", action="store_true", help="audit links without publishing")
+    args = parser.parse_args()
+    root = Path(__file__).resolve().parents[1]
+    files = publication(root)
+    errors = audit_links(files)
+    if errors:
+        print("wiki link audit failed:", file=sys.stderr)
+        print("\n".join(f"  {error}" for error in errors), file=sys.stderr)
+        return 1
+    print(f"wiki link audit passed: {len(files)} files")
+    if args.check:
+        return 0
+
+    probe = run("git", "ls-remote", REMOTE, check=False)
+    if probe.returncode:
+        print(
+            "GitHub has not created the wiki repository yet.\n"
+            f"Open https://github.com/{REPOSITORY}/wiki, click "
+            '"Create the first page", and save it. Then rerun this command.',
+            file=sys.stderr,
+        )
+        return 2
+
+    with tempfile.TemporaryDirectory(prefix="swayward-wiki-") as directory:
+        checkout = Path(directory) / "wiki"
+        run("git", "clone", "--quiet", REMOTE, str(checkout))
+        write_publication(checkout, files)
+        run("git", "add", "--all", cwd=checkout)
+        if run("git", "diff", "--cached", "--quiet", cwd=checkout, check=False).returncode == 0:
+            print("wiki is already current")
+            return 0
+        run("git", "commit", "-m", "Publish documentation from the swayward repository", cwd=checkout)
+        run("git", "push", "origin", "HEAD:master", cwd=checkout)
+        print("wiki published")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
