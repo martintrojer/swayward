@@ -1,0 +1,3 @@
+#!/bin/sh
+# The headless harness configures and switches its in-process XKB state directly.
+exit 0
