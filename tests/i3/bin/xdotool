@@ -1,0 +1,75 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use IO::Socket::UNIX;
+use JSON::PP qw(decode_json encode_json);
+
+@ARGV == 2 && $ARGV[0] eq 'key'
+    or die "swayward xdotool adapter supports only: xdotool key <chord>\n";
+my %codes = (
+    Shift => 50,
+    Ctrl => 37,
+    t => 28,
+    m => 58,
+    a => 38,
+    b => 56,
+    r => 27,
+);
+my @chord = map {
+    exists $codes{$_} or die "unsupported key in swayward xdotool adapter: $_\n";
+    $codes{$_};
+} split /\+/, $ARGV[1];
+
+sub read_exact {
+    my ($socket, $length) = @_;
+    my $value = '';
+    while (length($value) < $length) {
+        my $read = read($socket, my $chunk, $length - length($value));
+        defined($read) && $read > 0
+            or die "swayward xdotool adapter: short IPC message\n";
+        $value .= $chunk;
+    }
+    return $value;
+}
+
+sub read_ipc {
+    my ($socket) = @_;
+    my $header = read_exact($socket, 14);
+    substr($header, 0, 6) eq 'i3-ipc'
+        or die "swayward xdotool adapter: bad IPC magic\n";
+    my ($length, $type) = unpack('LL', substr($header, 6));
+    return ($type, decode_json(read_exact($socket, $length)));
+}
+
+my $events;
+if ($ARGV[1] eq 'r') {
+    $events = IO::Socket::UNIX->new(Peer => $ENV{I3SOCK})
+        or die "swayward xdotool adapter: connect $ENV{I3SOCK}: $!";
+    my $payload = encode_json(['workspace']);
+    print {$events} 'i3-ipc', pack('LL', length($payload), 2), $payload;
+    my ($type, $reply) = read_ipc($events);
+    $type == 2 && $reply->{success}
+        or die "swayward xdotool adapter: workspace subscription failed\n";
+}
+
+my $socket = IO::Socket::UNIX->new(Peer => $ENV{SWAYWARD_TEST_CONTROL})
+    or die "swayward xdotool adapter: connect $ENV{SWAYWARD_TEST_CONTROL}: $!";
+print {$socket} encode_json({ action => 'type_key_chords', chords => [\@chord] }), "\n";
+my $reply = <$socket>;
+defined($reply) or die "swayward xdotool adapter: test control closed without a reply\n";
+decode_json($reply)->{success} or die "swayward xdotool adapter: native key injection failed\n";
+
+if ($events) {
+    local $SIG{ALRM} = sub { die "swayward xdotool adapter: reload event timed out\n" };
+    alarm 10;
+    while (1) {
+        my ($type, $event) = read_ipc($events);
+        next unless ($type & 0x7fffffff) == 0;
+        my @keys = sort keys %{$event};
+        last if join(',', @keys) eq 'change,current,old'
+            && $event->{change} eq 'reload'
+            && !defined($event->{current})
+            && !defined($event->{old});
+    }
+    alarm 0;
+}
