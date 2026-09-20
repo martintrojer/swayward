@@ -329,7 +329,9 @@ where
                 overlay_cursor,
                 output,
             } => {
-                let Some(output) = Output::from_resource(&output) else {
+                let Some(output) = Output::from_resource(&output)
+                    .filter(|output| state.screencopy_output_exists(output))
+                else {
                     trace!("screencopy client requested non-existent output");
                     let frame = data_init.init(frame, ScreencopyFrameState::Failed);
                     frame.failed();
@@ -357,7 +359,9 @@ where
                     return;
                 }
 
-                let Some(output) = Output::from_resource(&output) else {
+                let Some(output) = Output::from_resource(&output)
+                    .filter(|output| state.screencopy_output_exists(output))
+                else {
                     trace!("screencopy client requested non-existent output");
                     let frame = data_init.init(frame, ScreencopyFrameState::Failed);
                     frame.failed();
@@ -477,6 +481,8 @@ pub trait ScreencopyHandler {
     /// The handler must synchronously either ready/fail the screencopy, or submit it to the
     /// manager queue.
     fn frame(&mut self, manager: &ZwlrScreencopyManagerV1, screencopy: Screencopy);
+
+    fn screencopy_output_exists(&self, output: &Output) -> bool;
 
     fn screencopy_state(&mut self) -> &mut ScreencopyManagerState;
 }

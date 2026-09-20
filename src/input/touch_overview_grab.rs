@@ -15,7 +15,7 @@ use smithay::utils::{IsAlive, Logical, Point, SERIAL_COUNTER};
 
 use crate::input::AnyStartData;
 use crate::layout::workspace::{Workspace, WorkspaceId};
-use crate::niri::State;
+use crate::swayward::State;
 use crate::window::Mapped;
 
 // When the touch is stationary for this much time, it becomes an interactive move.
@@ -41,7 +41,6 @@ pub struct TouchOverviewGrab {
 enum GestureState {
     Recognizing,
     ViewOffset,
-    WorkspaceSwitch,
     InteractiveMove,
 }
 
@@ -77,7 +76,7 @@ impl TouchOverviewGrab {
             return true;
         };
 
-        let layout = &mut data.niri.layout;
+        let layout = &mut data.swayward.layout;
 
         // Check if we should become interactive move.
         if matches!(self.gesture, GestureState::Recognizing) {
@@ -93,7 +92,7 @@ impl TouchOverviewGrab {
                     self.gesture = GestureState::InteractiveMove;
 
                     if !self.start_data.is_touch() {
-                        data.niri
+                        data.swayward
                             .cursor_manager
                             .set_cursor_image(CursorImageStatus::Named(CursorIcon::Grabbing));
                     }
@@ -114,22 +113,11 @@ impl TouchOverviewGrab {
                             self.gesture = GestureState::ViewOffset;
 
                             if !self.start_data.is_touch() {
-                                data.niri.cursor_manager.set_cursor_image(
+                                data.swayward.cursor_manager.set_cursor_image(
                                     CursorImageStatus::Named(CursorIcon::AllScroll),
                                 );
                             }
                         }
-                    }
-                }
-
-                if matches!(self.gesture, GestureState::Recognizing) {
-                    layout.workspace_switch_gesture_begin(&self.output, false);
-                    self.gesture = GestureState::WorkspaceSwitch;
-
-                    if !self.start_data.is_touch() {
-                        data.niri
-                            .cursor_manager
-                            .set_cursor_image(CursorImageStatus::Named(CursorIcon::AllScroll));
                     }
                 }
             }
@@ -148,15 +136,13 @@ impl TouchOverviewGrab {
             GestureState::ViewOffset => layout
                 .view_offset_gesture_update(-delta.x, timestamp, false)
                 .is_some(),
-            GestureState::WorkspaceSwitch => layout
-                .workspace_switch_gesture_update(-delta.y, timestamp, false)
-                .is_some(),
             GestureState::InteractiveMove => {
                 let window = self.window.as_ref().unwrap();
-                if let Some((output, pos_within_output)) = data.niri.output_under(self.new_location)
+                if let Some((output, pos_within_output)) =
+                    data.swayward.output_under(self.new_location)
                 {
                     let output = output.clone();
-                    data.niri.layout.interactive_move_update(
+                    data.swayward.layout.interactive_move_update(
                         window,
                         delta,
                         output,
@@ -169,14 +155,14 @@ impl TouchOverviewGrab {
         };
 
         if ongoing {
-            data.niri.queue_redraw_all();
+            data.swayward.queue_redraw_all();
         }
 
         ongoing
     }
 
     fn on_ungrab(&mut self, state: &mut State) {
-        let layout = &mut state.niri.layout;
+        let layout = &mut state.swayward.layout;
         match self.gesture {
             GestureState::Recognizing => {
                 // Tap to activate.
@@ -217,9 +203,6 @@ impl TouchOverviewGrab {
             GestureState::ViewOffset => {
                 layout.view_offset_gesture_end(Some(false));
             }
-            GestureState::WorkspaceSwitch => {
-                layout.workspace_switch_gesture_end(Some(false));
-            }
             GestureState::InteractiveMove => {
                 layout.interactive_move_end(self.window.as_ref().unwrap());
             }
@@ -227,12 +210,12 @@ impl TouchOverviewGrab {
 
         if !self.start_data.is_touch() {
             state
-                .niri
+                .swayward
                 .cursor_manager
                 .set_cursor_image(CursorImageStatus::default_named());
         }
 
-        state.niri.queue_redraw_all();
+        state.swayward.queue_redraw_all();
     }
 }
 
@@ -252,8 +235,8 @@ impl TouchGrab<State> for TouchOverviewGrab {
 
         if matches!(self.gesture, GestureState::InteractiveMove) {
             if let Some(window) = &self.window.as_ref() {
-                data.niri.layout.toggle_window_floating(Some(window));
-                data.niri.queue_redraw_all();
+                data.swayward.layout.toggle_window_floating(Some(window));
+                data.swayward.queue_redraw_all();
             }
         }
     }

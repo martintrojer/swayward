@@ -1,16 +1,15 @@
-use niri_config::utils::MergeWith as _;
-use niri_config::{Config, LayerRule};
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::Kind;
 use smithay::desktop::{LayerSurface, PopupKind, PopupManager};
 use smithay::utils::{Logical, Point, Rectangle, Scale, Size};
 use smithay::wayland::compositor::{remove_pre_commit_hook, HookId};
 use smithay::wayland::shell::wlr_layer::{ExclusiveZone, Layer};
+use swayward_config::utils::MergeWith as _;
+use swayward_config::{Config, LayerRule};
 
 use super::ResolvedLayerRules;
 use crate::animation::Clock;
 use crate::layout::shadow::Shadow;
-use crate::niri_render_elements;
 use crate::render_helpers::background_effect::BackgroundEffectElement;
 use crate::render_helpers::renderer::NiriRenderer;
 use crate::render_helpers::shadow::ShadowRenderElement;
@@ -18,6 +17,7 @@ use crate::render_helpers::solid_color::{SolidColorBuffer, SolidColorRenderEleme
 use crate::render_helpers::surface::push_elements_from_surface_tree;
 use crate::render_helpers::xray::XrayPos;
 use crate::render_helpers::{background_effect, RenderCtx};
+use crate::swayward_render_elements;
 use crate::utils::{baba_is_float_offset, round_logical_in_physical};
 
 #[derive(Debug)]
@@ -43,7 +43,7 @@ pub struct MappedLayer {
     shadow: Shadow,
 
     /// The blur config, passed for background effect rendering.
-    blur_config: niri_config::Blur,
+    blur_config: swayward_config::Blur,
 
     /// The view size for the layer surface's output.
     view_size: Size<f64, Logical>,
@@ -55,7 +55,7 @@ pub struct MappedLayer {
     clock: Clock,
 }
 
-niri_render_elements! {
+swayward_render_elements! {
     LayerSurfaceRenderElement<R> => {
         Wayland = WaylandSurfaceRenderElement<R>,
         SolidColor = SolidColorRenderElement,
@@ -279,7 +279,7 @@ impl MappedLayer {
             let popup_rules = match popup {
                 PopupKind::Xdg(_) => self.rules.popups,
                 // IME popups aren't affected by rules for regular popups.
-                PopupKind::InputMethod(_) => niri_config::ResolvedPopupsRules::default(),
+                PopupKind::InputMethod(_) => swayward_config::ResolvedPopupsRules::default(),
             };
             let alpha = alpha * popup_rules.opacity.unwrap_or(1.).clamp(0., 1.);
 

@@ -5,12 +5,12 @@ use std::time::Duration;
 
 use calloop::generic::Generic;
 use calloop::{EventLoop, Interest, LoopHandle, Mode, PostAction};
-use niri_config::Config;
 use smithay::output::Output;
+use swayward_config::Config;
 
 use super::client::{Client, ClientId};
 use super::server::Server;
-use crate::niri::{NewClient, Niri};
+use crate::swayward::{NewClient, Swayward};
 
 pub struct Fixture {
     pub event_loop: EventLoop<'static, State>,
@@ -60,47 +60,84 @@ impl Fixture {
             .unwrap();
     }
 
-    pub fn niri_state(&mut self) -> &mut crate::niri::State {
+    pub fn niri_state(&mut self) -> &mut crate::swayward::State {
         &mut self.state.server.state
     }
 
-    pub fn niri(&mut self) -> &mut Niri {
-        &mut self.niri_state().niri
+    pub fn swayward(&mut self) -> &mut Swayward {
+        &mut self.niri_state().swayward
     }
 
     pub fn niri_output(&self, n: u8) -> Output {
-        let niri = &self.state.server.state.niri;
+        let swayward = &self.state.server.state.swayward;
         let idx = usize::from(n - 1);
-        let output = niri.global_space.outputs().nth(idx).unwrap();
+        let output = swayward.global_space.outputs().nth(idx).unwrap();
         output.clone()
     }
 
     pub fn niri_focus_output(&mut self, n: u8) {
-        let niri = &mut self.state.server.state.niri;
+        let swayward = &mut self.state.server.state.swayward;
         let idx = usize::from(n - 1);
-        let output = niri.global_space.outputs().nth(idx).unwrap();
-        niri.layout.focus_output(output);
-    }
-
-    pub fn niri_complete_animations(&mut self) {
-        let niri = self.niri();
-        niri.clock.set_complete_instantly(true);
-        niri.advance_animations();
-        niri.clock.set_complete_instantly(false);
+        let output = swayward.global_space.outputs().nth(idx).unwrap();
+        swayward.layout.focus_output(output);
     }
 
     pub fn add_output(&mut self, n: u8, size: (u16, u16)) {
+        self.add_output_at(n, size, None);
+    }
+
+    pub fn add_output_at(&mut self, n: u8, size: (u16, u16), position: Option<(i32, i32)>) {
+        self.add_named_output_at(format!("headless-{n}"), size, position);
+    }
+
+    pub fn add_named_output_at(
+        &mut self,
+        name: String,
+        size: (u16, u16),
+        position: Option<(i32, i32)>,
+    ) {
         let state = self.niri_state();
-        let niri = &mut state.niri;
-        state.backend.headless().add_output(niri, n, size);
+        let swayward = &mut state.swayward;
+        state
+            .backend
+            .headless()
+            .add_named_output_at(swayward, name, size, position);
+    }
+
+    pub fn replace_outputs(&mut self, outputs: Vec<((i32, i32), (u16, u16))>) {
+        let existing = self
+            .swayward()
+            .layout
+            .outputs()
+            .cloned()
+            .collect::<Vec<_>>();
+        for output in existing {
+            self.swayward().remove_output(&output);
+        }
+        let names = outputs
+            .into_iter()
+            .enumerate()
+            .map(|(index, (position, size))| {
+                let name = format!("fake-{index}");
+                self.add_named_output_at(name.clone(), size, Some(position));
+                name
+            })
+            .collect::<Vec<_>>();
+        self.niri_state()
+            .backend
+            .headless()
+            .retain_ipc_outputs(&names);
+        self.niri_state().refresh_ipc_outputs();
+        self.niri_state().ipc_refresh_layout();
     }
 
     pub fn add_client(&mut self) -> ClientId {
         let (sock1, sock2) = UnixStream::pair().unwrap();
-        self.niri().insert_client(NewClient {
+        self.swayward().insert_client(NewClient {
             client: sock1,
             restricted: false,
             credentials_unknown: false,
+            security_context: None,
         });
 
         let client = Client::new(sock2);

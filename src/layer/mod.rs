@@ -1,8 +1,10 @@
-use niri_config::layer_rule::{LayerRule, Match};
-use niri_config::utils::MergeWith as _;
-use niri_config::{BackgroundEffect, BlockOutFrom, CornerRadius, ResolvedPopupsRules, ShadowRule};
 use smithay::desktop::LayerSurface;
 use smithay::wayland::shell::wlr_layer::Layer;
+use swayward_config::layer_rule::{LayerRule, Match};
+use swayward_config::utils::MergeWith as _;
+use swayward_config::{
+    BackgroundEffect, BlockOutFrom, CornerRadius, ResolvedPopupsRules, ShadowRule,
+};
 
 pub mod mapped;
 pub use mapped::MappedLayer;
@@ -98,10 +100,10 @@ fn surface_matches(surface: &LayerSurface, m: &Match) -> bool {
 
     if let Some(layer) = m.layer {
         let surface_layer = match surface.layer() {
-            Layer::Background => niri_ipc::Layer::Background,
-            Layer::Bottom => niri_ipc::Layer::Bottom,
-            Layer::Top => niri_ipc::Layer::Top,
-            Layer::Overlay => niri_ipc::Layer::Overlay,
+            Layer::Background => swayward_ipc::Layer::Background,
+            Layer::Bottom => swayward_ipc::Layer::Bottom,
+            Layer::Top => swayward_ipc::Layer::Top,
+            Layer::Overlay => swayward_ipc::Layer::Overlay,
         };
         if layer != surface_layer {
             return false;

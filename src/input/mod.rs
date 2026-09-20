@@ -5,10 +5,6 @@ use std::time::Duration;
 
 use calloop::timer::{TimeoutAction, Timer};
 use input::event::gesture::GestureEventCoordinates as _;
-use niri_config::{
-    Action, Bind, Binds, Config, Key, ModKey, Modifiers, MruDirection, SwitchBinds, Trigger,
-};
-use niri_ipc::LayoutSwitchTarget;
 use smithay::backend::input::{
     AbsolutePositionEvent, Axis, AxisSource, ButtonState, Device, DeviceCapability, Event,
     GestureBeginEvent, GestureEndEvent, GesturePinchUpdateEvent as _, GestureSwipeUpdateEvent as _,
@@ -19,6 +15,7 @@ use smithay::backend::input::{
 };
 use smithay::backend::libinput::LibinputInputBackend;
 use smithay::input::dnd::DnDGrab;
+use smithay::input::keyboard::xkb::keysym_get_name;
 use smithay::input::keyboard::{keysyms, FilterResult, Keysym, Layout, ModifiersState};
 use smithay::input::pointer::{
     AxisFrame, ButtonEvent, CursorIcon, CursorImageStatus, Focus, GestureHoldBeginEvent,
@@ -38,6 +35,11 @@ use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Point, Rectangle, Transform, SERIAL_COUNTER};
 use smithay::wayland::keyboard_shortcuts_inhibit::KeyboardShortcutsInhibitor;
 use smithay::wayland::pointer_constraints::{with_pointer_constraint, PointerConstraint};
+use swayward_config::{
+    Action, Bind, Binds, Config, Key, ModKey, Modifiers, MouseRegions, MruDirection, SwitchBinds,
+    Trigger,
+};
+use swayward_ipc::LayoutSwitchTarget;
 use touch_overview_grab::TouchOverviewGrab;
 
 use self::move_grab::MoveGrab;
@@ -48,8 +50,8 @@ use self::spatial_movement_grab::SpatialMovementGrab;
 #[cfg(feature = "dbus")]
 use crate::dbus::freedesktop_a11y::KbMonBlock;
 use crate::layout::scrolling::ScrollDirection;
-use crate::layout::{ActivateWindow, LayoutElement as _};
-use crate::niri::{CastTarget, PointerVisibility, State};
+use crate::layout::{ActivateWindow, HitType, LayoutElement as _};
+use crate::swayward::{CastTarget, PointerVisibility, State};
 use crate::ui::mru::{WindowMru, WindowMruUi};
 use crate::ui::screenshot_ui::ScreenshotUi;
 use crate::utils::spawning::{spawn, spawn_sh};
@@ -70,6 +72,22 @@ pub mod touch_overview_grab;
 use backend_ext::{NiriInputBackend as InputBackend, NiriInputDevice as _};
 
 pub const DOUBLE_CLICK_TIME: Duration = Duration::from_millis(400);
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct IpcInputDevice {
+    pub identifier: String,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vendor: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub product: Option<u32>,
+    #[serde(rename = "type")]
+    pub device_type: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scroll_factor: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub libinput: Option<serde_json::Value>,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TabletData {
@@ -139,33 +157,33 @@ impl State {
         let _span = tracy_client::span!("process_input_event");
 
         // Make sure some logic like workspace clean-up has a chance to run before doing actions.
-        self.niri.advance_animations();
+        self.swayward.advance_animations();
 
-        if self.niri.monitors_active {
+        if self.swayward.monitors_active {
             // Notify the idle-notifier of activity.
             if should_notify_activity(&event) {
-                self.niri.notify_activity();
+                self.swayward.notify_activity();
             }
         } else {
             // Power on monitors if they were off.
             if should_activate_monitors(&event) {
-                self.niri.activate_monitors(&mut self.backend);
+                self.swayward.activate_monitors(&mut self.backend);
 
                 // Notify the idle-notifier of activity only if we're also powering on the
                 // monitors.
-                self.niri.notify_activity();
+                self.swayward.notify_activity();
             }
         }
 
         if should_reset_pointer_inactivity_timer(&event) {
-            self.niri.reset_pointer_inactivity_timer();
+            self.swayward.reset_pointer_inactivity_timer();
         }
 
         let hide_hotkey_overlay =
-            self.niri.hotkey_overlay.is_open() && should_hide_hotkey_overlay(&event);
+            self.swayward.hotkey_overlay.is_open() && should_hide_hotkey_overlay(&event);
 
         let hide_exit_confirm_dialog =
-            self.niri.exit_confirm_dialog.is_open() && should_hide_exit_confirm_dialog(&event);
+            self.swayward.exit_confirm_dialog.is_open() && should_hide_exit_confirm_dialog(&event);
 
         let mut consumed_by_a11y = false;
         use InputEvent::*;
@@ -205,12 +223,12 @@ impl State {
         }
 
         // Do this last so that screenshot still gets it.
-        if hide_hotkey_overlay && self.niri.hotkey_overlay.hide() {
-            self.niri.queue_redraw_all();
+        if hide_hotkey_overlay && self.swayward.hotkey_overlay.hide() {
+            self.swayward.queue_redraw_all();
         }
 
-        if hide_exit_confirm_dialog && self.niri.exit_confirm_dialog.hide() {
-            self.niri.queue_redraw_all();
+        if hide_exit_confirm_dialog && self.swayward.exit_confirm_dialog.hide() {
+            self.swayward.queue_redraw_all();
         }
     }
 
@@ -219,14 +237,14 @@ impl State {
 
         match event {
             InputEvent::DeviceAdded { device } => {
-                self.niri.devices.insert(device.clone());
+                self.swayward.devices.insert(device.clone());
 
                 if device.has_capability(input::DeviceCapability::TabletTool) {
                     match device.size() {
                         Some((w, h)) => {
                             let aspect_ratio = w / h;
                             let data = TabletData { aspect_ratio };
-                            self.niri.tablets.insert(device.clone(), data);
+                            self.swayward.tablets.insert(device.clone(), data);
                         }
                         None => {
                             warn!("tablet tool device has no size");
@@ -236,7 +254,7 @@ impl State {
 
                 if device.has_capability(input::DeviceCapability::Keyboard) {
                     if let Some(led_state) = self
-                        .niri
+                        .swayward
                         .seat
                         .get_keyboard()
                         .map(|keyboard| keyboard.led_state())
@@ -246,35 +264,77 @@ impl State {
                 }
 
                 if device.has_capability(input::DeviceCapability::Touch) {
-                    self.niri.touch.insert(device.clone());
+                    self.swayward.touch.insert(device.clone());
                 }
 
-                apply_libinput_settings(&self.niri.config.borrow().input, device);
+                apply_libinput_settings(&self.swayward.config.borrow().input, device);
             }
             InputEvent::DeviceRemoved { device } => {
-                self.niri.touch.remove(device);
-                self.niri.tablets.remove(device);
-                self.niri.devices.remove(device);
+                self.swayward.touch.remove(device);
+                self.swayward.tablets.remove(device);
+                self.swayward.devices.remove(device);
             }
             _ => (),
         }
     }
 
-    fn on_device_added(&mut self, device: impl Device) {
+    fn on_device_added(&mut self, device: impl backend_ext::NiriInputDevice) {
+        let device_type = if device.has_capability(DeviceCapability::Keyboard) {
+            "keyboard"
+        } else if device.has_capability(DeviceCapability::Pointer) {
+            "pointer"
+        } else if device.has_capability(DeviceCapability::Touch) {
+            "touch"
+        } else if device.has_capability(DeviceCapability::TabletTool) {
+            "tablet_tool"
+        } else if device.has_capability(DeviceCapability::TabletPad) {
+            "tablet_pad"
+        } else if device.has_capability(DeviceCapability::Switch) {
+            "switch"
+        } else {
+            "unknown"
+        };
+        let libinput = device.sway_libinput();
+        let (vendor, product) = libinput
+            .is_some()
+            .then(|| device.usb_id().unwrap_or((0, 0)))
+            .map_or((None, None), |(product, vendor)| {
+                (Some(vendor), Some(product))
+            });
+        let input = IpcInputDevice {
+            identifier: device.sway_identifier(),
+            name: device.name(),
+            vendor,
+            product,
+            device_type,
+            scroll_factor: (device_type == "pointer").then_some(1.),
+            libinput,
+        };
+        self.swayward
+            .ipc_input_devices
+            .insert(device.id(), input.clone());
+        self.ipc_input_changed("added", input);
+
         if device.has_capability(DeviceCapability::TabletTool) {
-            let tablet_seat = self.niri.seat.tablet_seat();
+            let tablet_seat = self.swayward.seat.tablet_seat();
 
             let desc = TabletDescriptor::from(&device);
-            tablet_seat.add_wp_tablet(&self.niri.display_handle, &desc);
+            tablet_seat.add_wp_tablet(&self.swayward.display_handle, &desc);
         }
-        if device.has_capability(DeviceCapability::Touch) && self.niri.seat.get_touch().is_none() {
-            self.niri.seat.add_touch();
+        if device.has_capability(DeviceCapability::Touch)
+            && self.swayward.seat.get_touch().is_none()
+        {
+            self.swayward.seat.add_touch();
         }
     }
 
     fn on_device_removed(&mut self, device: impl Device) {
+        if let Some(input) = self.swayward.ipc_input_devices.remove(&device.id()) {
+            self.ipc_input_changed("removed", input);
+        }
+
         if device.has_capability(DeviceCapability::TabletTool) {
-            let tablet_seat = self.niri.seat.tablet_seat();
+            let tablet_seat = self.swayward.seat.tablet_seat();
 
             let desc = TabletDescriptor::from(&device);
             tablet_seat.remove_tablet(&desc);
@@ -284,17 +344,17 @@ impl State {
                 tablet_seat.clear_tools();
             }
         }
-        if device.has_capability(DeviceCapability::Touch) && self.niri.touch.is_empty() {
-            self.niri.seat.remove_touch();
+        if device.has_capability(DeviceCapability::Touch) && self.swayward.touch.is_empty() {
+            self.swayward.seat.remove_touch();
         }
     }
 
     /// Computes the rectangle that covers all outputs in global space.
     fn global_bounding_rectangle(&self) -> Option<Rectangle<i32, Logical>> {
-        self.niri.global_space.outputs().fold(
+        self.swayward.global_space.outputs().fold(
             None,
             |acc: Option<Rectangle<i32, Logical>>, output| {
-                self.niri
+                self.swayward
                     .global_space
                     .output_geometry(output)
                     .map(|geo| acc.map(|acc| acc.merge(geo)).unwrap_or(geo))
@@ -314,21 +374,27 @@ impl State {
         I::Device: 'static,
     {
         let device_output = event.device().output(self);
-        let device_output = device_output.filter(|output| self.niri.output_exists(output));
+        let device_output = device_output.filter(|output| self.swayward.output_exists(output));
         let device_output = device_output.as_ref();
-        let mapped_output = device_output.or_else(|| self.niri.output_for_tablet());
+        let mapped_output = device_output.or_else(|| self.swayward.output_for_tablet());
 
         // If the tablet is configured to map to the focused window, use that window's geometry on
         // the mapped output (or on the focused output if no specific output is mapped).
-        let map_to_focused_window = self.niri.config.borrow().input.tablet.map_to_focused_window;
+        let map_to_focused_window = self
+            .swayward
+            .config
+            .borrow()
+            .input
+            .tablet
+            .map_to_focused_window;
         // But only if the keyboard focus is on the layout, so that it doesn't trigger on the lock
         // screen and such.
-        let window_target = if map_to_focused_window && self.niri.keyboard_focus.is_layout() {
-            let output = mapped_output.or_else(|| self.niri.layout.active_output());
+        let window_target = if map_to_focused_window && self.swayward.keyboard_focus.is_layout() {
+            let output = mapped_output.or_else(|| self.swayward.layout.active_output());
             output.and_then(|output| {
-                let monitor = self.niri.layout.monitor_for_output(output)?;
+                let monitor = self.swayward.layout.monitor_for_output(output)?;
                 let mut rect = monitor.active_window_visual_rectangle()?;
-                let output_geo = self.niri.global_space.output_geometry(output)?;
+                let output_geo = self.swayward.global_space.output_geometry(output)?;
                 rect.loc += output_geo.loc.to_f64();
                 Some((rect, output))
             })
@@ -344,7 +410,7 @@ impl State {
                 output.current_transform(),
             )
         } else if let Some(output) = mapped_output {
-            let geo = self.niri.global_space.output_geometry(output).unwrap();
+            let geo = self.swayward.global_space.output_geometry(output).unwrap();
             (
                 geo.to_f64(),
                 true,
@@ -356,7 +422,7 @@ impl State {
 
             // FIXME: this 1 px size should ideally somehow be computed for the rightmost output
             // corresponding to the position on the right when clamping.
-            let output = self.niri.global_space.outputs().next().unwrap();
+            let output = self.swayward.global_space.outputs().next().unwrap();
             let scale = output.current_scale().fractional_scale();
 
             // Do not keep ratio for the unified mode as this is what OpenTabletDriver expects.
@@ -374,7 +440,7 @@ impl State {
 
             let device = event.device();
             if let Some(device) = (&device as &dyn Any).downcast_ref::<input::Device>() {
-                if let Some(data) = self.niri.tablets.get(device) {
+                if let Some(data) = self.swayward.tablets.get(device) {
                     // This code does the same thing as mutter with "keep aspect ratio" enabled.
                     let size = transform.invert().transform_size(target_geo.size);
                     let output_aspect_ratio = size.w / size.h;
@@ -398,11 +464,11 @@ impl State {
     }
 
     fn is_inhibiting_shortcuts(&self) -> bool {
-        self.niri
+        self.swayward
             .keyboard_focus
             .surface()
             .and_then(|surface| {
-                self.niri
+                self.swayward
                     .keyboard_shortcuts_inhibiting_surfaces
                     .get(surface)
             })
@@ -414,11 +480,13 @@ impl State {
         event: I::KeyboardKeyEvent,
         consumed_by_a11y: &mut bool,
     ) {
-        let mod_key = self.backend.mod_key(&self.niri.config.borrow());
+        let mod_key = self.backend.mod_key(&self.swayward.config.borrow());
+        let input_device = event.device().sway_identifier();
 
         let serial = SERIAL_COUNTER.next_serial();
         let time = Event::time(&event);
         let pressed = event.state() == KeyState::Pressed;
+        let code_modifiers = self.swayward.seat.get_keyboard().unwrap().modifier_state();
 
         // Stop bind key repeat on any release. This won't work 100% correctly in cases like:
         // 1. Press Mod
@@ -428,8 +496,8 @@ impl State {
         // But it's good enough for now.
         // FIXME: handle this properly.
         if !pressed {
-            if let Some(token) = self.niri.bind_repeat_timer.take() {
-                self.niri.event_loop.remove(token);
+            if let Some(token) = self.swayward.bind_repeat_timer.take() {
+                self.swayward.event_loop.remove(token);
             }
         }
 
@@ -464,7 +532,7 @@ impl State {
         #[cfg(not(feature = "dbus"))]
         let _ = consumed_by_a11y;
 
-        let Some(Some(bind)) = self.niri.seat.get_keyboard().unwrap().input(
+        let Some(Some(bind)) = self.swayward.seat.get_keyboard().unwrap().input(
             self,
             event.key_code(),
             event.state(),
@@ -474,7 +542,10 @@ impl State {
                 let key_code = event.key_code();
                 let modified = keysym.modified_sym();
                 let raw = keysym.raw_latin_sym_or_raw_current_sym();
-                let modifiers = modifiers_from_state(*mods);
+                let group = keysym.xkb().lock().unwrap().active_layout().0;
+                let raw_modifiers = code_modifiers;
+                let translated_modifiers = translated_modifiers(&keysym, key_code, code_modifiers);
+                let modifiers = modifiers_from_state(raw_modifiers);
 
                 // After updating XKB state from accessibility-grabbed keys, return right away and
                 // don't handle them.
@@ -514,23 +585,23 @@ impl State {
                     }
                 }
 
-                if this.niri.exit_confirm_dialog.is_open() && pressed {
+                if this.swayward.exit_confirm_dialog.is_open() && pressed {
                     if raw == Some(Keysym::Return) {
                         info!("quitting after confirming exit dialog");
-                        this.niri.stop_signal.stop();
+                        this.request_stop("exit");
                     }
 
                     // Don't send this press to any clients.
-                    this.niri.suppressed_keys.insert(key_code);
+                    this.swayward.suppressed_keys.insert(key_code);
                     return FilterResult::Intercept(None);
                 }
 
                 // Check if all modifiers were released while the MRU UI was open. If so, close the
                 // UI (which will also transfer the focus to the current MRU UI selection).
-                if this.niri.window_mru_ui.is_open() && !pressed && modifiers.is_empty() {
+                if this.swayward.window_mru_ui.is_open() && !pressed && modifiers.is_empty() {
                     this.do_action(Action::MruConfirm, false);
 
-                    if this.niri.suppressed_keys.remove(&key_code) {
+                    if this.swayward.suppressed_keys.remove(&key_code) {
                         return FilterResult::Intercept(None);
                     } else {
                         return FilterResult::Forward;
@@ -539,54 +610,69 @@ impl State {
 
                 if pressed && raw == Some(Keysym::Escape) {
                     // Cancel certain grabs on Escape.
-                    let pointer = this.niri.seat.get_pointer().unwrap();
+                    let pointer = this.swayward.seat.get_pointer().unwrap();
                     if pointer
                         .with_grab(|_, grab| Self::grab_can_be_cancelled_with_esc(grab))
                         .unwrap_or(false)
                     {
                         pointer.unset_grab(this, serial, time);
-                        this.niri.suppressed_keys.insert(key_code);
+                        this.swayward.suppressed_keys.insert(key_code);
                         return FilterResult::Intercept(None);
                     }
                 }
 
                 if let Some(Keysym::space) = raw {
-                    this.niri.screenshot_ui.set_space_down(pressed);
+                    this.swayward.screenshot_ui.set_space_down(pressed);
                 }
 
+                let locked = this.swayward.is_locked();
                 let res = {
-                    let config = this.niri.config.borrow();
-                    let bindings =
-                        make_binds_iter(&config, &mut this.niri.window_mru_ui, modifiers);
+                    let config = this.swayward.config.borrow();
+                    let bindings = make_binds_iter(
+                        &config,
+                        &this.swayward.binding_mode,
+                        &mut this.swayward.window_mru_ui,
+                        modifiers,
+                    );
 
                     should_intercept_key(
-                        &mut this.niri.suppressed_keys,
+                        &mut this.swayward.suppressed_keys,
+                        &mut this.swayward.held_release_bind,
                         bindings,
                         mod_key,
+                        &input_device,
                         key_code,
                         modified,
                         raw,
+                        group,
                         pressed,
-                        *mods,
-                        &this.niri.screenshot_ui,
-                        this.niri.config.borrow().input.disable_power_key_handling,
+                        code_modifiers,
+                        raw_modifiers,
+                        translated_modifiers,
+                        &this.swayward.screenshot_ui,
+                        locked,
+                        this.swayward
+                            .config
+                            .borrow()
+                            .input
+                            .disable_power_key_handling,
                         is_inhibiting_shortcuts,
                     )
                 };
 
                 if matches!(res, FilterResult::Forward) {
                     // If we didn't find any bind, try other hardcoded keys.
-                    if this.niri.keyboard_focus.is_overview() && pressed {
+                    if this.swayward.keyboard_focus.is_overview() && pressed {
                         if let Some(bind) = raw.and_then(|raw| hardcoded_overview_bind(raw, *mods))
                         {
-                            this.niri.suppressed_keys.insert(key_code);
+                            this.swayward.suppressed_keys.insert(key_code);
                             return FilterResult::Intercept(Some(bind));
                         }
                     }
 
                     // Interaction with the active window, immediately update the active window's
                     // focus timestamp without waiting for a possible pending MRU lock-in delay.
-                    this.niri.mru_apply_keyboard_commit();
+                    this.swayward.mru_apply_keyboard_commit();
                 }
 
                 res
@@ -595,13 +681,11 @@ impl State {
             return;
         };
 
-        if !pressed {
-            return;
-        }
-
         self.handle_bind(bind.clone());
 
-        self.start_key_repeat(bind);
+        if pressed {
+            self.start_key_repeat(bind);
+        }
     }
 
     fn start_key_repeat(&mut self, bind: Bind) {
@@ -610,11 +694,11 @@ impl State {
         }
 
         // Stop the previous key repeat if any.
-        if let Some(token) = self.niri.bind_repeat_timer.take() {
-            self.niri.event_loop.remove(token);
+        if let Some(token) = self.swayward.bind_repeat_timer.take() {
+            self.swayward.event_loop.remove(token);
         }
 
-        let config = self.niri.config.borrow();
+        let config = self.swayward.config.borrow();
         let config = &config.input.keyboard;
 
         let repeat_rate = config.repeat_rate;
@@ -627,7 +711,7 @@ impl State {
             Timer::from_duration(Duration::from_millis(u64::from(config.repeat_delay)));
 
         let token = self
-            .niri
+            .swayward
             .event_loop
             .insert_source(repeat_timer, move |_, _, state| {
                 state.handle_bind(bind.clone());
@@ -635,128 +719,186 @@ impl State {
             })
             .unwrap();
 
-        self.niri.bind_repeat_timer = Some(token);
+        self.swayward.bind_repeat_timer = Some(token);
     }
 
     fn hide_cursor_if_needed(&mut self) {
         // If the pointer is already invisible, don't reset it back to Hidden causing one frame
         // of hover.
-        if !self.niri.pointer_visibility.is_visible() {
+        if !self.swayward.pointer_visibility.is_visible() {
             return;
         }
 
-        if !self.niri.config.borrow().cursor.hide_when_typing {
+        if !self.swayward.config.borrow().cursor.hide_when_typing {
             return;
         }
 
         // niri keeps this set only while actively using a tablet, which means the cursor position
         // is likely to change almost immediately, causing pointer_visibility to just flicker back
         // and forth.
-        if self.niri.tablet_cursor_location.is_some() {
+        if self.swayward.tablet_cursor_location.is_some() {
             return;
         }
 
-        self.niri.pointer_visibility = PointerVisibility::Hidden;
-        self.niri.queue_redraw_all();
+        self.swayward.pointer_visibility = PointerVisibility::Hidden;
+        self.swayward.queue_redraw_all();
     }
 
     pub fn handle_bind(&mut self, bind: Bind) {
-        let Some(cooldown) = bind.cooldown else {
-            self.do_action(bind.action, bind.allow_when_locked);
-            return;
-        };
-
-        // Check this first so that it doesn't trigger the cooldown.
-        if self.niri.is_locked() && !(bind.allow_when_locked || allowed_when_locked(&bind.action)) {
+        if self.swayward.is_locked()
+            && !(bind.allow_when_locked || allowed_when_locked(&bind.action))
+        {
             return;
         }
 
-        match self.niri.bind_cooldown_timers.entry(bind.key) {
-            // The bind is on cooldown.
-            Entry::Occupied(_) => (),
-            Entry::Vacant(entry) => {
-                let timer = Timer::from_duration(cooldown);
-                let token = self
-                    .niri
-                    .event_loop
-                    .insert_source(timer, move |_, _, state| {
-                        if state.niri.bind_cooldown_timers.remove(&bind.key).is_none() {
-                            error!("bind cooldown timer entry disappeared");
-                        }
-                        TimeoutAction::Drop
-                    })
-                    .unwrap();
-                entry.insert(token);
-
-                self.do_action(bind.action, bind.allow_when_locked);
+        if let Some(cooldown) = bind.cooldown {
+            match self.swayward.bind_cooldown_timers.entry((
+                bind.key,
+                bind.input_device.clone(),
+                bind.group,
+                bind.release,
+                bind.allow_when_locked,
+                bind.allow_inhibiting,
+            )) {
+                Entry::Occupied(_) => return,
+                Entry::Vacant(entry) => {
+                    let timer = Timer::from_duration(cooldown);
+                    let cooldown_key = (
+                        bind.key,
+                        bind.input_device.clone(),
+                        bind.group,
+                        bind.release,
+                        bind.allow_when_locked,
+                        bind.allow_inhibiting,
+                    );
+                    let token = self
+                        .swayward
+                        .event_loop
+                        .insert_source(timer, move |_, _, state| {
+                            if state
+                                .swayward
+                                .bind_cooldown_timers
+                                .remove(&cooldown_key)
+                                .is_none()
+                            {
+                                error!("bind cooldown timer entry disappeared");
+                            }
+                            TimeoutAction::Drop
+                        })
+                        .unwrap();
+                    entry.insert(token);
+                }
             }
+        }
+
+        let event = sway_binding_event(&bind, self.backend.mod_key(&self.swayward.config.borrow()));
+        let succeeded = match bind.action {
+            Action::SwayCommand(command) => crate::command::execute(self, &command)
+                .into_iter()
+                .all(|outcome| outcome.success),
+            action => {
+                self.do_action(action, bind.allow_when_locked);
+                false
+            }
+        };
+        if succeeded {
+            if let (Some(server), Some(event)) = (&self.swayward.ipc_server, event) {
+                server.send_event(event);
+            }
+        }
+    }
+
+    fn focused_view_id(&self) -> Option<i64> {
+        let workspace = self.swayward.layout.active_workspace()?;
+        if workspace
+            .focused_container_node()
+            .is_some_and(|node| workspace.is_tiling_split(node))
+        {
+            return None;
+        }
+        self.swayward
+            .layout
+            .focus()
+            .map(|window| crate::ipc::tree::window_id(window.id()))
+    }
+
+    fn emit_window_move(&mut self, moved: bool, id: Option<i64>) {
+        if !moved {
+            return;
+        }
+        self.ipc_refresh_layout();
+        if let (Some(server), Some(id)) = (&self.swayward.ipc_server, id) {
+            server.send_event(swayward_ipc::legacy::Event::WindowMoved { id });
         }
     }
 
     pub fn do_action(&mut self, action: Action, allow_when_locked: bool) {
-        if self.niri.is_locked() && !(allow_when_locked || allowed_when_locked(&action)) {
+        if self.swayward.is_locked() && !(allow_when_locked || allowed_when_locked(&action)) {
             return;
         }
 
-        if let Some(touch) = self.niri.seat.get_touch() {
+        if let Some(touch) = self.swayward.seat.get_touch() {
             touch.cancel(self);
         }
 
         match action {
+            Action::SwayCommand(command) => {
+                let _ = crate::command::execute(self, &command);
+            }
             Action::Quit(skip_confirmation) => {
-                if !skip_confirmation && self.niri.exit_confirm_dialog.show() {
-                    self.niri.queue_redraw_all();
+                if !skip_confirmation && self.swayward.exit_confirm_dialog.show() {
+                    self.swayward.queue_redraw_all();
                     return;
                 }
 
                 info!("quitting as requested");
-                self.niri.stop_signal.stop()
+                self.request_stop("exit")
             }
             Action::ChangeVt(vt) => {
                 self.backend.change_vt(vt);
                 // Changing VT may not deliver the key releases, so clear the state.
-                self.niri.suppressed_keys.clear();
+                self.swayward.suppressed_keys.clear();
             }
             Action::Suspend => {
                 self.backend.suspend();
                 // Suspend may not deliver the key releases, so clear the state.
-                self.niri.suppressed_keys.clear();
+                self.swayward.suppressed_keys.clear();
             }
             Action::PowerOffMonitors => {
-                self.niri.deactivate_monitors(&mut self.backend);
+                self.swayward.deactivate_monitors(&mut self.backend);
             }
             Action::PowerOnMonitors => {
-                self.niri.activate_monitors(&mut self.backend);
+                self.swayward.activate_monitors(&mut self.backend);
             }
             Action::ToggleDebugTint => {
                 self.backend.toggle_debug_tint();
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::DebugToggleOpaqueRegions => {
-                self.niri.debug_draw_opaque_regions = !self.niri.debug_draw_opaque_regions;
-                self.niri.queue_redraw_all();
+                self.swayward.debug_draw_opaque_regions = !self.swayward.debug_draw_opaque_regions;
+                self.swayward.queue_redraw_all();
             }
             Action::DebugToggleDamage => {
-                self.niri.debug_toggle_damage();
+                self.swayward.debug_toggle_damage();
             }
             Action::Spawn(command) => {
-                let (token, _) = self.niri.activation_state.create_external_token(None);
+                let (token, _) = self.swayward.activation_state.create_external_token(None);
                 spawn(command, Some(token.clone()));
             }
             Action::SpawnSh(command) => {
-                let (token, _) = self.niri.activation_state.create_external_token(None);
+                let (token, _) = self.swayward.activation_state.create_external_token(None);
                 spawn_sh(command, Some(token.clone()));
             }
             Action::DoScreenTransition(delay_ms) => {
                 self.backend.with_primary_renderer(|renderer| {
-                    self.niri.do_screen_transition(renderer, delay_ms);
+                    self.swayward.do_screen_transition(renderer, delay_ms);
                 });
             }
             Action::ScreenshotScreen(write_to_disk, show_pointer, path) => {
-                let active = self.niri.layout.active_output().cloned();
+                let active = self.swayward.layout.active_output().cloned();
                 if let Some(active) = active {
                     self.backend.with_primary_renderer(|renderer| {
-                        if let Err(err) = self.niri.screenshot(
+                        if let Err(err) = self.swayward.screenshot(
                             renderer,
                             &active,
                             write_to_disk,
@@ -772,29 +914,29 @@ impl State {
                 self.confirm_screenshot(write_to_disk);
             }
             Action::CancelScreenshot => {
-                if !self.niri.screenshot_ui.is_open() {
+                if !self.swayward.screenshot_ui.is_open() {
                     return;
                 }
 
-                self.niri.screenshot_ui.close();
-                self.niri
+                self.swayward.screenshot_ui.close();
+                self.swayward
                     .cursor_manager
                     .set_cursor_image(CursorImageStatus::default_named());
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::ScreenshotTogglePointer => {
-                self.niri.screenshot_ui.toggle_pointer();
-                self.niri.queue_redraw_all();
+                self.swayward.screenshot_ui.toggle_pointer();
+                self.swayward.queue_redraw_all();
             }
             Action::Screenshot(show_cursor, path) => {
                 self.open_screenshot_ui(show_cursor, path);
-                self.niri.cancel_mru();
+                self.swayward.cancel_mru();
             }
             Action::ScreenshotWindow(write_to_disk, show_pointer, path) => {
-                let focus = self.niri.layout.focus_with_output();
+                let focus = self.swayward.layout.focus_with_output();
                 if let Some((mapped, output)) = focus {
                     self.backend.with_primary_renderer(|renderer| {
-                        if let Err(err) = self.niri.screenshot_window(
+                        if let Err(err) = self.swayward.screenshot_window(
                             renderer,
                             output,
                             mapped,
@@ -813,12 +955,12 @@ impl State {
                 show_pointer,
                 path,
             } => {
-                let mut windows = self.niri.layout.windows();
+                let mut windows = self.swayward.layout.windows();
                 let window = windows.find(|(_, m)| m.id().get() == id);
                 if let Some((Some(monitor), mapped)) = window {
                     let output = monitor.output();
                     self.backend.with_primary_renderer(|renderer| {
-                        if let Err(err) = self.niri.screenshot_window(
+                        if let Err(err) = self.swayward.screenshot_window(
                             renderer,
                             output,
                             mapped,
@@ -832,11 +974,13 @@ impl State {
                 }
             }
             Action::ToggleKeyboardShortcutsInhibit => {
-                if let Some(inhibitor) = self.niri.keyboard_focus.surface().and_then(|surface| {
-                    self.niri
-                        .keyboard_shortcuts_inhibiting_surfaces
-                        .get(surface)
-                }) {
+                if let Some(inhibitor) =
+                    self.swayward.keyboard_focus.surface().and_then(|surface| {
+                        self.swayward
+                            .keyboard_shortcuts_inhibiting_surfaces
+                            .get(surface)
+                    })
+                {
                     if inhibitor.is_active() {
                         inhibitor.inactivate();
                     } else {
@@ -845,68 +989,84 @@ impl State {
                 }
             }
             Action::CloseWindow => {
-                if let Some(mapped) = self.niri.layout.focus() {
+                if let Some(mapped) = self.swayward.layout.focus() {
                     mapped.toplevel().send_close();
                 }
             }
             Action::CloseWindowById(id) => {
-                let window = self.niri.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 if let Some((_, mapped)) = window {
                     mapped.toplevel().send_close();
                 }
             }
             Action::FullscreenWindow => {
-                let focus = self.niri.layout.focus().map(|m| m.window.clone());
+                let focus = self.swayward.layout.focus().map(|m| m.window.clone());
                 if let Some(window) = focus {
-                    self.niri.layout.toggle_fullscreen(&window);
+                    self.swayward.layout.toggle_fullscreen(&window);
                     // FIXME: granular
-                    self.niri.queue_redraw_all();
+                    self.swayward.queue_redraw_all();
                 }
             }
             Action::FullscreenWindowById(id) => {
-                let window = self.niri.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
-                    self.niri.layout.toggle_fullscreen(&window);
+                    self.swayward.layout.toggle_fullscreen(&window);
                     // FIXME: granular
-                    self.niri.queue_redraw_all();
+                    self.swayward.queue_redraw_all();
                 }
             }
             Action::ToggleWindowedFullscreen => {
-                let focus = self.niri.layout.focus().map(|m| m.window.clone());
+                let focus = self.swayward.layout.focus().map(|m| m.window.clone());
                 if let Some(window) = focus {
-                    self.niri.layout.toggle_windowed_fullscreen(&window);
+                    self.swayward.layout.toggle_windowed_fullscreen(&window);
                     // FIXME: granular
-                    self.niri.queue_redraw_all();
+                    self.swayward.queue_redraw_all();
                 }
             }
             Action::ToggleWindowedFullscreenById(id) => {
-                let window = self.niri.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
-                    self.niri.layout.toggle_windowed_fullscreen(&window);
+                    self.swayward.layout.toggle_windowed_fullscreen(&window);
                     // FIXME: granular
-                    self.niri.queue_redraw_all();
+                    self.swayward.queue_redraw_all();
                 }
             }
             Action::FocusWindow(id) => {
-                let window = self.niri.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
                     self.focus_window(&window);
                 }
             }
             Action::FocusWindowInColumn(index) => {
-                self.niri.layout.focus_window_in_column(index);
+                self.swayward.layout.focus_window_in_column(index);
                 self.maybe_warp_cursor_to_focus();
-                self.niri.layer_shell_on_demand_focus = None;
+                self.swayward.layer_shell_on_demand_focus = None;
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::FocusWindowPrevious => {
-                let current = self.niri.layout.focus().map(|win| win.id());
+                let current = self.swayward.layout.focus().map(|win| win.id());
                 if let Some(window) = self
-                    .niri
+                    .swayward
                     .layout
                     .windows()
                     .map(|(_, win)| win)
@@ -915,13 +1075,13 @@ impl State {
                     .map(|win| win.window.clone())
                 {
                     // Commit current focus so repeated focus-window-previous works as expected.
-                    self.niri.mru_apply_keyboard_commit();
+                    self.swayward.mru_apply_keyboard_commit();
 
                     self.focus_window(&window);
                 }
             }
             Action::SwitchLayout(action) => {
-                let keyboard = &self.niri.seat.get_keyboard().unwrap();
+                let keyboard = &self.swayward.seat.get_keyboard().unwrap();
                 keyboard.with_xkb_state(self, |mut state| match action {
                     LayoutSwitchTarget::Next => state.cycle_next_layout(),
                     LayoutSwitchTarget::Prev => state.cycle_prev_layout(),
@@ -936,44 +1096,48 @@ impl State {
                 });
             }
             Action::MoveColumnLeft => {
-                if self.niri.screenshot_ui.is_open() {
-                    self.niri.screenshot_ui.move_left();
+                if self.swayward.screenshot_ui.is_open() {
+                    self.swayward.screenshot_ui.move_left();
                 } else {
-                    self.niri.layout.move_left();
+                    let id = self.focused_view_id();
+                    let moved = self.swayward.layout.move_left();
                     self.maybe_warp_cursor_to_focus();
+                    self.emit_window_move(moved, id);
                 }
 
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::MoveColumnRight => {
-                if self.niri.screenshot_ui.is_open() {
-                    self.niri.screenshot_ui.move_right();
+                if self.swayward.screenshot_ui.is_open() {
+                    self.swayward.screenshot_ui.move_right();
                 } else {
-                    self.niri.layout.move_right();
+                    let id = self.focused_view_id();
+                    let moved = self.swayward.layout.move_right();
                     self.maybe_warp_cursor_to_focus();
+                    self.emit_window_move(moved, id);
                 }
 
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::MoveColumnToFirst => {
-                self.niri.layout.move_column_to_first();
+                self.swayward.layout.move_column_to_first();
                 self.maybe_warp_cursor_to_focus();
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::MoveColumnToLast => {
-                self.niri.layout.move_column_to_last();
+                self.swayward.layout.move_column_to_last();
                 self.maybe_warp_cursor_to_focus();
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::MoveColumnLeftOrToMonitorLeft => {
-                if self.niri.screenshot_ui.is_open() {
-                    self.niri.screenshot_ui.move_left();
-                } else if let Some(output) = self.niri.output_left() {
-                    if self.niri.layout.move_column_left_or_to_output(&output)
+                if self.swayward.screenshot_ui.is_open() {
+                    self.swayward.screenshot_ui.move_left();
+                } else if let Some(output) = self.swayward.output_left() {
+                    if self.swayward.layout.move_column_left_or_to_output(&output)
                         && !self.maybe_warp_cursor_to_focus_centered()
                     {
                         self.move_cursor_to_output(&output);
@@ -981,18 +1145,18 @@ impl State {
                         self.maybe_warp_cursor_to_focus();
                     }
                 } else {
-                    self.niri.layout.move_left();
+                    self.swayward.layout.move_left();
                     self.maybe_warp_cursor_to_focus();
                 }
 
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::MoveColumnRightOrToMonitorRight => {
-                if self.niri.screenshot_ui.is_open() {
-                    self.niri.screenshot_ui.move_right();
-                } else if let Some(output) = self.niri.output_right() {
-                    if self.niri.layout.move_column_right_or_to_output(&output)
+                if self.swayward.screenshot_ui.is_open() {
+                    self.swayward.screenshot_ui.move_right();
+                } else if let Some(output) = self.swayward.output_right() {
+                    if self.swayward.layout.move_column_right_or_to_output(&output)
                         && !self.maybe_warp_cursor_to_focus_centered()
                     {
                         self.move_cursor_to_output(&output);
@@ -1000,167 +1164,181 @@ impl State {
                         self.maybe_warp_cursor_to_focus();
                     }
                 } else {
-                    self.niri.layout.move_right();
+                    self.swayward.layout.move_right();
                     self.maybe_warp_cursor_to_focus();
                 }
 
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::MoveWindowDown => {
-                if self.niri.screenshot_ui.is_open() {
-                    self.niri.screenshot_ui.move_down();
+                if self.swayward.screenshot_ui.is_open() {
+                    self.swayward.screenshot_ui.move_down();
                 } else {
-                    self.niri.layout.move_down();
+                    let id = self.focused_view_id();
+                    let moved = self.swayward.layout.move_down();
                     self.maybe_warp_cursor_to_focus();
+                    self.emit_window_move(moved, id);
                 }
 
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::MoveWindowUp => {
-                if self.niri.screenshot_ui.is_open() {
-                    self.niri.screenshot_ui.move_up();
+                if self.swayward.screenshot_ui.is_open() {
+                    self.swayward.screenshot_ui.move_up();
                 } else {
-                    self.niri.layout.move_up();
+                    let id = self.focused_view_id();
+                    let moved = self.swayward.layout.move_up();
                     self.maybe_warp_cursor_to_focus();
+                    self.emit_window_move(moved, id);
                 }
 
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::MoveWindowDownOrToWorkspaceDown => {
-                if self.niri.screenshot_ui.is_open() {
-                    self.niri.screenshot_ui.move_down();
+                if self.swayward.screenshot_ui.is_open() {
+                    self.swayward.screenshot_ui.move_down();
                 } else {
-                    self.niri.layout.move_down_or_to_workspace_down();
+                    self.swayward.layout.move_down_or_to_workspace_down();
                     self.maybe_warp_cursor_to_focus();
                 }
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::MoveWindowUpOrToWorkspaceUp => {
-                if self.niri.screenshot_ui.is_open() {
-                    self.niri.screenshot_ui.move_up();
+                if self.swayward.screenshot_ui.is_open() {
+                    self.swayward.screenshot_ui.move_up();
                 } else {
-                    self.niri.layout.move_up_or_to_workspace_up();
+                    self.swayward.layout.move_up_or_to_workspace_up();
                     self.maybe_warp_cursor_to_focus();
                 }
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::ConsumeOrExpelWindowLeft => {
-                self.niri.layout.consume_or_expel_window_left(None);
+                self.swayward.layout.consume_or_expel_window_left(None);
                 self.maybe_warp_cursor_to_focus();
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::ConsumeOrExpelWindowLeftById(id) => {
-                let window = self.niri.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
-                    self.niri.layout.consume_or_expel_window_left(Some(&window));
+                    self.swayward
+                        .layout
+                        .consume_or_expel_window_left(Some(&window));
                     self.maybe_warp_cursor_to_focus();
                     // FIXME: granular
-                    self.niri.queue_redraw_all();
+                    self.swayward.queue_redraw_all();
                 }
             }
             Action::ConsumeOrExpelWindowRight => {
-                self.niri.layout.consume_or_expel_window_right(None);
+                self.swayward.layout.consume_or_expel_window_right(None);
                 self.maybe_warp_cursor_to_focus();
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::ConsumeOrExpelWindowRightById(id) => {
-                let window = self.niri.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
-                    self.niri
+                    self.swayward
                         .layout
                         .consume_or_expel_window_right(Some(&window));
                     self.maybe_warp_cursor_to_focus();
                     // FIXME: granular
-                    self.niri.queue_redraw_all();
+                    self.swayward.queue_redraw_all();
                 }
             }
             Action::FocusColumnLeft => {
-                self.niri.layout.focus_left();
+                self.swayward.layout.focus_left();
                 self.maybe_warp_cursor_to_focus();
-                self.niri.layer_shell_on_demand_focus = None;
+                self.swayward.layer_shell_on_demand_focus = None;
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::FocusColumnLeftUnderMouse => {
-                if let Some((output, ws)) = self.niri.workspace_under_cursor(true) {
+                if let Some((output, ws)) = self.swayward.workspace_under_cursor(true) {
                     let ws_id = ws.id();
                     let ws = {
-                        let mut workspaces = self.niri.layout.workspaces_mut();
+                        let mut workspaces = self.swayward.layout.workspaces_mut();
                         workspaces.find(|ws| ws.id() == ws_id).unwrap()
                     };
                     ws.focus_left();
                     self.maybe_warp_cursor_to_focus();
-                    self.niri.layer_shell_on_demand_focus = None;
-                    self.niri.queue_redraw(&output);
+                    self.swayward.layer_shell_on_demand_focus = None;
+                    self.swayward.queue_redraw(&output);
                 }
             }
             Action::FocusColumnRight => {
-                self.niri.layout.focus_right();
+                self.swayward.layout.focus_right();
                 self.maybe_warp_cursor_to_focus();
-                self.niri.layer_shell_on_demand_focus = None;
+                self.swayward.layer_shell_on_demand_focus = None;
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::FocusColumnRightUnderMouse => {
-                if let Some((output, ws)) = self.niri.workspace_under_cursor(true) {
+                if let Some((output, ws)) = self.swayward.workspace_under_cursor(true) {
                     let ws_id = ws.id();
                     let ws = {
-                        let mut workspaces = self.niri.layout.workspaces_mut();
+                        let mut workspaces = self.swayward.layout.workspaces_mut();
                         workspaces.find(|ws| ws.id() == ws_id).unwrap()
                     };
                     ws.focus_right();
                     self.maybe_warp_cursor_to_focus();
-                    self.niri.layer_shell_on_demand_focus = None;
-                    self.niri.queue_redraw(&output);
+                    self.swayward.layer_shell_on_demand_focus = None;
+                    self.swayward.queue_redraw(&output);
                 }
             }
             Action::FocusColumnFirst => {
-                self.niri.layout.focus_column_first();
+                self.swayward.layout.focus_column_first();
                 self.maybe_warp_cursor_to_focus();
-                self.niri.layer_shell_on_demand_focus = None;
+                self.swayward.layer_shell_on_demand_focus = None;
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::FocusColumnLast => {
-                self.niri.layout.focus_column_last();
+                self.swayward.layout.focus_column_last();
                 self.maybe_warp_cursor_to_focus();
-                self.niri.layer_shell_on_demand_focus = None;
+                self.swayward.layer_shell_on_demand_focus = None;
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::FocusColumnRightOrFirst => {
-                self.niri.layout.focus_column_right_or_first();
+                self.swayward.layout.focus_column_right_or_first();
                 self.maybe_warp_cursor_to_focus();
-                self.niri.layer_shell_on_demand_focus = None;
+                self.swayward.layer_shell_on_demand_focus = None;
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::FocusColumnLeftOrLast => {
-                self.niri.layout.focus_column_left_or_last();
+                self.swayward.layout.focus_column_left_or_last();
                 self.maybe_warp_cursor_to_focus();
-                self.niri.layer_shell_on_demand_focus = None;
+                self.swayward.layer_shell_on_demand_focus = None;
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::FocusColumn(index) => {
-                self.niri.layout.focus_column(index);
+                self.swayward.layout.focus_column(index);
                 self.maybe_warp_cursor_to_focus();
-                self.niri.layer_shell_on_demand_focus = None;
+                self.swayward.layer_shell_on_demand_focus = None;
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::FocusWindowOrMonitorUp => {
-                if let Some(output) = self.niri.output_up() {
-                    if self.niri.layout.focus_window_up_or_output(&output)
+                if let Some(output) = self.swayward.adjacent_output_up() {
+                    if self.swayward.layout.focus_window_up_or_output(&output)
                         && !self.maybe_warp_cursor_to_focus_centered()
                     {
                         self.move_cursor_to_output(&output);
@@ -1168,17 +1346,17 @@ impl State {
                         self.maybe_warp_cursor_to_focus();
                     }
                 } else {
-                    self.niri.layout.focus_up();
+                    self.swayward.layout.focus_up();
                     self.maybe_warp_cursor_to_focus();
                 }
-                self.niri.layer_shell_on_demand_focus = None;
+                self.swayward.layer_shell_on_demand_focus = None;
 
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::FocusWindowOrMonitorDown => {
-                if let Some(output) = self.niri.output_down() {
-                    if self.niri.layout.focus_window_down_or_output(&output)
+                if let Some(output) = self.swayward.adjacent_output_down() {
+                    if self.swayward.layout.focus_window_down_or_output(&output)
                         && !self.maybe_warp_cursor_to_focus_centered()
                     {
                         self.move_cursor_to_output(&output);
@@ -1186,17 +1364,17 @@ impl State {
                         self.maybe_warp_cursor_to_focus();
                     }
                 } else {
-                    self.niri.layout.focus_down();
+                    self.swayward.layout.focus_down();
                     self.maybe_warp_cursor_to_focus();
                 }
-                self.niri.layer_shell_on_demand_focus = None;
+                self.swayward.layer_shell_on_demand_focus = None;
 
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::FocusColumnOrMonitorLeft => {
-                if let Some(output) = self.niri.output_left() {
-                    if self.niri.layout.focus_column_left_or_output(&output)
+                if let Some(output) = self.swayward.adjacent_output_left() {
+                    if self.swayward.layout.focus_column_left_or_output(&output)
                         && !self.maybe_warp_cursor_to_focus_centered()
                     {
                         self.move_cursor_to_output(&output);
@@ -1204,17 +1382,17 @@ impl State {
                         self.maybe_warp_cursor_to_focus();
                     }
                 } else {
-                    self.niri.layout.focus_left();
+                    self.swayward.layout.focus_left();
                     self.maybe_warp_cursor_to_focus();
                 }
-                self.niri.layer_shell_on_demand_focus = None;
+                self.swayward.layer_shell_on_demand_focus = None;
 
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::FocusColumnOrMonitorRight => {
-                if let Some(output) = self.niri.output_right() {
-                    if self.niri.layout.focus_column_right_or_output(&output)
+                if let Some(output) = self.swayward.adjacent_output_right() {
+                    if self.swayward.layout.focus_column_right_or_output(&output)
                         && !self.maybe_warp_cursor_to_focus_centered()
                     {
                         self.move_cursor_to_output(&output);
@@ -1222,117 +1400,117 @@ impl State {
                         self.maybe_warp_cursor_to_focus();
                     }
                 } else {
-                    self.niri.layout.focus_right();
+                    self.swayward.layout.focus_right();
                     self.maybe_warp_cursor_to_focus();
                 }
-                self.niri.layer_shell_on_demand_focus = None;
+                self.swayward.layer_shell_on_demand_focus = None;
 
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::FocusWindowDown => {
-                self.niri.layout.focus_down();
+                self.swayward.layout.focus_down();
                 self.maybe_warp_cursor_to_focus();
-                self.niri.layer_shell_on_demand_focus = None;
+                self.swayward.layer_shell_on_demand_focus = None;
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::FocusWindowUp => {
-                self.niri.layout.focus_up();
+                self.swayward.layout.focus_up();
                 self.maybe_warp_cursor_to_focus();
-                self.niri.layer_shell_on_demand_focus = None;
+                self.swayward.layer_shell_on_demand_focus = None;
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::FocusWindowDownOrColumnLeft => {
-                self.niri.layout.focus_down_or_left();
+                self.swayward.layout.focus_down_or_left();
                 self.maybe_warp_cursor_to_focus();
-                self.niri.layer_shell_on_demand_focus = None;
+                self.swayward.layer_shell_on_demand_focus = None;
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::FocusWindowDownOrColumnRight => {
-                self.niri.layout.focus_down_or_right();
+                self.swayward.layout.focus_down_or_right();
                 self.maybe_warp_cursor_to_focus();
-                self.niri.layer_shell_on_demand_focus = None;
+                self.swayward.layer_shell_on_demand_focus = None;
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::FocusWindowUpOrColumnLeft => {
-                self.niri.layout.focus_up_or_left();
+                self.swayward.layout.focus_up_or_left();
                 self.maybe_warp_cursor_to_focus();
-                self.niri.layer_shell_on_demand_focus = None;
+                self.swayward.layer_shell_on_demand_focus = None;
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::FocusWindowUpOrColumnRight => {
-                self.niri.layout.focus_up_or_right();
+                self.swayward.layout.focus_up_or_right();
                 self.maybe_warp_cursor_to_focus();
-                self.niri.layer_shell_on_demand_focus = None;
+                self.swayward.layer_shell_on_demand_focus = None;
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::FocusWindowOrWorkspaceDown => {
-                self.niri.layout.focus_window_or_workspace_down();
+                self.swayward.layout.focus_window_or_workspace_down();
                 self.maybe_warp_cursor_to_focus();
-                self.niri.layer_shell_on_demand_focus = None;
+                self.swayward.layer_shell_on_demand_focus = None;
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::FocusWindowOrWorkspaceUp => {
-                self.niri.layout.focus_window_or_workspace_up();
+                self.swayward.layout.focus_window_or_workspace_up();
                 self.maybe_warp_cursor_to_focus();
-                self.niri.layer_shell_on_demand_focus = None;
+                self.swayward.layer_shell_on_demand_focus = None;
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::FocusWindowTop => {
-                self.niri.layout.focus_window_top();
+                self.swayward.layout.focus_window_top();
                 self.maybe_warp_cursor_to_focus();
-                self.niri.layer_shell_on_demand_focus = None;
+                self.swayward.layer_shell_on_demand_focus = None;
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::FocusWindowBottom => {
-                self.niri.layout.focus_window_bottom();
+                self.swayward.layout.focus_window_bottom();
                 self.maybe_warp_cursor_to_focus();
-                self.niri.layer_shell_on_demand_focus = None;
+                self.swayward.layer_shell_on_demand_focus = None;
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::FocusWindowDownOrTop => {
-                self.niri.layout.focus_window_down_or_top();
+                self.swayward.layout.focus_window_down_or_top();
                 self.maybe_warp_cursor_to_focus();
-                self.niri.layer_shell_on_demand_focus = None;
+                self.swayward.layer_shell_on_demand_focus = None;
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::FocusWindowUpOrBottom => {
-                self.niri.layout.focus_window_up_or_bottom();
+                self.swayward.layout.focus_window_up_or_bottom();
                 self.maybe_warp_cursor_to_focus();
-                self.niri.layer_shell_on_demand_focus = None;
+                self.swayward.layer_shell_on_demand_focus = None;
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::MoveWindowToWorkspaceDown(focus) => {
-                self.niri.layout.move_to_workspace_down(focus);
+                self.swayward.layout.move_to_workspace_down(focus);
                 self.maybe_warp_cursor_to_focus();
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::MoveWindowToWorkspaceUp(focus) => {
-                self.niri.layout.move_to_workspace_up(focus);
+                self.swayward.layout.move_to_workspace_up(focus);
                 self.maybe_warp_cursor_to_focus();
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::MoveWindowToWorkspace(reference, focus) => {
                 if let Some((mut output, index)) =
-                    self.niri.find_output_and_workspace_index(reference)
+                    self.swayward.find_output_and_workspace_index(reference)
                 {
                     // The source output is always the active output, so if the target output is
                     // also the active output, we don't need to use move_to_output().
-                    if let Some(active) = self.niri.layout.active_output() {
+                    if let Some(active) = self.swayward.layout.active_output() {
                         if output.as_ref() == Some(active) {
                             output = None;
                         }
@@ -1345,7 +1523,7 @@ impl State {
                     };
 
                     if let Some(output) = output {
-                        self.niri
+                        self.swayward
                             .layout
                             .move_to_output(None, &output, Some(index), activate);
 
@@ -1357,12 +1535,14 @@ impl State {
                             self.maybe_warp_cursor_to_focus();
                         }
                     } else {
-                        self.niri.layout.move_to_workspace(None, index, activate);
+                        self.swayward
+                            .layout
+                            .move_to_workspace(None, index, activate);
                         self.maybe_warp_cursor_to_focus();
                     }
 
                     // FIXME: granular
-                    self.niri.queue_redraw_all();
+                    self.swayward.queue_redraw_all();
                 }
             }
             Action::MoveWindowToWorkspaceById {
@@ -1370,14 +1550,18 @@ impl State {
                 reference,
                 focus,
             } => {
-                let window = self.niri.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
                     if let Some((output, index)) =
-                        self.niri.find_output_and_workspace_index(reference)
+                        self.swayward.find_output_and_workspace_index(reference)
                     {
                         let target_was_active = self
-                            .niri
+                            .swayward
                             .layout
                             .active_output()
                             .is_some_and(|active| output.as_ref() == Some(active));
@@ -1389,7 +1573,7 @@ impl State {
                         };
 
                         if let Some(output) = output {
-                            self.niri.layout.move_to_output(
+                            self.swayward.layout.move_to_output(
                                 Some(&window),
                                 &output,
                                 Some(index),
@@ -1399,483 +1583,536 @@ impl State {
                             // If the active output changed (window was moved and focused).
                             #[allow(clippy::collapsible_if)]
                             if !target_was_active
-                                && self.niri.layout.active_output() == Some(&output)
+                                && self.swayward.layout.active_output() == Some(&output)
                             {
                                 if !self.maybe_warp_cursor_to_focus_centered() {
                                     self.move_cursor_to_output(&output);
                                 }
                             }
                         } else {
-                            self.niri
+                            self.swayward
                                 .layout
                                 .move_to_workspace(Some(&window), index, activate);
 
                             // If we focused the target window.
-                            let new_focus = self.niri.layout.focus();
+                            let new_focus = self.swayward.layout.focus();
                             if new_focus.is_some_and(|win| win.window == window) {
                                 self.maybe_warp_cursor_to_focus();
                             }
                         }
 
                         // FIXME: granular
-                        self.niri.queue_redraw_all();
+                        self.swayward.queue_redraw_all();
                     }
                 }
             }
             Action::MoveColumnToWorkspaceDown(focus) => {
-                self.niri.layout.move_column_to_workspace_down(focus);
+                self.swayward.layout.move_column_to_workspace_down(focus);
                 self.maybe_warp_cursor_to_focus();
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::MoveColumnToWorkspaceUp(focus) => {
-                self.niri.layout.move_column_to_workspace_up(focus);
+                self.swayward.layout.move_column_to_workspace_up(focus);
                 self.maybe_warp_cursor_to_focus();
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::MoveColumnToWorkspace(reference, focus) => {
                 if let Some((mut output, index)) =
-                    self.niri.find_output_and_workspace_index(reference)
+                    self.swayward.find_output_and_workspace_index(reference)
                 {
-                    if let Some(active) = self.niri.layout.active_output() {
+                    if let Some(active) = self.swayward.layout.active_output() {
                         if output.as_ref() == Some(active) {
                             output = None;
                         }
                     }
 
                     if let Some(output) = output {
-                        self.niri
+                        self.swayward
                             .layout
                             .move_column_to_output(&output, Some(index), focus);
                         if focus && !self.maybe_warp_cursor_to_focus_centered() {
                             self.move_cursor_to_output(&output);
                         }
                     } else {
-                        self.niri.layout.move_column_to_workspace(index, focus);
+                        self.swayward.layout.move_column_to_workspace(index, focus);
                         if focus {
                             self.maybe_warp_cursor_to_focus();
                         }
                     }
 
                     // FIXME: granular
-                    self.niri.queue_redraw_all();
+                    self.swayward.queue_redraw_all();
                 }
             }
             Action::MoveColumnToIndex(idx) => {
-                self.niri.layout.move_column_to_index(idx);
+                self.swayward.layout.move_column_to_index(idx);
                 self.maybe_warp_cursor_to_focus();
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::FocusWorkspaceDown => {
-                self.niri.layout.switch_workspace_down();
+                // The overview shows the whole stack at once, so the ends are
+                // visible and stopping at them reads as a dead key. Wrap there,
+                // matching sway's own `workspace next`.
+                if self.swayward.layout.is_overview_open() {
+                    self.swayward.layout.switch_workspace_down_wrapping();
+                } else {
+                    self.swayward.layout.switch_workspace_down();
+                }
                 self.maybe_warp_cursor_to_focus();
-                self.niri.layer_shell_on_demand_focus = None;
+                self.swayward.layer_shell_on_demand_focus = None;
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::FocusWorkspaceDownUnderMouse => {
-                if let Some(output) = self.niri.output_under_cursor() {
-                    if let Some(mon) = self.niri.layout.monitor_for_output_mut(&output) {
+                if let Some(output) = self.swayward.output_under_cursor() {
+                    if let Some(mon) = self.swayward.layout.monitor_for_output_mut(&output) {
                         mon.switch_workspace_down();
                         self.maybe_warp_cursor_to_focus();
-                        self.niri.layer_shell_on_demand_focus = None;
-                        self.niri.queue_redraw(&output);
+                        self.swayward.layer_shell_on_demand_focus = None;
+                        self.swayward.queue_redraw(&output);
                     }
                 }
             }
             Action::FocusWorkspaceUp => {
-                self.niri.layout.switch_workspace_up();
+                // See FocusWorkspaceDown.
+                if self.swayward.layout.is_overview_open() {
+                    self.swayward.layout.switch_workspace_up_wrapping();
+                } else {
+                    self.swayward.layout.switch_workspace_up();
+                }
                 self.maybe_warp_cursor_to_focus();
-                self.niri.layer_shell_on_demand_focus = None;
+                self.swayward.layer_shell_on_demand_focus = None;
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::FocusWorkspaceUpUnderMouse => {
-                if let Some(output) = self.niri.output_under_cursor() {
-                    if let Some(mon) = self.niri.layout.monitor_for_output_mut(&output) {
+                if let Some(output) = self.swayward.output_under_cursor() {
+                    if let Some(mon) = self.swayward.layout.monitor_for_output_mut(&output) {
                         mon.switch_workspace_up();
                         self.maybe_warp_cursor_to_focus();
-                        self.niri.layer_shell_on_demand_focus = None;
-                        self.niri.queue_redraw(&output);
+                        self.swayward.layer_shell_on_demand_focus = None;
+                        self.swayward.queue_redraw(&output);
                     }
                 }
             }
             Action::FocusWorkspace(reference) => {
                 if let Some((mut output, index)) =
-                    self.niri.find_output_and_workspace_index(reference)
+                    self.swayward.find_output_and_workspace_index(reference)
                 {
-                    if let Some(active) = self.niri.layout.active_output() {
+                    if let Some(active) = self.swayward.layout.active_output() {
                         if output.as_ref() == Some(active) {
                             output = None;
                         }
                     }
 
                     if let Some(output) = output {
-                        self.niri.layout.focus_output(&output);
-                        self.niri.layout.switch_workspace(index);
+                        self.swayward.layout.focus_output(&output);
+                        self.swayward.layout.switch_workspace(index);
                         if !self.maybe_warp_cursor_to_focus_centered() {
                             self.move_cursor_to_output(&output);
                         }
                     } else {
-                        let config = &self.niri.config;
+                        let config = &self.swayward.config;
                         if config.borrow().input.workspace_auto_back_and_forth {
-                            self.niri.layout.switch_workspace_auto_back_and_forth(index);
+                            self.swayward
+                                .layout
+                                .switch_workspace_auto_back_and_forth(index);
                         } else {
-                            self.niri.layout.switch_workspace(index);
+                            self.swayward.layout.switch_workspace(index);
                         }
                         self.maybe_warp_cursor_to_focus();
                     }
-                    self.niri.layer_shell_on_demand_focus = None;
+                    self.swayward.layer_shell_on_demand_focus = None;
 
                     // FIXME: granular
-                    self.niri.queue_redraw_all();
+                    self.swayward.queue_redraw_all();
                 }
             }
             Action::FocusWorkspacePrevious => {
-                self.niri.layout.switch_workspace_previous();
+                self.swayward.layout.switch_workspace_previous();
                 self.maybe_warp_cursor_to_focus();
-                self.niri.layer_shell_on_demand_focus = None;
+                self.swayward.layer_shell_on_demand_focus = None;
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::MoveWorkspaceDown => {
-                self.niri.layout.move_workspace_down();
+                self.swayward.layout.move_workspace_down();
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::MoveWorkspaceUp => {
-                self.niri.layout.move_workspace_up();
+                self.swayward.layout.move_workspace_up();
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::MoveWorkspaceToIndex(new_idx) => {
                 let new_idx = new_idx.saturating_sub(1);
-                self.niri.layout.move_workspace_to_idx(None, new_idx);
+                self.swayward.layout.move_workspace_to_idx(None, new_idx);
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::MoveWorkspaceToIndexByRef { new_idx, reference } => {
-                if let Some(res) = self.niri.find_output_and_workspace_index(reference) {
+                if let Some(res) = self.swayward.find_output_and_workspace_index(reference) {
                     let new_idx = new_idx.saturating_sub(1);
-                    self.niri.layout.move_workspace_to_idx(Some(res), new_idx);
+                    self.swayward
+                        .layout
+                        .move_workspace_to_idx(Some(res), new_idx);
                     // FIXME: granular
-                    self.niri.queue_redraw_all();
+                    self.swayward.queue_redraw_all();
                 }
             }
             Action::SetWorkspaceName(name) => {
-                self.niri.layout.set_workspace_name(name, None);
+                self.swayward.layout.set_workspace_name(name, None);
             }
             Action::SetWorkspaceNameByRef { name, reference } => {
-                self.niri.layout.set_workspace_name(name, Some(reference));
+                self.swayward
+                    .layout
+                    .set_workspace_name(name, Some(reference));
             }
             Action::UnsetWorkspaceName => {
-                self.niri.layout.unset_workspace_name(None);
+                self.swayward.layout.unset_workspace_name(None);
             }
             Action::UnsetWorkSpaceNameByRef(reference) => {
-                self.niri.layout.unset_workspace_name(Some(reference));
+                self.swayward.layout.unset_workspace_name(Some(reference));
             }
             Action::ConsumeWindowIntoColumn => {
-                self.niri.layout.consume_into_column();
+                self.swayward.layout.consume_into_column();
                 // This does not cause immediate focus or window size change, so warping mouse to
                 // focus won't do anything here.
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::ExpelWindowFromColumn => {
-                self.niri.layout.expel_from_column();
+                self.swayward.layout.expel_from_column();
                 self.maybe_warp_cursor_to_focus();
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::SwapWindowRight => {
-                self.niri
+                self.swayward
                     .layout
                     .swap_window_in_direction(ScrollDirection::Right);
                 self.maybe_warp_cursor_to_focus();
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::SwapWindowLeft => {
-                self.niri
+                self.swayward
                     .layout
                     .swap_window_in_direction(ScrollDirection::Left);
                 self.maybe_warp_cursor_to_focus();
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::ToggleColumnTabbedDisplay => {
-                self.niri.layout.toggle_column_tabbed_display();
+                self.swayward.layout.toggle_column_tabbed_display();
                 self.maybe_warp_cursor_to_focus();
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::SetColumnDisplay(display) => {
-                self.niri.layout.set_column_display(display);
+                self.swayward.layout.set_column_display(display);
                 self.maybe_warp_cursor_to_focus();
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::SwitchPresetColumnWidth => {
-                self.niri.layout.toggle_width(true);
+                self.swayward.layout.toggle_width(true);
             }
             Action::SwitchPresetColumnWidthBack => {
-                self.niri.layout.toggle_width(false);
+                self.swayward.layout.toggle_width(false);
             }
             Action::SwitchPresetWindowWidth => {
-                self.niri.layout.toggle_window_width(None, true);
+                self.swayward.layout.toggle_window_width(None, true);
             }
             Action::SwitchPresetWindowWidthBack => {
-                self.niri.layout.toggle_window_width(None, false);
+                self.swayward.layout.toggle_window_width(None, false);
             }
             Action::SwitchPresetWindowWidthById(id) => {
-                let window = self.niri.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
-                    self.niri.layout.toggle_window_width(Some(&window), true);
+                    self.swayward
+                        .layout
+                        .toggle_window_width(Some(&window), true);
                 }
             }
             Action::SwitchPresetWindowWidthBackById(id) => {
-                let window = self.niri.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
-                    self.niri.layout.toggle_window_width(Some(&window), false);
+                    self.swayward
+                        .layout
+                        .toggle_window_width(Some(&window), false);
                 }
             }
             Action::SwitchPresetWindowHeight => {
-                self.niri.layout.toggle_window_height(None, true);
+                self.swayward.layout.toggle_window_height(None, true);
             }
             Action::SwitchPresetWindowHeightBack => {
-                self.niri.layout.toggle_window_height(None, false);
+                self.swayward.layout.toggle_window_height(None, false);
             }
             Action::SwitchPresetWindowHeightById(id) => {
-                let window = self.niri.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
-                    self.niri.layout.toggle_window_height(Some(&window), true);
+                    self.swayward
+                        .layout
+                        .toggle_window_height(Some(&window), true);
                 }
             }
             Action::SwitchPresetWindowHeightBackById(id) => {
-                let window = self.niri.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
-                    self.niri.layout.toggle_window_height(Some(&window), false);
+                    self.swayward
+                        .layout
+                        .toggle_window_height(Some(&window), false);
                 }
             }
             Action::CenterColumn => {
-                self.niri.layout.center_column();
+                self.swayward.layout.center_column();
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::CenterWindow => {
-                self.niri.layout.center_window(None);
+                self.swayward.layout.center_window(None);
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::CenterWindowById(id) => {
-                let window = self.niri.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
-                    self.niri.layout.center_window(Some(&window));
+                    self.swayward.layout.center_window(Some(&window));
                     // FIXME: granular
-                    self.niri.queue_redraw_all();
+                    self.swayward.queue_redraw_all();
                 }
             }
             Action::CenterVisibleColumns => {
-                self.niri.layout.center_visible_columns();
+                self.swayward.layout.center_visible_columns();
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::MaximizeColumn => {
-                self.niri.layout.toggle_full_width();
+                self.swayward.layout.toggle_full_width();
             }
             Action::MaximizeWindowToEdges => {
-                let focus = self.niri.layout.focus().map(|m| m.window.clone());
+                let focus = self.swayward.layout.focus().map(|m| m.window.clone());
                 if let Some(window) = focus {
-                    self.niri.layout.toggle_maximized(&window);
+                    self.swayward.layout.toggle_maximized(&window);
                     // FIXME: granular
-                    self.niri.queue_redraw_all();
+                    self.swayward.queue_redraw_all();
                 }
             }
             Action::MaximizeWindowToEdgesById(id) => {
-                let window = self.niri.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
-                    self.niri.layout.toggle_maximized(&window);
+                    self.swayward.layout.toggle_maximized(&window);
                     // FIXME: granular
-                    self.niri.queue_redraw_all();
+                    self.swayward.queue_redraw_all();
                 }
             }
             Action::FocusMonitorLeft => {
-                if let Some(output) = self.niri.output_left() {
-                    self.niri.layout.focus_output(&output);
+                if let Some(output) = self.swayward.output_left() {
+                    self.swayward.layout.focus_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
                     }
-                    self.niri.layer_shell_on_demand_focus = None;
+                    self.swayward.layer_shell_on_demand_focus = None;
                 }
             }
             Action::FocusMonitorRight => {
-                if let Some(output) = self.niri.output_right() {
-                    self.niri.layout.focus_output(&output);
+                if let Some(output) = self.swayward.output_right() {
+                    self.swayward.layout.focus_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
                     }
-                    self.niri.layer_shell_on_demand_focus = None;
+                    self.swayward.layer_shell_on_demand_focus = None;
                 }
             }
             Action::FocusMonitorDown => {
-                if let Some(output) = self.niri.output_down() {
-                    self.niri.layout.focus_output(&output);
+                if let Some(output) = self.swayward.output_down() {
+                    self.swayward.layout.focus_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
                     }
-                    self.niri.layer_shell_on_demand_focus = None;
+                    self.swayward.layer_shell_on_demand_focus = None;
                 }
             }
             Action::FocusMonitorUp => {
-                if let Some(output) = self.niri.output_up() {
-                    self.niri.layout.focus_output(&output);
+                if let Some(output) = self.swayward.output_up() {
+                    self.swayward.layout.focus_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
                     }
-                    self.niri.layer_shell_on_demand_focus = None;
+                    self.swayward.layer_shell_on_demand_focus = None;
                 }
             }
             Action::FocusMonitorPrevious => {
-                if let Some(output) = self.niri.output_previous() {
-                    self.niri.layout.focus_output(&output);
+                if let Some(output) = self.swayward.output_previous() {
+                    self.swayward.layout.focus_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
                     }
-                    self.niri.layer_shell_on_demand_focus = None;
+                    self.swayward.layer_shell_on_demand_focus = None;
                 }
             }
             Action::FocusMonitorNext => {
-                if let Some(output) = self.niri.output_next() {
-                    self.niri.layout.focus_output(&output);
+                if let Some(output) = self.swayward.output_next() {
+                    self.swayward.layout.focus_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
                     }
-                    self.niri.layer_shell_on_demand_focus = None;
+                    self.swayward.layer_shell_on_demand_focus = None;
                 }
             }
             Action::FocusMonitor(output) => {
-                if let Some(output) = self.niri.output_by_name_match(&output).cloned() {
-                    self.niri.layout.focus_output(&output);
+                if let Some(output) = self.swayward.output_by_name_match(&output).cloned() {
+                    self.swayward.layout.focus_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
                     }
-                    self.niri.layer_shell_on_demand_focus = None;
+                    self.swayward.layer_shell_on_demand_focus = None;
                 }
             }
             Action::MoveWindowToMonitorLeft => {
-                if let Some(current_output) = self.niri.screenshot_ui.selection_output() {
-                    if let Some(target_output) = self.niri.output_left_of(current_output) {
+                if let Some(current_output) = self.swayward.screenshot_ui.selection_output() {
+                    if let Some(target_output) = self.swayward.output_left_of(current_output) {
                         self.move_cursor_to_output(&target_output);
-                        self.niri.screenshot_ui.move_to_output(target_output);
+                        self.swayward.screenshot_ui.move_to_output(target_output);
                     }
-                } else if let Some(output) = self.niri.output_left() {
-                    self.niri
+                } else if let Some(output) = self.swayward.output_left() {
+                    self.swayward
                         .layout
                         .move_to_output(None, &output, None, ActivateWindow::Smart);
-                    self.niri.layout.focus_output(&output);
+                    self.swayward.layout.focus_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
                     }
                 }
             }
             Action::MoveWindowToMonitorRight => {
-                if let Some(current_output) = self.niri.screenshot_ui.selection_output() {
-                    if let Some(target_output) = self.niri.output_right_of(current_output) {
+                if let Some(current_output) = self.swayward.screenshot_ui.selection_output() {
+                    if let Some(target_output) = self.swayward.output_right_of(current_output) {
                         self.move_cursor_to_output(&target_output);
-                        self.niri.screenshot_ui.move_to_output(target_output);
+                        self.swayward.screenshot_ui.move_to_output(target_output);
                     }
-                } else if let Some(output) = self.niri.output_right() {
-                    self.niri
+                } else if let Some(output) = self.swayward.output_right() {
+                    self.swayward
                         .layout
                         .move_to_output(None, &output, None, ActivateWindow::Smart);
-                    self.niri.layout.focus_output(&output);
+                    self.swayward.layout.focus_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
                     }
                 }
             }
             Action::MoveWindowToMonitorDown => {
-                if let Some(current_output) = self.niri.screenshot_ui.selection_output() {
-                    if let Some(target_output) = self.niri.output_down_of(current_output) {
+                if let Some(current_output) = self.swayward.screenshot_ui.selection_output() {
+                    if let Some(target_output) = self.swayward.output_down_of(current_output) {
                         self.move_cursor_to_output(&target_output);
-                        self.niri.screenshot_ui.move_to_output(target_output);
+                        self.swayward.screenshot_ui.move_to_output(target_output);
                     }
-                } else if let Some(output) = self.niri.output_down() {
-                    self.niri
+                } else if let Some(output) = self.swayward.output_down() {
+                    self.swayward
                         .layout
                         .move_to_output(None, &output, None, ActivateWindow::Smart);
-                    self.niri.layout.focus_output(&output);
+                    self.swayward.layout.focus_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
                     }
                 }
             }
             Action::MoveWindowToMonitorUp => {
-                if let Some(current_output) = self.niri.screenshot_ui.selection_output() {
-                    if let Some(target_output) = self.niri.output_up_of(current_output) {
+                if let Some(current_output) = self.swayward.screenshot_ui.selection_output() {
+                    if let Some(target_output) = self.swayward.output_up_of(current_output) {
                         self.move_cursor_to_output(&target_output);
-                        self.niri.screenshot_ui.move_to_output(target_output);
+                        self.swayward.screenshot_ui.move_to_output(target_output);
                     }
-                } else if let Some(output) = self.niri.output_up() {
-                    self.niri
+                } else if let Some(output) = self.swayward.output_up() {
+                    self.swayward
                         .layout
                         .move_to_output(None, &output, None, ActivateWindow::Smart);
-                    self.niri.layout.focus_output(&output);
+                    self.swayward.layout.focus_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
                     }
                 }
             }
             Action::MoveWindowToMonitorPrevious => {
-                if let Some(current_output) = self.niri.screenshot_ui.selection_output() {
-                    if let Some(target_output) = self.niri.output_previous_of(current_output) {
+                if let Some(current_output) = self.swayward.screenshot_ui.selection_output() {
+                    if let Some(target_output) = self.swayward.output_previous_of(current_output) {
                         self.move_cursor_to_output(&target_output);
-                        self.niri.screenshot_ui.move_to_output(target_output);
+                        self.swayward.screenshot_ui.move_to_output(target_output);
                     }
-                } else if let Some(output) = self.niri.output_previous() {
-                    self.niri
+                } else if let Some(output) = self.swayward.output_previous() {
+                    self.swayward
                         .layout
                         .move_to_output(None, &output, None, ActivateWindow::Smart);
-                    self.niri.layout.focus_output(&output);
+                    self.swayward.layout.focus_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
                     }
                 }
             }
             Action::MoveWindowToMonitorNext => {
-                if let Some(current_output) = self.niri.screenshot_ui.selection_output() {
-                    if let Some(target_output) = self.niri.output_next_of(current_output) {
+                if let Some(current_output) = self.swayward.screenshot_ui.selection_output() {
+                    if let Some(target_output) = self.swayward.output_next_of(current_output) {
                         self.move_cursor_to_output(&target_output);
-                        self.niri.screenshot_ui.move_to_output(target_output);
+                        self.swayward.screenshot_ui.move_to_output(target_output);
                     }
-                } else if let Some(output) = self.niri.output_next() {
-                    self.niri
+                } else if let Some(output) = self.swayward.output_next() {
+                    self.swayward
                         .layout
                         .move_to_output(None, &output, None, ActivateWindow::Smart);
-                    self.niri.layout.focus_output(&output);
+                    self.swayward.layout.focus_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
                     }
                 }
             }
             Action::MoveWindowToMonitor(output) => {
-                if let Some(output) = self.niri.output_by_name_match(&output).cloned() {
-                    if self.niri.screenshot_ui.is_open() {
+                if let Some(output) = self.swayward.output_by_name_match(&output).cloned() {
+                    if self.swayward.screenshot_ui.is_open() {
                         self.move_cursor_to_output(&output);
-                        self.niri.screenshot_ui.move_to_output(output);
+                        self.swayward.screenshot_ui.move_to_output(output);
                     } else {
-                        self.niri
-                            .layout
-                            .move_to_output(None, &output, None, ActivateWindow::Smart);
-                        self.niri.layout.focus_output(&output);
+                        self.swayward.layout.move_to_output(
+                            None,
+                            &output,
+                            None,
+                            ActivateWindow::Smart,
+                        );
+                        self.swayward.layout.focus_output(&output);
                         if !self.maybe_warp_cursor_to_focus_centered() {
                             self.move_cursor_to_output(&output);
                         }
@@ -1883,18 +2120,22 @@ impl State {
                 }
             }
             Action::MoveWindowToMonitorById { id, output } => {
-                if let Some(output) = self.niri.output_by_name_match(&output).cloned() {
-                    let window = self.niri.layout.windows().find(|(_, m)| m.id().get() == id);
+                if let Some(output) = self.swayward.output_by_name_match(&output).cloned() {
+                    let window = self
+                        .swayward
+                        .layout
+                        .windows()
+                        .find(|(_, m)| m.id().get() == id);
                     let window = window.map(|(_, m)| m.window.clone());
 
                     if let Some(window) = window {
                         let target_was_active = self
-                            .niri
+                            .swayward
                             .layout
                             .active_output()
                             .is_some_and(|active| output == *active);
 
-                        self.niri.layout.move_to_output(
+                        self.swayward.layout.move_to_output(
                             Some(&window),
                             &output,
                             None,
@@ -1903,7 +2144,9 @@ impl State {
 
                         // If the active output changed (window was moved and focused).
                         #[allow(clippy::collapsible_if)]
-                        if !target_was_active && self.niri.layout.active_output() == Some(&output) {
+                        if !target_was_active
+                            && self.swayward.layout.active_output() == Some(&output)
+                        {
                             if !self.maybe_warp_cursor_to_focus_centered() {
                                 self.move_cursor_to_output(&output);
                             }
@@ -1912,97 +2155,111 @@ impl State {
                 }
             }
             Action::MoveColumnToMonitorLeft => {
-                if let Some(current_output) = self.niri.screenshot_ui.selection_output() {
-                    if let Some(target_output) = self.niri.output_left_of(current_output) {
+                if let Some(current_output) = self.swayward.screenshot_ui.selection_output() {
+                    if let Some(target_output) = self.swayward.output_left_of(current_output) {
                         self.move_cursor_to_output(&target_output);
-                        self.niri.screenshot_ui.move_to_output(target_output);
+                        self.swayward.screenshot_ui.move_to_output(target_output);
                     }
-                } else if let Some(output) = self.niri.output_left() {
-                    self.niri.layout.move_column_to_output(&output, None, true);
-                    self.niri.layout.focus_output(&output);
+                } else if let Some(output) = self.swayward.output_left() {
+                    self.swayward
+                        .layout
+                        .move_column_to_output(&output, None, true);
+                    self.swayward.layout.focus_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
                     }
                 }
             }
             Action::MoveColumnToMonitorRight => {
-                if let Some(current_output) = self.niri.screenshot_ui.selection_output() {
-                    if let Some(target_output) = self.niri.output_right_of(current_output) {
+                if let Some(current_output) = self.swayward.screenshot_ui.selection_output() {
+                    if let Some(target_output) = self.swayward.output_right_of(current_output) {
                         self.move_cursor_to_output(&target_output);
-                        self.niri.screenshot_ui.move_to_output(target_output);
+                        self.swayward.screenshot_ui.move_to_output(target_output);
                     }
-                } else if let Some(output) = self.niri.output_right() {
-                    self.niri.layout.move_column_to_output(&output, None, true);
-                    self.niri.layout.focus_output(&output);
+                } else if let Some(output) = self.swayward.output_right() {
+                    self.swayward
+                        .layout
+                        .move_column_to_output(&output, None, true);
+                    self.swayward.layout.focus_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
                     }
                 }
             }
             Action::MoveColumnToMonitorDown => {
-                if let Some(current_output) = self.niri.screenshot_ui.selection_output() {
-                    if let Some(target_output) = self.niri.output_down_of(current_output) {
+                if let Some(current_output) = self.swayward.screenshot_ui.selection_output() {
+                    if let Some(target_output) = self.swayward.output_down_of(current_output) {
                         self.move_cursor_to_output(&target_output);
-                        self.niri.screenshot_ui.move_to_output(target_output);
+                        self.swayward.screenshot_ui.move_to_output(target_output);
                     }
-                } else if let Some(output) = self.niri.output_down() {
-                    self.niri.layout.move_column_to_output(&output, None, true);
-                    self.niri.layout.focus_output(&output);
+                } else if let Some(output) = self.swayward.output_down() {
+                    self.swayward
+                        .layout
+                        .move_column_to_output(&output, None, true);
+                    self.swayward.layout.focus_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
                     }
                 }
             }
             Action::MoveColumnToMonitorUp => {
-                if let Some(current_output) = self.niri.screenshot_ui.selection_output() {
-                    if let Some(target_output) = self.niri.output_up_of(current_output) {
+                if let Some(current_output) = self.swayward.screenshot_ui.selection_output() {
+                    if let Some(target_output) = self.swayward.output_up_of(current_output) {
                         self.move_cursor_to_output(&target_output);
-                        self.niri.screenshot_ui.move_to_output(target_output);
+                        self.swayward.screenshot_ui.move_to_output(target_output);
                     }
-                } else if let Some(output) = self.niri.output_up() {
-                    self.niri.layout.move_column_to_output(&output, None, true);
-                    self.niri.layout.focus_output(&output);
+                } else if let Some(output) = self.swayward.output_up() {
+                    self.swayward
+                        .layout
+                        .move_column_to_output(&output, None, true);
+                    self.swayward.layout.focus_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
                     }
                 }
             }
             Action::MoveColumnToMonitorPrevious => {
-                if let Some(current_output) = self.niri.screenshot_ui.selection_output() {
-                    if let Some(target_output) = self.niri.output_previous_of(current_output) {
+                if let Some(current_output) = self.swayward.screenshot_ui.selection_output() {
+                    if let Some(target_output) = self.swayward.output_previous_of(current_output) {
                         self.move_cursor_to_output(&target_output);
-                        self.niri.screenshot_ui.move_to_output(target_output);
+                        self.swayward.screenshot_ui.move_to_output(target_output);
                     }
-                } else if let Some(output) = self.niri.output_previous() {
-                    self.niri.layout.move_column_to_output(&output, None, true);
-                    self.niri.layout.focus_output(&output);
+                } else if let Some(output) = self.swayward.output_previous() {
+                    self.swayward
+                        .layout
+                        .move_column_to_output(&output, None, true);
+                    self.swayward.layout.focus_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
                     }
                 }
             }
             Action::MoveColumnToMonitorNext => {
-                if let Some(current_output) = self.niri.screenshot_ui.selection_output() {
-                    if let Some(target_output) = self.niri.output_next_of(current_output) {
+                if let Some(current_output) = self.swayward.screenshot_ui.selection_output() {
+                    if let Some(target_output) = self.swayward.output_next_of(current_output) {
                         self.move_cursor_to_output(&target_output);
-                        self.niri.screenshot_ui.move_to_output(target_output);
+                        self.swayward.screenshot_ui.move_to_output(target_output);
                     }
-                } else if let Some(output) = self.niri.output_next() {
-                    self.niri.layout.move_column_to_output(&output, None, true);
-                    self.niri.layout.focus_output(&output);
+                } else if let Some(output) = self.swayward.output_next() {
+                    self.swayward
+                        .layout
+                        .move_column_to_output(&output, None, true);
+                    self.swayward.layout.focus_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
                     }
                 }
             }
             Action::MoveColumnToMonitor(output) => {
-                if let Some(output) = self.niri.output_by_name_match(&output).cloned() {
-                    if self.niri.screenshot_ui.is_open() {
+                if let Some(output) = self.swayward.output_by_name_match(&output).cloned() {
+                    if self.swayward.screenshot_ui.is_open() {
                         self.move_cursor_to_output(&output);
-                        self.niri.screenshot_ui.move_to_output(output);
+                        self.swayward.screenshot_ui.move_to_output(output);
                     } else {
-                        self.niri.layout.move_column_to_output(&output, None, true);
-                        self.niri.layout.focus_output(&output);
+                        self.swayward
+                            .layout
+                            .move_column_to_output(&output, None, true);
+                        self.swayward.layout.focus_output(&output);
                         if !self.maybe_warp_cursor_to_focus_centered() {
                             self.move_cursor_to_output(&output);
                         }
@@ -2010,121 +2267,135 @@ impl State {
                 }
             }
             Action::SetColumnWidth(change) => {
-                if self.niri.screenshot_ui.is_open() {
-                    self.niri.screenshot_ui.set_width(change);
+                if self.swayward.screenshot_ui.is_open() {
+                    self.swayward.screenshot_ui.set_width(change);
 
                     // FIXME: granular
-                    self.niri.queue_redraw_all();
+                    self.swayward.queue_redraw_all();
                 } else {
-                    self.niri.layout.set_column_width(change);
+                    self.swayward.layout.set_column_width(change);
                 }
             }
             Action::SetWindowWidth(change) => {
-                if self.niri.screenshot_ui.is_open() {
-                    self.niri.screenshot_ui.set_width(change);
+                if self.swayward.screenshot_ui.is_open() {
+                    self.swayward.screenshot_ui.set_width(change);
 
                     // FIXME: granular
-                    self.niri.queue_redraw_all();
+                    self.swayward.queue_redraw_all();
                 } else {
-                    self.niri.layout.set_window_width(None, change);
+                    self.swayward.layout.set_window_width(None, change);
                 }
             }
             Action::SetWindowWidthById { id, change } => {
-                let window = self.niri.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
-                    self.niri.layout.set_window_width(Some(&window), change);
+                    self.swayward.layout.set_window_width(Some(&window), change);
                 }
             }
             Action::SetWindowHeight(change) => {
-                if self.niri.screenshot_ui.is_open() {
-                    self.niri.screenshot_ui.set_height(change);
+                if self.swayward.screenshot_ui.is_open() {
+                    self.swayward.screenshot_ui.set_height(change);
 
                     // FIXME: granular
-                    self.niri.queue_redraw_all();
+                    self.swayward.queue_redraw_all();
                 } else {
-                    self.niri.layout.set_window_height(None, change);
+                    self.swayward.layout.set_window_height(None, change);
                 }
             }
             Action::SetWindowHeightById { id, change } => {
-                let window = self.niri.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
-                    self.niri.layout.set_window_height(Some(&window), change);
+                    self.swayward
+                        .layout
+                        .set_window_height(Some(&window), change);
                 }
             }
             Action::ResetWindowHeight => {
-                self.niri.layout.reset_window_height(None);
+                self.swayward.layout.reset_window_height(None);
             }
             Action::ResetWindowHeightById(id) => {
-                let window = self.niri.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
-                    self.niri.layout.reset_window_height(Some(&window));
+                    self.swayward.layout.reset_window_height(Some(&window));
                 }
             }
             Action::ExpandColumnToAvailableWidth => {
-                self.niri.layout.expand_column_to_available_width();
+                self.swayward.layout.expand_column_to_available_width();
             }
             Action::ShowHotkeyOverlay => {
-                if self.niri.hotkey_overlay.show() {
-                    self.niri.queue_redraw_all();
+                if self.swayward.hotkey_overlay.show() {
+                    self.swayward.queue_redraw_all();
 
                     #[cfg(feature = "dbus")]
-                    self.niri.a11y_announce_hotkey_overlay();
+                    self.swayward.a11y_announce_hotkey_overlay();
                 }
             }
             Action::MoveWorkspaceToMonitorLeft => {
-                if let Some(output) = self.niri.output_left() {
-                    self.niri.layout.move_workspace_to_output(&output);
+                if let Some(output) = self.swayward.output_left() {
+                    self.swayward.layout.move_workspace_to_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
                     }
                 }
             }
             Action::MoveWorkspaceToMonitorRight => {
-                if let Some(output) = self.niri.output_right() {
-                    self.niri.layout.move_workspace_to_output(&output);
+                if let Some(output) = self.swayward.output_right() {
+                    self.swayward.layout.move_workspace_to_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
                     }
                 }
             }
             Action::MoveWorkspaceToMonitorDown => {
-                if let Some(output) = self.niri.output_down() {
-                    self.niri.layout.move_workspace_to_output(&output);
+                if let Some(output) = self.swayward.output_down() {
+                    self.swayward.layout.move_workspace_to_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
                     }
                 }
             }
             Action::MoveWorkspaceToMonitorUp => {
-                if let Some(output) = self.niri.output_up() {
-                    self.niri.layout.move_workspace_to_output(&output);
+                if let Some(output) = self.swayward.output_up() {
+                    self.swayward.layout.move_workspace_to_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
                     }
                 }
             }
             Action::MoveWorkspaceToMonitorPrevious => {
-                if let Some(output) = self.niri.output_previous() {
-                    self.niri.layout.move_workspace_to_output(&output);
+                if let Some(output) = self.swayward.output_previous() {
+                    self.swayward.layout.move_workspace_to_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
                     }
                 }
             }
             Action::MoveWorkspaceToMonitorNext => {
-                if let Some(output) = self.niri.output_next() {
-                    self.niri.layout.move_workspace_to_output(&output);
+                if let Some(output) = self.swayward.output_next() {
+                    self.swayward.layout.move_workspace_to_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
                     }
                 }
             }
             Action::MoveWorkspaceToMonitor(new_output) => {
-                if let Some(new_output) = self.niri.output_by_name_match(&new_output).cloned() {
-                    if self.niri.layout.move_workspace_to_output(&new_output)
+                if let Some(new_output) = self.swayward.output_by_name_match(&new_output).cloned() {
+                    if self.swayward.layout.move_workspace_to_output(&new_output)
                         && !self.maybe_warp_cursor_to_focus_centered()
                     {
                         self.move_cursor_to_output(&new_output);
@@ -2136,15 +2407,21 @@ impl State {
                 reference,
             } => {
                 if let Some((output, old_idx)) =
-                    self.niri.find_output_and_workspace_index(reference)
+                    self.swayward.find_output_and_workspace_index(reference)
                 {
-                    if let Some(new_output) = self.niri.output_by_name_match(&output_name).cloned()
+                    if let Some(new_output) =
+                        self.swayward.output_by_name_match(&output_name).cloned()
                     {
-                        if self.niri.layout.move_workspace_to_output_by_id(
-                            old_idx,
-                            output,
-                            &new_output,
-                        ) {
+                        let workspace_id = output.as_ref().and_then(|output| {
+                            self.swayward.layout.workspace_id_at(output, old_idx)
+                        });
+                        if workspace_id.is_some_and(|workspace_id| {
+                            self.swayward.layout.move_workspace_to_output_by_id(
+                                workspace_id,
+                                output,
+                                &new_output,
+                            )
+                        }) {
                             // Cursor warp already calls `queue_redraw_all`
                             if !self.maybe_warp_cursor_to_focus_centered() {
                                 self.move_cursor_to_output(&new_output);
@@ -2154,68 +2431,88 @@ impl State {
                 }
             }
             Action::ToggleWindowFloating => {
-                self.niri.layout.toggle_window_floating(None);
+                self.swayward.layout.toggle_window_floating(None);
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::ToggleWindowFloatingById(id) => {
-                let window = self.niri.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
-                    self.niri.layout.toggle_window_floating(Some(&window));
+                    self.swayward.layout.toggle_window_floating(Some(&window));
                     // FIXME: granular
-                    self.niri.queue_redraw_all();
+                    self.swayward.queue_redraw_all();
                 }
             }
             Action::MoveWindowToFloating => {
-                self.niri.layout.set_window_floating(None, true);
+                self.swayward.layout.set_window_floating(None, true);
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::MoveWindowToFloatingById(id) => {
-                let window = self.niri.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
-                    self.niri.layout.set_window_floating(Some(&window), true);
+                    self.swayward
+                        .layout
+                        .set_window_floating(Some(&window), true);
                     // FIXME: granular
-                    self.niri.queue_redraw_all();
+                    self.swayward.queue_redraw_all();
                 }
             }
             Action::MoveWindowToTiling => {
-                self.niri.layout.set_window_floating(None, false);
+                self.swayward.layout.set_window_floating(None, false);
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::MoveWindowToTilingById(id) => {
-                let window = self.niri.layout.windows().find(|(_, m)| m.id().get() == id);
+                let window = self
+                    .swayward
+                    .layout
+                    .windows()
+                    .find(|(_, m)| m.id().get() == id);
                 let window = window.map(|(_, m)| m.window.clone());
                 if let Some(window) = window {
-                    self.niri.layout.set_window_floating(Some(&window), false);
+                    self.swayward
+                        .layout
+                        .set_window_floating(Some(&window), false);
                     // FIXME: granular
-                    self.niri.queue_redraw_all();
+                    self.swayward.queue_redraw_all();
                 }
             }
             Action::FocusFloating => {
-                self.niri.layout.focus_floating();
+                self.swayward.layout.focus_floating();
                 self.maybe_warp_cursor_to_focus();
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::FocusTiling => {
-                self.niri.layout.focus_tiling();
+                self.swayward.layout.focus_tiling();
                 self.maybe_warp_cursor_to_focus();
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::SwitchFocusBetweenFloatingAndTiling => {
-                self.niri.layout.switch_focus_floating_tiling();
+                self.swayward.layout.switch_focus_floating_tiling();
                 self.maybe_warp_cursor_to_focus();
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::MoveFloatingWindowById { id, x, y } => {
                 let window = if let Some(id) = id {
-                    let window = self.niri.layout.windows().find(|(_, m)| m.id().get() == id);
+                    let window = self
+                        .swayward
+                        .layout
+                        .windows()
+                        .find(|(_, m)| m.id().get() == id);
                     let window = window.map(|(_, m)| m.window.clone());
                     if window.is_none() {
                         return;
@@ -2225,15 +2522,15 @@ impl State {
                     None
                 };
 
-                self.niri
+                self.swayward
                     .layout
                     .move_floating_window(window.as_ref(), x, y, true);
                 // FIXME: granular
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::ToggleWindowRuleOpacity => {
                 let active_window = self
-                    .niri
+                    .swayward
                     .layout
                     .active_workspace_mut()
                     .and_then(|ws| ws.active_window_mut());
@@ -2241,13 +2538,13 @@ impl State {
                     if window.rules().opacity.is_some_and(|o| o != 1.) {
                         window.toggle_ignore_opacity_window_rule();
                         // FIXME: granular
-                        self.niri.queue_redraw_all();
+                        self.swayward.queue_redraw_all();
                     }
                 }
             }
             Action::ToggleWindowRuleOpacityById(id) => {
                 let window = self
-                    .niri
+                    .swayward
                     .layout
                     .workspaces_mut()
                     .find_map(|ws| ws.windows_mut().find(|w| w.id().get() == id));
@@ -2255,13 +2552,13 @@ impl State {
                     if window.rules().opacity.is_some_and(|o| o != 1.) {
                         window.toggle_ignore_opacity_window_rule();
                         // FIXME: granular
-                        self.niri.queue_redraw_all();
+                        self.swayward.queue_redraw_all();
                     }
                 }
             }
             Action::SetDynamicCastWindow => {
                 let id = self
-                    .niri
+                    .swayward
                     .layout
                     .active_workspace()
                     .and_then(|ws| ws.active_window())
@@ -2271,15 +2568,15 @@ impl State {
                 }
             }
             Action::SetDynamicCastWindowById(id) => {
-                let layout = &self.niri.layout;
+                let layout = &self.swayward.layout;
                 if layout.windows().any(|(_, mapped)| mapped.id().get() == id) {
                     self.set_dynamic_cast_target(CastTarget::Window { id });
                 }
             }
             Action::SetDynamicCastMonitor(output) => {
                 let output = match output {
-                    None => self.niri.layout.active_output(),
-                    Some(name) => self.niri.output_by_name_match(&name),
+                    None => self.swayward.layout.active_output(),
+                    Some(name) => self.swayward.output_by_name_match(&name),
                 };
                 if let Some(output) = output {
                     self.set_dynamic_cast_target(CastTarget::output(output));
@@ -2289,25 +2586,31 @@ impl State {
                 self.set_dynamic_cast_target(CastTarget::Nothing);
             }
             Action::StopCast(session_id) => {
-                self.niri.stop_cast(CastSessionId::from(session_id));
+                self.swayward.stop_cast(CastSessionId::from(session_id));
             }
             Action::ToggleOverview => {
-                self.niri.layout.toggle_overview();
-                self.niri.queue_redraw_all();
+                // A layer surface holding on-demand focus outranks the
+                // overview (Swayward::compute_focus checks Layer::Top first),
+                // so clicking a bar and then opening the overview left every
+                // key going to the bar and none of the overview binds firing.
+                self.swayward.layer_shell_on_demand_focus = None;
+                self.swayward.layout.toggle_overview();
+                self.swayward.queue_redraw_all();
             }
             Action::OpenOverview => {
-                if self.niri.layout.open_overview() {
-                    self.niri.queue_redraw_all();
+                if self.swayward.layout.open_overview() {
+                    self.swayward.layer_shell_on_demand_focus = None;
+                    self.swayward.queue_redraw_all();
                 }
             }
             Action::CloseOverview => {
-                if self.niri.layout.close_overview() {
-                    self.niri.queue_redraw_all();
+                if self.swayward.layout.close_overview() {
+                    self.swayward.queue_redraw_all();
                 }
             }
             Action::ToggleWindowUrgent(id) => {
                 let window = self
-                    .niri
+                    .swayward
                     .layout
                     .workspaces_mut()
                     .find_map(|ws| ws.windows_mut().find(|w| w.id().get() == id));
@@ -2315,32 +2618,32 @@ impl State {
                     let urgent = window.is_urgent();
                     window.set_urgent(!urgent);
                 }
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::SetWindowUrgent(id) => {
                 let window = self
-                    .niri
+                    .swayward
                     .layout
                     .workspaces_mut()
                     .find_map(|ws| ws.windows_mut().find(|w| w.id().get() == id));
                 if let Some(window) = window {
                     window.set_urgent(true);
                 }
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::UnsetWindowUrgent(id) => {
                 let window = self
-                    .niri
+                    .swayward
                     .layout
                     .workspaces_mut()
                     .find_map(|ws| ws.windows_mut().find(|w| w.id().get() == id));
                 if let Some(window) = window {
                     window.set_urgent(false);
                 }
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             Action::LoadConfigFile(path) => {
-                if let Some(watcher) = &self.niri.config_file_watcher {
+                if let Some(watcher) = &self.swayward.config_file_watcher {
                     watcher.load_config(path);
                 }
             }
@@ -2348,32 +2651,32 @@ impl State {
                 self.confirm_mru();
             }
             Action::MruCancel => {
-                self.niri.cancel_mru();
+                self.swayward.cancel_mru();
             }
             Action::MruAdvance {
                 direction,
                 scope,
                 filter,
             } => {
-                if self.niri.window_mru_ui.is_open() {
-                    self.niri.window_mru_ui.advance(direction, filter);
-                    self.niri.queue_redraw_mru_output();
-                } else if self.niri.config.borrow().recent_windows.on {
-                    self.niri.mru_apply_keyboard_commit();
+                if self.swayward.window_mru_ui.is_open() {
+                    self.swayward.window_mru_ui.advance(direction, filter);
+                    self.swayward.queue_redraw_mru_output();
+                } else if self.swayward.config.borrow().recent_windows.on {
+                    self.swayward.mru_apply_keyboard_commit();
 
-                    let config = self.niri.config.borrow();
-                    let scope = scope.unwrap_or(self.niri.window_mru_ui.scope());
+                    let config = self.swayward.config.borrow();
+                    let scope = scope.unwrap_or(self.swayward.window_mru_ui.scope());
 
-                    let mut wmru = WindowMru::new(&self.niri);
+                    let mut wmru = WindowMru::new(&self.swayward);
                     if !wmru.is_empty() {
                         wmru.set_scope(scope);
                         if let Some(filter) = filter {
                             wmru.set_filter(filter);
                         }
 
-                        if let Some(output) = self.niri.layout.active_output() {
-                            self.niri.window_mru_ui.open(
-                                self.niri.clock.clone(),
+                        if let Some(output) = self.swayward.layout.active_output() {
+                            self.swayward.window_mru_ui.open(
+                                self.swayward.clock.clone(),
                                 wmru,
                                 output.clone(),
                             );
@@ -2382,21 +2685,21 @@ impl State {
                             // first one) is already focused. If nothing is focused, keep the first
                             // window (which is logically the "previously selected" one).
                             let keep_first = direction == MruDirection::Forward
-                                && self.niri.layout.focus().is_none();
+                                && self.swayward.layout.focus().is_none();
                             if !keep_first {
-                                self.niri.window_mru_ui.advance(direction, None);
+                                self.swayward.window_mru_ui.advance(direction, None);
                             }
 
                             drop(config);
-                            self.niri.queue_redraw_all();
+                            self.swayward.queue_redraw_all();
                         }
                     }
                 }
             }
             Action::MruCloseCurrentWindow => {
-                if self.niri.window_mru_ui.is_open() {
-                    if let Some(id) = self.niri.window_mru_ui.current_window_id() {
-                        if let Some(w) = self.niri.find_window_by_id(id) {
+                if self.swayward.window_mru_ui.is_open() {
+                    if let Some(id) = self.swayward.window_mru_ui.current_window_id() {
+                        if let Some(w) = self.swayward.find_window_by_id(id) {
                             if let Some(tl) = w.toplevel() {
                                 tl.send_close();
                             }
@@ -2405,45 +2708,45 @@ impl State {
                 }
             }
             Action::MruFirst => {
-                if self.niri.window_mru_ui.is_open() {
-                    self.niri.window_mru_ui.first();
-                    self.niri.queue_redraw_mru_output();
+                if self.swayward.window_mru_ui.is_open() {
+                    self.swayward.window_mru_ui.first();
+                    self.swayward.queue_redraw_mru_output();
                 }
             }
             Action::MruLast => {
-                if self.niri.window_mru_ui.is_open() {
-                    self.niri.window_mru_ui.last();
-                    self.niri.queue_redraw_mru_output();
+                if self.swayward.window_mru_ui.is_open() {
+                    self.swayward.window_mru_ui.last();
+                    self.swayward.queue_redraw_mru_output();
                 }
             }
             Action::MruSetScope(scope) => {
-                if self.niri.window_mru_ui.is_open() {
-                    self.niri.window_mru_ui.set_scope(scope);
-                    self.niri.queue_redraw_mru_output();
+                if self.swayward.window_mru_ui.is_open() {
+                    self.swayward.window_mru_ui.set_scope(scope);
+                    self.swayward.queue_redraw_mru_output();
                 }
             }
             Action::MruCycleScope => {
-                if self.niri.window_mru_ui.is_open() {
-                    self.niri.window_mru_ui.cycle_scope();
-                    self.niri.queue_redraw_mru_output();
+                if self.swayward.window_mru_ui.is_open() {
+                    self.swayward.window_mru_ui.cycle_scope();
+                    self.swayward.queue_redraw_mru_output();
                 }
             }
         }
     }
 
     fn on_pointer_motion<I: InputBackend>(&mut self, event: I::PointerMotionEvent) {
-        let was_inside_hot_corner = self.niri.pointer_inside_hot_corner;
+        let was_inside_hot_corner = self.swayward.pointer_inside_hot_corner;
         // Any of the early returns here mean that the pointer is not inside the hot corner.
-        self.niri.pointer_inside_hot_corner = false;
+        self.swayward.pointer_inside_hot_corner = false;
 
         // We need an output to be able to move the pointer.
-        if self.niri.global_space.outputs().next().is_none() {
+        if self.swayward.global_space.outputs().next().is_none() {
             return;
         }
 
         let serial = SERIAL_COUNTER.next_serial();
 
-        let pointer = self.niri.seat.get_pointer().unwrap();
+        let pointer = self.swayward.seat.get_pointer().unwrap();
 
         let pos = pointer.current_location();
 
@@ -2451,14 +2754,14 @@ impl State {
         let mut new_pos = pos + event.delta();
 
         // We received an event for the regular pointer, so show it now.
-        self.niri.pointer_visibility = PointerVisibility::Visible;
-        self.niri.tablet_cursor_location = None;
+        self.swayward.pointer_visibility = PointerVisibility::Visible;
+        self.swayward.tablet_cursor_location = None;
 
         // Check if we have an active pointer constraint.
         //
         // FIXME: ideally this should use the pointer focus with up-to-date global location.
         let mut pointer_confined = None;
-        if let Some(under) = &self.niri.pointer_contents.surface {
+        if let Some(under) = &self.swayward.pointer_contents.surface {
             // No need to check if the pointer focus surface matches, because here we're checking
             // for an already-active constraint, and the constraint is deactivated when the focused
             // surface changes.
@@ -2514,8 +2817,6 @@ impl State {
             if let Some(grab) = grab.downcast_ref::<SpatialMovementGrab>() {
                 if let Some(output) = grab.view_offset_output() {
                     return Some((output.clone(), true));
-                } else if let Some(output) = grab.workspace_switch_output() {
-                    return Some((output.clone(), false));
                 }
             } else if let Some(grab) = grab.downcast_ref::<MoveGrab>() {
                 if let Some(output) = grab.view_offset_output() {
@@ -2525,7 +2826,7 @@ impl State {
             None
         });
         if let Some((output, horizontal)) = spatial_grab.flatten() {
-            if let Some(geo) = self.niri.global_space.output_geometry(&output) {
+            if let Some(geo) = self.swayward.global_space.output_geometry(&output) {
                 let geo = geo.to_f64();
                 if horizontal {
                     new_pos.x = (new_pos.x - geo.loc.x).rem_euclid(geo.size.w) + geo.loc.x;
@@ -2538,17 +2839,17 @@ impl State {
         }
 
         if self
-            .niri
+            .swayward
             .global_space
             .output_under(new_pos)
             .next()
             .is_none()
         {
             // We ended up outside the outputs and need to clip the movement.
-            if let Some(output) = self.niri.global_space.output_under(pos).next() {
+            if let Some(output) = self.swayward.global_space.output_under(pos).next() {
                 // The pointer was previously on some output. Clip the movement against its
                 // boundaries.
-                let geom = self.niri.global_space.output_geometry(output).unwrap();
+                let geom = self.swayward.global_space.output_geometry(output).unwrap();
                 new_pos.x = new_pos
                     .x
                     .clamp(geom.loc.x as f64, (geom.loc.x + geom.size.w - 1) as f64);
@@ -2558,30 +2859,32 @@ impl State {
             } else {
                 // The pointer was not on any output in the first place. Find one for it.
                 // Let's do the simple thing and just put it on the first output.
-                let output = self.niri.global_space.outputs().next().unwrap();
-                let geom = self.niri.global_space.output_geometry(output).unwrap();
+                let output = self.swayward.global_space.outputs().next().unwrap();
+                let geom = self.swayward.global_space.output_geometry(output).unwrap();
                 new_pos = center(geom).to_f64();
             }
         }
 
-        if let Some(output) = self.niri.screenshot_ui.selection_output() {
-            let geom = self.niri.global_space.output_geometry(output).unwrap();
+        if let Some(output) = self.swayward.screenshot_ui.selection_output() {
+            let geom = self.swayward.global_space.output_geometry(output).unwrap();
             let point = (new_pos - geom.loc.to_f64())
                 .to_physical(output.current_scale().fractional_scale())
                 .to_i32_round::<i32>();
 
-            self.niri.screenshot_ui.pointer_motion(point, None);
+            self.swayward.screenshot_ui.pointer_motion(point, None);
         }
 
-        if let Some(mru_output) = self.niri.window_mru_ui.output() {
-            if let Some((output, pos_within_output)) = self.niri.output_under(new_pos) {
+        if let Some(mru_output) = self.swayward.window_mru_ui.output() {
+            if let Some((output, pos_within_output)) = self.swayward.output_under(new_pos) {
                 if mru_output == output {
-                    self.niri.window_mru_ui.pointer_motion(pos_within_output);
+                    self.swayward
+                        .window_mru_ui
+                        .pointer_motion(pos_within_output);
                 }
             }
         }
 
-        let under = self.niri.contents_under(new_pos);
+        let under = self.swayward.contents_under(new_pos);
 
         // Handle confined pointer.
         if let Some((focus_surface, region)) = pointer_confined {
@@ -2617,9 +2920,9 @@ impl State {
             }
         }
 
-        self.niri.handle_focus_follows_mouse(&under);
+        self.swayward.handle_focus_follows_mouse(&under);
 
-        self.niri.pointer_contents.clone_from(&under);
+        self.swayward.pointer_contents.clone_from(&under);
 
         pointer.motion(
             self,
@@ -2651,22 +2954,22 @@ impl State {
                     .with_grab(|_, grab| grab_allows_hot_corner(grab))
                     .unwrap_or(true)
             {
-                self.niri.layout.toggle_overview();
+                self.swayward.layout.toggle_overview();
             }
-            self.niri.pointer_inside_hot_corner = true;
+            self.swayward.pointer_inside_hot_corner = true;
         }
 
         // Activate a new confinement if necessary.
-        self.niri.maybe_activate_pointer_constraint();
+        self.swayward.maybe_activate_pointer_constraint();
 
         // Inform the layout of an ongoing DnD operation.
         let is_dnd_grab = pointer
             .with_grab(|_, grab| Self::is_dnd_grab(grab.as_any()))
             .unwrap_or(false);
         if is_dnd_grab {
-            if let Some((output, pos_within_output)) = self.niri.output_under(new_pos) {
+            if let Some((output, pos_within_output)) = self.swayward.output_under(new_pos) {
                 let output = output.clone();
-                self.niri.layout.dnd_update(output, pos_within_output);
+                self.swayward.layout.dnd_update(output, pos_within_output);
             }
         }
 
@@ -2676,16 +2979,16 @@ impl State {
 
         // Redraw to update the cursor position.
         // FIXME: redraw only outputs overlapping the cursor.
-        self.niri.queue_redraw_all();
+        self.swayward.queue_redraw_all();
     }
 
     fn on_pointer_motion_absolute<I: InputBackend>(
         &mut self,
         event: I::PointerMotionAbsoluteEvent,
     ) {
-        let was_inside_hot_corner = self.niri.pointer_inside_hot_corner;
+        let was_inside_hot_corner = self.swayward.pointer_inside_hot_corner;
         // Any of the early returns here mean that the pointer is not inside the hot corner.
-        self.niri.pointer_inside_hot_corner = false;
+        self.swayward.pointer_inside_hot_corner = false;
 
         let Some(pos) = self.compute_absolute_location(&event, None).or_else(|| {
             self.global_bounding_rectangle().map(|output_geo| {
@@ -2697,30 +3000,32 @@ impl State {
 
         let serial = SERIAL_COUNTER.next_serial();
 
-        let pointer = self.niri.seat.get_pointer().unwrap();
+        let pointer = self.swayward.seat.get_pointer().unwrap();
 
-        if let Some(output) = self.niri.screenshot_ui.selection_output() {
-            let geom = self.niri.global_space.output_geometry(output).unwrap();
+        if let Some(output) = self.swayward.screenshot_ui.selection_output() {
+            let geom = self.swayward.global_space.output_geometry(output).unwrap();
             let point = (pos - geom.loc.to_f64())
                 .to_physical(output.current_scale().fractional_scale())
                 .to_i32_round::<i32>();
 
-            self.niri.screenshot_ui.pointer_motion(point, None);
+            self.swayward.screenshot_ui.pointer_motion(point, None);
         }
 
-        if let Some(mru_output) = self.niri.window_mru_ui.output() {
-            if let Some((output, pos_within_output)) = self.niri.output_under(pos) {
+        if let Some(mru_output) = self.swayward.window_mru_ui.output() {
+            if let Some((output, pos_within_output)) = self.swayward.output_under(pos) {
                 if mru_output == output {
-                    self.niri.window_mru_ui.pointer_motion(pos_within_output);
+                    self.swayward
+                        .window_mru_ui
+                        .pointer_motion(pos_within_output);
                 }
             }
         }
 
-        let under = self.niri.contents_under(pos);
+        let under = self.swayward.contents_under(pos);
 
-        self.niri.handle_focus_follows_mouse(&under);
+        self.swayward.handle_focus_follows_mouse(&under);
 
-        self.niri.pointer_contents.clone_from(&under);
+        self.swayward.pointer_contents.clone_from(&under);
 
         pointer.motion(
             self,
@@ -2742,27 +3047,27 @@ impl State {
                     .with_grab(|_, grab| grab_allows_hot_corner(grab))
                     .unwrap_or(true)
             {
-                self.niri.layout.toggle_overview();
+                self.swayward.layout.toggle_overview();
             }
-            self.niri.pointer_inside_hot_corner = true;
+            self.swayward.pointer_inside_hot_corner = true;
         }
 
-        self.niri.maybe_activate_pointer_constraint();
+        self.swayward.maybe_activate_pointer_constraint();
 
         // We moved the pointer, show it.
-        self.niri.pointer_visibility = PointerVisibility::Visible;
+        self.swayward.pointer_visibility = PointerVisibility::Visible;
 
         // We moved the regular pointer, so show it now.
-        self.niri.tablet_cursor_location = None;
+        self.swayward.tablet_cursor_location = None;
 
         // Inform the layout of an ongoing DnD operation.
         let is_dnd_grab = pointer
             .with_grab(|_, grab| Self::is_dnd_grab(grab.as_any()))
             .unwrap_or(false);
         if is_dnd_grab {
-            if let Some((output, pos_within_output)) = self.niri.output_under(pos) {
+            if let Some((output, pos_within_output)) = self.swayward.output_under(pos) {
                 let output = output.clone();
-                self.niri.layout.dnd_update(output, pos_within_output);
+                self.swayward.layout.dnd_update(output, pos_within_output);
             }
         }
 
@@ -2772,55 +3077,68 @@ impl State {
 
         // Redraw to update the cursor position.
         // FIXME: redraw only outputs overlapping the cursor.
-        self.niri.queue_redraw_all();
+        self.swayward.queue_redraw_all();
     }
 
     fn on_pointer_button<I: InputBackend>(&mut self, event: I::PointerButtonEvent) {
-        let pointer = self.niri.seat.get_pointer().unwrap();
+        let pointer = self.swayward.seat.get_pointer().unwrap();
 
         let serial = SERIAL_COUNTER.next_serial();
 
         let button = event.button();
+        let input_device = event.device().sway_identifier();
 
         let button_code = event.button_code();
 
         let button_state = event.state();
 
-        let mod_key = self.backend.mod_key(&self.niri.config.borrow());
+        let mod_key = self.backend.mod_key(&self.swayward.config.borrow());
 
-        // Ignore release events for mouse clicks that triggered a bind.
-        if self.niri.suppressed_buttons.remove(&button_code) {
-            return;
+        if ButtonState::Released == button_state {
+            let suppressed = self.swayward.suppressed_buttons.remove(&button_code);
+            if let Some(bind) = self
+                .swayward
+                .held_release_buttons
+                .remove(&(input_device.clone(), button_code))
+            {
+                self.handle_bind(bind);
+                return;
+            }
+            // Ignore release events for mouse clicks that triggered a press bind.
+            if suppressed {
+                return;
+            }
         }
 
-        let mods = self.niri.seat.get_keyboard().unwrap().modifier_state();
+        let mods = self.swayward.seat.get_keyboard().unwrap().modifier_state();
         let modifiers = modifiers_from_state(mods);
-        let mod_down = modifiers.contains(mod_key.to_modifiers());
+        let mod_down = mod_key.is_pressed(modifiers);
 
         if ButtonState::Pressed == button_state {
-            let mut is_mru_open = false;
-            if let Some(mru_output) = self.niri.window_mru_ui.output() {
-                is_mru_open = true;
+            if let Some(mru_output) = self.swayward.window_mru_ui.output() {
                 if let Some(MouseButton::Left) = button {
                     let location = pointer.current_location();
-                    let (output, pos_within_output) = self.niri.output_under(location).unwrap();
+                    let (output, pos_within_output) = self.swayward.output_under(location).unwrap();
                     if mru_output == output {
-                        let id = self.niri.window_mru_ui.pointer_motion(pos_within_output);
+                        let id = self
+                            .swayward
+                            .window_mru_ui
+                            .pointer_motion(pos_within_output);
                         if id.is_some() {
                             self.confirm_mru();
                         } else {
-                            self.niri.cancel_mru();
+                            self.swayward.cancel_mru();
                         }
                     } else {
-                        self.niri.cancel_mru();
+                        self.swayward.cancel_mru();
                     }
 
-                    self.niri.suppressed_buttons.insert(button_code);
+                    self.swayward.suppressed_buttons.insert(button_code);
                     return;
                 }
             }
 
-            if is_mru_open || self.niri.mods_with_mouse_binds.contains(&modifiers) {
+            {
                 if let Some(bind) = match button {
                     Some(MouseButton::Left) => Some(Trigger::MouseLeft),
                     Some(MouseButton::Right) => Some(Trigger::MouseRight),
@@ -2829,33 +3147,71 @@ impl State {
                     Some(MouseButton::Forward) => Some(Trigger::MouseForward),
                     _ => None,
                 }
-                .and_then(|trigger| {
-                    let config = self.niri.config.borrow();
-                    let bindings =
-                        make_binds_iter(&config, &mut self.niri.window_mru_ui, modifiers);
-                    find_configured_bind(bindings, mod_key, trigger, mods)
+                .map(|trigger| {
+                    let config = self.swayward.config.borrow();
+                    let bindings = make_binds_iter(
+                        &config,
+                        &self.swayward.binding_mode,
+                        &mut self.swayward.window_mru_ui,
+                        modifiers,
+                    );
+                    let release = find_configured_bind_for_device(
+                        bindings.clone().filter(|bind| bind.release),
+                        mod_key,
+                        trigger,
+                        mods,
+                        &input_device,
+                    );
+                    let press = find_configured_bind_for_device(
+                        bindings.filter(|bind| !bind.release),
+                        mod_key,
+                        trigger,
+                        mods,
+                        &input_device,
+                    );
+                    (press, release)
                 })
-                .filter(|bind| {
-                    !self.niri.screenshot_ui.is_open() || allowed_during_screenshot(&bind.action)
+                .map(|(press, release)| {
+                    let allowed = |bind: &Bind| {
+                        self.mouse_bind_matches_region(bind)
+                            && (!self.swayward.screenshot_ui.is_open()
+                                || allowed_during_screenshot(&bind.action))
+                    };
+                    (press.filter(allowed), release.filter(allowed))
+                })
+                .and_then(|(press, release)| {
+                    if let Some(release) = release {
+                        self.swayward
+                            .held_release_buttons
+                            .insert((input_device.clone(), button_code), release);
+                    }
+                    press
                 }) {
-                    self.niri.suppressed_buttons.insert(button_code);
+                    self.swayward.suppressed_buttons.insert(button_code);
                     self.handle_bind(bind.clone());
                     return;
-                };
+                }
+                if self
+                    .swayward
+                    .held_release_buttons
+                    .contains_key(&(input_device, button_code))
+                {
+                    return;
+                }
             }
 
             // We received an event for the regular pointer, so show it now.
-            self.niri.pointer_visibility = PointerVisibility::Visible;
-            self.niri.tablet_cursor_location = None;
+            self.swayward.pointer_visibility = PointerVisibility::Visible;
+            self.swayward.tablet_cursor_location = None;
 
-            let is_overview_open = self.niri.layout.is_overview_open();
+            let is_overview_open = self.swayward.layout.is_overview_open();
 
             if is_overview_open && !pointer.is_grabbed() && button == Some(MouseButton::Right) {
-                if let Some((output, ws)) = self.niri.workspace_under_cursor(true) {
+                if let Some((output, ws)) = self.swayward.workspace_under_cursor(true) {
                     let ws_id = ws.id();
-                    let ws_idx = self.niri.layout.find_workspace_by_id(ws_id).unwrap().0;
+                    let ws_idx = self.swayward.layout.find_workspace_by_id(ws_id).unwrap().0;
 
-                    self.niri.layout.focus_output(&output);
+                    self.swayward.layout.focus_output(&output);
 
                     let location = pointer.current_location();
                     let start_data = PointerGrabStartData {
@@ -2863,29 +3219,29 @@ impl State {
                         button: button_code,
                         location,
                     };
-                    self.niri
+                    self.swayward
                         .layout
                         .view_offset_gesture_begin(&output, Some(ws_idx), false);
                     let grab = SpatialMovementGrab::new(start_data, output, ws_id, true);
                     pointer.set_grab(self, grab, serial, Focus::Clear);
-                    self.niri
+                    self.swayward
                         .cursor_manager
                         .set_cursor_image(CursorImageStatus::Named(CursorIcon::AllScroll));
 
                     // FIXME: granular.
-                    self.niri.queue_redraw_all();
+                    self.swayward.queue_redraw_all();
                     return;
                 }
             }
 
             if button == Some(MouseButton::Middle) && !pointer.is_grabbed() && mod_down {
                 let output_ws = if is_overview_open {
-                    self.niri.workspace_under_cursor(true)
+                    self.swayward.workspace_under_cursor(true)
                 } else {
                     // We don't want to accidentally "catch" the wrong workspace during
                     // animations.
-                    self.niri.output_under_cursor().and_then(|output| {
-                        let mon = self.niri.layout.monitor_for_output(&output)?;
+                    self.swayward.output_under_cursor().and_then(|output| {
+                        let mon = self.swayward.layout.monitor_for_output(&output)?;
                         Some((output, mon.active_workspace_ref()))
                     })
                 };
@@ -2893,7 +3249,7 @@ impl State {
                 if let Some((output, ws)) = output_ws {
                     let ws_id = ws.id();
 
-                    self.niri.layout.focus_output(&output);
+                    self.swayward.layout.focus_output(&output);
 
                     let location = pointer.current_location();
                     let start_data = PointerGrabStartData {
@@ -2903,12 +3259,12 @@ impl State {
                     };
                     let grab = SpatialMovementGrab::new(start_data, output, ws_id, false);
                     pointer.set_grab(self, grab, serial, Focus::Clear);
-                    self.niri
+                    self.swayward
                         .cursor_manager
                         .set_cursor_image(CursorImageStatus::Named(CursorIcon::AllScroll));
 
                     // FIXME: granular.
-                    self.niri.queue_redraw_all();
+                    self.swayward.queue_redraw_all();
 
                     // Don't activate the window under the cursor to avoid unnecessary
                     // scrolling when e.g. Mod+MMB clicking on a partially off-screen window.
@@ -2916,16 +3272,18 @@ impl State {
                 }
             }
 
-            if let Some(mapped) = self.niri.window_under_cursor() {
+            if let Some(mapped) = self.swayward.window_under_cursor() {
                 let window = mapped.window.clone();
 
                 // Check if we need to start an interactive move.
                 if button == Some(MouseButton::Left) && !pointer.is_grabbed() {
-                    if is_overview_open || mod_down {
+                    if is_overview_open
+                        || (mod_down && !mapped.pending_sizing_mode().is_fullscreen())
+                    {
                         let location = pointer.current_location();
 
                         if !is_overview_open {
-                            self.niri.layout.activate_window(&window);
+                            self.swayward.layout.activate_window(&window);
                         }
 
                         let start_data = PointerGrabStartData {
@@ -2946,7 +3304,7 @@ impl State {
                             // In the overview, we click to activate window and close the overview,
                             // in this case setting the cursor right away would be distracting.
                             if !is_overview_open {
-                                self.niri
+                                self.swayward
                                     .cursor_manager
                                     .set_cursor_image(CursorImageStatus::Named(icon));
                             }
@@ -2956,9 +3314,9 @@ impl State {
                 // Check if we need to start an interactive resize.
                 else if button == Some(MouseButton::Right) && !pointer.is_grabbed() && mod_down {
                     let location = pointer.current_location();
-                    let (output, pos_within_output) = self.niri.output_under(location).unwrap();
+                    let (output, pos_within_output) = self.swayward.output_under(location).unwrap();
                     let edges = self
-                        .niri
+                        .swayward
                         .layout
                         .resize_edges_under(output, pos_within_output)
                         .unwrap_or(ResizeEdge::empty());
@@ -2987,23 +3345,23 @@ impl State {
                                 if intersection.intersects(ResizeEdge::LEFT_RIGHT) {
                                     // FIXME: don't activate once we can pass specific windows
                                     // to actions.
-                                    self.niri.layout.activate_window(&window);
-                                    self.niri.layout.toggle_full_width();
+                                    self.swayward.layout.activate_window(&window);
+                                    self.swayward.layout.toggle_full_width();
                                 }
                                 if intersection.intersects(ResizeEdge::TOP_BOTTOM) {
-                                    self.niri.layout.activate_window(&window);
-                                    self.niri.layout.reset_window_height(Some(&window));
+                                    self.swayward.layout.activate_window(&window);
+                                    self.swayward.layout.reset_window_height(Some(&window));
                                 }
                                 // FIXME: granular.
-                                self.niri.queue_redraw_all();
+                                self.swayward.queue_redraw_all();
                                 return;
                             }
                         }
 
-                        self.niri.layout.activate_window(&window);
+                        self.swayward.layout.activate_window(&window);
 
                         if self
-                            .niri
+                            .swayward
                             .layout
                             .interactive_resize_begin(window.clone(), edges)
                         {
@@ -3015,7 +3373,7 @@ impl State {
                             let start_data = AnyStartData::Pointer(start_data);
                             let grab = ResizeGrab::new(start_data, window.clone());
                             pointer.set_grab(self, grab, serial, Focus::Clear);
-                            self.niri
+                            self.swayward
                                 .cursor_manager
                                 .set_cursor_image(CursorImageStatus::Named(edges.cursor_icon()));
                         }
@@ -3023,67 +3381,72 @@ impl State {
                 }
 
                 if !is_overview_open {
-                    self.niri.layout.activate_window(&window);
+                    self.swayward.layout.activate_window(&window);
                 }
 
                 // FIXME: granular.
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             } else if let Some((output, ws)) = is_overview_open
-                .then(|| self.niri.workspace_under_cursor(false))
+                .then(|| self.swayward.workspace_under_cursor(false))
                 .flatten()
             {
-                let ws_idx = self.niri.layout.find_workspace_by_id(ws.id()).unwrap().0;
+                let ws_idx = self
+                    .swayward
+                    .layout
+                    .find_workspace_by_id(ws.id())
+                    .unwrap()
+                    .0;
 
-                self.niri.layout.focus_output(&output);
-                self.niri.layout.toggle_overview_to_workspace(ws_idx);
+                self.swayward.layout.focus_output(&output);
+                self.swayward.layout.toggle_overview_to_workspace(ws_idx);
 
                 // FIXME: granular.
-                self.niri.queue_redraw_all();
-            } else if let Some(output) = self.niri.output_under_cursor() {
-                self.niri.layout.focus_output(&output);
+                self.swayward.queue_redraw_all();
+            } else if let Some(output) = self.swayward.output_under_cursor() {
+                self.swayward.layout.focus_output(&output);
 
                 // FIXME: granular.
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
         };
 
         self.update_pointer_contents();
 
         if ButtonState::Pressed == button_state {
-            let layer_under = self.niri.pointer_contents.layer.clone();
-            self.niri.focus_layer_surface_if_on_demand(layer_under);
+            let layer_under = self.swayward.pointer_contents.layer.clone();
+            self.swayward.focus_layer_surface_if_on_demand(layer_under);
         }
 
-        if button == Some(MouseButton::Left) && self.niri.screenshot_ui.is_open() {
+        if button == Some(MouseButton::Left) && self.swayward.screenshot_ui.is_open() {
             if button_state == ButtonState::Pressed {
                 let pos = pointer.current_location();
 
                 // If we'll be moving the existing selection, use the selection output.
                 let output = if mod_down {
-                    self.niri.screenshot_ui.selection_output()
+                    self.swayward.screenshot_ui.selection_output()
                 } else {
-                    self.niri.output_under(pos).map(|(out, _)| out)
+                    self.swayward.output_under(pos).map(|(out, _)| out)
                 };
 
                 if let Some(output) = output.cloned() {
-                    let geom = self.niri.global_space.output_geometry(&output).unwrap();
+                    let geom = self.swayward.global_space.output_geometry(&output).unwrap();
                     let point = (pos - geom.loc.to_f64())
                         .to_physical(output.current_scale().fractional_scale())
                         .to_i32_round();
 
                     if self
-                        .niri
+                        .swayward
                         .screenshot_ui
                         .pointer_down(output, point, None, mod_down)
                     {
-                        self.niri.queue_redraw_all();
+                        self.swayward.queue_redraw_all();
                     }
                 }
-            } else if let Some(capture) = self.niri.screenshot_ui.pointer_up(None) {
+            } else if let Some(capture) = self.swayward.screenshot_ui.pointer_up(None) {
                 if capture {
                     self.confirm_screenshot(true);
                 } else {
-                    self.niri.queue_redraw_all();
+                    self.swayward.queue_redraw_all();
                 }
             }
         }
@@ -3100,25 +3463,49 @@ impl State {
         pointer.frame(self);
     }
 
+    fn mouse_bind_matches_region(&self, bind: &Bind) -> bool {
+        if bind.mouse_regions.is_empty() {
+            return true;
+        }
+
+        let contents = self
+            .swayward
+            .contents_under(self.swayward.seat.get_pointer().unwrap().current_location());
+        let (click_region, on_workspace) = match contents.window.as_ref().map(|(_, hit)| hit) {
+            Some(HitType::Input { .. }) => (MouseRegions::CONTENTS, false),
+            Some(HitType::Activate {
+                is_tab_indicator: true,
+            }) => (MouseRegions::TITLEBAR, false),
+            Some(HitType::Activate {
+                is_tab_indicator: false,
+            }) => (MouseRegions::BORDER, false),
+            None if contents.layer.is_none() => (MouseRegions::all(), true),
+            None => (MouseRegions::empty(), false),
+        };
+
+        mouse_regions_match(bind.mouse_regions, click_region, on_workspace)
+    }
+
     fn on_pointer_axis<I: InputBackend>(&mut self, event: I::PointerAxisEvent) {
-        let pointer = &self.niri.seat.get_pointer().unwrap();
+        let pointer = &self.swayward.seat.get_pointer().unwrap();
 
         let source = event.source();
+        let input_device = event.device().sway_identifier();
 
-        let mod_key = self.backend.mod_key(&self.niri.config.borrow());
+        let mod_key = self.backend.mod_key(&self.swayward.config.borrow());
 
         // We received an event for the regular pointer, so show it now. This is also needed for
         // update_pointer_contents() below to return the real contents, necessary for the pointer
         // axis event to reach the window.
-        self.niri.pointer_visibility = PointerVisibility::Visible;
-        self.niri.tablet_cursor_location = None;
+        self.swayward.pointer_visibility = PointerVisibility::Visible;
+        self.swayward.tablet_cursor_location = None;
 
         let timestamp = Duration::from_micros(event.time().micros());
 
         let horizontal_amount_v120 = event.amount_v120(Axis::Horizontal);
         let vertical_amount_v120 = event.amount_v120(Axis::Vertical);
 
-        let is_overview_open = self.niri.layout.is_overview_open();
+        let is_overview_open = self.swayward.layout.is_overview_open();
 
         // We should only handle scrolling in the overview if the pointer is not over a (top or
         // overlay) layer surface.
@@ -3128,10 +3515,10 @@ impl State {
             // updating the pointer contents.
             pointer
                 .current_focus()
-                .map(|surface| self.niri.find_root_shell_surface(&surface))
+                .map(|surface| self.swayward.find_root_shell_surface(&surface))
                 .is_none_or(|root| {
                     !self
-                        .niri
+                        .swayward
                         .mapped_layer_surfaces
                         .keys()
                         .any(|layer| *layer.wl_surface() == root)
@@ -3140,20 +3527,24 @@ impl State {
             false
         };
 
-        let is_mru_open = self.niri.window_mru_ui.is_open();
+        let is_mru_open = self.swayward.window_mru_ui.is_open();
 
         // Handle wheel scroll bindings.
         if source == AxisSource::Wheel {
             // If we have a scroll bind with current modifiers, then accumulate and don't pass to
             // Wayland. If there's no bind, reset the accumulator.
-            let mods = self.niri.seat.get_keyboard().unwrap().modifier_state();
+            let mods = self.swayward.seat.get_keyboard().unwrap().modifier_state();
             let modifiers = modifiers_from_state(mods);
             let should_handle = should_handle_in_overview
                 || is_mru_open
-                || self.niri.mods_with_wheel_binds.contains(&modifiers);
+                || self.swayward.mods_with_wheel_binds.contains(&modifiers);
             if should_handle {
+                let mut handled = false;
                 let horizontal = horizontal_amount_v120.unwrap_or(0.);
-                let ticks = self.niri.horizontal_wheel_tracker.accumulate(horizontal);
+                let ticks = self
+                    .swayward
+                    .horizontal_wheel_tracker
+                    .accumulate(horizontal);
                 if ticks != 0 {
                     let (bind_left, bind_right) =
                         if should_handle_in_overview && modifiers.is_empty() {
@@ -3163,6 +3554,10 @@ impl State {
                                     modifiers: Modifiers::empty(),
                                 },
                                 action: Action::FocusColumnLeftUnderMouse,
+                                mouse_regions: MouseRegions::empty(),
+                                input_device: "*".into(),
+                                group: None,
+                                release: false,
                                 repeat: true,
                                 cooldown: None,
                                 allow_when_locked: false,
@@ -3175,6 +3570,10 @@ impl State {
                                     modifiers: Modifiers::empty(),
                                 },
                                 action: Action::FocusColumnRightUnderMouse,
+                                mouse_regions: MouseRegions::empty(),
+                                input_device: "*".into(),
+                                group: None,
+                                release: false,
                                 repeat: true,
                                 cooldown: None,
                                 allow_when_locked: false,
@@ -3183,46 +3582,58 @@ impl State {
                             });
                             (bind_left, bind_right)
                         } else {
-                            let config = self.niri.config.borrow();
-                            let bindings =
-                                make_binds_iter(&config, &mut self.niri.window_mru_ui, modifiers);
-                            let bind_left = find_configured_bind(
+                            let config = self.swayward.config.borrow();
+                            let bindings = make_binds_iter(
+                                &config,
+                                &self.swayward.binding_mode,
+                                &mut self.swayward.window_mru_ui,
+                                modifiers,
+                            );
+                            let bind_left = find_configured_bind_for_device(
                                 bindings.clone(),
                                 mod_key,
                                 Trigger::WheelScrollLeft,
                                 mods,
-                            )
-                            .filter(|bind| {
-                                !self.niri.screenshot_ui.is_open()
-                                    || allowed_during_screenshot(&bind.action)
-                            });
-                            let bind_right = find_configured_bind(
+                                &input_device,
+                            );
+                            let bind_right = find_configured_bind_for_device(
                                 bindings,
                                 mod_key,
                                 Trigger::WheelScrollRight,
                                 mods,
-                            )
-                            .filter(|bind| {
-                                !self.niri.screenshot_ui.is_open()
-                                    || allowed_during_screenshot(&bind.action)
-                            });
+                                &input_device,
+                            );
+                            let bind_left = bind_left
+                                .filter(|bind| self.mouse_bind_matches_region(bind))
+                                .filter(|bind| {
+                                    !self.swayward.screenshot_ui.is_open()
+                                        || allowed_during_screenshot(&bind.action)
+                                });
+                            let bind_right = bind_right
+                                .filter(|bind| self.mouse_bind_matches_region(bind))
+                                .filter(|bind| {
+                                    !self.swayward.screenshot_ui.is_open()
+                                        || allowed_during_screenshot(&bind.action)
+                                });
                             (bind_left, bind_right)
                         };
 
                     if let Some(right) = bind_right {
                         for _ in 0..ticks {
                             self.handle_bind(right.clone());
+                            handled = true;
                         }
                     }
                     if let Some(left) = bind_left {
                         for _ in ticks..0 {
                             self.handle_bind(left.clone());
+                            handled = true;
                         }
                     }
                 }
 
                 let vertical = vertical_amount_v120.unwrap_or(0.);
-                let ticks = self.niri.vertical_wheel_tracker.accumulate(vertical);
+                let ticks = self.swayward.vertical_wheel_tracker.accumulate(vertical);
                 if ticks != 0 {
                     let (bind_up, bind_down) = if should_handle_in_overview && modifiers.is_empty()
                     {
@@ -3232,6 +3643,10 @@ impl State {
                                 modifiers: Modifiers::empty(),
                             },
                             action: Action::FocusWorkspaceUpUnderMouse,
+                            mouse_regions: MouseRegions::empty(),
+                            input_device: "*".into(),
+                            group: None,
+                            release: false,
                             repeat: true,
                             cooldown: Some(Duration::from_millis(50)),
                             allow_when_locked: false,
@@ -3244,6 +3659,10 @@ impl State {
                                 modifiers: Modifiers::empty(),
                             },
                             action: Action::FocusWorkspaceDownUnderMouse,
+                            mouse_regions: MouseRegions::empty(),
+                            input_device: "*".into(),
+                            group: None,
+                            release: false,
                             repeat: true,
                             cooldown: Some(Duration::from_millis(50)),
                             allow_when_locked: false,
@@ -3258,6 +3677,10 @@ impl State {
                                 modifiers: Modifiers::empty(),
                             },
                             action: Action::FocusColumnLeftUnderMouse,
+                            mouse_regions: MouseRegions::empty(),
+                            input_device: "*".into(),
+                            group: None,
+                            release: false,
                             repeat: true,
                             cooldown: Some(Duration::from_millis(50)),
                             allow_when_locked: false,
@@ -3270,6 +3693,10 @@ impl State {
                                 modifiers: Modifiers::empty(),
                             },
                             action: Action::FocusColumnRightUnderMouse,
+                            mouse_regions: MouseRegions::empty(),
+                            input_device: "*".into(),
+                            group: None,
+                            release: false,
                             repeat: true,
                             cooldown: Some(Duration::from_millis(50)),
                             allow_when_locked: false,
@@ -3278,44 +3705,90 @@ impl State {
                         });
                         (bind_up, bind_down)
                     } else {
-                        let config = self.niri.config.borrow();
-                        let bindings =
-                            make_binds_iter(&config, &mut self.niri.window_mru_ui, modifiers);
-                        let bind_up = find_configured_bind(
+                        let config = self.swayward.config.borrow();
+                        let bindings = make_binds_iter(
+                            &config,
+                            &self.swayward.binding_mode,
+                            &mut self.swayward.window_mru_ui,
+                            modifiers,
+                        );
+                        let bind_up = find_configured_bind_for_device(
                             bindings.clone(),
                             mod_key,
                             Trigger::WheelScrollUp,
                             mods,
-                        )
-                        .filter(|bind| {
-                            !self.niri.screenshot_ui.is_open()
-                                || allowed_during_screenshot(&bind.action)
-                        });
-                        let bind_down =
-                            find_configured_bind(bindings, mod_key, Trigger::WheelScrollDown, mods)
-                                .filter(|bind| {
-                                    !self.niri.screenshot_ui.is_open()
-                                        || allowed_during_screenshot(&bind.action)
-                                });
+                            &input_device,
+                        );
+                        let bind_down = find_configured_bind_for_device(
+                            bindings,
+                            mod_key,
+                            Trigger::WheelScrollDown,
+                            mods,
+                            &input_device,
+                        );
+                        let bind_up = bind_up
+                            .filter(|bind| self.mouse_bind_matches_region(bind))
+                            .filter(|bind| {
+                                !self.swayward.screenshot_ui.is_open()
+                                    || allowed_during_screenshot(&bind.action)
+                            });
+                        let bind_down = bind_down
+                            .filter(|bind| self.mouse_bind_matches_region(bind))
+                            .filter(|bind| {
+                                !self.swayward.screenshot_ui.is_open()
+                                    || allowed_during_screenshot(&bind.action)
+                            });
                         (bind_up, bind_down)
                     };
 
                     if let Some(down) = bind_down {
                         for _ in 0..ticks {
                             self.handle_bind(down.clone());
+                            handled = true;
                         }
                     }
                     if let Some(up) = bind_up {
                         for _ in ticks..0 {
                             self.handle_bind(up.clone());
+                            handled = true;
                         }
                     }
                 }
 
-                return;
+                if handled {
+                    return;
+                }
             } else {
-                self.niri.horizontal_wheel_tracker.reset();
-                self.niri.vertical_wheel_tracker.reset();
+                self.swayward.horizontal_wheel_tracker.reset();
+                self.swayward.vertical_wheel_tracker.reset();
+            }
+
+            let contents = self.swayward.contents_under(pointer.current_location());
+            if let Some((
+                window,
+                HitType::Activate {
+                    is_tab_indicator: true,
+                },
+            )) = contents.window
+            {
+                let factor = self
+                    .swayward
+                    .config
+                    .borrow()
+                    .input
+                    .mouse
+                    .scroll_factor
+                    .map(|factor| factor.h_v_factors().1)
+                    .unwrap_or(1.);
+                let steps = (factor * vertical_amount_v120.unwrap_or(0.) / 120.).round() as i32;
+                if steps != 0 {
+                    if let Some(window) = self.swayward.layout.scroll_tab_indicator(&window, steps)
+                    {
+                        self.swayward.layout.activate_window(&window);
+                        self.swayward.queue_redraw_all();
+                    }
+                }
+                return;
             }
         }
 
@@ -3324,7 +3797,7 @@ impl State {
 
         // Handle touchpad and continuous scroll bindings.
         if source == AxisSource::Finger || source == AxisSource::Continuous {
-            let mods = self.niri.seat.get_keyboard().unwrap().modifier_state();
+            let mods = self.swayward.seat.get_keyboard().unwrap().modifier_state();
             let modifiers = modifiers_from_state(mods);
 
             let horizontal = horizontal_amount.unwrap_or(0.);
@@ -3334,52 +3807,29 @@ impl State {
                 let mut redraw = false;
 
                 let action = self
-                    .niri
+                    .swayward
                     .overview_scroll_swipe_gesture
                     .update(horizontal, vertical);
-                let is_vertical = self.niri.overview_scroll_swipe_gesture.is_vertical();
+                let is_vertical = self.swayward.overview_scroll_swipe_gesture.is_vertical();
 
                 if action.end() {
-                    if is_vertical {
+                    if !is_vertical {
                         redraw |= self
-                            .niri
-                            .layout
-                            .workspace_switch_gesture_end(Some(true))
-                            .is_some();
-                    } else {
-                        redraw |= self
-                            .niri
+                            .swayward
                             .layout
                             .view_offset_gesture_end(Some(true))
                             .is_some();
                     }
                 } else {
                     // Maybe begin, then update.
-                    if is_vertical {
+                    if !is_vertical {
                         if action.begin() {
-                            if let Some(output) = self.niri.output_under_cursor() {
-                                self.niri
-                                    .layout
-                                    .workspace_switch_gesture_begin(&output, true);
-                                redraw = true;
-                            }
-                        }
-
-                        let res = self
-                            .niri
-                            .layout
-                            .workspace_switch_gesture_update(vertical, timestamp, true);
-                        if let Some(Some(_)) = res {
-                            redraw = true;
-                        }
-                    } else {
-                        if action.begin() {
-                            if let Some((output, ws)) = self.niri.workspace_under_cursor(true) {
+                            if let Some((output, ws)) = self.swayward.workspace_under_cursor(true) {
                                 let ws_id = ws.id();
                                 let ws_idx =
-                                    self.niri.layout.find_workspace_by_id(ws_id).unwrap().0;
+                                    self.swayward.layout.find_workspace_by_id(ws_id).unwrap().0;
 
-                                self.niri.layout.view_offset_gesture_begin(
+                                self.swayward.layout.view_offset_gesture_begin(
                                     &output,
                                     Some(ws_idx),
                                     true,
@@ -3389,7 +3839,7 @@ impl State {
                         }
 
                         let res = self
-                            .niri
+                            .swayward
                             .layout
                             .view_offset_gesture_update(horizontal, timestamp, true);
                         if let Some(Some(_)) = res {
@@ -3399,57 +3849,66 @@ impl State {
                 }
 
                 if redraw {
-                    self.niri.queue_redraw_all();
+                    self.swayward.queue_redraw_all();
                 }
 
                 return;
             } else {
                 let mut redraw = false;
-                if self.niri.overview_scroll_swipe_gesture.reset() {
-                    if self.niri.overview_scroll_swipe_gesture.is_vertical() {
-                        redraw |= self
-                            .niri
-                            .layout
-                            .workspace_switch_gesture_end(Some(true))
-                            .is_some();
-                    } else {
-                        redraw |= self
-                            .niri
-                            .layout
-                            .view_offset_gesture_end(Some(true))
-                            .is_some();
-                    }
+                if self.swayward.overview_scroll_swipe_gesture.reset()
+                    && !self.swayward.overview_scroll_swipe_gesture.is_vertical()
+                {
+                    redraw |= self
+                        .swayward
+                        .layout
+                        .view_offset_gesture_end(Some(true))
+                        .is_some();
                 }
                 if redraw {
-                    self.niri.queue_redraw_all();
+                    self.swayward.queue_redraw_all();
                 }
             }
 
-            if is_mru_open || self.niri.mods_with_finger_scroll_binds.contains(&modifiers) {
+            if is_mru_open
+                || self
+                    .swayward
+                    .mods_with_finger_scroll_binds
+                    .contains(&modifiers)
+            {
                 let ticks = self
-                    .niri
+                    .swayward
                     .horizontal_finger_scroll_tracker
                     .accumulate(horizontal);
                 if ticks != 0 {
-                    let config = self.niri.config.borrow();
-                    let bindings =
-                        make_binds_iter(&config, &mut self.niri.window_mru_ui, modifiers);
-                    let bind_left = find_configured_bind(
+                    let config = self.swayward.config.borrow();
+                    let bindings = make_binds_iter(
+                        &config,
+                        &self.swayward.binding_mode,
+                        &mut self.swayward.window_mru_ui,
+                        modifiers,
+                    );
+                    let bind_left = find_configured_bind_for_device(
                         bindings.clone(),
                         mod_key,
                         Trigger::TouchpadScrollLeft,
                         mods,
+                        &input_device,
                     )
                     .filter(|bind| {
-                        !self.niri.screenshot_ui.is_open()
+                        !self.swayward.screenshot_ui.is_open()
                             || allowed_during_screenshot(&bind.action)
                     });
-                    let bind_right =
-                        find_configured_bind(bindings, mod_key, Trigger::TouchpadScrollRight, mods)
-                            .filter(|bind| {
-                                !self.niri.screenshot_ui.is_open()
-                                    || allowed_during_screenshot(&bind.action)
-                            });
+                    let bind_right = find_configured_bind_for_device(
+                        bindings,
+                        mod_key,
+                        Trigger::TouchpadScrollRight,
+                        mods,
+                        &input_device,
+                    )
+                    .filter(|bind| {
+                        !self.swayward.screenshot_ui.is_open()
+                            || allowed_during_screenshot(&bind.action)
+                    });
                     drop(config);
 
                     if let Some(right) = bind_right {
@@ -3465,29 +3924,39 @@ impl State {
                 }
 
                 let ticks = self
-                    .niri
+                    .swayward
                     .vertical_finger_scroll_tracker
                     .accumulate(vertical);
                 if ticks != 0 {
-                    let config = self.niri.config.borrow();
-                    let bindings =
-                        make_binds_iter(&config, &mut self.niri.window_mru_ui, modifiers);
-                    let bind_up = find_configured_bind(
+                    let config = self.swayward.config.borrow();
+                    let bindings = make_binds_iter(
+                        &config,
+                        &self.swayward.binding_mode,
+                        &mut self.swayward.window_mru_ui,
+                        modifiers,
+                    );
+                    let bind_up = find_configured_bind_for_device(
                         bindings.clone(),
                         mod_key,
                         Trigger::TouchpadScrollUp,
                         mods,
+                        &input_device,
                     )
                     .filter(|bind| {
-                        !self.niri.screenshot_ui.is_open()
+                        !self.swayward.screenshot_ui.is_open()
                             || allowed_during_screenshot(&bind.action)
                     });
-                    let bind_down =
-                        find_configured_bind(bindings, mod_key, Trigger::TouchpadScrollDown, mods)
-                            .filter(|bind| {
-                                !self.niri.screenshot_ui.is_open()
-                                    || allowed_during_screenshot(&bind.action)
-                            });
+                    let bind_down = find_configured_bind_for_device(
+                        bindings,
+                        mod_key,
+                        Trigger::TouchpadScrollDown,
+                        mods,
+                        &input_device,
+                    )
+                    .filter(|bind| {
+                        !self.swayward.screenshot_ui.is_open()
+                            || allowed_during_screenshot(&bind.action)
+                    });
                     drop(config);
 
                     if let Some(down) = bind_down {
@@ -3504,15 +3973,15 @@ impl State {
 
                 return;
             } else {
-                self.niri.horizontal_finger_scroll_tracker.reset();
-                self.niri.vertical_finger_scroll_tracker.reset();
+                self.swayward.horizontal_finger_scroll_tracker.reset();
+                self.swayward.vertical_finger_scroll_tracker.reset();
             }
         }
 
         self.update_pointer_contents();
 
         let device_scroll_factor = {
-            let config = self.niri.config.borrow();
+            let config = self.swayward.config.borrow();
             match source {
                 AxisSource::Wheel => config.input.mouse.scroll_factor,
                 AxisSource::Finger => config.input.touchpad.scroll_factor,
@@ -3523,8 +3992,8 @@ impl State {
         // Get window-specific scroll factor
         let window_scroll_factor = pointer
             .current_focus()
-            .map(|focused| self.niri.find_root_shell_surface(&focused))
-            .and_then(|root| self.niri.layout.find_window_and_output(&root).unzip().0)
+            .map(|focused| self.swayward.find_root_shell_surface(&focused))
+            .and_then(|root| self.swayward.layout.find_window_and_output(&root).unzip().0)
             .and_then(|window| window.rules().scroll_factor)
             .unwrap_or(1.);
 
@@ -3599,26 +4068,28 @@ impl State {
             return;
         };
 
-        if let Some(output) = self.niri.screenshot_ui.selection_output() {
-            let geom = self.niri.global_space.output_geometry(output).unwrap();
+        if let Some(output) = self.swayward.screenshot_ui.selection_output() {
+            let geom = self.swayward.global_space.output_geometry(output).unwrap();
             let point = (pos - geom.loc.to_f64())
                 .to_physical(output.current_scale().fractional_scale())
                 .to_i32_round::<i32>();
 
-            self.niri.screenshot_ui.pointer_motion(point, None);
+            self.swayward.screenshot_ui.pointer_motion(point, None);
         }
 
-        if let Some(mru_output) = self.niri.window_mru_ui.output() {
-            if let Some((output, pos_within_output)) = self.niri.output_under(pos) {
+        if let Some(mru_output) = self.swayward.window_mru_ui.output() {
+            if let Some((output, pos_within_output)) = self.swayward.output_under(pos) {
                 if mru_output == output {
-                    self.niri.window_mru_ui.pointer_motion(pos_within_output);
+                    self.swayward
+                        .window_mru_ui
+                        .pointer_motion(pos_within_output);
                 }
             }
         }
 
-        let under = self.niri.contents_under(pos);
+        let under = self.swayward.contents_under(pos);
 
-        let tablet_seat = self.niri.seat.tablet_seat();
+        let tablet_seat = self.swayward.seat.tablet_seat();
         let tool = tablet_seat.get_tool(&event.tool());
         if let Some(tool) = tool {
             let time = event.time();
@@ -3651,20 +4122,20 @@ impl State {
                 tool.frame(self, time);
             }
 
-            self.niri.pointer_visibility = PointerVisibility::Visible;
-            self.niri.tablet_cursor_location = Some(pos);
+            self.swayward.pointer_visibility = PointerVisibility::Visible;
+            self.swayward.tablet_cursor_location = Some(pos);
         }
 
         // Redraw to update the cursor position.
         // FIXME: redraw only outputs overlapping the cursor.
-        self.niri.queue_redraw_all();
+        self.swayward.queue_redraw_all();
     }
 
     fn on_tablet_tool_tip<I: InputBackend>(&mut self, event: I::TabletToolTipEvent)
     where
         I::Device: 'static,
     {
-        let tool = self.niri.seat.tablet_seat().get_tool(&event.tool());
+        let tool = self.swayward.seat.tablet_seat().get_tool(&event.tool());
 
         let Some(tool) = tool else {
             return;
@@ -3681,67 +4152,71 @@ impl State {
 
         match tip_state {
             TabletToolTipState::Down => {
-                if let Some(pos) = self.niri.tablet_cursor_location {
-                    let under = self.niri.contents_under(pos);
+                if let Some(pos) = self.swayward.tablet_cursor_location {
+                    let under = self.swayward.contents_under(pos);
 
-                    let mod_key = self.backend.mod_key(&self.niri.config.borrow());
-                    let mods = self.niri.seat.get_keyboard().unwrap().modifier_state();
+                    let mod_key = self.backend.mod_key(&self.swayward.config.borrow());
+                    let mods = self.swayward.seat.get_keyboard().unwrap().modifier_state();
                     let modifiers = modifiers_from_state(mods);
-                    let mod_down = modifiers.contains(mod_key.to_modifiers());
+                    let mod_down = mod_key.is_pressed(modifiers);
 
-                    if self.niri.screenshot_ui.is_open() {
+                    if self.swayward.screenshot_ui.is_open() {
                         // If we'll be moving the existing selection, use the selection output.
                         let output = if mod_down {
-                            self.niri.screenshot_ui.selection_output()
+                            self.swayward.screenshot_ui.selection_output()
                         } else {
                             under.output.as_ref()
                         };
 
                         if let Some(output) = output.cloned() {
-                            let geom = self.niri.global_space.output_geometry(&output).unwrap();
+                            let geom = self.swayward.global_space.output_geometry(&output).unwrap();
                             let point = (pos - geom.loc.to_f64())
                                 .to_physical(output.current_scale().fractional_scale())
                                 .to_i32_round();
 
                             if self
-                                .niri
+                                .swayward
                                 .screenshot_ui
                                 .pointer_down(output, point, None, mod_down)
                             {
-                                self.niri.queue_redraw_all();
+                                self.swayward.queue_redraw_all();
                             }
                         }
-                    } else if let Some(mru_output) = self.niri.window_mru_ui.output() {
-                        if let Some((output, pos_within_output)) = self.niri.output_under(pos) {
+                    } else if let Some(mru_output) = self.swayward.window_mru_ui.output() {
+                        if let Some((output, pos_within_output)) = self.swayward.output_under(pos) {
                             if mru_output == output {
-                                let id = self.niri.window_mru_ui.pointer_motion(pos_within_output);
+                                let id = self
+                                    .swayward
+                                    .window_mru_ui
+                                    .pointer_motion(pos_within_output);
                                 if id.is_some() {
                                     self.confirm_mru();
                                 } else {
-                                    self.niri.cancel_mru();
+                                    self.swayward.cancel_mru();
                                 }
                             } else {
-                                self.niri.cancel_mru();
+                                self.swayward.cancel_mru();
                             }
                         }
                     } else if !tool.is_grabbed() {
-                        if self.niri.layout.is_overview_open()
+                        if self.swayward.layout.is_overview_open()
                             && !mod_down
                             && under.layer.is_none()
                             && under.output.is_some()
                         {
-                            let (output, pos_within_output) = self.niri.output_under(pos).unwrap();
+                            let (output, pos_within_output) =
+                                self.swayward.output_under(pos).unwrap();
                             let output = output.clone();
 
                             let mut matched_narrow = true;
-                            let mut ws = self.niri.workspace_under(false, pos);
+                            let mut ws = self.swayward.workspace_under(false, pos);
                             if ws.is_none() {
                                 matched_narrow = false;
-                                ws = self.niri.workspace_under(true, pos);
+                                ws = self.swayward.workspace_under(true, pos);
                             }
                             let ws_id = ws.map(|(_, ws)| ws.id());
 
-                            let mapped = self.niri.window_under(pos);
+                            let mapped = self.swayward.window_under(pos);
                             let window = mapped.map(|mapped| mapped.window.clone());
 
                             let start_data = TabletToolGrabStartData {
@@ -3762,7 +4237,7 @@ impl State {
                             );
                             tool.set_grab(self, grab, time, serial, Focus::Clear);
                         } else if let Some((window, _)) = under.window {
-                            self.niri.layout.activate_window(&window);
+                            self.swayward.layout.activate_window(&window);
 
                             // Check if we need to start a tablet tool move grab.
                             if mod_down {
@@ -3785,25 +4260,25 @@ impl State {
                             }
 
                             // FIXME: granular.
-                            self.niri.queue_redraw_all();
+                            self.swayward.queue_redraw_all();
                         } else if let Some(output) = under.output {
-                            self.niri.layout.focus_output(&output);
+                            self.swayward.layout.focus_output(&output);
 
                             // FIXME: granular.
-                            self.niri.queue_redraw_all();
+                            self.swayward.queue_redraw_all();
                         }
-                        self.niri.focus_layer_surface_if_on_demand(under.layer);
+                        self.swayward.focus_layer_surface_if_on_demand(under.layer);
                     }
                 }
 
                 tool.down(self, &tablet::tool::DownEvent { serial, time });
             }
             TabletToolTipState::Up => {
-                if let Some(capture) = self.niri.screenshot_ui.pointer_up(None) {
+                if let Some(capture) = self.swayward.screenshot_ui.pointer_up(None) {
                     if capture {
                         self.confirm_screenshot(true);
                     } else {
-                        self.niri.queue_redraw_all();
+                        self.swayward.queue_redraw_all();
                     }
                 }
 
@@ -3824,10 +4299,10 @@ impl State {
             return;
         };
 
-        let under = self.niri.contents_under(pos);
+        let under = self.swayward.contents_under(pos);
 
-        let tablet_seat = self.niri.seat.tablet_seat();
-        let display_handle = self.niri.display_handle.clone();
+        let tablet_seat = self.swayward.seat.tablet_seat();
+        let display_handle = self.swayward.display_handle.clone();
         let tool = tablet_seat
             .get_tool(&event.tool())
             .unwrap_or_else(|| tablet_seat.add_wp_tool(self, &display_handle, &event.tool()));
@@ -3866,8 +4341,8 @@ impl State {
                     // batch all of them in.
                     tool.frame(self, time);
 
-                    self.niri.pointer_visibility = PointerVisibility::Visible;
-                    self.niri.tablet_cursor_location = Some(pos);
+                    self.swayward.pointer_visibility = PointerVisibility::Visible;
+                    self.swayward.tablet_cursor_location = Some(pos);
                 }
                 ProximityState::Out => {
                     tool.proximity_out(self, &tablet::tool::ProximityOutEvent { serial, time });
@@ -3877,17 +4352,17 @@ impl State {
                     //
                     // Plus, Wayland SDL2 currently warps the pointer into some weird
                     // location on proximity out, so this should help it a little.
-                    if let Some(pos) = self.niri.tablet_cursor_location {
+                    if let Some(pos) = self.swayward.tablet_cursor_location {
                         self.move_cursor(pos);
                     }
 
-                    self.niri.pointer_visibility = PointerVisibility::Visible;
-                    self.niri.tablet_cursor_location = None;
+                    self.swayward.pointer_visibility = PointerVisibility::Visible;
+                    self.swayward.tablet_cursor_location = None;
                 }
             }
 
             // FIXME: granular.
-            self.niri.queue_redraw_all();
+            self.swayward.queue_redraw_all();
         }
     }
 
@@ -3896,12 +4371,12 @@ impl State {
         const BTN_STYLUS: u32 = 0x14b;
         const BTN_STYLUS2: u32 = 0x14c;
 
-        let tool = self.niri.seat.tablet_seat().get_tool(&event.tool());
+        let tool = self.swayward.seat.tablet_seat().get_tool(&event.tool());
 
         if let Some(tool) = tool {
             let button = event.button();
 
-            if self.niri.suppressed_buttons.remove(&button) {
+            if self.swayward.suppressed_buttons.remove(&button) {
                 return;
             }
 
@@ -3914,22 +4389,33 @@ impl State {
 
             if let Some(trigger) = trigger {
                 if event.button_state() == ButtonState::Pressed {
-                    let mod_key = self.backend.mod_key(&self.niri.config.borrow());
-                    let mods = self.niri.seat.get_keyboard().unwrap().modifier_state();
+                    let mod_key = self.backend.mod_key(&self.swayward.config.borrow());
+                    let mods = self.swayward.seat.get_keyboard().unwrap().modifier_state();
                     let modifiers = modifiers_from_state(mods);
+                    let input_device = event.device().sway_identifier();
 
-                    if self.niri.mods_with_tablet_stylus_binds.contains(&modifiers) {
+                    if self
+                        .swayward
+                        .mods_with_tablet_stylus_binds
+                        .contains(&modifiers)
+                    {
                         let bind = {
-                            let config = self.niri.config.borrow();
+                            let config = self.swayward.config.borrow();
                             let bindings = config.binds.0.iter();
-                            find_configured_bind(bindings, mod_key, trigger, mods)
+                            find_configured_bind_for_device(
+                                bindings,
+                                mod_key,
+                                trigger,
+                                mods,
+                                &input_device,
+                            )
                         }
                         .filter(|bind| {
-                            !self.niri.screenshot_ui.is_open()
+                            !self.swayward.screenshot_ui.is_open()
                                 || allowed_during_screenshot(&bind.action)
                         });
                         if let Some(bind) = bind {
-                            self.niri.suppressed_buttons.insert(button);
+                            self.swayward.suppressed_buttons.insert(button);
                             self.handle_bind(bind.clone());
                             return;
                         }
@@ -3954,26 +4440,26 @@ impl State {
     }
 
     fn on_gesture_swipe_begin<I: InputBackend>(&mut self, event: I::GestureSwipeBeginEvent) {
-        if self.niri.window_mru_ui.is_open() {
+        if self.swayward.window_mru_ui.is_open() {
             // Don't start swipe gestures while in the MRU.
             return;
         }
 
         if event.fingers() == 3 {
-            self.niri.gesture_swipe_3f_cumulative = Some((0., 0.));
+            self.swayward.gesture_swipe_3f_cumulative = Some((0., 0.));
 
             // We handled this event.
             return;
         } else if event.fingers() == 4 {
-            self.niri.layout.overview_gesture_begin();
-            self.niri.queue_redraw_all();
+            self.swayward.layout.overview_gesture_begin();
+            self.swayward.queue_redraw_all();
 
             // We handled this event.
             return;
         }
 
         let serial = SERIAL_COUNTER.next_serial();
-        let pointer = self.niri.seat.get_pointer().unwrap();
+        let pointer = self.swayward.seat.get_pointer().unwrap();
 
         if self.update_pointer_contents() {
             pointer.frame(self);
@@ -4015,40 +4501,39 @@ impl State {
             }
         }
 
-        let is_overview_open = self.niri.layout.is_overview_open();
+        let is_overview_open = self.swayward.layout.is_overview_open();
 
-        if let Some((cx, cy)) = &mut self.niri.gesture_swipe_3f_cumulative {
+        if let Some((cx, cy)) = &mut self.swayward.gesture_swipe_3f_cumulative {
             *cx += delta_x;
             *cy += delta_y;
 
             // Check if the gesture moved far enough to decide. Threshold copied from GNOME Shell.
             let (cx, cy) = (*cx, *cy);
             if cx * cx + cy * cy >= 16. * 16. {
-                self.niri.gesture_swipe_3f_cumulative = None;
+                self.swayward.gesture_swipe_3f_cumulative = None;
 
-                if let Some(output) = self.niri.output_under_cursor() {
-                    if cx.abs() > cy.abs() {
-                        let output_ws = if is_overview_open {
-                            self.niri.workspace_under_cursor(true)
-                        } else {
-                            // We don't want to accidentally "catch" the wrong workspace during
-                            // animations.
-                            self.niri.output_under_cursor().and_then(|output| {
-                                let mon = self.niri.layout.monitor_for_output(&output)?;
-                                Some((output, mon.active_workspace_ref()))
-                            })
-                        };
-
-                        if let Some((output, ws)) = output_ws {
-                            let ws_idx = self.niri.layout.find_workspace_by_id(ws.id()).unwrap().0;
-                            self.niri
-                                .layout
-                                .view_offset_gesture_begin(&output, Some(ws_idx), true);
-                        }
+                if cx.abs() > cy.abs() {
+                    let output_ws = if is_overview_open {
+                        self.swayward.workspace_under_cursor(true)
                     } else {
-                        self.niri
+                        // We don't want to accidentally "catch" the wrong workspace during
+                        // animations.
+                        self.swayward.output_under_cursor().and_then(|output| {
+                            let mon = self.swayward.layout.monitor_for_output(&output)?;
+                            Some((output, mon.active_workspace_ref()))
+                        })
+                    };
+
+                    if let Some((output, ws)) = output_ws {
+                        let ws_idx = self
+                            .swayward
                             .layout
-                            .workspace_switch_gesture_begin(&output, true);
+                            .find_workspace_by_id(ws.id())
+                            .unwrap()
+                            .0;
+                        self.swayward
+                            .layout
+                            .view_offset_gesture_begin(&output, Some(ws_idx), true);
                     }
                 }
             }
@@ -4058,34 +4543,23 @@ impl State {
 
         let mut handled = false;
         let res = self
-            .niri
-            .layout
-            .workspace_switch_gesture_update(delta_y, timestamp, true);
-        if let Some(output) = res {
-            if let Some(output) = output {
-                self.niri.queue_redraw(&output);
-            }
-            handled = true;
-        }
-
-        let res = self
-            .niri
+            .swayward
             .layout
             .view_offset_gesture_update(delta_x, timestamp, true);
         if let Some(output) = res {
             if let Some(output) = output {
-                self.niri.queue_redraw(&output);
+                self.swayward.queue_redraw(&output);
             }
             handled = true;
         }
 
         let res = self
-            .niri
+            .swayward
             .layout
             .overview_gesture_update(-uninverted_delta_y, timestamp);
         if let Some(redraw) = res {
             if redraw {
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
             handled = true;
         }
@@ -4095,7 +4569,7 @@ impl State {
             return;
         }
 
-        let pointer = self.niri.seat.get_pointer().unwrap();
+        let pointer = self.swayward.seat.get_pointer().unwrap();
 
         if self.update_pointer_contents() {
             pointer.frame(self);
@@ -4111,24 +4585,18 @@ impl State {
     }
 
     fn on_gesture_swipe_end<I: InputBackend>(&mut self, event: I::GestureSwipeEndEvent) {
-        self.niri.gesture_swipe_3f_cumulative = None;
+        self.swayward.gesture_swipe_3f_cumulative = None;
 
         let mut handled = false;
-        let res = self.niri.layout.workspace_switch_gesture_end(Some(true));
+        let res = self.swayward.layout.view_offset_gesture_end(Some(true));
         if let Some(output) = res {
-            self.niri.queue_redraw(&output);
+            self.swayward.queue_redraw(&output);
             handled = true;
         }
 
-        let res = self.niri.layout.view_offset_gesture_end(Some(true));
-        if let Some(output) = res {
-            self.niri.queue_redraw(&output);
-            handled = true;
-        }
-
-        let res = self.niri.layout.overview_gesture_end();
+        let res = self.swayward.layout.overview_gesture_end();
         if res {
-            self.niri.queue_redraw_all();
+            self.swayward.queue_redraw_all();
             handled = true;
         }
 
@@ -4138,7 +4606,7 @@ impl State {
         }
 
         let serial = SERIAL_COUNTER.next_serial();
-        let pointer = self.niri.seat.get_pointer().unwrap();
+        let pointer = self.swayward.seat.get_pointer().unwrap();
 
         if self.update_pointer_contents() {
             pointer.frame(self);
@@ -4156,7 +4624,7 @@ impl State {
 
     fn on_gesture_pinch_begin<I: InputBackend>(&mut self, event: I::GesturePinchBeginEvent) {
         let serial = SERIAL_COUNTER.next_serial();
-        let pointer = self.niri.seat.get_pointer().unwrap();
+        let pointer = self.swayward.seat.get_pointer().unwrap();
 
         if self.update_pointer_contents() {
             pointer.frame(self);
@@ -4173,7 +4641,7 @@ impl State {
     }
 
     fn on_gesture_pinch_update<I: InputBackend>(&mut self, event: I::GesturePinchUpdateEvent) {
-        let pointer = self.niri.seat.get_pointer().unwrap();
+        let pointer = self.swayward.seat.get_pointer().unwrap();
 
         if self.update_pointer_contents() {
             pointer.frame(self);
@@ -4192,7 +4660,7 @@ impl State {
 
     fn on_gesture_pinch_end<I: InputBackend>(&mut self, event: I::GesturePinchEndEvent) {
         let serial = SERIAL_COUNTER.next_serial();
-        let pointer = self.niri.seat.get_pointer().unwrap();
+        let pointer = self.swayward.seat.get_pointer().unwrap();
 
         if self.update_pointer_contents() {
             pointer.frame(self);
@@ -4210,7 +4678,7 @@ impl State {
 
     fn on_gesture_hold_begin<I: InputBackend>(&mut self, event: I::GestureHoldBeginEvent) {
         let serial = SERIAL_COUNTER.next_serial();
-        let pointer = self.niri.seat.get_pointer().unwrap();
+        let pointer = self.swayward.seat.get_pointer().unwrap();
 
         if self.update_pointer_contents() {
             pointer.frame(self);
@@ -4228,7 +4696,7 @@ impl State {
 
     fn on_gesture_hold_end<I: InputBackend>(&mut self, event: I::GestureHoldEndEvent) {
         let serial = SERIAL_COUNTER.next_serial();
-        let pointer = self.niri.seat.get_pointer().unwrap();
+        let pointer = self.swayward.seat.get_pointer().unwrap();
 
         if self.update_pointer_contents() {
             pointer.frame(self);
@@ -4250,9 +4718,9 @@ impl State {
         fallback_output: Option<&Output>,
     ) -> Option<Point<f64, Logical>> {
         let output = evt.device().output(self);
-        let output = output.filter(|output| self.niri.output_exists(output));
+        let output = output.filter(|output| self.swayward.output_exists(output));
         let output = output.as_ref().or(fallback_output)?;
-        let output_geo = self.niri.global_space.output_geometry(output).unwrap();
+        let output_geo = self.swayward.global_space.output_geometry(output).unwrap();
         let transform = output.current_transform();
         let size = transform.invert().transform_size(output_geo.size);
         Some(
@@ -4268,11 +4736,11 @@ impl State {
         &self,
         evt: &impl AbsolutePositionEvent<I>,
     ) -> Option<Point<f64, Logical>> {
-        self.compute_absolute_location(evt, self.niri.output_for_touch())
+        self.compute_absolute_location(evt, self.swayward.output_for_touch())
     }
 
     fn on_touch_down<I: InputBackend>(&mut self, evt: I::TouchDownEvent) {
-        let Some(handle) = self.niri.seat.get_touch() else {
+        let Some(handle) = self.swayward.seat.get_touch() else {
             return;
         };
         let Some(pos) = self.compute_touch_location(&evt) else {
@@ -4282,66 +4750,69 @@ impl State {
 
         let serial = SERIAL_COUNTER.next_serial();
 
-        let under = self.niri.contents_under(pos);
+        let under = self.swayward.contents_under(pos);
 
-        let mod_key = self.backend.mod_key(&self.niri.config.borrow());
-        let mods = self.niri.seat.get_keyboard().unwrap().modifier_state();
+        let mod_key = self.backend.mod_key(&self.swayward.config.borrow());
+        let mods = self.swayward.seat.get_keyboard().unwrap().modifier_state();
         let mods = modifiers_from_state(mods);
-        let mod_down = mods.contains(mod_key.to_modifiers());
+        let mod_down = mod_key.is_pressed(mods);
 
-        if self.niri.screenshot_ui.is_open() {
+        if self.swayward.screenshot_ui.is_open() {
             // If we'll be moving the existing selection, use the selection output.
             let output = if mod_down {
-                self.niri.screenshot_ui.selection_output()
+                self.swayward.screenshot_ui.selection_output()
             } else {
                 under.output.as_ref()
             };
 
             if let Some(output) = output.cloned() {
-                let geom = self.niri.global_space.output_geometry(&output).unwrap();
+                let geom = self.swayward.global_space.output_geometry(&output).unwrap();
                 let point = (pos - geom.loc.to_f64())
                     .to_physical(output.current_scale().fractional_scale())
                     .to_i32_round();
 
                 if self
-                    .niri
+                    .swayward
                     .screenshot_ui
                     .pointer_down(output, point, Some(slot), mod_down)
                 {
-                    self.niri.queue_redraw_all();
+                    self.swayward.queue_redraw_all();
                 }
             }
-        } else if let Some(mru_output) = self.niri.window_mru_ui.output() {
-            if let Some((output, pos_within_output)) = self.niri.output_under(pos) {
+        } else if let Some(mru_output) = self.swayward.window_mru_ui.output() {
+            if let Some((output, pos_within_output)) = self.swayward.output_under(pos) {
                 if mru_output == output {
-                    let id = self.niri.window_mru_ui.pointer_motion(pos_within_output);
+                    let id = self
+                        .swayward
+                        .window_mru_ui
+                        .pointer_motion(pos_within_output);
                     if id.is_some() {
                         self.confirm_mru();
                     } else {
-                        self.niri.cancel_mru();
+                        self.swayward.cancel_mru();
                     }
                 } else {
-                    self.niri.cancel_mru();
+                    self.swayward.cancel_mru();
                 }
             }
         } else if !handle.is_grabbed() {
-            if self.niri.layout.is_overview_open()
+            if self.swayward.layout.is_overview_open()
                 && !mod_down
                 && under.layer.is_none()
                 && under.output.is_some()
             {
-                let (output, pos_within_output) = self.niri.output_under(pos).unwrap();
+                let (output, pos_within_output) = self.swayward.output_under(pos).unwrap();
                 let output = output.clone();
 
                 let mut matched_narrow = true;
-                let mut ws = self.niri.workspace_under(false, pos);
+                let mut ws = self.swayward.workspace_under(false, pos);
                 if ws.is_none() {
                     matched_narrow = false;
-                    ws = self.niri.workspace_under(true, pos);
+                    ws = self.swayward.workspace_under(true, pos);
                 }
                 let ws_id = ws.map(|(_, ws)| ws.id());
 
-                let mapped = self.niri.window_under(pos);
+                let mapped = self.swayward.window_under(pos);
                 let window = mapped.map(|mapped| mapped.window.clone());
 
                 let start_data = TouchGrabStartData {
@@ -4362,7 +4833,7 @@ impl State {
                 );
                 handle.set_grab(self, grab, serial);
             } else if let Some((window, _)) = under.window {
-                self.niri.layout.activate_window(&window);
+                self.swayward.layout.activate_window(&window);
 
                 // Check if we need to start a touch move grab.
                 if mod_down {
@@ -4379,14 +4850,14 @@ impl State {
                 }
 
                 // FIXME: granular.
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             } else if let Some(output) = under.output {
-                self.niri.layout.focus_output(&output);
+                self.swayward.layout.focus_output(&output);
 
                 // FIXME: granular.
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
-            self.niri.focus_layer_surface_if_on_demand(under.layer);
+            self.swayward.focus_layer_surface_if_on_demand(under.layer);
         };
 
         handle.down(
@@ -4401,19 +4872,19 @@ impl State {
         );
 
         // We're using touch, hide the pointer.
-        self.niri.pointer_visibility = PointerVisibility::Disabled;
+        self.swayward.pointer_visibility = PointerVisibility::Disabled;
     }
     fn on_touch_up<I: InputBackend>(&mut self, evt: I::TouchUpEvent) {
-        let Some(handle) = self.niri.seat.get_touch() else {
+        let Some(handle) = self.swayward.seat.get_touch() else {
             return;
         };
         let slot = evt.slot();
 
-        if let Some(capture) = self.niri.screenshot_ui.pointer_up(Some(slot)) {
+        if let Some(capture) = self.swayward.screenshot_ui.pointer_up(Some(slot)) {
             if capture {
                 self.confirm_screenshot(true);
             } else {
-                self.niri.queue_redraw_all();
+                self.swayward.queue_redraw_all();
             }
         }
 
@@ -4428,7 +4899,7 @@ impl State {
         )
     }
     fn on_touch_motion<I: InputBackend>(&mut self, evt: I::TouchMotionEvent) {
-        let Some(handle) = self.niri.seat.get_touch() else {
+        let Some(handle) = self.swayward.seat.get_touch() else {
             return;
         };
         let Some(pos) = self.compute_touch_location(&evt) else {
@@ -4436,17 +4907,19 @@ impl State {
         };
         let slot = evt.slot();
 
-        if let Some(output) = self.niri.screenshot_ui.selection_output().cloned() {
-            let geom = self.niri.global_space.output_geometry(&output).unwrap();
+        if let Some(output) = self.swayward.screenshot_ui.selection_output().cloned() {
+            let geom = self.swayward.global_space.output_geometry(&output).unwrap();
             let point = (pos - geom.loc.to_f64())
                 .to_physical(output.current_scale().fractional_scale())
                 .to_i32_round::<i32>();
 
-            self.niri.screenshot_ui.pointer_motion(point, Some(slot));
-            self.niri.queue_redraw(&output);
+            self.swayward
+                .screenshot_ui
+                .pointer_motion(point, Some(slot));
+            self.swayward.queue_redraw(&output);
         }
 
-        let under = self.niri.contents_under(pos);
+        let under = self.swayward.contents_under(pos);
         handle.motion(
             self,
             under.surface,
@@ -4462,20 +4935,20 @@ impl State {
             .with_grab(|_, grab| Self::is_dnd_grab(grab.as_any()))
             .unwrap_or(false);
         if is_dnd_grab {
-            if let Some((output, pos_within_output)) = self.niri.output_under(pos) {
+            if let Some((output, pos_within_output)) = self.swayward.output_under(pos) {
                 let output = output.clone();
-                self.niri.layout.dnd_update(output, pos_within_output);
+                self.swayward.layout.dnd_update(output, pos_within_output);
             }
         }
     }
     fn on_touch_frame<I: InputBackend>(&mut self, _evt: I::TouchFrameEvent) {
-        let Some(handle) = self.niri.seat.get_touch() else {
+        let Some(handle) = self.swayward.seat.get_touch() else {
             return;
         };
         handle.frame(self);
     }
     fn on_touch_cancel<I: InputBackend>(&mut self, _evt: I::TouchCancelEvent) {
-        let Some(handle) = self.niri.seat.get_touch() else {
+        let Some(handle) = self.swayward.seat.get_touch() else {
             return;
         };
         handle.cancel(self);
@@ -4493,7 +4966,7 @@ impl State {
         }
 
         let action = {
-            let bindings = &self.niri.config.borrow().switch_events;
+            let bindings = &self.swayward.config.borrow().switch_events;
             find_configured_switch_action(bindings, switch, evt.state())
         };
 
@@ -4522,30 +4995,74 @@ impl State {
 #[allow(clippy::too_many_arguments)]
 fn should_intercept_key<'a>(
     suppressed_keys: &mut HashSet<Keycode>,
-    bindings: impl IntoIterator<Item = &'a Bind>,
+    held_release_bind: &mut Option<Bind>,
+    bindings: impl IntoIterator<Item = &'a Bind> + Clone,
     mod_key: ModKey,
+    input_device: &str,
     key_code: Keycode,
     modified: Keysym,
     raw: Option<Keysym>,
+    group: u32,
     pressed: bool,
-    mods: ModifiersState,
+    code_modifiers: ModifiersState,
+    raw_modifiers: ModifiersState,
+    translated_modifiers: ModifiersState,
     screenshot_ui: &ScreenshotUi,
+    locked: bool,
     disable_power_key_handling: bool,
     is_inhibiting_shortcuts: bool,
 ) -> FilterResult<Option<Bind>> {
-    // Actions are only triggered on presses, release of the key
-    // shouldn't try to intercept anything unless we have marked
-    // the key to suppress.
-    if !pressed && !suppressed_keys.contains(&key_code) {
-        return FilterResult::Forward;
+    let bindings = bindings.into_iter().collect::<Vec<_>>();
+    let release_bind = pressed
+        .then(|| {
+            find_bind(
+                bindings.iter().copied().filter(|bind| bind.release),
+                mod_key,
+                input_device,
+                modified,
+                raw,
+                key_code,
+                group,
+                code_modifiers,
+                raw_modifiers,
+                translated_modifiers,
+                locked,
+                is_inhibiting_shortcuts,
+                disable_power_key_handling,
+            )
+        })
+        .flatten();
+    if held_release_bind.as_ref() != release_bind.as_ref()
+        || (!pressed
+            && held_release_bind.as_ref().is_some_and(|bind| {
+                bind.key.trigger == Trigger::Keycode(key_code.raw())
+                    || bind.key.trigger == Trigger::Keysym(modified)
+                    || raw.is_some_and(|raw| bind.key.trigger == Trigger::Keysym(raw))
+            }))
+    {
+        if !pressed {
+            suppressed_keys.remove(&key_code);
+            return FilterResult::Intercept(held_release_bind.take());
+        }
+        *held_release_bind = None;
+    }
+    if pressed && release_bind.is_some() {
+        *held_release_bind = release_bind;
     }
 
     let mut final_bind = find_bind(
-        bindings,
+        bindings.iter().copied().filter(|bind| !bind.release),
         mod_key,
+        input_device,
         modified,
         raw,
-        mods,
+        key_code,
+        group,
+        code_modifiers,
+        raw_modifiers,
+        translated_modifiers,
+        locked,
+        is_inhibiting_shortcuts,
         disable_power_key_handling,
     );
 
@@ -4562,13 +5079,18 @@ fn should_intercept_key<'a>(
 
         if use_screenshot_ui_action {
             if let Some(raw) = raw {
-                final_bind = screenshot_ui.action(raw, mods).map(|action| Bind {
+                final_bind = screenshot_ui.action(raw, raw_modifiers).map(|action| Bind {
                     key: Key {
                         trigger: Trigger::Keysym(raw),
-                        // Not entirely correct but it doesn't matter in how we currently use it.
+                        // Not entirely correct but it doesn't matter in how we currently use
+                        // it.
                         modifiers: Modifiers::empty(),
                     },
                     action,
+                    mouse_regions: MouseRegions::empty(),
+                    input_device: "*".into(),
+                    group: None,
+                    release: false,
                     repeat: true,
                     cooldown: None,
                     allow_when_locked: false,
@@ -4591,25 +5113,27 @@ fn should_intercept_key<'a>(
                 FilterResult::Intercept(Some(bind))
             }
         }
-        (_, false) => {
-            // By this point, we know that the key was suppressed on press. Even if we're inhibiting
-            // shortcuts, we should still suppress the release.
-            // But we don't need to check for shortcuts inhibition here, because
-            // if it was inhibited on press (forwarded to the client), it wouldn't be suppressed,
-            // so the release would already have been forwarded at the start of this function.
-            suppressed_keys.remove(&key_code);
-            FilterResult::Intercept(None)
-        }
+        (_, false) if suppressed_keys.remove(&key_code) => FilterResult::Intercept(None),
+        (_, false) => FilterResult::Forward,
+        (None, true) if held_release_bind.is_some() => FilterResult::Intercept(None),
         (None, true) => FilterResult::Forward,
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn find_bind<'a>(
-    bindings: impl IntoIterator<Item = &'a Bind>,
+    bindings: impl IntoIterator<Item = &'a Bind> + Clone,
     mod_key: ModKey,
+    input_device: &str,
     modified: Keysym,
     raw: Option<Keysym>,
-    mods: ModifiersState,
+    key_code: Keycode,
+    group: u32,
+    code_modifiers: ModifiersState,
+    raw_modifiers: ModifiersState,
+    translated_modifiers: ModifiersState,
+    locked: bool,
+    inhibited: bool,
     disable_power_key_handling: bool,
 ) -> Option<Bind> {
     use keysyms::*;
@@ -4633,6 +5157,10 @@ fn find_bind<'a>(
                 modifiers: Modifiers::empty(),
             },
             action,
+            mouse_regions: MouseRegions::empty(),
+            input_device: "*".into(),
+            group: None,
+            release: false,
             repeat: true,
             cooldown: None,
             allow_when_locked: false,
@@ -4646,42 +5174,161 @@ fn find_bind<'a>(
         });
     }
 
-    let trigger = Trigger::Keysym(raw?);
-    find_configured_bind(bindings, mod_key, trigger, mods)
+    let modified_bind = find_configured_bind_with_context(
+        bindings.clone(),
+        mod_key,
+        &[Trigger::Keysym(modified)],
+        translated_modifiers,
+        input_device,
+        group,
+        locked,
+        inhibited,
+    );
+    let numlock_changed_keypad_symbol = translated_modifiers.num_lock
+        && raw != Some(modified)
+        && (keysyms::KEY_KP_Space..=keysyms::KEY_KP_Equal).contains(&modified.raw());
+    if modified_bind.is_some() || numlock_changed_keypad_symbol {
+        return modified_bind;
+    }
+
+    raw.filter(|raw| *raw != modified)
+        .and_then(|raw| {
+            find_configured_bind_with_context(
+                bindings.clone(),
+                mod_key,
+                &[Trigger::Keysym(raw)],
+                raw_modifiers,
+                input_device,
+                group,
+                locked,
+                inhibited,
+            )
+        })
+        .or_else(|| {
+            find_configured_bind_with_context(
+                bindings,
+                mod_key,
+                &[Trigger::Keycode(key_code.raw())],
+                code_modifiers,
+                input_device,
+                group,
+                locked,
+                inhibited,
+            )
+        })
 }
 
+fn mouse_regions_match(
+    configured: MouseRegions,
+    click_region: MouseRegions,
+    on_workspace: bool,
+) -> bool {
+    click_region.intersects(configured) && (!on_workspace || configured.contains(click_region))
+}
+
+#[cfg(test)]
 fn find_configured_bind<'a>(
-    bindings: impl IntoIterator<Item = &'a Bind>,
+    bindings: impl IntoIterator<Item = &'a Bind> + Clone,
     mod_key: ModKey,
     trigger: Trigger,
     mods: ModifiersState,
 ) -> Option<Bind> {
-    // Handle configured binds.
-    let mut modifiers = modifiers_from_state(mods);
+    find_configured_bind_for_device(bindings, mod_key, trigger, mods, "*")
+}
 
-    let mod_down = modifiers_from_state(mods).contains(mod_key.to_modifiers());
+fn find_configured_bind_for_device<'a>(
+    bindings: impl IntoIterator<Item = &'a Bind> + Clone,
+    mod_key: ModKey,
+    trigger: Trigger,
+    mods: ModifiersState,
+    input_device: &str,
+) -> Option<Bind> {
+    find_configured_bind_with_context(
+        bindings,
+        mod_key,
+        &[trigger],
+        mods,
+        input_device,
+        0,
+        false,
+        false,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn find_configured_bind_with_context<'a>(
+    bindings: impl IntoIterator<Item = &'a Bind> + Clone,
+    mod_key: ModKey,
+    triggers: &[Trigger],
+    mods: ModifiersState,
+    input_device: &str,
+    group: u32,
+    locked: bool,
+    inhibited: bool,
+) -> Option<Bind> {
+    let mut modifiers = modifiers_from_state(mods);
+    let mod_down = mod_key.is_pressed(modifiers);
     if mod_down {
         modifiers |= Modifiers::COMPOSITOR;
     }
 
-    for bind in bindings {
-        if bind.key.trigger != trigger {
-            continue;
-        }
+    let mut best = None;
+    let mut best_rank = None;
+    let mut lock_fallback = None;
+    let mut lock_fallback_rank = None;
+    for trigger in triggers {
+        for bind in bindings.clone() {
+            let bind_locked = bind.allow_when_locked || allowed_when_locked(&bind.action);
+            if bind.key.trigger != *trigger
+                || bind
+                    .group
+                    .is_some_and(|bind_group| u32::from(bind_group) != group)
+                || (locked && !bind_locked)
+                || (inhibited && bind.allow_inhibiting)
+            {
+                continue;
+            }
 
-        let mut bind_modifiers = bind.key.modifiers;
-        if bind_modifiers.contains(Modifiers::COMPOSITOR) {
-            bind_modifiers |= mod_key.to_modifiers();
-        } else if bind_modifiers.contains(mod_key.to_modifiers()) {
-            bind_modifiers |= Modifiers::COMPOSITOR;
-        }
+            let mut bind_modifiers = bind.key.modifiers;
+            if bind_modifiers.contains(Modifiers::COMPOSITOR) {
+                bind_modifiers |= mod_key.to_modifiers();
+            } else if mod_key != ModKey::None && bind_modifiers.contains(mod_key.to_modifiers()) {
+                bind_modifiers |= Modifiers::COMPOSITOR;
+            }
 
-        if bind_modifiers == modifiers {
-            return Some(bind.clone());
+            let exact_input = bind.input_device == input_device;
+            if !exact_input && bind.input_device != "*" {
+                continue;
+            }
+            let rank = (
+                exact_input,
+                bind.group.is_some(),
+                bind_locked == locked,
+                (!bind.allow_inhibiting) == inhibited,
+            );
+            if bind_modifiers == modifiers {
+                if best_rank.is_none_or(|current| rank > current) {
+                    best = Some(bind.clone());
+                    best_rank = Some(rank);
+                } else if best_rank == Some(rank) && best.as_ref() != Some(bind) {
+                    debug!("encountered conflicting bindings");
+                }
+                continue;
+            }
+
+            // i3 adds Caps Lock and Num Lock variants for bindings that do not name those
+            // modifiers, while keeping an explicit lock-qualified binding as the exact match.
+            let locks = Modifiers::CAPS | Modifiers::NUM;
+            if !bind_modifiers.intersects(locks)
+                && bind_modifiers == modifiers.difference(locks)
+                && lock_fallback_rank.is_none_or(|current| rank > current)
+            {
+                lock_fallback = Some(bind.clone());
+                lock_fallback_rank = Some(rank);
+            }
         }
     }
-
-    None
+    best.or(lock_fallback)
 }
 
 fn find_configured_switch_action(
@@ -4701,6 +5348,96 @@ fn find_configured_switch_action(
         .map(|switch_action| Action::Spawn(switch_action.spawn.clone()))
 }
 
+fn sway_binding_event(bind: &Bind, mod_key: ModKey) -> Option<swayward_ipc::legacy::Event> {
+    let Action::SwayCommand(command) = &bind.action else {
+        return None;
+    };
+    let mut modifiers = bind.key.modifiers;
+    if modifiers.contains(Modifiers::COMPOSITOR) {
+        modifiers.remove(Modifiers::COMPOSITOR);
+        modifiers.insert(mod_key.to_modifiers());
+    }
+    let event_state_mask = [
+        (Modifiers::SHIFT, "Shift"),
+        (Modifiers::CTRL, "Control"),
+        (Modifiers::ALT, "Mod1"),
+        (Modifiers::ISO_LEVEL5_SHIFT, "Mod3"),
+        (Modifiers::SUPER, "Mod4"),
+        (Modifiers::ISO_LEVEL3_SHIFT, "Mod5"),
+    ]
+    .into_iter()
+    .filter(|(modifier, _)| modifiers.contains(*modifier))
+    .map(|(_, name)| name.into())
+    .collect();
+    let (input_codes, input_code, symbols, symbol, input_type) = match bind.key.trigger {
+        Trigger::Keycode(code) => (vec![code], code, vec![], None, "keyboard"),
+        Trigger::Keysym(keysym) => {
+            let symbol = keysym_get_name(keysym);
+            (vec![], 0, vec![symbol.clone()], Some(symbol), "keyboard")
+        }
+        Trigger::MouseLeft
+        | Trigger::MouseRight
+        | Trigger::MouseMiddle
+        | Trigger::MouseBack
+        | Trigger::MouseForward
+        | Trigger::WheelScrollDown
+        | Trigger::WheelScrollUp
+        | Trigger::WheelScrollLeft
+        | Trigger::WheelScrollRight => {
+            let symbol: String = match bind.key.trigger {
+                Trigger::MouseLeft => "button1",
+                Trigger::MouseRight => "button2",
+                Trigger::MouseMiddle => "button3",
+                Trigger::MouseBack => "button4",
+                Trigger::MouseForward => "button5",
+                Trigger::WheelScrollUp => "button4",
+                Trigger::WheelScrollDown => "button5",
+                Trigger::WheelScrollLeft => "button6",
+                Trigger::WheelScrollRight => "button7",
+                _ => unreachable!(),
+            }
+            .into();
+            (vec![], 0, vec![symbol.clone()], Some(symbol), "mouse")
+        }
+        _ => return None,
+    };
+    Some(swayward_ipc::legacy::Event::SwayBinding {
+        command: command.clone(),
+        event_state_mask,
+        input_codes,
+        input_code,
+        symbols,
+        symbol,
+        input_type: input_type.into(),
+    })
+}
+
+fn translated_modifiers(
+    keysym: &smithay::input::keyboard::KeysymHandle<'_>,
+    keycode: Keycode,
+    mut mods: ModifiersState,
+) -> ModifiersState {
+    let xkb = keysym.xkb().lock().unwrap();
+    // SAFETY: neither reference outlives the locked Xkb value.
+    let state = unsafe { xkb.state() };
+    let consumed = state.key_get_consumed_mods(keycode)
+        & state.serialize_mods(smithay::input::keyboard::xkb::STATE_MODS_EFFECTIVE);
+    // SAFETY: the keymap reference does not outlive the locked Xkb value.
+    let keymap = unsafe { xkb.keymap() };
+    let consumed_named = |name| {
+        let index = keymap.mod_get_index(name);
+        index != smithay::input::keyboard::xkb::MOD_INVALID && consumed & (1 << index) != 0
+    };
+    mods.ctrl &= !consumed_named(smithay::input::keyboard::xkb::MOD_NAME_CTRL);
+    mods.alt &= !consumed_named(smithay::input::keyboard::xkb::MOD_NAME_ALT);
+    mods.shift &= !consumed_named(smithay::input::keyboard::xkb::MOD_NAME_SHIFT);
+    mods.logo &= !consumed_named(smithay::input::keyboard::xkb::MOD_NAME_LOGO);
+    mods.iso_level3_shift &=
+        !consumed_named(smithay::input::keyboard::xkb::MOD_NAME_ISO_LEVEL3_SHIFT);
+    mods.iso_level5_shift &= !consumed_named(smithay::input::keyboard::xkb::MOD_NAME_MOD3);
+    mods
+}
+
 fn modifiers_from_state(mods: ModifiersState) -> Modifiers {
     let mut modifiers = Modifiers::empty();
     if mods.ctrl {
@@ -4709,11 +5446,17 @@ fn modifiers_from_state(mods: ModifiersState) -> Modifiers {
     if mods.shift {
         modifiers |= Modifiers::SHIFT;
     }
+    if mods.caps_lock {
+        modifiers |= Modifiers::CAPS;
+    }
     if mods.alt {
         modifiers |= Modifiers::ALT;
     }
     if mods.logo {
         modifiers |= Modifiers::SUPER;
+    }
+    if mods.num_lock {
+        modifiers |= Modifiers::NUM;
     }
     if mods.iso_level3_shift {
         modifiers |= Modifiers::ISO_LEVEL3_SHIFT;
@@ -4849,8 +5592,13 @@ fn allowed_during_screenshot(action: &Action) -> bool {
     )
 }
 
-fn hardcoded_overview_bind(raw: Keysym, mods: ModifiersState) -> Option<Bind> {
-    let mods = modifiers_from_state(mods);
+pub(crate) fn hardcoded_overview_bind(raw: Keysym, mods: ModifiersState) -> Option<Bind> {
+    // Caps Lock and Num Lock are states, not chords. find_bind already ignores
+    // them when matching configured binds; requiring them clear here meant a
+    // keyboard with Num Lock on -- which `input { keyboard { numlock } }` makes
+    // the default -- rejected every overview key while the mouse still worked.
+    let locks = Modifiers::CAPS | Modifiers::NUM;
+    let mods = modifiers_from_state(mods).difference(locks);
     if !mods.is_empty() {
         return None;
     }
@@ -4861,10 +5609,10 @@ fn hardcoded_overview_bind(raw: Keysym, mods: ModifiersState) -> Option<Bind> {
             repeat = false;
             Action::ToggleOverview
         }
-        Keysym::Left => Action::FocusColumnLeft,
-        Keysym::Right => Action::FocusColumnRight,
-        Keysym::Up => Action::FocusWindowOrWorkspaceUp,
-        Keysym::Down => Action::FocusWindowOrWorkspaceDown,
+        // Unlike niri's scrolling layout, the tree can consume directional focus inside the
+        // current workspace. In the overview, arrows always select another workspace.
+        Keysym::Left | Keysym::Up => Action::FocusWorkspaceUp,
+        Keysym::Right | Keysym::Down => Action::FocusWorkspaceDown,
         _ => {
             return None;
         }
@@ -4876,6 +5624,10 @@ fn hardcoded_overview_bind(raw: Keysym, mods: ModifiersState) -> Option<Bind> {
             modifiers: Modifiers::empty(),
         },
         action,
+        mouse_regions: MouseRegions::empty(),
+        input_device: "*".into(),
+        group: None,
+        release: false,
         repeat,
         cooldown: None,
         allow_when_locked: false,
@@ -4884,7 +5636,7 @@ fn hardcoded_overview_bind(raw: Keysym, mods: ModifiersState) -> Option<Bind> {
     })
 }
 
-pub fn apply_libinput_settings(config: &niri_config::Input, device: &mut input::Device) {
+pub fn apply_libinput_settings(config: &swayward_config::Input, device: &mut input::Device) {
     // According to Mutter code, this setting is specific to touchpads.
     let is_touchpad = device.config_tap_finger_count() > 0;
     if is_touchpad {
@@ -4925,7 +5677,7 @@ pub fn apply_libinput_settings(config: &niri_config::Input, device: &mut input::
         if let Some(method) = c.scroll_method {
             let _ = device.config_scroll_set_method(method.into());
 
-            if method == niri_config::ScrollMethod::OnButtonDown {
+            if method == swayward_config::ScrollMethod::OnButtonDown {
                 if let Some(button) = c.scroll_button {
                     let _ = device.config_scroll_set_button(button);
                 }
@@ -5003,7 +5755,7 @@ pub fn apply_libinput_settings(config: &niri_config::Input, device: &mut input::
         if let Some(method) = c.scroll_method {
             let _ = device.config_scroll_set_method(method.into());
 
-            if method == niri_config::ScrollMethod::OnButtonDown {
+            if method == swayward_config::ScrollMethod::OnButtonDown {
                 if let Some(button) = c.scroll_button {
                     let _ = device.config_scroll_set_button(button);
                 }
@@ -5050,7 +5802,7 @@ pub fn apply_libinput_settings(config: &niri_config::Input, device: &mut input::
         if let Some(method) = c.scroll_method {
             let _ = device.config_scroll_set_method(method.into());
 
-            if method == niri_config::ScrollMethod::OnButtonDown {
+            if method == swayward_config::ScrollMethod::OnButtonDown {
                 if let Some(button) = c.scroll_button {
                     let _ = device.config_scroll_set_button(button);
                 }
@@ -5097,7 +5849,7 @@ pub fn apply_libinput_settings(config: &niri_config::Input, device: &mut input::
         if let Some(method) = c.scroll_method {
             let _ = device.config_scroll_set_method(method.into());
 
-            if method == niri_config::ScrollMethod::OnButtonDown {
+            if method == swayward_config::ScrollMethod::OnButtonDown {
                 if let Some(button) = c.scroll_button {
                     let _ = device.config_scroll_set_button(button);
                 }
@@ -5275,11 +6027,19 @@ fn grab_allows_hot_corner(grab: &(dyn PointerGrab<State> + 'static)) -> bool {
 /// Includes dynamically populated bindings like the MRU UI.
 fn make_binds_iter<'a>(
     config: &'a Config,
+    binding_mode: &str,
     mru: &'a mut WindowMruUi,
     mods: Modifiers,
 ) -> impl Iterator<Item = &'a Bind> + Clone {
-    // Figure out the binds to use depending on whether the MRU is enabled and/or open.
-    let general_binds = (!mru.is_open()).then_some(config.binds.0.iter());
+    // Figure out the binds to use depending on the active mode and whether the MRU is open.
+    let mode_binds = config
+        .binding_modes
+        .iter()
+        .find(|mode| mode.name == binding_mode)
+        .into_iter()
+        .flat_map(|mode| mode.binds.0.iter());
+    let general_binds =
+        (!mru.is_open() && binding_mode == "default").then_some(config.binds.0.iter());
     let general_binds = general_binds.into_iter().flatten();
 
     let mru_binds =
@@ -5290,15 +6050,245 @@ fn make_binds_iter<'a>(
     let mru_open_binds = mru_open_binds.into_iter().flatten();
 
     // General binds take precedence over the MRU binds.
-    general_binds.chain(mru_binds).chain(mru_open_binds)
+    mode_binds
+        .chain(general_binds)
+        .chain(mru_binds)
+        .chain(mru_open_binds)
 }
 
 #[cfg(test)]
 mod tests {
-    use std::cell::Cell;
+    use std::cell::{Cell, RefCell};
 
     use super::*;
     use crate::animation::Clock;
+
+    #[test]
+    fn mouse_region_matching_uses_intersection_except_for_workspace_background() {
+        let whole = MouseRegions::all();
+        assert!(mouse_regions_match(whole, MouseRegions::CONTENTS, false));
+        assert!(mouse_regions_match(whole, MouseRegions::all(), true));
+        assert!(!mouse_regions_match(
+            MouseRegions::BORDER,
+            MouseRegions::all(),
+            true
+        ));
+        assert!(!mouse_regions_match(
+            MouseRegions::TITLEBAR,
+            MouseRegions::CONTENTS,
+            false
+        ));
+    }
+
+    fn binding(command: &str, group: Option<u8>) -> Bind {
+        Bind {
+            key: Key {
+                trigger: Trigger::Keysym(Keysym::q),
+                modifiers: Modifiers::empty(),
+            },
+            action: Action::SwayCommand(command.into()),
+            mouse_regions: MouseRegions::empty(),
+            input_device: "*".into(),
+            group,
+            release: false,
+            repeat: true,
+            cooldown: None,
+            allow_when_locked: false,
+            allow_inhibiting: true,
+            hotkey_overlay_title: None,
+        }
+    }
+
+    #[test]
+    fn exact_xkb_group_beats_the_wildcard_and_wrong_groups_do_not_match() {
+        let wildcard = binding("nop wildcard", None);
+        let group_2 = binding("nop group-2", Some(1));
+        let bindings = [&wildcard, &group_2];
+        assert_eq!(
+            find_configured_bind_with_context(
+                bindings,
+                ModKey::Super,
+                &[Trigger::Keysym(Keysym::q)],
+                ModifiersState::default(),
+                "*",
+                1,
+                false,
+                false,
+            )
+            .as_ref(),
+            Some(&group_2)
+        );
+        assert_eq!(
+            find_configured_bind_with_context(
+                [&group_2],
+                ModKey::Super,
+                &[Trigger::Keysym(Keysym::q)],
+                ModifiersState::default(),
+                "*",
+                0,
+                false,
+                false,
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn exact_input_beats_group_lock_and_inhibition_matches() {
+        let wildcard = binding("nop wildcard", Some(1));
+        let mut exact = binding("nop exact", None);
+        exact.input_device = "0:0:keyboard".into();
+        let bindings = [&wildcard, &exact];
+
+        assert_eq!(
+            find_configured_bind_with_context(
+                bindings,
+                ModKey::Super,
+                &[Trigger::Keysym(Keysym::q)],
+                ModifiersState::default(),
+                "0:0:keyboard",
+                1,
+                false,
+                false,
+            )
+            .as_ref(),
+            Some(&exact)
+        );
+    }
+
+    #[test]
+    fn group_agnostic_binding_matches_every_xkb_group() {
+        let wildcard = binding("nop wildcard", None);
+        for group in [0, 1, 3] {
+            assert_eq!(
+                find_configured_bind_with_context(
+                    [&wildcard],
+                    ModKey::Super,
+                    &[Trigger::Keysym(Keysym::q)],
+                    ModifiersState::default(),
+                    "*",
+                    group,
+                    false,
+                    false,
+                )
+                .as_ref(),
+                Some(&wildcard),
+            );
+        }
+    }
+
+    #[test]
+    fn release_bindings_fire_only_when_the_chord_is_released() {
+        let keysym = Keysym::x;
+        let key_code = Keycode::from(keysym.raw() + 8);
+        let bindings = Binds(vec![Bind {
+            key: Key {
+                trigger: Trigger::Keysym(keysym),
+                modifiers: Modifiers::SHIFT,
+            },
+            action: Action::SwayCommand("nop release".into()),
+            mouse_regions: MouseRegions::empty(),
+            input_device: "*".into(),
+            group: None,
+            release: true,
+            repeat: false,
+            cooldown: None,
+            allow_when_locked: false,
+            allow_inhibiting: true,
+            hotkey_overlay_title: None,
+        }]);
+        let screenshot_ui = ScreenshotUi::new(Clock::default(), Default::default());
+        let mods = ModifiersState {
+            shift: true,
+            ..Default::default()
+        };
+        let mut suppressed_keys = HashSet::new();
+        let mut held_release_bind = None;
+
+        let press = should_intercept_key(
+            &mut suppressed_keys,
+            &mut held_release_bind,
+            &bindings.0,
+            ModKey::Super,
+            "*",
+            key_code,
+            keysym,
+            Some(keysym),
+            0,
+            true,
+            mods,
+            mods,
+            mods,
+            &screenshot_ui,
+            false,
+            false,
+            false,
+        );
+        assert!(matches!(press, FilterResult::Intercept(None)));
+        assert!(held_release_bind.is_some());
+
+        let release = should_intercept_key(
+            &mut suppressed_keys,
+            &mut held_release_bind,
+            &bindings.0,
+            ModKey::Super,
+            "*",
+            key_code,
+            keysym,
+            Some(keysym),
+            0,
+            false,
+            mods,
+            mods,
+            mods,
+            &screenshot_ui,
+            false,
+            false,
+            false,
+        );
+        assert!(matches!(
+            release,
+            FilterResult::Intercept(Some(Bind { release: true, .. }))
+        ));
+        assert!(held_release_bind.is_none());
+    }
+
+    #[test]
+    fn numlock_is_a_distinct_locked_modifier_for_binding_match() {
+        let bind = Bind {
+            key: Key {
+                trigger: Trigger::Keysym(Keysym::a),
+                modifiers: Modifiers::NUM,
+            },
+            action: Action::CloseWindow,
+            mouse_regions: MouseRegions::empty(),
+            input_device: "*".into(),
+            group: None,
+            release: false,
+            repeat: true,
+            cooldown: None,
+            allow_when_locked: false,
+            allow_inhibiting: true,
+            hotkey_overlay_title: None,
+        };
+        assert!(find_configured_bind(
+            [&bind],
+            ModKey::Super,
+            Trigger::Keysym(Keysym::a),
+            ModifiersState::default(),
+        )
+        .is_none());
+        assert!(find_configured_bind(
+            [&bind],
+            ModKey::Super,
+            Trigger::Keysym(Keysym::a),
+            ModifiersState {
+                num_lock: true,
+                ..Default::default()
+            },
+        )
+        .is_some());
+    }
 
     #[test]
     fn bindings_suppress_keys() {
@@ -5309,6 +6299,10 @@ mod tests {
                 modifiers: Modifiers::COMPOSITOR | Modifiers::CTRL,
             },
             action: Action::CloseWindow,
+            mouse_regions: MouseRegions::empty(),
+            input_device: "*".into(),
+            group: None,
+            release: false,
             repeat: true,
             cooldown: None,
             allow_when_locked: false,
@@ -5318,6 +6312,7 @@ mod tests {
 
         let comp_mod = ModKey::Super;
         let mut suppressed_keys = HashSet::new();
+        let held_release_bind = RefCell::new(None);
 
         let screenshot_ui = ScreenshotUi::new(Clock::default(), Default::default());
         let disable_power_key_handling = false;
@@ -5330,14 +6325,20 @@ mod tests {
         let close_key_event = |suppr: &mut HashSet<Keycode>, mods: ModifiersState, pressed| {
             should_intercept_key(
                 suppr,
+                &mut held_release_bind.borrow_mut(),
                 &bindings.0,
                 comp_mod,
+                "*",
                 close_key_code,
                 close_keysym,
                 Some(close_keysym),
+                0,
                 pressed,
                 mods,
+                mods,
+                mods,
                 &screenshot_ui,
+                false,
                 disable_power_key_handling,
                 is_inhibiting_shortcuts.get(),
             )
@@ -5347,14 +6348,20 @@ mod tests {
         let none_key_event = |suppr: &mut HashSet<Keycode>, mods: ModifiersState, pressed| {
             should_intercept_key(
                 suppr,
+                &mut held_release_bind.borrow_mut(),
                 &bindings.0,
                 comp_mod,
+                "*",
                 Keycode::from(Keysym::l.raw() + 8),
                 Keysym::l,
                 Some(Keysym::l),
+                0,
                 pressed,
                 mods,
+                mods,
+                mods,
                 &screenshot_ui,
+                false,
                 disable_power_key_handling,
                 is_inhibiting_shortcuts.get(),
             )
@@ -5495,6 +6502,10 @@ mod tests {
                     modifiers: Modifiers::COMPOSITOR,
                 },
                 action: Action::CloseWindow,
+                mouse_regions: MouseRegions::empty(),
+                input_device: "*".into(),
+                group: None,
+                release: false,
                 repeat: true,
                 cooldown: None,
                 allow_when_locked: false,
@@ -5507,6 +6518,10 @@ mod tests {
                     modifiers: Modifiers::SUPER,
                 },
                 action: Action::FocusColumnLeft,
+                mouse_regions: MouseRegions::empty(),
+                input_device: "*".into(),
+                group: None,
+                release: false,
                 repeat: true,
                 cooldown: None,
                 allow_when_locked: false,
@@ -5519,6 +6534,10 @@ mod tests {
                     modifiers: Modifiers::empty(),
                 },
                 action: Action::FocusWindowDown,
+                mouse_regions: MouseRegions::empty(),
+                input_device: "*".into(),
+                group: None,
+                release: false,
                 repeat: true,
                 cooldown: None,
                 allow_when_locked: false,
@@ -5531,6 +6550,10 @@ mod tests {
                     modifiers: Modifiers::COMPOSITOR | Modifiers::SUPER,
                 },
                 action: Action::FocusWindowUp,
+                mouse_regions: MouseRegions::empty(),
+                input_device: "*".into(),
+                group: None,
+                release: false,
                 repeat: true,
                 cooldown: None,
                 allow_when_locked: false,
@@ -5543,6 +6566,10 @@ mod tests {
                     modifiers: Modifiers::SUPER | Modifiers::ALT,
                 },
                 action: Action::FocusColumnRight,
+                mouse_regions: MouseRegions::empty(),
+                input_device: "*".into(),
+                group: None,
+                release: false,
                 repeat: true,
                 cooldown: None,
                 allow_when_locked: false,
