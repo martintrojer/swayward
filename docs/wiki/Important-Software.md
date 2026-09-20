@@ -1,4 +1,4 @@
-Since niri is not a complete desktop environment, you will very likely want to run the following software to make sure that other apps work fine.
+Since swayward is not a complete desktop environment, you will very likely want to run the following software to make sure that other apps work fine.
 
 ### Notification Daemon
 
@@ -8,13 +8,14 @@ Many apps need one. For example, [mako](https://github.com/emersion/mako) works 
 
 These provide a cross-desktop API for apps to use for various things like file pickers or UI settings. Flatpak apps in particular require working portals.
 
-Portals **require** [running niri as a session](./Getting-Started.md), which means through the `niri-session` script or from a display manager. You will want the following portals installed:
+Portals **require** [running swayward as a session](./Getting-Started.md), which means through the `swayward-session` script or from a display manager. You will want the following portals installed:
 
-* `xdg-desktop-portal-gtk`: implements most of the basic functionality, this is the "default fallback portal".
-* `xdg-desktop-portal-gnome`: required for screencasting support.
+* `xdg-desktop-portal-gnome`: the preferred backend for the integrated window and monitor picker, PipeWire streams, and dynamic cast target.
+* `xdg-desktop-portal-gtk`: the fallback backend and the provider for Access and Notification.
+* `nautilus`: provides the FileChooser implementation used by `xdg-desktop-portal-gnome` 47 and later.
 * `gnome-keyring`: implements the Secret portal, required for certain apps to work.
 
-Then systemd should start them on-demand automatically. These particular portals are configured in `niri-portals.conf` which [must be installed](./Getting-Started.md#manual-installation) in the correct location.
+Then systemd should start them on-demand automatically. These particular portals are configured in `swayward-portals.conf` which [must be installed](./Getting-Started.md#manual-installation) in the correct location.
 
 Since we're using `xdg-desktop-portal-gnome`, Flatpak apps will read the GNOME UI settings. For example, to enable the dark style, run:
 
@@ -22,9 +23,11 @@ Since we're using `xdg-desktop-portal-gnome`, Flatpak apps will read the GNOME U
 dconf write /org/gnome/desktop/interface/color-scheme '"prefer-dark"'
 ```
 
-Note that if you're using the provided `resources/niri-portals.conf`, you also need to install the `nautilus` file manager in order for file chooser dialogues to work properly. This is necessary because xdg-desktop-portal-gnome uses nautilus as the file chooser by default starting from version 47.0.
+With `resources/swayward-portals.conf`, install Nautilus if you use `xdg-desktop-portal-gnome` 47 or later. GNOME 47 moved its FileChooser implementation into Nautilus, so the dialog does not open when the GNOME backend is selected and Nautilus is absent.
 
-If you do not want to install `nautilus` (say you use `nemo` instead), you can set `org.freedesktop.impl.portal.FileChooser=gtk;` in `niri-portals.conf` to use the GTK portal for file chooser dialogues.
+To avoid installing Nautilus, set `org.freedesktop.impl.portal.FileChooser=gtk;` in `swayward-portals.conf`. This keeps the GNOME ScreenCast and Screenshot interfaces while routing only file chooser dialogs to the GTK backend.
+
+As a less integrated capture fallback, install `xdg-desktop-portal-wlr` and set both `org.freedesktop.impl.portal.ScreenCast=wlr;` and `org.freedesktop.impl.portal.Screenshot=wlr;`. The wlr backend does not provide swayward's GNOME window picker or dynamic cast target.
 
 > [!WARNING]
 > Do not set the `GDK_BACKEND` environment variable globally as this will break the screencast portal.
@@ -47,3 +50,7 @@ To run X11 apps like Steam or Discord, you can use [xwayland-satellite].
 Check [the Xwayland wiki page](./Xwayland.md) for instructions.
 
 [xwayland-satellite]: https://github.com/Supreeeme/xwayland-satellite
+
+---
+
+*This page is adapted from the niri documentation.*

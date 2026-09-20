@@ -35,26 +35,6 @@ For JetBrainsRuntime > 17, you can set the flag `-Dawt.toolkit.name=WLToolkit` i
 
 If the settings window fails to load under Wayland, and the UI becomes unresponsive afterwards, also set the flag `-Dsun.awt.wl.WindowDecorationStyle=builtin` in the custom vm options. This gives the settings window a titlebar, but it at least makes the IDE functional.
 
-### WezTerm
-
-> [!NOTE]
-> Both of these issues seem to be fixed in the nightly build of WezTerm.
-
-There's [a bug](https://github.com/wezterm/wezterm/issues/4708) in WezTerm that it waits for a zero-sized Wayland configure event, so its window never shows up in niri. To work around it, put this window rule in the niri config (included in the default config):
-
-```kdl
-window-rule {
-    match app-id=r#"^org\.wezfurlong\.wezterm$"#
-    default-column-width {}
-}
-```
-
-This empty default column width lets WezTerm pick its own initial width which makes it show up properly.
-
-There's [another bug](https://github.com/wezterm/wezterm/issues/6472) in WezTerm that causes it to choose a wrong size when it's in a tiled state, and prevent resizing it.
-Niri puts windows in the tiled state with [`prefer-no-csd`](./Configuration:-Miscellaneous.md#prefer-no-csd).
-So if you hit this problem, comment out `prefer-no-csd` in the niri config and restart WezTerm.
-
 ### Ghidra
 
 Some Java apps like Ghidra can show up blank under xwayland-satellite.
@@ -62,7 +42,7 @@ To fix this, run them with the `_JAVA_AWT_WM_NONREPARENTING=1` environment varia
 
 ### Zen Browser
 
-For some reason, DMABUF screencasts are disabled in the Zen Browser, so screencasting doesn't work out of the box on niri.
+For some reason, DMABUF screencasts are disabled in the Zen Browser, so screencasting doesn't work out of the box on swayward.
 To fix it, open `about:config` and set `widget.dmabuf.force-enabled` to `true`.
 
 ### GTK 4 dead keys / Compose
@@ -76,8 +56,8 @@ environment {
 }
 ```
 
-Note that the niri environment config does not propagate to apps and shells started by systemd, for example to DankMaterialShell and its application launcher.
-You can set the variable in your login shell config (i.e. `~/.bash_profile`) instead, though keep in mind that then it will be set for all compositors, not just niri.
+Note that the swayward environment config does not propagate to apps and shells started by systemd, for example to DankMaterialShell and its application launcher.
+You can set the variable in your login shell config (i.e. `~/.bash_profile`) instead, though keep in mind that then it will be set for all compositors, not just swayward.
 
 ### Fullscreen games
 
@@ -107,7 +87,7 @@ Restart Steam and it should now work fine.
 If you do not want to disable GPU accelerated rendering you can instead try to pass the launch argument `-system-composer` instead.
 
 Steam notifications don't run through the standard notification daemon and show up as floating windows in the center of the screen.
-You can move them to a more convenient location by adding a window rule in your niri config:
+You can move them to a more convenient location by adding a window rule in your swayward config:
 
 ```kdl
 window-rule {
@@ -121,6 +101,10 @@ window-rule {
 If you have rounded corners on your Waybar and they show up with black pixels in the corners, then set your Waybar opacity to 0.99, which should fix it.
 
 GTK 3 seems to have a bug where it reports a surface as fully opaque even if it has rounded corners.
-This leads to niri filling the transparent pixels inside the corners with black.
+This leads to swayward filling the transparent pixels inside the corners with black.
 
 Setting the surface opacity to something below 1 fixes the problem because then GTK no longer reports the surface as opaque.
+
+---
+
+*This page is adapted from the niri documentation.*

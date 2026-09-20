@@ -1,136 +1,247 @@
-<h1 align="center"><img alt="niri" src="https://github.com/user-attachments/assets/07d05cd0-d5dc-4a28-9a35-51bae8f119a0"></h1>
-<p align="center">A scrollable-tiling Wayland compositor.</p>
-<p align="center">
-    <a href="https://matrix.to/#/#niri:matrix.org"><img alt="Matrix" src="https://img.shields.io/badge/matrix-%23niri-blue?logo=matrix"></a>
-    <a href="https://github.com/niri-wm/niri/blob/main/LICENSE"><img alt="GitHub License" src="https://img.shields.io/github/license/niri-wm/niri"></a>
-    <a href="https://github.com/niri-wm/niri/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/niri-wm/niri?logo=github"></a>
-</p>
+# swayward
 
-<p align="center">
-    <a href="https://niri-wm.github.io/niri/Getting-Started.html">Getting Started</a> | <a href="https://niri-wm.github.io/niri/Configuration%3A-Introduction.html">Configuration</a> | <a href="https://github.com/niri-wm/niri/discussions/325">Setup&nbsp;Showcase</a>
-</p>
+**An i3/sway-compatible Wayland compositor, built in Rust on Smithay.**
 
-<img width="1280" height="720" alt="niri with a few windows open" src="https://github.com/user-attachments/assets/dea5909e-1859-4aaa-9d88-d37f9663e00b" />
+> sway, gone its own way.
 
-## About
+Swayward gives you i3's fully nested container tree on a modern Wayland
+compositor: splits inside splits, tabbed and stacked containers, marks,
+criteria, the scratchpad, and sway's IPC protocol on `SWAYSOCK` for compatible
+clients and scripts.
 
-Windows are arranged in columns on an infinite strip going to the right.
-Opening a new window never causes existing windows to resize.
+**Status: beta.** The compositor runs live sessions, speaks sway's IPC to real
+clients, and passes 111 of i3's own test files unmodified. It is ready to try
+as a daily driver if you know i3 or sway. Expect rough edges at the margins,
+and read [known deviations](docs/KNOWN_DEVIATIONS.md) before you switch.
 
-Every monitor has its own separate window strip.
-Windows can never "overflow" onto an adjacent monitor.
+<!-- TODO(screenshots): replace these placeholders with real captures.
+     Worth showing, in this order:
+       1. a nested split — splitv inside splith, three or four terminals
+       2. tabbed and stacked containers side by side, titlebars visible
+       3. the hotkey overlay, with blur and rounded corners on
+       4. the scratchpad mid-summon over a tiled workspace
+     Capture on real hardware; every automated trial in this project is
+     headless and cannot photograph pixels. -->
 
-Workspaces are dynamic and arranged vertically.
-Every monitor has an independent set of workspaces, and there's always one empty workspace present all the way down.
+> **Screenshots pending.** Every automated trial in this project is headless,
+> so the shots need capturing on real hardware before they go here. See the
+> comment above for the four that are worth taking.
 
-The workspace arrangement is preserved across disconnecting and connecting monitors where it makes sense.
-When a monitor disconnects, its workspaces will move to another monitor, but upon reconnection they will move back to the original monitor.
+## Why the i3/sway model
 
-## Features
+This is a good era for Wayland compositors. Niri's scrollable strip is a
+genuinely new idea and it is beautifully built — swayward is a fork of it, and
+owes it nearly everything below the layout engine. Hyprland has pushed harder
+on effects and configurability than anyone. Sway did the unglamorous work of
+being the compositor people could actually rely on, and i3 defined the model
+in the first place.
 
-- Built from the ground up for scrollable tiling
-- [Dynamic workspaces](https://niri-wm.github.io/niri/Workspaces.html) like in GNOME
-- An [Overview](https://github.com/user-attachments/assets/379a5d1f-acdb-4c11-b36c-e85fd91f0995) that zooms out workspaces and windows
-- Built-in screenshot UI
-- Monitor and window screencasting through xdg-desktop-portal-gnome
-    - You can [block out](https://niri-wm.github.io/niri/Configuration%3A-Window-Rules.html#block-out-from) sensitive windows from screencasts
-    - [Dynamic cast target](https://niri-wm.github.io/niri/Screencasting.html#dynamic-screencast-target) that can change what it shows on the go
-- [Touchpad](https://github.com/niri-wm/niri/assets/1794388/946a910e-9bec-4cd1-a923-4a9421707515) and [mouse](https://github.com/niri-wm/niri/assets/1794388/8464e65d-4bf2-44fa-8c8e-5883355bd000) gestures
-- Group windows into [tabs](https://niri-wm.github.io/niri/Tabs.html)
-- Configurable layout: gaps, borders, struts, window sizes
-- [Gradient borders](https://niri-wm.github.io/niri/Configuration%3A-Layout.html#gradients) with Oklab and Oklch support
-- [Background blur](https://niri-wm.github.io/niri/Window-Effects.html) for windows and layer-shell surfaces
-- [Animations](https://github.com/niri-wm/niri/assets/1794388/ce178da2-af9e-4c51-876f-8709c241d95e) with support for [custom shaders](https://github.com/niri-wm/niri/assets/1794388/27a238d6-0a22-4692-b794-30dc7a626fad)
-- Live-reloading config
-- Works with [screen readers](https://niri-wm.github.io/niri/Accessibility.html)
+We still think i3's tree is the best window-management model there is, and
+swayward exists because we wanted it on a modern foundation. Three reasons:
 
-## Video Demo
+**The tree is what you already mean.** Every layout you want is a nesting of
+"these share space horizontally" and "these share space vertically". That is
+not an abstraction over window management, it *is* window management. Once you
+see the tree, every keystroke follows from it, and the layout stops surprising
+you.
 
-https://github.com/niri-wm/niri/assets/1794388/bce834b0-f205-434e-a027-b373495f9729
+**It composes without limit.** A container holds windows or other containers,
+so tabs inside a split inside a tab costs nothing extra to learn — it is the
+same rule applied again. Models built from special cases run out; a tree does
+not.
 
-Also check out these videos that showcase a lot of the niri functionality:
+**It is explicit, and it remembers.** Swayward does not guess where your next
+window goes. You told it, possibly minutes ago, and it kept the note. That is
+why an i3 layout is reproducible: the arrangement is a structure you built,
+not an emergent property of the order you happened to open things in.
 
-- [Niri Is My New Favorite Wayland Compositor](https://www.youtube.com/watch?v=DeYx2exm04M) by Brodie Robertson
-- [How Is niri This Good? Live Demo + Config](https://www.youtube.com/watch?v=7XmD5UyyhZQ) by Nick Janetakis
+If you want to learn the model properly, the wiki has
+[Sway School](docs/wiki/Sway-School.md) — a tree-first tutorial in 15 short
+lessons with quizzes, using swayward's default keys. It is the fastest way from
+"I don't get how layouts work" to seeing the tree.
 
-## Status
+And if the scrollable strip suits you better, use
+[niri](https://github.com/YaLTeR/niri). It is excellent, it is where swayward
+came from, and we are not going to pretend otherwise. Swayward deliberately
+does not offer a scrollable mode.
 
-Niri is stable for day-to-day use and does most things expected of a Wayland compositor.
-Many people are daily-driving niri, and are happy to help in our [Matrix channel].
+## Install
 
-Give it a try!
-Follow the instructions on the [Getting Started](https://niri-wm.github.io/niri/Getting-Started.html) page.
-Grab a desktop shell like [DankMaterialShell] or [Noctalia] (or build a more traditional setup): niri by itself is not a complete desktop environment.
-Also check out [awesome-niri], a list of niri-related links and projects.
+### Fedora
 
-Here are some points you may have questions about:
+```sh
+sudo dnf copr enable martintrojer/swayward
+sudo dnf install swayward
+```
 
-- **Multi-monitor**: yes, a core part of the design from the very start. Mixed DPI works.
-- **Fractional scaling**: yes, plus all niri UI stays pixel-perfect.
-- **NVIDIA**: seems to work fine.
-- **Floating windows**: yes, starting from niri 25.01.
-- **Input devices**: niri supports tablets, touchpads, and touchscreens.
-You can map the tablet to a specific monitor, or use [OpenTabletDriver].
-We have touchpad gestures, but no touchscreen gestures yet.
-- **Wlr protocols**: yes, we have most of the important ones like layer-shell, gamma-control, screencopy.
-You can check on [wayland.app](https://wayland.app) at the bottom of each protocol's page.
-- **Performance**: while I run niri on beefy machines, I try to stay conscious of performance.
-I've seen someone use it fine on an Eee PC 900 from 2008, of all things.
-- **Xwayland**: [integrated](https://niri-wm.github.io/niri/Xwayland.html#using-xwayland-satellite) via xwayland-satellite starting from niri 25.08.
+### Nix
 
-## Media
+```sh
+nix profile install github:martintrojer/swayward
+```
 
-[niri: Making a Wayland compositor in Rust](https://youtu.be/Kmz8ODolnDg?list=PLRdS-n5seLRqrmWDQY4KDqtRMfIwU0U3T) · *December 2024*
+Or add the flake as an input and use the `swayward` package.
 
-My talk from the 2024 Moscow RustCon about niri, and how I do randomized property testing and profiling, and measure input latency.
-The talk is in Russian, but I prepared full English subtitles that you can find in YouTube's subtitle language selector.
+### Prebuilt tarball
 
-[An interview with Ivan, the developer behind Niri](https://www.trommelspeicher.de/podcast/special_the_developer_behind_niri) · *June 2025*
+Each [release](https://github.com/martintrojer/swayward/releases) ships an
+`x86_64` tarball for distributions without a package yet:
 
-An interview by a German tech podcast Das Triumvirat (in English).
-We talk about niri development and history, and my experience building and maintaining niri.
+```sh
+tar xzf swayward-<version>-x86_64-linux-gnu.tar.gz
+cd swayward-<version>-x86_64-linux-gnu
+install -Dm755 bin/* -t ~/.local/bin/
+```
 
-[A tour of the niri scrolling-tiling Wayland compositor](https://lwn.net/Articles/1025866/) · *July 2025*
+The tarball is **not** self-contained: a compositor cannot statically link the
+seat, input and GPU stack it drives. `RUNTIME.txt` inside the archive records
+the exact glibc floor the binary was built against and what else to install.
 
-An LWN article with a nice overview and introduction to niri.
+### Arch
 
-## Contributing
+```sh
+yay -S swayward       # or: paru -S swayward
+```
 
-If you'd like to help with niri, there are plenty of both coding- and non-coding-related ways to do so.
-See [CONTRIBUTING.md](https://github.com/niri-wm/niri/blob/main/CONTRIBUTING.md) for an overview.
+The package source is [`contrib/PKGBUILD`](contrib/PKGBUILD); it builds and
+lints clean in a stock Arch container.
 
-## Inspiration
+### From source
 
-Niri is heavily inspired by [PaperWM] which implements scrollable tiling on top of GNOME Shell.
+See [Build swayward](docs/BUILDING.md). You need Rust 1.87 or newer and the
+usual wlroots-style build dependencies.
 
-One of the reasons that prompted me to try writing my own compositor is being able to properly separate the monitors.
-Being a GNOME Shell extension, PaperWM has to work against Shell's global window coordinate space to prevent windows from overflowing.
+## First run
 
-## Tile Scrollably Elsewhere
+Pick **Swayward** from your display manager. To try it without leaving your
+current session, run it nested in a window:
 
-Here are some other projects which implement a similar workflow:
+```sh
+swayward
+```
 
-- [PaperWM]: scrollable tiling on top of GNOME Shell.
-- [karousel]: scrollable tiling on top of KDE.
-- [scroll](https://github.com/dawsers/scroll) and [papersway]: scrollable tiling on top of sway/i3.
-- Hyprland has a built-in [scrolling layout](https://wiki.hypr.land/Configuring/Layouts/Scrolling-Layout/).
-- [Paneru] and [PaperWM.spoon]: scrollable tiling on top of macOS.
+The defaults give you a working session: `Mod` is Super, `Mod+Return` opens a
+terminal, `Mod+D` runs a launcher, `Mod+Shift+Q` closes a window, and
+`Mod+Shift+E` exits. The full set is in
+[resources/default-config.kdl](resources/default-config.kdl), and the
+[getting-started guide](docs/wiki/Getting-Started.md) walks through it.
 
-## Contact
+Press `Mod+Shift+/` at any time for the hotkey overlay.
 
-Our main communication channel is a Matrix chat, feel free to join and ask a question: https://matrix.to/#/#niri:matrix.org
+## Using it
 
-We also have a community Discord server: https://discord.gg/vT8Sfjy7sx
+Swayward exports `SWAYSOCK` and speaks sway's binary IPC, so the tools you
+already have work:
 
-[PaperWM]: https://github.com/paperwm/PaperWM
-[waybar]: https://github.com/Alexays/Waybar
-[fuzzel]: https://codeberg.org/dnkl/fuzzel
-[awesome-niri]: https://github.com/niri-wm/awesome-niri
-[karousel]: https://github.com/peterfajdiga/karousel
-[papersway]: https://spwhitton.name/tech/code/papersway/
-[Paneru]: https://github.com/karinushka/paneru
-[PaperWM.spoon]: https://github.com/mogenson/PaperWM.spoon
-[Matrix channel]: https://matrix.to/#/#niri:matrix.org
-[OpenTabletDriver]: https://opentabletdriver.net/
-[DankMaterialShell]: https://danklinux.com/
-[Noctalia]: https://noctalia.dev/
+```sh
+swaywardmsg -t get_tree
+swaywardmsg -t get_workspaces -p
+swaywardmsg 'workspace 3'
+swaywardmsg -t subscribe -m '["window"]'
+```
+
+`swaywardmsg` ships with swayward, so you do not need sway installed to drive
+the socket. `swaymsg` works too if you have it.
+
+### Screen sharing and portals
+
+Swayward defaults to `xdg-desktop-portal-gnome`. Its inherited GNOME/Mutter
+interfaces provide the integrated window and monitor picker, PipeWire streams,
+and dynamic cast target. This is a deliberate product difference from sway,
+which defaults to the more limited `xdg-desktop-portal-wlr` backend. Swayward
+does not implement the Mutter remote desktop interface, so portal-based remote
+control and input injection do not work.
+
+Portal support requires a build with the default features, a full swayward
+session, and `swayward-portals.conf` installed in
+`/usr/share/xdg-desktop-portal/`. Install `xdg-desktop-portal-gnome`,
+`xdg-desktop-portal-gtk`, `gnome-keyring`, and Nautilus for the GNOME 47 or later
+file chooser. `xdg-desktop-portal-wlr` is an optional fallback for ScreenCast
+and Screenshot. A source build started directly from another desktop does not
+set up portals. See [Important software](docs/wiki/Important-Software.md) for
+configuration details.
+
+Waybar 0.15.0's `sway/workspaces`, `sway/window`, and `sway/mode` modules have
+been smoke-tested without swayward-specific changes. Mako, swaybg, swayidle,
+and swaylock use standard Wayland protocols rather than sway IPC. Scripts that
+speak sway IPC work to the extent that they stay inside the implemented surface.
+The [compatibility matrix](docs/SWAY_COMPATIBILITY.md) is the exact boundary.
+
+### Configuration
+
+Swayward is **IPC-compatible, not config-compatible**. It is configured in
+typed KDL, which is what lets it carry niri's animation and rendering settings
+without inventing a second config language.
+
+Bring an existing sway config across with the translator, which ships with
+swayward:
+
+```sh
+swayward-sway-to-kdl ~/.config/sway/config >~/.config/swayward/config.kdl
+swayward validate -c ~/.config/swayward/config.kdl
+```
+
+It reports what it cannot translate exactly instead of quietly dropping it.
+See [Migrate a sway config](docs/SWAY_CONFIG_MIGRATION.md).
+
+## How compatibility is measured
+
+i3 ships 285 Perl test files. Swayward vendors 242 of them byte-for-byte from
+a pinned i3 revision and runs them against a real headless compositor, real
+Wayland clients and the sway IPC socket. The adapter replaces X11 window setup;
+it does not edit upstream assertions.
+
+At this revision **108 files pass in full**, unmodified. Across the 3,168
+assertions in captured TAP plans, 2,330 pass, 780 are documented sway
+divergences, 14 fail, and 44 are unreached. Nine more files emit a file-level
+skip before running their 56 static source assertions. The
+[conformance report](tests/i3/README.md) has the assertion-level detail.
+
+The report also records a green ceiling of 112 files: 108 currently green plus
+4 vendored files blocked only by implementation or adapter gaps. Files needing
+i3-only behaviour or unavailable input are excluded from it.
+
+This is evidence, not a compatibility percentage. Roughly two thirds of the
+skips are structural: X11-only assertions, i3's own parser binary, i3bar, and
+tree nodes sway does not create either.
+
+## What differs from sway
+
+Read [known deviations](docs/KNOWN_DEVIATIONS.md) before migrating. The
+headlines:
+
+- **X11 identity is flattened.** Xwayland goes through
+  `xwayland-satellite`, which presents ordinary `xdg_toplevel` surfaces, so
+  separate X11 class, instance, role and XID do not cross the boundary.
+- **No `bar {}` block.** Swayward does not launch or configure swaybar.
+  Configure Waybar directly.
+- **No in-place restart.** Reload is supported; replacing the process while
+  keeping clients is not. Sway has no runtime `restart` either.
+- **The IPC surface is incomplete.** Some requests, events, criteria and
+  command forms are unimplemented and return structured failures rather than
+  pretending to succeed.
+
+## Project invariants
+
+- Every `SWAYSOCK` reply is sway-shaped or a structured failure. It never hangs.
+- The container tree stays well formed after every mutation.
+- A live-session path must not panic, and an `ERROR` in the log is a bug.
+- A feature needs executable evidence before it counts as working.
+- Stability regressions outrank new features.
+
+## Credits
+
+Swayward is a fork of niri at commit `9e72e491`, and keeps its rendering,
+backend, protocol and portal work. See [Fork base](docs/FORK-BASE.md).
+
+- [niri](https://github.com/YaLTeR/niri) by Ivan Molodetskikh — the compositor
+  this is built on. The debt is large and gladly acknowledged.
+- [Smithay](https://github.com/Smithay/smithay) — the Wayland compositor
+  toolkit underneath.
+- [sway](https://github.com/swaywm/sway) — the IPC protocol, and the standard
+  of reliability worth aiming at.
+- [i3](https://i3wm.org) — the tree model, and the conformance suite that keeps
+  us honest about it.
+
+Licensed under **GPL-3.0-or-later**. The vendored i3 tests keep their upstream
+BSD licence in [`tests/i3/LICENSE`](tests/i3/LICENSE).

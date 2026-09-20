@@ -1,75 +1,44 @@
-You can communicate with the running niri instance over an IPC socket.
-Check `niri msg --help` for available commands.
+# IPC
 
-The `--json` flag prints the response in JSON, rather than formatted.
-For example, `niri msg --json outputs`.
+swayward implements sway's i3 IPC protocol on the Unix socket named by
+`SWAYSOCK`. Existing i3 and sway clients can connect without a swayward-specific
+backend.
 
-> [!TIP]
-> If you're getting parsing errors from `niri msg` after upgrading niri, make sure that you've restarted niri itself.
-> You might be trying to run a newer `niri msg` against an older `niri` compositor.
-
-### Event Stream
-
-<sup>Since: 0.1.9</sup>
-
-While most niri IPC requests return a single response, the event stream request will make niri continuously stream events into the IPC connection until it is closed.
-This is useful for implementing various bars and indicators that update as soon as something happens, without continuous polling.
-
-The event stream IPC is designed to give you the complete current state up-front, then follow up with updates to that state.
-This way, your state can never "desync" from niri, and you don't need to make any other IPC information requests.
-
-Where reasonable, event stream state updates are atomic, though this is not always the case.
-For example, a window may end up with a workspace id for a workspace that had already been removed.
-This can happen if the corresponding workspaces-changed event arrives before the corresponding window-changed event.
-
-To get a taste of the events, run `niri msg event-stream`.
-Though, this is more of a debug function than anything.
-You can get raw events from `niri msg --json event-stream`, or by connecting to the niri socket and requesting an event stream manually.
-
-You can find the full list of events along with documentation [here](https://niri-wm.github.io/niri/niri_ipc/enum.Event.html).
-
-### Programmatic Access
-
-`niri msg --json` is a thin wrapper over writing and reading to a socket.
-When implementing more complex scripts and modules, you're encouraged to access the socket directly.
-
-Connect to the UNIX domain socket located at `$NIRI_SOCKET` in the filesystem.
-Write your request encoded in JSON on a single line, followed by a newline character, or by flushing and shutting down the write end of the connection.
-Read the reply as JSON, also on a single line.
-
-You can use `socat` to test communicating with niri directly:
+Use `swaywardmsg` to send requests:
 
 ```sh
-$ socat STDIO "$NIRI_SOCKET"
-"FocusedWindow"
-{"Ok":{"FocusedWindow":{"id":12,"title":"t socat STDIO /run/u ~","app_id":"Alacritty","workspace_id":6,"is_focused":true}}}
+swaywardmsg -t get_version
+swaywardmsg -t get_tree
+swaywardmsg -t get_workspaces
+swaywardmsg -t get_outputs
 ```
 
-The reply is an `Ok` or an `Err` wrapping the same JSON object as you get from `niri msg --json`.
+`swaywardmsg` ships with swayward, so you do not need sway installed to drive
+the socket. `swaymsg` works too if you have it.
 
-For more complex requests, you can use `socat` to find how `niri msg` formats them:
+The wire format uses the standard `i3-ipc` magic header, native-endian payload
+length and message type fields, and UTF-8 JSON payloads. Client libraries that
+already support sway should use that protocol instead of invoking the
+`swayward` binary.
 
-```sh
-$ socat STDIO UNIX-LISTEN:temp.sock
-# then, in a different terminal:
-$ env NIRI_SOCKET=./temp.sock niri msg action focus-workspace 2
-# then, look in the socat terminal:
-{"Action":{"FocusWorkspace":{"reference":{"Index":2}}}}
+## Compatibility contract
+
+Successful replies use sway's JSON schemas. An unsupported request returns a
+well-formed failure object instead of hanging or returning a private schema:
+
+```json
+{"success":false,"error":"not implemented"}
 ```
 
-You can find all available requests and response types in the [niri-ipc sub-crate documentation](https://niri-wm.github.io/niri/niri_ipc/).
+Command requests return sway's array form. For example, an unknown command
+returns:
 
-### Backwards Compatibility
+```json
+[{"success":false,"error":"Unknown/invalid command 'frobnicate'","parse_error":true}]
+```
 
-The JSON output *should* remain stable, as in:
-
-- existing fields and enum variants should not be renamed
-- non-optional existing fields should not be removed
-
-However, new fields and enum variants will be added, so you should handle unknown fields or variants gracefully where reasonable.
-
-The formatted/human-readable output (i.e. without `--json` flag) is **not** considered stable.
-Please prefer the JSON output for scripts, since I reserve the right to make any changes to the human-readable output.
-
-The `niri-ipc` sub-crate (like other niri sub-crates) is *not* API-stable in terms of the Rust semver; rather, it follows the version of niri itself.
-In particular, new struct fields and enum variants will be added.
+See the [compatibility matrix](https://github.com/martintrojer/swayward/blob/main/docs/SWAY_COMPATIBILITY.md)
+for the full request, command, and event surface. The matrix also records
+partial support and deliberate deviations, including `GET_BAR_CONFIG` and its
+requested-ID error. [IPC oracle coverage](https://github.com/martintrojer/swayward/blob/main/docs/IPC_ORACLE_COVERAGE.md)
+records what the automated comparisons check and what they can still miss.

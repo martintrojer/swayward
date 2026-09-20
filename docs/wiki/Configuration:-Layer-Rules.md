@@ -73,15 +73,16 @@ layer-rule {
 }
 ```
 
-You can find the namespaces of all open layer-shell surfaces by running `niri msg layers`.
+Sway IPC does not expose layer-shell namespaces. Check the application's
+documentation or swayward's debug log to find a surface namespace.
 
 #### `at-startup`
 
 Can be `true` or `false`.
-Matches during the first 60 seconds after starting niri.
+Matches during the first 60 seconds after starting swayward.
 
 ```kdl
-// Show layer-shell surfaces with 0.5 opacity at niri startup, but not afterwards.
+// Show layer-shell surfaces with 0.5 opacity at swayward startup, but not afterwards.
 layer-rule {
     match at-startup=true
 
@@ -158,10 +159,10 @@ Unlike window shadows, layer surface shadows always need to be enabled with a la
 That is, enabling shadows in the layout config section won't automatically enable them for layer surfaces.
 
 > [!NOTE]
-> Layer surfaces have no way to tell niri about their *visual geometry*.
-> For example, if a layer surface includes some invisible margins (like mako), niri has no way of knowing that, and will draw the shadow behind the entire surface, including the invisible margins.
+> Layer surfaces have no way to tell swayward about their *visual geometry*.
+> For example, if a layer surface includes some invisible margins (like mako), swayward has no way of knowing that, and will draw the shadow behind the entire surface, including the invisible margins.
 >
-> So to use niri shadows, you'll need to configure layer-shell clients to remove their own margins or shadows.
+> So to use swayward shadows, you'll need to configure layer-shell clients to remove their own margins or shadows.
 
 ```kdl
 // Add a shadow for fuzzel.
@@ -190,24 +191,6 @@ layer-rule {
     match namespace="^launcher$"
 
     geometry-corner-radius 12
-}
-```
-
-#### `place-within-backdrop`
-
-<sup>Since: 25.05</sup>
-
-Set to `true` to place the surface into the backdrop visible in the [Overview](./Overview.md) and between workspaces.
-
-This will only work for *background* layer surfaces that ignore exclusive zones (typical for wallpaper tools).
-Layers within the backdrop will ignore all input.
-
-```kdl
-// Put swaybg inside the overview backdrop.
-layer-rule {
-    match namespace="^wallpaper$"
-
-    place-within-backdrop true
 }
 ```
 
@@ -269,7 +252,7 @@ Other properties apply independently.
 > This block affects only pop-ups created by the app via Wayland's [xdg-popup](https://wayland.app/protocols/xdg-shell#xdg_popup) (which should be most of them).
 >
 > Some desktop shells will emulate pop-ups by drawing something that looks like a pop-up inside a regular layer surface.
-> As far as niri is concerned, those are just layer surfaces and not pop-ups, so this block won't apply to them.
+> As far as swayward is concerned, those are just layer surfaces and not pop-ups, so this block won't apply to them.
 >
 > This block also does not affect input-method pop-ups, such as Fcitx.
 
@@ -292,3 +275,7 @@ layer-rule {
 
 Keep in mind that the background effect will look right only if the pop-up is shaped like a (rounded) rectangle, and the layer surface correctly sets its Wayland geometry to exclude any shadows.
 Pop-ups with custom shapes will need the app to implement the [ext-background-effect protocol](https://wayland.app/protocols/ext-background-effect-v1) to work properly.
+
+---
+
+*This page is adapted from the niri documentation.*

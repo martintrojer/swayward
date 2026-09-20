@@ -1,5 +1,5 @@
 On a TTY, only one frame can be submitted to an output at a time, and the compositor must wait until the output repaints (indicated by a VBlank) to be able to submit the next frame.
-In niri we keep track of this via the `RedrawState` enum that you can find in an `OutputState`.
+In swayward we keep track of this via the `RedrawState` enum that you can find in an `OutputState`.
 
 Here's a diagram of state transitions for the `RedrawState` state machine:
 
@@ -10,7 +10,7 @@ Here's a diagram of state transitions for the `RedrawState` state machine:
 
 `Idle` is the default state, when the output does not need to be repainted.
 Any operation that may cause the screen to update calls `queue_redraw()`, which moves the output to a `Queued` state.
-Then, at the end of an event loop dispatch, niri calls `redraw()` for every `Queued` output.
+Then, at the end of an event loop dispatch, swayward calls `redraw()` for every `Queued` output.
 
 If the redraw causes damage (i.e. something on the output changed), we move into the `WaitingForVBlank` state, since we cannot redraw until we receive a VBlank event.
 However, if there's no damage, we do not return to `Idle` right away.
@@ -20,3 +20,7 @@ This is necessary in order to throttle frame callbacks sent to applications to a
 Without this throttling, applications can start continuously redrawing without damage (for instance, if the application window is partially off-screen, and it is only the off-screen part that changes), and eating a lot of CPU in the process.
 
 Then, either the estimated VBlank timer completes, and we go back to `Idle`, or maybe we call `queue_redraw()` once more and try to redraw again.
+
+---
+
+*This page is adapted from the niri documentation.*
