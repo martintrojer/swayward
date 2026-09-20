@@ -1,0 +1,22 @@
+#!/usr/bin/env python3
+"""Extract per-assertion TAP results from a conformance run log."""
+import re,sys,json
+def parse(path):
+    plan=None; seen={}
+    for line in open(path,errors='replace'):
+        line=line.rstrip('\n')
+        m=re.match(r'^1\.\.(\d+)\s*$',line)
+        if m and plan is None: plan=int(m.group(1)); continue
+        m=re.match(r'^(not ok|ok)\s+(\d+)\s*(.*)$',line)
+        if not m: continue
+        status,num,rest=m.group(1),int(m.group(2)),m.group(3)
+        if num in seen: continue          # only the first emission counts
+        skip=re.search(r'#\s*skip\s*(.*)$',rest,re.I)
+        desc=re.sub(r'^-\s*','',rest.split('#')[0]).strip()
+        seen[num]={'n':num,
+                   'status':'skip' if skip else ('pass' if status=='ok' else 'fail'),
+                   'desc':desc,
+                   'skip_reason':(skip.group(1).strip() if skip else None)}
+    return plan,[seen[k] for k in sorted(seen)]
+plan,items=parse(sys.argv[1])
+print(json.dumps({'plan':plan,'assertions':items},indent=1))

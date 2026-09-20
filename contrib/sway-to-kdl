@@ -1,0 +1,1410 @@
+#!/usr/bin/env python3
+"""Translate a sway or SwayFX config to loadable swayward KDL."""
+
+from __future__ import annotations
+
+import argparse
+import glob
+import json
+import re
+import sys
+from pathlib import Path
+
+
+MODIFIER_ALIASES = {
+    "Mod4": "Super",
+    "Mod1": "Alt",
+    "Shift": "Shift",
+    "Lock": "Lock",
+    "Control": "Control",
+    "Ctrl": "Ctrl",
+    "Alt": "Alt",
+    "Mod2": "Num",
+    "Super": "Super",
+    # sway spells an XKB group qualifier Group1..Group4, with Mode_switch
+    # as an alias for Group2. The typed KDL parser accepts the same names.
+    "Group1": "Group1",
+    "Group2": "Group2",
+    "Group3": "Group3",
+    "Group4": "Group4",
+    "Mode_switch": "Mode_switch",
+}
+
+
+class Translator:
+    def __init__(self) -> None:
+        self.variables: dict[str, str] = {}
+        self.binds: dict[str, str] = {}
+        self.binding_modes: list[tuple[str, list[str]]] = []
+        # Sway defaults focus_follows_mouse to yes; swayward defaults it off.
+        self.inputs: dict[str, list[str]] = {"": ["focus-follows-mouse"]}
+        self.sections: list[str] = []
+        self.blur_settings: dict[str, str] = {}
+        self.layout_settings: list[str] = []
+        self.workspace_layout_settings: dict[str, list[str]] = {}
+        self.titlebar_font: str | None = None
+        self.titlebar_colors: dict[str, tuple[str, str]] = {}
+        self.titlebar_padding: tuple[int, int] | None = None
+        self.urgent_timeout_ms: int | None = None
+        self.manual: list[str] = []
+        self.visited: set[Path] = set()
+
+    @staticmethod
+    def quote(value: str) -> str:
+        return json.dumps(value)
+
+    def expand(self, text: str) -> str:
+        variables = sorted(self.variables, key=len, reverse=True)
+        output: list[str] = []
+        index = 0
+        while index < len(text):
+            if text[index : index + 2] == "$$":
+                output.append(r"\$")
+                index += 2
+                continue
+            if text[index : index + 2] == r"\$":
+                output.append(r"\$")
+                index += 2
+                continue
+            name = next(
+                (name for name in variables if text.startswith(name, index)), None
+            )
+            if name is not None:
+                output.append(self.variables[name])
+                index += len(name)
+                continue
+            output.append(text[index])
+            index += 1
+        return "".join(output)
+
+    def warn(self, source: Path, line: int, text: str, reason: str) -> None:
+        location = f"{source}:{line}" if line else str(source)
+        item = f"{location}: {reason}: {text.strip()}"
+        self.manual.append(item)
+        self.sections.append(f"// sway-to-kdl: {item}")
+
+    def satisfied(self, text: str) -> None:
+        self.sections.append(
+            f"// sway-to-kdl: satisfied by swayward defaults: {text.strip()}"
+        )
+
+    def parse(self, path: Path) -> None:
+        path = path.expanduser().resolve()
+        if path in self.visited:
+            return
+        try:
+            lines = path.read_text().splitlines()
+        except OSError as error:
+            self.warn(path, 0, "include", f"cannot read include: {error}")
+            return
+        self.visited.add(path)
+
+        index = 0
+        while index < len(lines):
+            line_no = index + 1
+            text = lines[index].strip()
+            index += 1
+            if not text or text.startswith("#"):
+                continue
+            while text.endswith("\\") and index < len(lines):
+                text = text[:-1] + " " + lines[index].strip()
+                index += 1
+
+            if match := re.fullmatch(r"set\s+(\$+\w+)\s+(.+)", text):
+                value = self.expand(match.group(2).strip())
+                if re.search(r"(?<!\\)\$\w+", value):
+                    self.warn(path, line_no, text, "variable value could not be fully expanded")
+                else:
+                    self.variables[match.group(1)] = value.replace(r"\$", "$")
+                continue
+            text = self.expand(text)
+            if re.search(r"(?<!\\)\$\w+", text):
+                self.warn(path, line_no, text, "undefined variable")
+                continue
+            text = text.replace(r"\$", "$")
+
+            if text.startswith("include "):
+                self.translate_include(path, line_no, text)
+            elif re.match(r"bar\s*\{", text):
+                block, index = self.block(lines, index, text)
+                self.warn(
+                    path,
+                    line_no,
+                    " | ".join(block),
+                    "bar blocks are unsupported; use waybar",
+                )
+            elif match := re.match(r'mode\s+("[^"]+"|\S+)\s*\{', text):
+                block, index = self.block(lines, index, text)
+                self.translate_mode(path, line_no, match.group(1).strip('"'), block[1:-1])
+            elif match := re.match(r"(input|output)\s+(.+?)\s*\{", text):
+                block, index = self.block(lines, index, text)
+                self.translate_device_block(
+                    path, line_no, match.group(1), match.group(2), block[1:-1]
+                )
+            elif match := re.match(r"output\s+(\S+)\s+(.+)", text):
+                self.translate_device_block(
+                    path, line_no, "output", match.group(1), [match.group(2)]
+                )
+            elif match := re.match(r"(bindsym|bindcode)\s+(.+)", text):
+                self.translate_bind(path, line_no, match.group(1), match.group(2))
+            elif match := re.fullmatch(r"(exec|exec_always)(?:\s+(.*))?", text):
+                self.translate_exec(
+                    path, line_no, text, match.group(1), match.group(2) or ""
+                )
+            elif re.fullmatch(r"nop(?:\s+.*)?", text):
+                self.sections.append(f"// sway {text}")
+            elif re.match(r"(?:un)?bind(?:gesture|switch)(?:\s|$)", text):
+                self.refuse_unsupported_binding(path, line_no, text)
+            elif match := re.match(
+                r'for_window\s*(\[(?:[^"\]]|"(?:\\.|[^"])*")+\])\s+(.+)', text
+            ):
+                self.translate_for_window(path, line_no, match.group(1), match.group(2))
+            elif text.startswith("for_window"):
+                self.warn(
+                    path,
+                    line_no,
+                    text,
+                    "criteria need manual conversion to a window-rule match",
+                )
+            elif match := re.fullmatch(r"no_focus\s+(\[[^]]+\])", text):
+                self.translate_no_focus(path, line_no, match.group(1))
+            elif match := re.match(r"assign\s+(\[[^]]+\])\s+(?:→|->)?\s*(.+)", text):
+                self.translate_assign(path, line_no, match.group(1), match.group(2))
+            elif match := re.fullmatch(r"workspace\s+(.+?)\s+output\s+(.+)", text):
+                outputs = match.group(2).split()
+                assignment = " ".join(
+                    self.quote(output.strip(chr(34))) for output in outputs
+                )
+                # Always emit the sway node, even for a single output. A sway
+                # `workspace <name> output <output>` is an ASSIGNMENT consulted
+                # by workspace_next_name, whereas `open-on-output` is niri's
+                # own directive for a workspace that is PRE-CREATED. Collapsing
+                # to the latter put every assigned workspace on the first
+                # output at startup.
+                node = "sway-output-assignment"
+                self.sections += [
+                    f"workspace {self.quote(match.group(1).strip(chr(34)))} {{",
+                    f"    {node} {assignment}",
+                    "}",
+                ]
+            elif match := re.fullmatch(r"font\s+(?:pango:)?(.+)", text):
+                self.titlebar_font = match.group(1)
+            elif match := re.fullmatch(
+                r"client\.(focused|focused_inactive|focused_tab_title|unfocused|urgent)\s+(.+)",
+                text,
+            ):
+                self.translate_client_colors(path, line_no, text, match.group(1), match.group(2))
+            elif match := re.fullmatch(r"(client\.(?:background|placeholder))(?:\s+.*)?", text):
+                self.warn(
+                    path,
+                    line_no,
+                    text,
+                    f"{match.group(1)} is accepted but ignored by sway itself "
+                    "(sway/sway/commands.c:51,55; sway/sway/commands/client.c:79-81)",
+                )
+            elif match := re.fullmatch(
+                r"gaps\s+(inner|outer|horizontal|vertical|top|right|bottom|left)\s+(.+)",
+                text,
+                re.IGNORECASE,
+            ):
+                self.translate_gaps(path, line_no, text, match.group(1), match.group(2))
+            elif text.lower().startswith("gaps "):
+                self.warn(path, line_no, text, "unsupported runtime or malformed gaps directive")
+            elif match := re.fullmatch(
+                r"workspace\s+(.+?)\s+gaps\s+(inner|outer|horizontal|vertical|top|right|bottom|left)\s+(.+)",
+                text,
+                re.IGNORECASE,
+            ):
+                self.translate_gaps(
+                    path,
+                    line_no,
+                    text,
+                    match.group(2),
+                    match.group(3),
+                    match.group(1).strip(chr(34)),
+                )
+            elif match := re.fullmatch(
+                r"(default_border|default_floating_border|new_window|new_float)\s+(.+)",
+                text,
+            ):
+                self.translate_default_border(
+                    path, line_no, text, match.group(1), match.group(2)
+                )
+            elif match := re.fullmatch(
+                r"(floating_minimum_size|floating_maximum_size)\s+(-?\d+)\s+(x)\s+(-?\d+)",
+                text,
+            ):
+                width, height = int(match.group(2)), int(match.group(4))
+                if width < -1 or height < -1:
+                    self.warn(path, line_no, text, "floating size below -1 is unsupported")
+                else:
+                    name = match.group(1).replace("_", "-")
+                    self.layout_settings.append(f"    {name} {width} {height}")
+            elif match := re.fullmatch(r"default_orientation\s+(\S+)", text, re.IGNORECASE):
+                value = match.group(1).lower()
+                if value in {"horizontal", "vertical", "auto"}:
+                    self.replace_layout_setting(
+                        "default-orientation", f'    default-orientation "{value}"'
+                    )
+                    self.sections.append(f"// sway-to-kdl: sway {text}")
+                else:
+                    self.warn(
+                        path,
+                        line_no,
+                        text,
+                        "expected default_orientation horizontal|vertical|auto",
+                    )
+            elif match := re.fullmatch(r"workspace_layout\s+(\S+)", text, re.IGNORECASE):
+                value = match.group(1).lower()
+                if value in {"default", "stacking", "tabbed"}:
+                    self.layout_settings.append(f'    workspace-layout "{value}"')
+                else:
+                    self.warn(path, line_no, text, "unsupported workspace layout")
+            elif match := re.fullmatch(r"hide_edge_borders\s+(.+)", text):
+                arguments = match.group(1).split()
+                values = {"none", "vertical", "horizontal", "both", "smart", "smart_no_gaps"}
+                if arguments[:1] == ["--i3"] and len(arguments) == 2 and arguments[1] in values:
+                    self.warn(path, line_no, text, "hide_lone_tab has no exact swayward equivalent")
+                elif len(arguments) != 1 or arguments[0] not in values:
+                    self.warn(
+                        path,
+                        line_no,
+                        text,
+                        "expected hide_edge_borders [--i3] none|vertical|horizontal|both|smart|smart_no_gaps",
+                    )
+                else:
+                    value = arguments[0]
+                    edge = "none" if value.startswith("smart") else value
+                    self.replace_layout_setting("hide-edge-borders", f'    hide-edge-borders "{edge}"')
+                    if value.startswith("smart"):
+                        smart = "on" if value == "smart" else "no-gaps"
+                        self.replace_layout_setting("smart-borders", f'    smart-borders "{smart}"')
+            elif match := re.fullmatch(r"smart_borders\s+(\S+)", text):
+                value = match.group(1)
+                enabled = {"1", "yes", "on", "true", "enable", "enabled", "active"}
+                current = next(
+                    (
+                        setting.rsplit('"', 2)[1]
+                        for setting in self.layout_settings
+                        if setting.startswith("    smart-borders ")
+                    ),
+                    "off",
+                )
+                if value == "no_gaps":
+                    smart = "no-gaps"
+                elif value.lower() in enabled:
+                    smart = "on"
+                elif value.lower() == "toggle":
+                    smart = "off" if current == "on" else "on"
+                else:
+                    # sway's parse_boolean treats every other value as false.
+                    smart = "off"
+                self.replace_layout_setting("smart-borders", f'    smart-borders "{smart}"')
+            elif match := re.fullmatch(r"smart_gaps\s+(\S+)", text, re.IGNORECASE):
+                if match.group(1).lower() == "off":
+                    self.satisfied(text)
+                else:
+                    self.warn(
+                        path,
+                        line_no,
+                        text,
+                        "smart_gaps requires dynamic workspace-box recomputation",
+                    )
+            elif match := re.fullmatch(r"force_focus_wrapping\s+(\S+)", text):
+                enabled = match.group(1).lower() in {
+                    "1", "yes", "on", "true", "enable", "enabled", "active"
+                }
+                self.layout_settings.append(
+                    f'    focus-wrapping "{"force" if enabled else "yes"}"'
+                )
+            elif match := re.fullmatch(r"popup_during_fullscreen\s+(\S+?);?", text):
+                value = match.group(1).lower()
+                if value in {"smart", "ignore", "leave_fullscreen"}:
+                    self.sections.append(
+                        f"popup-during-fullscreen {self.quote(value)}"
+                    )
+                else:
+                    self.warn(
+                        path,
+                        line_no,
+                        text,
+                        "expected popup_during_fullscreen smart|ignore|leave_fullscreen",
+                    )
+            elif text.startswith("popup_during_fullscreen"):
+                self.warn(
+                    path,
+                    line_no,
+                    text,
+                    "expected popup_during_fullscreen smart|ignore|leave_fullscreen",
+                )
+            elif match := re.fullmatch(r"workspace_auto_back_and_forth\s+(\S+)", text):
+                enabled = match.group(1).lower() in {
+                    "1", "yes", "on", "true", "enable", "enabled", "active"
+                }
+                self.inputs.setdefault("", []).append(
+                    "workspace-auto-back-and-forth" if enabled
+                    else "workspace-auto-back-and-forth false"
+                )
+            elif match := re.fullmatch(r"focus_follows_mouse\s+(\S+)", text):
+                value = match.group(1)
+                settings = self.inputs.setdefault("", [])
+                settings[:] = [item for item in settings if item != "focus-follows-mouse"]
+                if value == "yes":
+                    settings.append("focus-follows-mouse")
+                elif value == "no":
+                    pass
+                elif value == "always":
+                    self.warn(
+                        path,
+                        line_no,
+                        text,
+                        "focus_follows_mouse always has no exact swayward equivalent",
+                    )
+                else:
+                    self.warn(
+                        path,
+                        line_no,
+                        text,
+                        "expected focus_follows_mouse no|yes|always",
+                    )
+            elif match := re.fullmatch(r"focus_wrapping\s+(\S+)", text, re.IGNORECASE):
+                value = match.group(1).lower()
+                if value in {"1", "yes", "on", "true", "enable", "enabled", "active"}:
+                    self.layout_settings.append('    focus-wrapping "yes"')
+                elif value in {"no", "force", "workspace"}:
+                    self.layout_settings.append(f'    focus-wrapping "{value}"')
+                else:
+                    self.warn(
+                        path,
+                        line_no,
+                        text,
+                        "unknown focus wrapping mode is refused instead of treated as no",
+                    )
+            elif match := re.fullmatch(r"floating_modifier\s+(.+)", text, re.IGNORECASE):
+                self.translate_floating_modifier(path, line_no, text, match.group(1))
+            elif match := re.fullmatch(r"focus_on_window_activation\s+(\S+)", text):
+                actions = {"urgent": "set-urgent", "focus": "focus", "none": "ignore"}
+                if action := actions.get(match.group(1)):
+                    self.sections += [
+                        "window-rule {",
+                        f"    on-xdg-activate {self.quote(action)}",
+                        "}",
+                    ]
+                else:
+                    self.warn(
+                        path,
+                        line_no,
+                        text,
+                        "visibility-dependent smart mode has no window-rule equivalent",
+                    )
+            elif match := re.fullmatch(
+                r"force_display_urgency_hint\s+(-?\d+)(?:\s*ms)?",
+                text,
+                re.IGNORECASE,
+            ):
+                self.urgent_timeout_ms = max(0, int(match.group(1)))
+            elif match := re.fullmatch(r"mouse_warping\s+(\S+)", text, re.IGNORECASE):
+                self.translate_mouse_warping(path, line_no, text, match.group(1))
+            elif match := re.fullmatch(r"swaybg_command\s+(.+)", text):
+                if match.group(1).strip() == "-":
+                    self.satisfied(text)
+                else:
+                    self.warn(
+                        path,
+                        line_no,
+                        text,
+                        "custom swaybg launch command is unsupported",
+                    )
+            elif not self.translate_swayfx(path, line_no, text):
+                self.warn(path, line_no, text, "unhandled")
+
+    def translate_default_border(
+        self, source: Path, line: int, text: str, directive: str, arguments: str
+    ) -> None:
+        words = arguments.split()
+        style = words[0] if words else ""
+        width = None
+        if match := re.fullmatch(r"(\d+)pixel", style):
+            if len(words) != 1:
+                self.warn(source, line, text, "unsupported default border")
+                return
+            style = "pixel"
+            width = match.group(1)
+        elif (
+            len(words) == 2
+            and words[1].isdigit()
+            and int(words[1]) <= 65535
+            and style in {"normal", "pixel"}
+        ):
+            width = words[1]
+        elif len(words) != 1 or style not in {"none", "normal", "pixel"}:
+            self.warn(source, line, text, "unsupported default border")
+            return
+        if style == "none" and len(words) != 1:
+            self.warn(source, line, text, "unsupported default border")
+            return
+
+        floating = directive in {"default_floating_border", "new_float"}
+        prefix = "sway-floating-border" if floating else "sway-border"
+        self.sections += [
+            f"// sway {text}",
+            "window-rule {",
+            f"    {prefix} {self.quote(style)}",
+            f"    {prefix}-width {width or 2}",
+            "}",
+        ]
+
+    def translate_floating_modifier(
+        self, source: Path, line: int, text: str, arguments: str
+    ) -> None:
+        words = arguments.split()
+        if not words:
+            self.warn(
+                source,
+                line,
+                text,
+                "expected floating_modifier <mod> [inverse|normal]",
+            )
+            return
+        modifier = words[0]
+        if modifier.lower() == "none":
+            self.replace_input_setting("mod-key", 'mod-key "None"')
+            return
+        translated = self.translate_modifier(modifier)
+        if translated not in {"Ctrl", "Shift", "Alt", "Super"}:
+            self.warn(source, line, text, f"unsupported modifier {modifier}")
+            return
+        mode = words[1].lower() if len(words) == 2 else "normal"
+        if mode == "inverse":
+            self.warn(
+                source,
+                line,
+                text,
+                "inverse move/resize buttons have no exact swayward equivalent",
+            )
+            return
+        if mode != "normal":
+            self.warn(
+                source,
+                line,
+                text,
+                "expected floating_modifier <mod> [inverse|normal]",
+            )
+            return
+        self.replace_input_setting("mod-key", f"mod-key {self.quote(translated)}")
+
+    def replace_input_setting(self, name: str, setting: str) -> None:
+        settings = self.inputs.setdefault("", [])
+        settings[:] = [item for item in settings if not item.startswith(f"{name} ")]
+        settings.append(setting)
+
+    def translate_mouse_warping(
+        self, source: Path, line: int, text: str, value: str
+    ) -> None:
+        value = value.lower()
+        if value == "none":
+            return
+        if value == "container":
+            self.inputs.setdefault("", []).append(
+                'warp-mouse-to-focus mode="center-xy"'
+            )
+            return
+        reason = (
+            "mouse_warping output has no exact swayward equivalent"
+            if value == "output"
+            else "expected mouse_warping output|container|none"
+        )
+        self.warn(source, line, text, reason)
+
+    def translate_client_colors(
+        self, source: Path, line: int, text: str, state: str, arguments: str
+    ) -> None:
+        colors = arguments.split()
+        if len(colors) < 3 or len(colors) > 5:
+            self.warn(source, line, text, "client color requires 3 to 5 colors")
+            return
+        state = state.replace("_", "-")
+        self.titlebar_colors[state] = (colors[1], colors[2])
+        ignored = ["border"]
+        if len(colors) > 3:
+            ignored.append("indicator")
+        if len(colors) > 4:
+            ignored.append("child_border")
+        self.warn(
+            source,
+            line,
+            text,
+            f"client.{state} {'/'.join(ignored)} colors have no titlebar equivalent",
+        )
+
+    def translate_include(self, source: Path, line: int, text: str) -> None:
+        pattern = text.removeprefix("include ").strip().strip('"\'')
+        if "`" in pattern or "$(" in pattern:
+            self.warn(source, line, text, "include command substitution is refused")
+            return
+        pattern_path = Path(pattern).expanduser()
+        if not pattern_path.is_absolute():
+            pattern_path = source.parent / pattern_path
+        matches = sorted(glob.glob(str(pattern_path)))
+        if not matches:
+            self.warn(source, line, text, "include matched no files")
+        for included in matches:
+            self.parse(Path(included))
+
+    @staticmethod
+    def block(lines: list[str], index: int, first: str) -> tuple[list[str], int]:
+        block = [first]
+        depth = first.count("{") - first.count("}")
+        while depth > 0 and index < len(lines):
+            line = lines[index]
+            block.append(line.strip())
+            depth += line.count("{") - line.count("}")
+            index += 1
+        return block, index
+
+    def refuse_unsupported_binding(self, source: Path, line: int, text: str) -> None:
+        directive = text.split(None, 1)[0]
+        if directive in {"bindgesture", "unbindgesture"}:
+            reason = (
+                "gesture events cannot be bound to sway commands; "
+                "only built-in compositor gestures and client forwarding are available"
+            )
+        else:
+            reason = (
+                "switch-events cannot preserve sway command bindings, binding modes, "
+                "toggle, --locked, or --reload semantics"
+            )
+        self.warn(source, line, text, reason)
+
+    def translate_exec(
+        self, source: Path, line: int, text: str, directive: str, command: str
+    ) -> None:
+        command = command.strip()
+        if command.startswith("--no-startup-id") and (
+            len(command) == len("--no-startup-id")
+            or command[len("--no-startup-id")].isspace()
+        ):
+            command = command[len("--no-startup-id") :].strip()
+        if not command:
+            self.warn(source, line, text, f"Expected '{directive} <command>'")
+            return
+        if command[0] in "\"'" and command[-1:] == command[0]:
+            command = command[1:-1]
+        if directive == "exec_always":
+            self.warn(
+                source,
+                line,
+                text,
+                "exec_always reload behavior is not preserved; "
+                "spawn-sh-at-startup runs only when swayward starts "
+                "(sway/sway/commands/exec.c:12-17; exec_always.c:83; "
+                "src/main.rs:162,270-275)",
+            )
+        self.sections.append(f"spawn-sh-at-startup {self.quote(command)}")
+
+    def translate_mode(
+        self, source: Path, line: int, name: str, body: list[str]
+    ) -> None:
+        mode_binds: dict[str, str] = {}
+        previous = self.binds
+        self.binds = mode_binds
+        for offset, text in enumerate(body, 1):
+            text = self.expand(text.strip())
+            if not text or text.startswith("#"):
+                continue
+            if match := re.match(r"(bindsym|bindcode)\s+(.+)", text):
+                self.translate_bind(source, line + offset, match.group(1), match.group(2))
+            elif re.match(r"(?:un)?bind(?:gesture|switch)(?:\s|$)", text):
+                self.refuse_unsupported_binding(source, line + offset, text)
+            else:
+                self.warn(source, line + offset, text, f"unhandled directive in mode {name}")
+        self.binds = previous
+        self.binding_modes.append((name, list(mode_binds.values())))
+
+    def translate_bind(self, source: Path, line: int, kind: str, rest: str) -> None:
+        properties: list[str] = []
+        mouse_regions: set[str] = set()
+        exclude_titlebar = False
+        region_options = {
+            "--whole-window": {"titlebar", "border", "contents"},
+            "--border": {"border"},
+            "--exclude-titlebar": set(),
+        }
+        rest = rest.strip()
+        while rest.startswith("--"):
+            input_match = re.match(r'--input-device=(?:"([^"]*)"|\'([^\']*)\'|(\S+))\s+', rest)
+            if input_match:
+                device = next(value for value in input_match.groups() if value is not None)
+                properties.append(f"input-device={self.quote(device)}")
+                rest = rest[input_match.end() :]
+                continue
+            option, separator, rest = rest.partition(" ")
+            if not separator:
+                self.warn(source, line, rest, f"malformed {kind}")
+                return
+            rest = rest.lstrip()
+            if option == "--locked":
+                properties.append("allow-when-locked=true")
+            elif option == "--no-repeat":
+                properties.append("repeat=false")
+            elif option == "--release":
+                properties.extend(("release=true", "repeat=false"))
+            elif option in region_options:
+                mouse_regions.update(region_options[option])
+                exclude_titlebar |= option == "--exclude-titlebar"
+            else:
+                self.warn(source, line, rest, f"unsupported {kind} option {option}")
+                return
+
+        key, separator, command = rest.partition(" ")
+        if not separator or not command.strip():
+            self.warn(source, line, rest, f"malformed {kind}")
+            return
+        if kind == "bindcode":
+            parts = key.split("+")
+            code = parts.pop()
+            if not code.isdecimal():
+                self.warn(source, line, rest, "bindcode key must be numeric")
+                return
+            key = "+".join([*parts, f"code:{code}"])
+
+        command = command.strip()
+        while command.startswith("--"):
+            option, separator, remainder = command.partition(" ")
+            if not separator:
+                break
+            if option == "--release":
+                properties.extend(("release=true", "repeat=false"))
+            elif option in region_options:
+                mouse_regions.update(region_options[option])
+                exclude_titlebar |= option == "--exclude-titlebar"
+            else:
+                break
+            command = remainder.lstrip()
+        if exclude_titlebar:
+            mouse_regions.discard("titlebar")
+            mouse_regions.update(("border", "contents"))
+        if mouse_regions:
+            ordered_regions = ("titlebar", "border", "contents")
+            regions = "+".join(region for region in ordered_regions if region in mouse_regions)
+            properties.append(f'mouse-regions="{regions}"')
+        command = self.translate_command(command)
+        if command is None:
+            self.warn(
+                source,
+                line,
+                rest,
+                "command is outside swayward's current command subset",
+            )
+            return
+        properties_text = " " + " ".join(properties) if properties else ""
+        original_key = key
+        key = self.translate_key(key)
+        if key is None:
+            unsupported = next(
+                (
+                    part
+                    for part in original_key.split("+")[:-1]
+                    if not part.lower().startswith("button")
+                ),
+                original_key,
+            )
+            reason = (
+                f"unsupported mouse button {original_key}"
+                if original_key.lower().startswith("button")
+                else f"unsupported modifier {unsupported}"
+            )
+            self.warn(source, line, rest, reason)
+            return
+        if key.isdecimal():
+            key = self.quote(key)
+        input_device = next(
+            (prop for prop in properties if prop.startswith("input-device=")),
+            'input-device="*"',
+        )
+        binding_key = (key, input_device, "release=true" in properties)
+        if binding_key in self.binds:
+            self.warn(source, line, rest, f"duplicate binding for {key}; kept the first")
+            return
+        self.binds[binding_key] = (
+            f"    {key}{properties_text} {{ command {self.quote(command)}; }}"
+        )
+
+    @staticmethod
+    def translate_modifier(modifier: str) -> str | None:
+        return next(
+            (
+                translated
+                for name, translated in MODIFIER_ALIASES.items()
+                if name.lower() == modifier.lower()
+            ),
+            None,
+        )
+
+    @staticmethod
+    def translate_key(key: str) -> str | None:
+        aliases = {
+            "button1": "MouseLeft",
+            "button2": "MouseMiddle",
+            "button3": "MouseRight",
+            "button4": "WheelScrollUp",
+            "button5": "WheelScrollDown",
+            "button6": "WheelScrollLeft",
+            "button7": "WheelScrollRight",
+            "button8": "MouseBack",
+            "button9": "MouseForward",
+            "BTN_LEFT": "MouseLeft",
+            "BTN_MIDDLE": "MouseMiddle",
+            "BTN_RIGHT": "MouseRight",
+            "BTN_SIDE": "MouseBack",
+            "BTN_BACK": "MouseBack",
+            "BTN_EXTRA": "MouseForward",
+            "BTN_FORWARD": "MouseForward",
+        }
+        parts = key.split("+")
+        for part in parts[:-1]:
+            if part not in MODIFIER_ALIASES:
+                return None
+        if any(
+            (part.lower().startswith("button") or part.startswith("BTN_"))
+            and part not in aliases
+            for part in parts
+        ):
+            return None
+        return "+".join({**MODIFIER_ALIASES, **aliases}.get(part, part) for part in parts)
+
+    @staticmethod
+    def translate_command(command: str) -> str | None:
+        command = re.sub(
+            r"^move\s+container\s+to\s+workspace", "move to workspace", command
+        )
+        command = command.replace(r"\@", "@")
+        command = re.sub(r"^splith$", "split h", command)
+        command = re.sub(r"^splitv$", "split v", command)
+        command = re.sub(
+            r"^(resize\s+(?:grow|shrink)\s+(?:width|height))\s+(\d+)px$",
+            r"\1 \2 px",
+            command,
+        )
+        return command
+
+    def translate_assign(
+        self, source: Path, line: int, criteria: str, target: str
+    ) -> None:
+        match = self.translate_window_criteria(source, line, "assign", criteria)
+        if match is None:
+            return
+        target = target.strip()
+        property_name = "open-on-workspace"
+        if target.startswith("output "):
+            property_name = "open-on-output"
+            target = target.removeprefix("output ").strip()
+        else:
+            if target.startswith("workspace "):
+                target = target.removeprefix("workspace ").strip()
+            if target.startswith("number "):
+                property_name = "open-on-workspace-number"
+                target = target.removeprefix("number ").strip()
+                number = target.strip(chr(34))
+                if not number or not number[0].isdigit():
+                    self.warn(
+                        source,
+                        line,
+                        f"assign {criteria} number {target}",
+                        f"invalid workspace number {number!r}",
+                    )
+                    return
+        self.sections += [
+            "window-rule {",
+            "    match " + self.render_window_match(match),
+            f"    {property_name} {self.quote(target.strip(chr(34)))}",
+            "}",
+        ]
+
+    def translate_window_criteria(
+        self, source: Path, line: int, directive: str, criteria: str
+    ) -> list[tuple[str, str | bool]] | None:
+        token = re.compile(
+            r'(?:(\w+)=(?:"((?:\\.|[^"])*)"|([^ "\]]+))|(tiling|floating))'
+        )
+        matches = list(token.finditer(criteria[1:-1]))
+        if not matches or " ".join(match.group(0) for match in matches) != criteria[1:-1]:
+            self.warn(
+                source,
+                line,
+                f"{directive} {criteria}",
+                "criteria need manual conversion to a window-rule match",
+            )
+            return None
+        translated = []
+        for criterion in matches:
+            key = criterion.group(1) or criterion.group(4)
+            value = criterion.group(2) or criterion.group(3)
+            if key in {"tiling_from", "floating_from"}:
+                self.warn(
+                    source,
+                    line,
+                    f"{directive} {criteria}",
+                    f"i3-only provenance criterion {key} has no sway equivalent",
+                )
+                return None
+            if key in {"class", "instance", "id", "window_role", "window_type"}:
+                self.warn(
+                    source,
+                    line,
+                    f"{directive} {criteria}",
+                    f"X11-only criterion {key} has no native Wayland equivalent",
+                )
+                return None
+            if key == "workspace":
+                self.warn(
+                    source,
+                    line,
+                    f"{directive} {criteria}",
+                    "workspace criterion has no window-rule equivalent",
+                )
+                return None
+            if key in {"tiling", "floating"}:
+                translated.append(("is-floating", key == "floating"))
+            elif key == "urgent" and value in {
+                "latest", "newest", "last", "recent", "oldest", "first"
+            }:
+                translated.append(("is-urgent", True))
+            elif key in {"app_id", "title"}:
+                translated.append(("title" if key == "title" else "app-id", value))
+            else:
+                self.warn(
+                    source,
+                    line,
+                    f"{directive} {criteria}",
+                    "criteria need manual conversion to a window-rule match",
+                )
+                return None
+        return translated
+
+    def render_window_match(self, match: list[tuple[str, str | bool]]) -> str:
+        return " ".join(
+            f"{field}={str(value).lower() if isinstance(value, bool) else self.quote(value)}"
+            for field, value in match
+        )
+
+    def translate_no_focus(self, source: Path, line: int, criteria: str) -> None:
+        match = self.translate_window_criteria(source, line, "no_focus", criteria)
+        if match is None:
+            return
+        self.sections += [
+            "window-rule {",
+            "    match " + self.render_window_match(match),
+            "    open-focused false",
+            "}",
+        ]
+
+    def translate_for_window(
+        self, source: Path, line: int, criteria: str, command: str
+    ) -> None:
+        match = self.translate_window_criteria(source, line, "for_window", criteria)
+        if match is None:
+            return
+        effects: list[str] = []
+        for directive in re.split(r"\s*,\s*|\s*;\s*", command):
+            words = directive.split()
+            if words[:1] == ["border"]:
+                if words == ["border", "none"]:
+                    effects.append('    sway-border "none"')
+                elif words == ["border", "pixel"]:
+                    effects.append('    sway-border "pixel"')
+                elif (
+                    len(words) == 3
+                    and words[:2] == ["border", "pixel"]
+                    and words[2].isdigit()
+                ):
+                    effects += [
+                        '    sway-border "pixel"',
+                        f"    sway-border-width {words[2]}",
+                    ]
+                else:
+                    self.warn(
+                        source,
+                        line,
+                        f"for_window {criteria} {directive}",
+                        "Expected 'border <none|normal|pixel|csd|toggle>' "
+                        "or 'border pixel <px>'",
+                    )
+            elif words == ["floating", "enable"]:
+                effects = [effect for effect in effects if not effect.startswith("    open-floating ")]
+                effects.append("    open-floating true")
+            elif words == ["floating", "disable"]:
+                effects = [effect for effect in effects if not effect.startswith("    open-floating ")]
+                effects.append("    open-floating false")
+            elif words == ["layout", "tabbed"]:
+                effects.append('    default-column-display "tabbed"')
+            elif words == ["focus"]:
+                effects.append("    open-focused true")
+            elif words[:1] == ["title_format"] and len(words) >= 2:
+                effects.append(f"    sway-for-window-command {self.quote(directive)}")
+            elif words[:1] == ["nop"]:
+                effects.append(f"    sway-for-window-command {self.quote(directive)}")
+            elif words in (["kill"], ["reload"], ["move", "scratchpad"]):
+                effects.append(f"    sway-for-window-command {self.quote(directive)}")
+            elif words[:1] == ["mark"]:
+                options = words[1:-1]
+                if (
+                    len(words) < 2
+                    or words[-1].startswith("--")
+                    or any(
+                        option not in {"--add", "--replace", "--toggle"}
+                        for option in options
+                    )
+                ):
+                    self.warn(
+                        source,
+                        line,
+                        f"for_window {criteria} {command}",
+                        "invalid mark command",
+                    )
+                    return
+                effects.append(f"    sway-for-window-command {self.quote(directive)}")
+            elif words[:2] == ["move", "workspace"] and len(words) == 3:
+                effects.append(f"    open-on-workspace {self.quote(words[2])}")
+            elif (
+                len(words) == 6
+                and words[:2] == ["resize", "set"]
+                and words[3] == "ppt"
+                and words[5] == "ppt"
+            ):
+                try:
+                    width = int(words[2])
+                    height = int(words[4])
+                except ValueError:
+                    width = height = -1
+                if width > 0 and height > 0:
+                    effects += [
+                        f"    default-column-width {{ proportion {width / 100:g}; }}",
+                        f"    default-window-height {{ proportion {height / 100:g}; }}",
+                    ]
+                else:
+                    self.warn(
+                        source,
+                        line,
+                        f"for_window {criteria} {directive}",
+                        "resize size needs manual conversion",
+                    )
+            elif words == ["move", "position", "center"]:
+                effects.append(
+                    f"    sway-for-window-command {self.quote('move position center')}"
+                )
+            elif len(words) == 2 and words[0] == "sticky" and words[1] in {
+                "enable",
+                "disable",
+                "toggle",
+            }:
+                effects.append(f"    sway-for-window-command {self.quote(directive)}")
+            elif words[:1] == ["dim_inactive"] and len(words) == 2:
+                effects.append(f"    opacity {1.0 - float(words[1]):g}")
+            elif words[:1] == ["corner_radius"] and len(words) == 2:
+                effects += [
+                    f"    geometry-corner-radius {words[1]}",
+                    "    clip-to-geometry true",
+                ]
+            elif words[:1] == ["blur"] and len(words) == 2:
+                effects += [
+                    "    background-effect {",
+                    f"        blur {str(words[1] in {'enable', 'on'}).lower()}",
+                    "    }",
+                ]
+            elif words[:1] == ["shadows"] and len(words) == 2:
+                effects += [
+                    "    shadow {",
+                    f"        {'on' if words[1] in {'enable', 'on'} else 'off'}",
+                    "    }",
+                ]
+            else:
+                self.warn(
+                    source,
+                    line,
+                    f"for_window {criteria} {directive}",
+                    "command needs manual conversion to window-rule properties",
+                )
+        if effects:
+            self.sections += [
+                "window-rule {",
+                "    match " + self.render_window_match(match),
+                *effects,
+                "}",
+            ]
+
+    def replace_layout_setting(self, name: str, setting: str) -> None:
+        self.layout_settings = [
+            existing
+            for existing in self.layout_settings
+            if not existing.startswith(f"    {name} ")
+        ]
+        self.layout_settings.append(setting)
+
+    def translate_gaps(
+        self,
+        source: Path,
+        line: int,
+        text: str,
+        kind: str,
+        raw_amount: str,
+        workspace: str | None = None,
+    ) -> None:
+        match = re.fullmatch(r"([+-]?\d+)(?:px)?", raw_amount, re.IGNORECASE)
+        if match is None:
+            self.warn(source, line, text, "gap amount must be an integer with optional px suffix")
+            return
+        amount = int(match.group(1))
+        kind = kind.lower()
+        settings = (
+            self.layout_settings
+            if workspace is None
+            else self.workspace_layout_settings.setdefault(workspace, [])
+        )
+        indent = "    " if workspace is None else "        "
+        if kind == "inner":
+            name = "gaps"
+            setting = f"{indent}gaps {max(amount, 0)}"
+        else:
+            sides = {
+                "outer": ("left", "right", "top", "bottom"),
+                "horizontal": ("left", "right"),
+                "vertical": ("top", "bottom"),
+                "top": ("top",),
+                "right": ("right",),
+                "bottom": ("bottom",),
+                "left": ("left",),
+            }[kind]
+            name = "outer-gaps"
+            existing = next(
+                (index for index, value in enumerate(settings) if value == f"{indent}outer-gaps {{"),
+                None,
+            )
+            values: dict[str, int] = {}
+            if existing is not None:
+                while existing < len(settings):
+                    value = settings.pop(existing)
+                    side = re.fullmatch(r"\s+(left|right|top|bottom) (-?\d+)", value)
+                    if side:
+                        values[side.group(1)] = int(side.group(2))
+                    if value.strip() == "}":
+                        break
+            values.update(dict.fromkeys(sides, amount))
+            settings += [f"{indent}outer-gaps {{"]
+            settings += [f"{indent}    {side} {value}" for side, value in values.items()]
+            settings += [f"{indent}}}"]
+            return
+        settings[:] = [value for value in settings if not value.startswith(f"{indent}{name} ")]
+        settings.append(setting)
+
+    def translate_device_block(
+        self, source: Path, line: int, kind: str, selector: str, body: list[str]
+    ) -> None:
+        selector = selector.strip().strip('"\'')
+        if kind == "input":
+            self.translate_input_block(source, line, selector, body)
+        else:
+            self.translate_output_block(source, line, selector, body)
+
+    def translate_input_block(
+        self, source: Path, line: int, selector: str, body: list[str]
+    ) -> None:
+        target = {"type:touchpad": "touchpad", "type:keyboard": "keyboard"}.get(
+            selector
+        )
+        if target is None:
+            self.warn(
+                source,
+                line,
+                f"input {selector} {{ ... }}",
+                "device-specific input selectors require manual conversion",
+            )
+            return
+        mappings = {
+            "tap": "tap",
+            "dwt": "dwt",
+            "dwtp": "dwtp",
+            "natural_scroll": "natural-scroll",
+            "middle_emulation": "middle-emulation",
+            "left_handed": "left-handed",
+            "repeat_delay": "repeat-delay",
+            "repeat_rate": "repeat-rate",
+            "xkb_layout": "layout",
+            "xkb_model": "model",
+            "xkb_options": "options",
+            "xkb_rules": "rules",
+            "xkb_variant": "variant",
+        }
+        translated: list[str] = []
+        xkb: list[str] = []
+        for item in body:
+            if not item or item.startswith("#"):
+                continue
+            words = item.split(None, 1)
+            if words[0] == "xkb_numlock" and target == "keyboard":
+                if len(words) == 1:
+                    comment = f"unhandled input directive: {item}"
+                    translated.append(f"        // sway-to-kdl: {comment}")
+                    self.manual.append(f"{source}:{line}: {comment}")
+                    continue
+                value = words[1].split()[0].strip('"\'')
+                enabled = value.lower() in {
+                    "1", "yes", "on", "true", "enable", "enabled", "active", "toggle"
+                }
+                translated += [
+                    f"// sway-to-kdl: sway {item}",
+                    "numlock" if enabled else "numlock false",
+                ]
+                continue
+            name = mappings.get(words[0])
+            if name is None:
+                comment = f"unhandled input directive: {item}"
+                translated.append(f"        // sway-to-kdl: {comment}")
+                self.manual.append(f"{source}:{line}: {comment}")
+                continue
+            value = words[1] if len(words) > 1 else "enabled"
+            if value in {"enabled", "disabled"}:
+                rendered = name if value == "enabled" else f"{name} false"
+            elif name in {"layout", "model", "options", "rules", "variant"}:
+                rendered = f"{name} {self.quote(value.strip(chr(34)))}"
+            else:
+                rendered = f"{name} {value}"
+            (xkb if words[0].startswith("xkb_") else translated).append(rendered)
+        if xkb:
+            translated += ["        xkb {"]
+            translated += [f"            {item}" for item in xkb]
+            translated += ["        }"]
+        self.inputs.setdefault(target, []).extend(translated)
+
+    def translate_output_block(
+        self, source: Path, line: int, selector: str, body: list[str]
+    ) -> None:
+        translated: list[str] = []
+        words = " ".join(
+            item for item in body if item and not item.startswith("#")
+        ).split()
+        index = 0
+        while index < len(words):
+            name = words[index]
+            if name in {"resolution", "mode"} and index + 1 < len(words):
+                translated.append(f"    mode {self.quote(words[index + 1])}")
+                index += 2
+            elif name == "position" and index + 1 < len(words) and "," in words[index + 1]:
+                x, y = words[index + 1].split(",", 1)
+                translated.append(f"    position x={x} y={y}")
+                index += 2
+            elif name == "scale" and index + 1 < len(words):
+                translated.append(f"    scale {words[index + 1]}")
+                index += 2
+            elif name in {"enable", "on"}:
+                index += 1
+            elif name in {"disable", "off"}:
+                translated.append("    off")
+                index += 1
+            else:
+                remainder = " ".join(words[index:])
+                comment = f"{source}:{line}: unhandled output directive: {remainder}"
+                translated.append(f"    // sway-to-kdl: {comment}")
+                self.manual.append(comment)
+                break
+        self.sections += [f"output {self.quote(selector)} {{", *translated, "}"]
+
+    def translate_swayfx(self, source: Path, line: int, text: str) -> bool:
+        words = text.split()
+        if not words:
+            return False
+        name = words[0]
+        if name == "blur":
+            state = "off" if len(words) > 1 and words[1] in {"disable", "off"} else "on"
+            self.blur_settings["state"] = f"    {state}"
+            self.sections += [
+                "// SwayFX blur -> swayward blur and window background-effect",
+                "window-rule {",
+                "    background-effect {",
+                f"        blur {str(state == 'on').lower()}",
+                "    }",
+                "}",
+            ]
+        elif name == "blur_xray" and len(words) == 2:
+            self.sections += [
+                "// SwayFX blur_xray -> window-rule background-effect xray",
+                "window-rule {",
+                "    background-effect {",
+                f"        xray {str(words[1] in {'enable', 'on'}).lower()}",
+                "    }",
+                "}",
+            ]
+        elif name == "blur_passes" and len(words) == 2:
+            self.blur_settings["passes"] = f"    passes {words[1]}"
+        elif name == "blur_radius" and len(words) == 2:
+            self.blur_settings["offset"] = f"    offset {words[1]}"
+        elif name == "titlebar_padding" and len(words) >= 2:
+            try:
+                horizontal = int(words[1])
+                vertical = horizontal if len(words) == 2 else int(words[2])
+            except ValueError:
+                horizontal = vertical = -1
+            # SwayFX defaults titlebar_border_thickness to 1. Swayward has no
+            # equivalent thickness setting, so do not accept padding that the
+            # default SwayFX configuration rejects.
+            if horizontal < 0 or vertical < 0 or horizontal > 65535 or vertical > 65535:
+                self.warn(source, line, text, "Invalid size specified")
+            elif horizontal < 1 or vertical < 1:
+                self.warn(
+                    source,
+                    line,
+                    text,
+                    "padding below SwayFX default titlebar_border_thickness 1 cannot be preserved",
+                )
+            else:
+                self.titlebar_padding = (horizontal, vertical)
+                self.sections.append(f"// sway-to-kdl: SwayFX {text}")
+        elif name == "corner_radius" and len(words) == 2:
+            self.sections += [
+                "// SwayFX corner_radius -> window-rule geometry-corner-radius",
+                "window-rule {",
+                f"    geometry-corner-radius {words[1]}",
+                "    clip-to-geometry true",
+                "}",
+            ]
+        elif name == "shadows":
+            state = "off" if len(words) > 1 and words[1] in {"disable", "off"} else "on"
+            self.layout_settings += [
+                "    // SwayFX shadows; tune remaining shadow controls as needed",
+                "    shadow {",
+                f"        {state}",
+                "    }",
+            ]
+        elif name == "shadows_on_csd" and len(words) == 2:
+            self.warn(
+                source,
+                line,
+                text,
+                "SwayFX shadows_on_csd has no exact swayward equivalent; tune layout shadow draw-behind-window",
+            )
+        elif name in {"dim_inactive", "default_dim_inactive"} and len(words) == 2:
+            opacity = 1.0 - float(words[1])
+            self.sections += [
+                "// SwayFX dim_inactive -> unfocused window opacity",
+                "window-rule {",
+                "    match is-focused=false",
+                f"    opacity {opacity:g}",
+                "}",
+            ]
+        elif name == "layer_effects":
+            self.translate_layer_effects(source, line, text)
+        else:
+            return False
+        return True
+
+    def translate_layer_effects(self, source: Path, line: int, text: str) -> None:
+        match = re.fullmatch(r'layer_effects\s+"?([^"\s]+)"?\s+(.+)', text)
+        if not match:
+            self.warn(source, line, text, "cannot parse SwayFX layer_effects")
+            return
+        namespace, effects = match.groups()
+        body = [f"// SwayFX layer_effects -> layer-rule for {namespace}", "layer-rule {", f"    match namespace={self.quote('^' + re.escape(namespace) + '$')}"]
+        for effect in re.split(r"\s*;\s*", effects.strip().strip("{} ")):
+            words = effect.split()
+            if words[:1] == ["blur"] and len(words) == 2:
+                body += ["    background-effect {", f"        blur {str(words[1] in {'enable', 'on'}).lower()}", "    }"]
+            elif words[:1] == ["blur_xray"] and len(words) == 2:
+                body += ["    background-effect {", f"        xray {str(words[1] in {'enable', 'on'}).lower()}", "    }"]
+            elif words[:1] == ["shadows"] and len(words) == 2:
+                body += ["    shadow {", f"        {'on' if words[1] in {'enable', 'on'} else 'off'}", "    }"]
+            elif words[:1] == ["corner_radius"] and len(words) == 2:
+                body.append(f"    geometry-corner-radius {words[1]}")
+            elif words:
+                comment = f"unhandled layer_effects directive: {effect}"
+                body.append(f"    // sway-to-kdl: {comment}")
+                self.manual.append(f"{source}:{line}: {comment}")
+        body.append("}")
+        self.sections += body
+
+    def render(self) -> str:
+        if self.urgent_timeout_ms is not None:
+            self.sections.append(f"urgent-timeout-ms {self.urgent_timeout_ms}")
+
+        output = [
+            "// Generated by sway-to-kdl.",
+            "// swayward uses typed nested KDL so its inherited effects and animations",
+            "// keep their full option sets. Review every sway-to-kdl comment below.",
+        ]
+        if self.binds:
+            output += ["", "binds {", *self.binds.values(), "}"]
+        for name, binds in self.binding_modes:
+            output += ["", f"mode {self.quote(name)} {{", *binds, "}"]
+        if self.inputs:
+            output += ["", "input {"]
+            for target, settings in self.inputs.items():
+                if target:
+                    output += [f"    {target} {{"]
+                    output += [
+                        f"        {item}" if not item.startswith("        ") else item
+                        for item in settings
+                    ]
+                    output += ["    }"]
+                else:
+                    output += [f"    {item}" for item in settings]
+            output += ["}"]
+        if self.blur_settings:
+            output += [
+                "",
+                "// SwayFX blur settings; swayward keeps unmatched nested controls at their defaults.",
+                "blur {",
+                *self.blur_settings.values(),
+                "}",
+            ]
+        if self.titlebar_font is not None or self.titlebar_colors or self.titlebar_padding:
+            titlebar = ["    titlebar {"]
+            if self.titlebar_font is not None:
+                titlebar.append(f"        font {self.quote(self.titlebar_font)}")
+            if self.titlebar_padding is not None:
+                horizontal, vertical = self.titlebar_padding
+                titlebar += [
+                    f"        horizontal-padding {horizontal}",
+                    f"        vertical-padding {vertical}",
+                ]
+            for state, (background, text) in self.titlebar_colors.items():
+                titlebar += [
+                    f"        {state} {{",
+                    f"            background-color {self.quote(background)}",
+                    f"            text-color {self.quote(text)}",
+                    "        }",
+                ]
+            titlebar.append("    }")
+            self.layout_settings += titlebar
+        if self.layout_settings:
+            output += ["", "layout {", *self.layout_settings, "}"]
+        if self.sections:
+            output += ["", *self.sections]
+        for workspace, settings in self.workspace_layout_settings.items():
+            output += [
+                "",
+                f"workspace {self.quote(workspace)} {{",
+                "    layout {",
+                *settings,
+                "    }",
+                "}",
+            ]
+        return "\n".join(output) + "\n"
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("config", type=Path)
+    args = parser.parse_args()
+    translator = Translator()
+    translator.parse(args.config)
+    sys.stdout.write(translator.render())
+    if translator.manual:
+        print(f"manual attention: {len(translator.manual)} directive(s)", file=sys.stderr)
+        for item in translator.manual:
+            print(f"  {item}", file=sys.stderr)
+    else:
+        print("manual attention: none", file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

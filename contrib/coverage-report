@@ -1,0 +1,263 @@
+#!/usr/bin/env python3
+"""Validate tests/i3/coverage.toml and generate the human-readable summary.
+
+`tests/i3/coverage.toml` is the source of truth for i3 conformance
+classification. This tool is the only thing that reads it authoritatively:
+
+    contrib/coverage-report              summary to stdout
+    contrib/coverage-report --check      validate only, exit 1 on a violation
+    contrib/coverage-report --json       machine-readable
+    contrib/coverage-report --gaps       every assertion that is not a pass and
+                                         not documented
+
+Why the data moved out of prose. The classification used to live only in the
+Markdown table, and counting it required reverse-engineering English: literal
+pipes inside sway syntax, seventeen rows that stated a raw run and its
+superseding classification in one cell, three rows counting two levels at once.
+Ad-hoc parsing of that produced a fail total of 880 when the real figure was
+208, and a green ceiling of 107 when it was 105 -- always overstating defects,
+which is the expensive direction because it sends people hunting for bugs that
+are already explained.
+
+The target state is simple and checkable: **every assertion either passes, or
+carries a documented reason.** A `fail` is never acceptable as an end state. A
+`skip` or `unproven` is, provided it names why.
+"""
+
+import pathlib
+import sys
+import tomllib
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+DATA = ROOT / "tests" / "i3" / "coverage.toml"
+VENDOR = ROOT / "tests" / "i3" / "t"
+
+LABELS = ("pass", "skip", "unproven", "fail", "unaccounted")
+
+
+def load():
+    with DATA.open("rb") as handle:
+        return tomllib.load(handle)
+
+
+def validate(doc):
+    """Return violations of the target state.
+
+    The target state is that every assertion either passes or is a documented
+    skip. So the validator only demands detail where detail is permanent:
+
+    * A skip must be itemised, with a reason and a citation. It claims the test
+      is wrong about sway, and that claim needs evidence or it is a fail wearing
+      a better label.
+    * A fail or unreached assertion is a plain count on purpose. It is work to
+      be done, not a finding to be documented, and demanding prose for it just
+      makes the backlog expensive to maintain.
+    """
+    bad = []
+    families = doc.get("families", {})
+    files = doc.get("files", {})
+
+    vendored = {path.name for path in VENDOR.glob("*.t")}
+    for missing in sorted(vendored - set(files)):
+        bad.append(f"{missing}: vendored but has no entry")
+    for extra in sorted(set(files) - vendored):
+        bad.append(f"{extra}: has an entry but is not vendored")
+
+    for name, entry in sorted(files.items()):
+        plan = entry.get("assertions", 0)
+        captured_plan = entry.get("tap_plan")
+        skips = entry.get("skip", [])
+        file_skip = entry.get("file_skip")
+
+        if captured_plan is None:
+            bad.append(f"{name}: has no captured tap_plan")
+        elif entry.get("plan_unknown"):
+            if captured_plan != "none":
+                bad.append(
+                    f"{name}: has no emitted TAP plan but records tap_plan "
+                    f"{captured_plan!r} instead of 'none'"
+                )
+        elif not isinstance(captured_plan, int):
+            bad.append(f"{name}: tap_plan must be an integer or 'none'")
+        elif captured_plan != plan:
+            bad.append(
+                f"{name}: captured TAP plan {captured_plan} does not match "
+                f"assertions {plan}"
+            )
+
+        if file_skip:
+            if plan != 0 or captured_plan != 0:
+                bad.append(
+                    f"{name}: a file-level TAP skip must record assertions = 0 "
+                    f"and tap_plan = 0"
+                )
+            if not file_skip.get("reason") or not file_skip.get("citation"):
+                bad.append(f"{name}: file_skip needs a reason and citation")
+
+        undocumented = entry.get("skip_undocumented", 0)
+        if undocumented:
+            bad.append(
+                f"{name}: {undocumented} skips are not itemised; each needs its "
+                "own [[files.\"...\".skip]] with a reason and a citation"
+            )
+
+        if isinstance(skips, list):
+            numbers = []
+            for item in skips:
+                number = item.get("n")
+                if number is None:
+                    bad.append(f"{name}: a skip record has no assertion number")
+                    continue
+                numbers.append(number)
+                if not item.get("reason"):
+                    bad.append(f"{name}: skip {number} has no reason")
+                if not item.get("citation") and not entry.get("citation"):
+                    bad.append(
+                        f"{name}: skip {number} has no citation; a skip must cite "
+                        "the sway or i3 source that justifies the divergence"
+                    )
+                if plan and number > plan:
+                    bad.append(
+                        f"{name}: skip names assertion {number} but the plan "
+                        f"declares only {plan}"
+                    )
+            if len(numbers) != len(set(numbers)):
+                bad.append(f"{name}: the same assertion is skipped twice")
+
+        counted = (
+            entry.get("pass", 0)
+            + len(skips if isinstance(skips, list) else [])
+            + undocumented
+            + entry.get("fail", 0)
+            + entry.get("unreached", 0)
+        )
+        if plan and counted != plan:
+            bad.append(
+                f"{name}: {counted} assertions classified but the plan declares "
+                f"{plan}"
+            )
+        if plan == 0 and not entry.get("plan_unknown") and not entry.get("reason"):
+            bad.append(f"{name}: declares no assertions and states no reason")
+        if plan == 0 and not entry.get("plan_unknown") and not file_skip:
+            bad.append(f"{name}: zero-assertion row needs a documented file_skip")
+
+        reason = entry.get("reason")
+        if (entry.get("fail") or entry.get("unreached") or skips) and not reason:
+            bad.append(f"{name}: has non-passing assertions but states no reason")
+        if reason and reason not in families and len(reason) < 40:
+            bad.append(f"{name}: reason {reason!r} is not a known family")
+        # Every reason in this file was first inferred by regex over the old
+        # prose, and at least two were provably wrong: 504-move-workspace-to-
+        # output.t was tagged bar_protocol because its note mentions removing
+        # an i3bar block, and 306-move-to-parent.t was tagged compositor_restart
+        # for the word "restart" in an unrelated sentence. So a reason is only
+        # trustworthy once someone has confirmed it against a real run.
+        if entry.get("reason_verified") is False:
+            bad.append(
+                f"{name}: reason {reason!r} is regex-inferred and unverified; "
+                "confirm it against a real run and set reason_verified = true"
+            )
+
+    return bad
+
+
+def census(doc):
+    files = doc["files"]
+
+    def tally(key):
+        total = 0
+        for entry in files.values():
+            value = entry.get(key, 0)
+            total += len(value) if isinstance(value, list) else value
+        return total
+
+    documented = tally("skip")
+    undocumented = tally("skip_undocumented")
+    return {
+        "files": len(files),
+        "assertions": sum(e.get("assertions", 0) for e in files.values()),
+        "pass": tally("pass"),
+        "skip_documented": documented,
+        "skip_undocumented": undocumented,
+        "fail": tally("fail"),
+        "unreached": tally("unreached"),
+        # The work queue: everything that is neither a pass nor a finished,
+        # documented skip.
+        "backlog": tally("fail") + tally("unreached") + undocumented,
+        "green_files": sum(
+            1
+            for e in files.values()
+            if e.get("assertions", 0) > 0
+            and not e.get("plan_unknown")
+            and e.get("pass", 0) == e["assertions"]
+        ),
+    }
+
+
+def main():
+    doc = load()
+    violations = validate(doc)
+
+    if "--check" in sys.argv:
+        for line in violations:
+            print(f"coverage.toml: {line}")
+        print(f"{len(violations)} violation(s)")
+        sys.exit(1 if violations else 0)
+
+    if "--gaps" in sys.argv:
+        # The whole work queue, largest first. This is the only list a worker
+        # needs: everything here must become a pass or a documented skip.
+        rows = []
+        for name, entry in doc["files"].items():
+            undocumented = entry.get("skip_undocumented", 0)
+            backlog = entry.get("fail", 0) + entry.get("unreached", 0) + undocumented
+            if not backlog:
+                continue
+            rows.append(
+                (
+                    backlog,
+                    name,
+                    entry.get("fail", 0),
+                    entry.get("unreached", 0),
+                    undocumented,
+                    entry.get("reason", "-"),
+                    "" if entry.get("reason_verified", True) else " UNVERIFIED",
+                )
+            )
+        print(f"{len(rows)} files with a backlog\n")
+        print(f"{'total':>6} {'fail':>5} {'unrch':>6} {'skip?':>6}  file")
+        for backlog, name, fail, unreached, undoc, reason, flag in sorted(
+            rows, reverse=True
+        ):
+            print(
+                f"{backlog:6d} {fail:5d} {unreached:6d} {undoc:6d}  {name}"
+                f"  [{reason}{flag}]"
+            )
+        return
+
+    data = census(doc)
+    if "--json" in sys.argv:
+        import json
+
+        print(json.dumps(data, indent=2))
+        return
+
+    print(f"files                 {data['files']}")
+    print(f"fully green           {data['green_files']}")
+    print(f"declared assertions   {data['assertions']}")
+    print()
+    print("FINISHED (pass or documented skip)")
+    print(f"  pass                {data['pass']}")
+    print(f"  skip, documented    {data['skip_documented']}")
+    print()
+    print("WORK QUEUE (must become a pass or a documented skip)")
+    print(f"  skip, undocumented  {data['skip_undocumented']}")
+    print(f"  fail                {data['fail']}")
+    print(f"  unreached           {data['unreached']}")
+    print(f"  TOTAL BACKLOG       {data['backlog']}   <- target 0")
+    print()
+    print(f"validation violations {len(violations)}   <- target 0")
+
+
+if __name__ == "__main__":
+    main()
