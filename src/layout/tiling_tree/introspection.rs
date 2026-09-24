@@ -137,6 +137,11 @@ impl<W: LayoutElement> TilingTree<W> {
                         .map(|(index, (child, stored_percent))| {
                             let percent = match layout {
                                 Layout::Tabbed | Layout::Stacked => 1.,
+                                Layout::SplitH | Layout::SplitV
+                                    if tree.fullscreen_node().is_some() =>
+                                {
+                                    *stored_percent
+                                }
                                 Layout::SplitH | Layout::SplitV => {
                                     let rounded_extent =
                                         |rect: Rectangle<f64, Logical>| match layout {
