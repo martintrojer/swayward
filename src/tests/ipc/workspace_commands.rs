@@ -1278,13 +1278,13 @@ fn border_command_updates_rendering_and_tree_metadata() {
     window.ack_last_and_commit();
     f.double_roundtrip(client);
 
-    for (command, style, width, has_titlebar, rendered_width) in [
-        ("border none", "none", 0, false, None),
-        ("border pixel 3", "pixel", 3, false, Some(3.)),
-        ("border normal 5", "normal", 5, true, Some(5.)),
-        ("border toggle", "none", 0, false, None),
-        ("border toggle", "pixel", 1, false, Some(1.)),
-        ("border toggle", "normal", 2, true, Some(2.)),
+    for (command, style, stored_width, ipc_width, has_titlebar, rendered_width) in [
+        ("border none", "none", 0, 2, false, None),
+        ("border pixel 3", "pixel", 3, 3, false, Some(3.)),
+        ("border normal 5", "normal", 5, 5, true, Some(5.)),
+        ("border toggle", "none", 0, 2, false, None),
+        ("border toggle", "pixel", 1, 1, false, Some(1.)),
+        ("border toggle", "normal", 2, 2, true, Some(2.)),
     ] {
         let outcome = crate::command::execute(f.niri_state(), command);
         assert!(outcome[0].success, "{command}: {outcome:?}");
@@ -1299,7 +1299,7 @@ fn border_command_updates_rendering_and_tree_metadata() {
                     "normal" => swayward_ipc::command::BorderStyle::Normal,
                     _ => unreachable!(),
                 },
-                width
+                stored_width
             ))
         );
         let tile = swayward
@@ -1325,7 +1325,7 @@ fn border_command_updates_rendering_and_tree_metadata() {
             .next()
             .unwrap();
         assert_eq!(format!("{:?}", node.border).to_ascii_lowercase(), style);
-        assert_eq!(node.current_border_width, i32::from(width));
+        assert_eq!(node.current_border_width, ipc_width);
     }
 
     assert!(crate::command::execute(f.niri_state(), "floating enable")[0].success);

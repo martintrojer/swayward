@@ -1282,3 +1282,9 @@ migrated = false
 paths = ["swayward-config/src/layout.rs", "resources/default-config.kdl", "docs/wiki/Configuration:-Layout.md", "docs/wiki/Tree-School:-Windows-and-Focus.md", "src/tests/floating.rs", "src/tests/fullscreen.rs", "src/tests/ipc/focus_and_move.rs", "src/tests/window_opening.rs"]
 what = "default inner and outer window gaps to zero and update inherited configuration and tutorial documentation."
 why = "Match sway's zero gap defaults (`sway/config.c:288-291`); users can still opt into the former 16 px spacing."
+
+[[edit]]
+migrated = false
+paths = ["src/ipc/tree.rs", "src/tests/ipc/workspace_commands.rs"]
+what = "report sway's retained default border width for tiled containers whose border style is none."
+why = "Sway's `border none` disables drawing without replacing `current_border_width`, so GET_TREE reports `border: none` and `current_border_width: 2` (`sway/commands/border.c:44-51`; `sway/ipc-json.c:543-555`)."

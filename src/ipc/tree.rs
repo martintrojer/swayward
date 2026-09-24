@@ -707,7 +707,7 @@ pub(crate) fn describe_tiling<'a, I>(
                 true,
             );
             node.border = ipc_border(border.0);
-            node.current_border_width = i32::from(border.1);
+            node.current_border_width = ipc_border_width(border);
             node.percent = percent;
             node.focused = focused;
             node.fullscreen_mode = fullscreen_mode;
@@ -754,6 +754,13 @@ fn empty_tiling_node(rect: Rect) -> Node {
         false,
         NodeProperties::None {},
     )
+}
+
+fn ipc_border_width(border: (swayward_ipc::command::BorderStyle, u16)) -> i32 {
+    match border.0 {
+        swayward_ipc::command::BorderStyle::None => 2,
+        _ => i32::from(border.1),
+    }
 }
 
 fn ipc_border(style: swayward_ipc::command::BorderStyle) -> NodeBorder {
