@@ -658,7 +658,9 @@ pub(crate) fn describe_tiling<'a, I>(
                 focused,
                 NodeProperties::None {},
             );
+            node.floating = Some("auto_off".into());
             node.percent = percent;
+            node.scratchpad_state = Some("none".into());
             node.fullscreen_mode = fullscreen_mode;
             node.marks = container_marks
                 .get(&(workspace_id, id))

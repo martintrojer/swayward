@@ -1258,3 +1258,9 @@ migrated = false
 paths = ["src/layout/tiling_tree/mod.rs", "src/layout/workspace.rs", "src/tests/ipc/tree_commands.rs"]
 what = "reset an emptied tiling tree to the configured default orientation and cover recreation of an emptied workspace with the default layout."
 why = "Sway destroys an empty workspace and its container tree (`sway/tree/workspace.c:274-332`), so later selecting its name creates a fresh default-layout tree rather than retaining the previous stacking mode."
+
+[[edit]]
+migrated = false
+paths = ["src/ipc/tree.rs", "src/tests/ipc/tree_commands.rs"]
+what = "serialize `floating = auto_off` and `scratchpad_state = none` on internal split containers."
+why = "Sway's shared container serializer emits these fields for every container, including non-leaf splits (`sway/ipc-json.c:710-744`)."

@@ -152,6 +152,15 @@ fn live_ipc_descriptions_match_sway_schema_and_values() {
 }
 
 #[test]
+fn split_containers_report_sway_container_state_fields() {
+    let tree = nested_representation_live_tree();
+    let split = find_json_parent_of_app_id(&tree, "fixture-3").unwrap();
+    assert_eq!(split["type"], "con");
+    assert_eq!(split["floating"], "auto_off");
+    assert_eq!(split["scratchpad_state"], "none");
+}
+
+#[test]
 fn emptied_workspace_is_recreated_with_default_layout() {
     let mut config = swayward_config::Config::default();
     config.animations.off = true;
