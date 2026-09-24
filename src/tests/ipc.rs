@@ -18,6 +18,16 @@ use crate::ipc::tree::{describe_outputs, describe_tree, describe_workspaces};
 use crate::layout::tiling_tree::{IpcNode, Layout as TreeLayout, NodeId};
 use crate::layout::LayoutElement as _;
 
+macro_rules! sway_fixture {
+    ($path:literal) => {
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/sway/",
+            $path
+        ))
+    };
+}
+
 fn collect_focused_nodes(node: &swayward_ipc::Node, ids: &mut Vec<i64>) {
     if node.focused {
         ids.push(node.id);
@@ -139,24 +149,14 @@ fn mutate_scalar(value: &mut Value) {
 #[test]
 fn normalized_fixture_comparison_rejects_every_retained_value() {
     for (path, fixture, expected_scalars, expected_arrays) in [
-        (
-            "$tree",
-            include_str!("../../tests/fixtures/sway/one_window.tree.json"),
-            111,
-            18,
-        ),
+        ("$tree", sway_fixture!("one_window.tree.json"), 111, 18),
         (
             "$workspaces",
-            include_str!("../../tests/fixtures/sway/one_window.workspaces.json"),
+            sway_fixture!("one_window.workspaces.json"),
             17,
             4,
         ),
-        (
-            "$outputs",
-            include_str!("../../tests/fixtures/sway/one_window.outputs.json"),
-            29,
-            4,
-        ),
+        ("$outputs", sway_fixture!("one_window.outputs.json"), 29, 4),
     ] {
         let original: Value = serde_json::from_str(fixture).unwrap();
         let (normalized, _) = normalized_fixture_values(&original, &original, path);
@@ -579,10 +579,7 @@ fn nested_live_tree() -> Value {
 }
 
 fn nested_fixture_tree() -> Value {
-    serde_json::from_str(include_str!(
-        "../../tests/fixtures/sway/nested_h_in_v.tree.json"
-    ))
-    .unwrap()
+    serde_json::from_str(sway_fixture!("nested_h_in_v.tree.json")).unwrap()
 }
 
 fn nested_representation_live_tree() -> Value {
@@ -646,10 +643,7 @@ fn mixed_live_tree() -> Value {
 }
 
 fn mixed_fixture_tree() -> Value {
-    serde_json::from_str(include_str!(
-        "../../tests/fixtures/sway/one_floating.tree.json"
-    ))
-    .unwrap()
+    serde_json::from_str(sway_fixture!("one_floating.tree.json")).unwrap()
 }
 
 fn read_ipc_reply(fixture: &mut Fixture, stream: &mut UnixStream) -> (u32, String) {
@@ -865,8 +859,7 @@ fn get_inputs_and_seats_return_sway_schema_and_values() {
 
     let mut stream = UnixStream::connect(socket).unwrap();
     let inputs = query_ipc(&mut fixture, &mut stream, MessageType::GetInputs);
-    let mut sway_inputs: Value =
-        serde_json::from_str(include_str!("../../tests/fixtures/sway/inputs.json")).unwrap();
+    let mut sway_inputs: Value = serde_json::from_str(sway_fixture!("inputs.json")).unwrap();
     sway_inputs
         .as_array_mut()
         .unwrap()
@@ -879,10 +872,7 @@ fn get_inputs_and_seats_return_sway_schema_and_values() {
         },
     );
     let inputs = query_ipc(&mut fixture, &mut stream, MessageType::GetInputs);
-    let sway_libinput: Value = serde_json::from_str(include_str!(
-        "../../tests/fixtures/sway/inputs-libinput.json"
-    ))
-    .unwrap();
+    let sway_libinput: Value = serde_json::from_str(sway_fixture!("inputs-libinput.json")).unwrap();
     let actual_libinput = inputs
         .as_array()
         .unwrap()
@@ -1130,33 +1120,27 @@ fn malformed_frames_do_not_hang_or_wedge_the_server() {
 fn captured_workspace_event_sequences_pin_order_and_multiplicity() {
     for (fixture, expected) in [
         (
-            include_str!("../../tests/fixtures/sway/events/workspace-switch-empty.sequence.json"),
+            sway_fixture!("events/workspace-switch-empty.sequence.json"),
             &["init", "focus", "focus", "focus", "empty"][..],
         ),
         (
-            include_str!("../../tests/fixtures/sway/events/workspace-close-last.sequence.json"),
+            sway_fixture!("events/workspace-close-last.sequence.json"),
             &["close", "empty"][..],
         ),
         (
-            include_str!("../../tests/fixtures/sway/events/workspace-rename.sequence.json"),
+            sway_fixture!("events/workspace-rename.sequence.json"),
             &["rename"][..],
         ),
         (
-            include_str!(
-                "../../tests/fixtures/sway/events/workspace-move-right-empty-destination.sequence.json"
-            ),
+            sway_fixture!("events/workspace-move-right-empty-destination.sequence.json"),
             &["move"][..],
         ),
         (
-            include_str!(
-                "../../tests/fixtures/sway/events/workspace-move-right-occupied-destination.sequence.json"
-            ),
+            sway_fixture!("events/workspace-move-right-occupied-destination.sequence.json"),
             &["move"][..],
         ),
         (
-            include_str!(
-                "../../tests/fixtures/sway/events/workspace-move-right-last-source.sequence.json"
-            ),
+            sway_fixture!("events/workspace-move-right-last-source.sequence.json"),
             &["move"][..],
         ),
     ] {
@@ -1828,11 +1812,11 @@ fn map_test_window(fixture: &mut Fixture, client: super::client::ClientId, app_i
 fn captured_window_map_sequences_pin_focus_order_and_multiplicity() {
     for (fixture, expected) in [
         (
-            include_str!("../../tests/fixtures/sway/events/window-map-focused.sequence.json"),
+            sway_fixture!("events/window-map-focused.sequence.json"),
             &["new", "title", "focus"][..],
         ),
         (
-            include_str!("../../tests/fixtures/sway/events/window-map-unfocused.sequence.json"),
+            sway_fixture!("events/window-map-unfocused.sequence.json"),
             &["new", "title"][..],
         ),
     ] {
@@ -2054,10 +2038,8 @@ fn workspace_window_and_mode_events_match_sway_shapes() {
         .send_event(swayward_ipc::legacy::Event::WorkspaceReloaded);
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
     assert_eq!(event_type, 1 << 31);
-    let expected: Value = serde_json::from_str(include_str!(
-        "../../tests/fixtures/sway/events/workspace.reload.json"
-    ))
-    .unwrap();
+    let expected: Value =
+        serde_json::from_str(sway_fixture!("events/workspace.reload.json")).unwrap();
     assert_event_shape(
         &expected,
         &serde_json::from_str(&payload).unwrap(),
@@ -2091,10 +2073,7 @@ fn workspace_window_and_mode_events_match_sway_shapes() {
     );
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
     assert_eq!(event_type, (1 << 31) | 3);
-    let expected: Value = serde_json::from_str(include_str!(
-        "../../tests/fixtures/sway/events/window.focus.json"
-    ))
-    .unwrap();
+    let expected: Value = serde_json::from_str(sway_fixture!("events/window.focus.json")).unwrap();
     assert_event_shape(
         &expected,
         &serde_json::from_str(&payload).unwrap(),
@@ -2109,10 +2088,7 @@ fn workspace_window_and_mode_events_match_sway_shapes() {
     );
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
     assert_eq!(event_type, (1 << 31) | 2);
-    let expected: Value = serde_json::from_str(include_str!(
-        "../../tests/fixtures/sway/events/mode.default.json"
-    ))
-    .unwrap();
+    let expected: Value = serde_json::from_str(sway_fixture!("events/mode.default.json")).unwrap();
     assert_event_shape(&expected, &serde_json::from_str(&payload).unwrap(), "$mode");
 }
 
@@ -2228,10 +2204,8 @@ fn workspace_urgency_event_matches_sway_shape() {
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
     assert_eq!(event_type, 1 << 31);
     let actual = serde_json::from_str::<Value>(&payload).unwrap();
-    let expected = serde_json::from_str::<Value>(include_str!(
-        "../../tests/fixtures/sway/events/workspace.urgent.json"
-    ))
-    .unwrap();
+    let expected =
+        serde_json::from_str::<Value>(sway_fixture!("events/workspace.urgent.json")).unwrap();
     assert_event_shape(&expected, &actual, "$workspace");
     assert_eq!(actual["change"], "urgent");
     assert_eq!(actual["old"], Value::Null);
@@ -2290,10 +2264,8 @@ fn workspace_move_event_matches_sway_shape() {
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
     assert_eq!(event_type, 1 << 31);
     let actual = serde_json::from_str::<Value>(&payload).unwrap();
-    let expected = serde_json::from_str::<Value>(include_str!(
-        "../../tests/fixtures/sway/events/workspace.move.json"
-    ))
-    .unwrap();
+    let expected =
+        serde_json::from_str::<Value>(sway_fixture!("events/workspace.move.json")).unwrap();
     assert_eq!(actual["change"], expected["change"]);
     assert_eq!(actual["old"], Value::Null);
     assert_eq!(actual["current"]["type"], "workspace");
@@ -2322,10 +2294,8 @@ fn workspace_rename_event_matches_sway_shape() {
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
     assert_eq!(event_type, 1 << 31);
     let actual = serde_json::from_str::<Value>(&payload).unwrap();
-    let expected = serde_json::from_str::<Value>(include_str!(
-        "../../tests/fixtures/sway/events/workspace.rename.json"
-    ))
-    .unwrap();
+    let expected =
+        serde_json::from_str::<Value>(sway_fixture!("events/workspace.rename.json")).unwrap();
     assert_event_shape(&expected, &actual, "$workspace");
     assert_eq!(actual["change"], "rename");
     assert_eq!(actual["old"], Value::Null);
@@ -2884,10 +2854,7 @@ fn mark_event_matches_captured_sway_schema() {
     fixture.niri_state().ipc_refresh_layout();
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
     assert_eq!(event_type, (1 << 31) | 3);
-    let expected: Value = serde_json::from_str(include_str!(
-        "../../tests/fixtures/sway/events/window.mark.json"
-    ))
-    .unwrap();
+    let expected: Value = serde_json::from_str(sway_fixture!("events/window.mark.json")).unwrap();
     assert_event_shape(
         &expected,
         &serde_json::from_str(&payload).unwrap(),
@@ -2928,10 +2895,7 @@ fn close_event_matches_captured_sway_schema_before_removal() {
     fixture.double_roundtrip(client);
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
     assert_eq!(event_type, (1 << 31) | 3);
-    let expected: Value = serde_json::from_str(include_str!(
-        "../../tests/fixtures/sway/events/window.close.json"
-    ))
-    .unwrap();
+    let expected: Value = serde_json::from_str(sway_fixture!("events/window.close.json")).unwrap();
     assert_event_shape(
         &expected,
         &serde_json::from_str(&payload).unwrap(),
@@ -2986,8 +2950,7 @@ fn marks_round_trip_through_commands_get_marks_and_tree() {
     ))
     .unwrap();
     let marked = find_json_node(&tree, "con", true).unwrap();
-    let oracle: Value =
-        serde_json::from_str(include_str!("../../tests/fixtures/sway/marked.tree.json")).unwrap();
+    let oracle: Value = serde_json::from_str(sway_fixture!("marked.tree.json")).unwrap();
     let expected = find_json_node(&oracle, "con", true).unwrap();
     assert_eq!(marked["marks"], expected["marks"]);
 
@@ -5031,19 +4994,13 @@ fn binding_modes_switch_binds_emit_events_and_list_over_ipc() {
     assert!(crate::command::execute(fixture.niri_state(), "mode resize")[0].success);
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
     assert_eq!(event_type, (1 << 31) | 2);
-    let expected: Value = serde_json::from_str(include_str!(
-        "../../tests/fixtures/sway/events/mode.resize.json"
-    ))
-    .unwrap();
+    let expected: Value = serde_json::from_str(sway_fixture!("events/mode.resize.json")).unwrap();
     assert_event_shape(&expected, &serde_json::from_str(&payload).unwrap(), "$mode");
 
     type_key_chords(&mut fixture, &[&[133, 10]]);
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
     assert_eq!(event_type, (1 << 31) | 5);
-    let expected: Value = serde_json::from_str(include_str!(
-        "../../tests/fixtures/sway/events/binding.run.json"
-    ))
-    .unwrap();
+    let expected: Value = serde_json::from_str(sway_fixture!("events/binding.run.json")).unwrap();
     assert_event_shape(
         &expected,
         &serde_json::from_str(&payload).unwrap(),
@@ -5063,10 +5020,7 @@ fn binding_modes_switch_binds_emit_events_and_list_over_ipc() {
     assert!(crate::command::execute(fixture.niri_state(), "mode default")[0].success);
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
     assert_eq!(event_type, (1 << 31) | 2);
-    let expected: Value = serde_json::from_str(include_str!(
-        "../../tests/fixtures/sway/events/mode.default.json"
-    ))
-    .unwrap();
+    let expected: Value = serde_json::from_str(sway_fixture!("events/mode.default.json")).unwrap();
     assert_event_shape(&expected, &serde_json::from_str(&payload).unwrap(), "$mode");
 
     let mut query = UnixStream::connect(socket).unwrap();
@@ -6045,10 +5999,7 @@ fn reloaded_gap_defaults_do_not_change_an_existing_workspace() {
     assert_eq!(event_type, 1 << 31);
     assert_eq!(
         serde_json::from_str::<Value>(&payload).unwrap(),
-        serde_json::from_str::<Value>(include_str!(
-            "../../tests/fixtures/sway/events/workspace.reload.json"
-        ))
-        .unwrap()
+        serde_json::from_str::<Value>(sway_fixture!("events/workspace.reload.json")).unwrap()
     );
     assert_eq!(fixture.swayward().config.borrow().layout.gaps, 16.);
     assert_eq!(tiled_window_rects(&mut fixture), before);
@@ -6214,10 +6165,8 @@ fn reload_rereads_config_and_emits_the_sway_workspace_event() {
     assert!(crate::command::execute(fixture.niri_state(), "reload")[0].success);
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
     assert_eq!(event_type, 1 << 31);
-    let expected: Value = serde_json::from_str(include_str!(
-        "../../tests/fixtures/sway/events/workspace.reload.json"
-    ))
-    .unwrap();
+    let expected: Value =
+        serde_json::from_str(sway_fixture!("events/workspace.reload.json")).unwrap();
     assert_eq!(serde_json::from_str::<Value>(&payload).unwrap(), expected);
     assert_eq!(fixture.swayward().config.borrow().layout.gaps, 7.);
     subscriber.set_nonblocking(true).unwrap();
@@ -6981,10 +6930,7 @@ fn live_ipc_descriptions_match_sway_schema_and_values() {
 
     let mut stream = UnixStream::connect(&socket).unwrap();
     let ours = query_ipc(&mut f, &mut stream, MessageType::GetTree);
-    let fixture: Value = serde_json::from_str(include_str!(
-        "../../tests/fixtures/sway/one_window.tree.json"
-    ))
-    .unwrap();
+    let fixture: Value = serde_json::from_str(sway_fixture!("one_window.tree.json")).unwrap();
     assert_same_shape(&fixture, &ours, "$tree");
     assert_same_values(&fixture, &ours, "$tree");
     assert_tree_rectangles_match_fixture(&fixture, &ours, "$tree");
@@ -7015,10 +6961,7 @@ fn live_ipc_descriptions_match_sway_schema_and_values() {
     assert!(crate::command::execute(f.niri_state(), "floating enable")[0].success);
 
     let ours = query_ipc(&mut f, &mut stream, MessageType::GetTree);
-    let fixture: Value = serde_json::from_str(include_str!(
-        "../../tests/fixtures/sway/one_floating.tree.json"
-    ))
-    .unwrap();
+    let fixture: Value = serde_json::from_str(sway_fixture!("one_floating.tree.json")).unwrap();
     assert_same_shape(&fixture, &ours, "$tree");
     assert_rectangle_roles_match_fixture(&fixture, &ours, "$tree");
     assert_focus_matches_fixture(&fixture, &ours, "$tree");
@@ -7041,20 +6984,20 @@ fn live_ipc_descriptions_match_sway_schema_and_values() {
     assert_eq!(floating["deco_rect"]["y"], floating["rect"]["y"]);
 
     let fixture_trees = [
-        include_str!("../../tests/fixtures/sway/empty.tree.json"),
-        include_str!("../../tests/fixtures/sway/empty_named.tree.json"),
-        include_str!("../../tests/fixtures/sway/fullscreen.tree.json"),
-        include_str!("../../tests/fixtures/sway/marked.tree.json"),
-        include_str!("../../tests/fixtures/sway/named_workspace.tree.json"),
-        include_str!("../../tests/fixtures/sway/nested_h_in_v.tree.json"),
-        include_str!("../../tests/fixtures/sway/numbered_sparse.tree.json"),
-        include_str!("../../tests/fixtures/sway/one_floating.tree.json"),
-        include_str!("../../tests/fixtures/sway/one_window.tree.json"),
-        include_str!("../../tests/fixtures/sway/stacked.tree.json"),
-        include_str!("../../tests/fixtures/sway/tabbed.tree.json"),
-        include_str!("../../tests/fixtures/sway/two_split_h.tree.json"),
-        include_str!("../../tests/fixtures/sway/two_split_v.tree.json"),
-        include_str!("../../tests/fixtures/sway/two_workspaces.tree.json"),
+        sway_fixture!("empty.tree.json"),
+        sway_fixture!("empty_named.tree.json"),
+        sway_fixture!("fullscreen.tree.json"),
+        sway_fixture!("marked.tree.json"),
+        sway_fixture!("named_workspace.tree.json"),
+        sway_fixture!("nested_h_in_v.tree.json"),
+        sway_fixture!("numbered_sparse.tree.json"),
+        sway_fixture!("one_floating.tree.json"),
+        sway_fixture!("one_window.tree.json"),
+        sway_fixture!("stacked.tree.json"),
+        sway_fixture!("tabbed.tree.json"),
+        sway_fixture!("two_split_h.tree.json"),
+        sway_fixture!("two_split_v.tree.json"),
+        sway_fixture!("two_workspaces.tree.json"),
     ];
     let mut fixture_nodes = Vec::new();
     for fixture in fixture_trees {
@@ -7068,10 +7011,8 @@ fn live_ipc_descriptions_match_sway_schema_and_values() {
     assert!(ours["nodes"][1]["nodes"][0]["nodes"][0]["app_id"].is_string());
 
     let ours = query_ipc(&mut f, &mut stream, MessageType::GetWorkspaces);
-    let fixture: Value = serde_json::from_str(include_str!(
-        "../../tests/fixtures/sway/one_floating.workspaces.json"
-    ))
-    .unwrap();
+    let fixture: Value =
+        serde_json::from_str(sway_fixture!("one_floating.workspaces.json")).unwrap();
     assert_same_shape(&fixture, &ours, "$workspaces");
     let expected_focus = fixture[0]["focus"].as_array().unwrap();
     let actual_focus = ours[0]["focus"].as_array().unwrap();
@@ -7082,10 +7023,7 @@ fn live_ipc_descriptions_match_sway_schema_and_values() {
     assert_eq!(ours[0]["representation"], fixture[0]["representation"]);
 
     let ours = query_ipc(&mut f, &mut stream, MessageType::GetOutputs);
-    let fixture: Value = serde_json::from_str(include_str!(
-        "../../tests/fixtures/sway/one_window.outputs.json"
-    ))
-    .unwrap();
+    let fixture: Value = serde_json::from_str(sway_fixture!("one_window.outputs.json")).unwrap();
     assert_same_shape(&fixture, &ours, "$outputs");
     assert_same_values(&fixture, &ours, "$outputs");
 
@@ -8234,10 +8172,7 @@ fn directional_move_emits_one_settled_sway_move_event() {
         crate::ipc::tree::window_id(moved_id)
     );
     assert!(event["container"]["rect"]["x"].as_i64().unwrap() < before);
-    let expected: Value = serde_json::from_str(include_str!(
-        "../../tests/fixtures/sway/events/window.move.json"
-    ))
-    .unwrap();
+    let expected: Value = serde_json::from_str(sway_fixture!("events/window.move.json")).unwrap();
     assert_event_shape(&expected, &event, "$window");
 }
 
@@ -11208,10 +11143,8 @@ fn closing_last_window_removes_inactive_named_workspace_from_ipc() {
     let (event_type, payload) = read_ipc_reply(&mut f, &mut subscriber);
     assert_eq!(event_type, 1 << 31);
     let actual = serde_json::from_str::<Value>(&payload).unwrap();
-    let expected = serde_json::from_str::<Value>(include_str!(
-        "../../tests/fixtures/sway/events/workspace.empty.json"
-    ))
-    .unwrap();
+    let expected =
+        serde_json::from_str::<Value>(sway_fixture!("events/workspace.empty.json")).unwrap();
     assert_eq!(
         actual.as_object().unwrap().keys().collect::<BTreeSet<_>>(),
         expected
@@ -13432,10 +13365,7 @@ fn floating_input_region_holes_click_through_but_decorations_activate() {
 
 #[test]
 fn floating_stacking_and_focus_match_sway_before_and_after_raise() {
-    let two: Value = serde_json::from_str(include_str!(
-        "../../tests/fixtures/sway/two_floating.tree.json"
-    ))
-    .unwrap();
+    let two: Value = serde_json::from_str(sway_fixture!("two_floating.tree.json")).unwrap();
     assert_eq!(
         floating_order(&two),
         (
@@ -13473,17 +13403,13 @@ fn floating_stacking_and_focus_match_sway_before_and_after_raise() {
         ))
         .unwrap()
     };
-    let before: Value = serde_json::from_str(include_str!(
-        "../../tests/fixtures/sway/three_floating_before_raise.tree.json"
-    ))
-    .unwrap();
+    let before: Value =
+        serde_json::from_str(sway_fixture!("three_floating_before_raise.tree.json")).unwrap();
     assert_eq!(floating_order(&describe(&mut f)), floating_order(&before));
 
     assert!(crate::command::execute(f.niri_state(), r#"[app_id="^fixture-1$"] focus"#)[0].success);
-    let after: Value = serde_json::from_str(include_str!(
-        "../../tests/fixtures/sway/three_floating_after_raise.tree.json"
-    ))
-    .unwrap();
+    let after: Value =
+        serde_json::from_str(sway_fixture!("three_floating_after_raise.tree.json")).unwrap();
     assert_eq!(floating_order(&describe(&mut f)), floating_order(&after));
 }
 
