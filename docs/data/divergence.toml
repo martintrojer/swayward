@@ -1309,6 +1309,6 @@ why = "Sway changes the workspace layout in place only when the workspace itself
 
 [[edit]]
 migrated = false
-paths = ["src/layout/tiling_tree/introspection.rs", "src/tests/ipc/tree_commands.rs"]
-what = "report split-child IPC percentages from their rounded arranged extents while retaining 1.0 for tabbed and stacked children."
-why = "Sway derives `percent` from arranged container dimensions, including gap space in the parent extent, rather than returning the stored split fraction (`sway/ipc-json.c:746-755`)."
+paths = ["src/layout/tiling_tree/introspection.rs", "src/ipc/tree.rs", "src/tests/ipc/tree_commands.rs"]
+what = "report split-child IPC percentages from their rounded arranged extents; recompute tabbed and stacked descendants from sway's pending container boxes while retaining 1.0 for direct view children."
+why = "Sway derives `percent` from arranged container dimensions, including gap space and nested titlebar offsets in the parent extent, rather than returning the stored split fraction (`sway/ipc-json.c:746-755`; `sway/tree/arrange.c:185-215`)."

@@ -526,6 +526,7 @@ fn describe_workspace_node(
         .tiling_has_had_window()
         .then(|| tree_representation(layout, &nodes));
     let mut nodes = nodes;
+    set_tabbed_percentages(layout, &mut nodes, rect);
     if !apply_fullscreen_state(&mut nodes, workspace_visible) {
         set_child_windows_visible(layout, &focus, &mut nodes, workspace_visible);
     }
@@ -554,6 +555,37 @@ fn describe_workspace_node(
     node.fullscreen_mode = 1;
     node.urgent = workspace.is_urgent();
     node
+}
+
+fn set_tabbed_percentages(layout: NodeLayout, children: &mut [Node], parent_rect: Rect) {
+    // Percent is computed from sway's pending container boxes, before the
+    // serializer exposes the content rectangles below nested titlebars.
+    let titlebar_height = children
+        .iter()
+        .flat_map(|child| child.nodes.iter())
+        .map(|child| child.deco_rect.height)
+        .chain(children.iter().map(|child| child.deco_rect.height))
+        .max()
+        .unwrap_or_default();
+    let offset = match layout {
+        NodeLayout::Tabbed => titlebar_height,
+        NodeLayout::Stacked => titlebar_height * children.len() as i32,
+        _ => 0,
+    };
+    let parent_area = f64::from(parent_rect.width * parent_rect.height);
+    for child in children {
+        let mut pending_rect = parent_rect;
+        if offset > 0 && !child.nodes.is_empty() {
+            pending_rect.y += offset;
+            pending_rect.height = (pending_rect.height - offset).max(0);
+            child.percent = Some(if parent_area == 0. {
+                1.
+            } else {
+                f64::from(pending_rect.width * pending_rect.height) / parent_area
+            });
+        }
+        set_tabbed_percentages(child.layout, &mut child.nodes, pending_rect);
+    }
 }
 
 fn clear_focused(node: &mut Node) {
@@ -676,15 +708,7 @@ pub(crate) fn describe_tiling<'a, I>(
                         .find_map(|(child_id, node)| (child_id == id).then_some(node.id))
                 })
                 .collect();
-            let mut children = children
-                .into_iter()
-                .map(|(_, node)| node)
-                .collect::<Vec<_>>();
-            if matches!(layout, TreeLayout::Tabbed | TreeLayout::Stacked) {
-                for child in &mut children {
-                    child.percent = Some(1.);
-                }
-            }
+            let children = children.into_iter().map(|(_, node)| node).collect();
             let mut node = common_node(
                 container_id(id),
                 NodeType::Con,
@@ -1077,10 +1101,9 @@ fn output_rect(global_space: &Space<Window>, output: &smithay::output::Output) -
 
 /// The output's usable area, in global coordinates.
 ///
-/// This is the output rect minus every layer-shell exclusive zone, which is
-/// what sway reports as a workspace's rect. Outer gaps are deliberately not
-/// applied: sway's own example shows a window sharing its workspace's rect
-/// exactly, so gaps live inside this area rather than shrinking it.
+/// This is the output rect minus layer-shell exclusive zones and the
+/// workspace's effective outer gaps. Sway includes the edge half of the inner
+/// gap in this inset as well.
 fn workspace_rect(global_space: &Space<Window>, output: &smithay::output::Output) -> Rect {
     let Some(geometry) = global_space.output_geometry(output) else {
         return Rect::default();

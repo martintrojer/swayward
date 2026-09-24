@@ -343,6 +343,64 @@ fn toggling_fullscreen_updates_sibling_visibility_and_percent() {
 }
 
 #[test]
+fn nested_tabbed_children_report_arranged_area_share() {
+    let mut f = Fixture::new();
+    let handle = f.swayward().event_loop.clone();
+    let ipc_server =
+        crate::ipc::server::IpcServer::start_at(&handle, Some(test_socket_path())).unwrap();
+    let socket = ipc_server.socket_path.clone().unwrap();
+    f.swayward().ipc_server = Some(ipc_server);
+    f.niri_state().ipc_keyboard_layouts_changed();
+    f.add_output(1, (1270, 1408));
+    let client = f.add_client();
+
+    assert!(crate::command::execute(f.niri_state(), "splith")[0].success);
+    for app_id in ["fixture-1", "fixture-2"] {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        let surface = window.surface.clone();
+        window.commit();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+    for command in [
+        "focus parent",
+        "layout stacking",
+        "[app_id=\"^fixture-1$\"] focus",
+        "splith",
+    ] {
+        assert!(crate::command::execute(f.niri_state(), command)[0].success);
+    }
+    let window = f.client(client).create_window();
+    window.xdg_toplevel.set_app_id("fixture-3".into());
+    let surface = window.surface.clone();
+    window.commit();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+    for command in [
+        "focus parent",
+        "layout tabbed",
+        "[app_id=\"^fixture-1$\"] focus",
+    ] {
+        assert!(crate::command::execute(f.niri_state(), command)[0].success);
+    }
+
+    let mut stream = UnixStream::connect(socket).unwrap();
+    let tree = query_ipc(&mut f, &mut stream, MessageType::GetTree);
+    let split = find_json_parent_of_app_id(&tree, "fixture-1").unwrap();
+    let parent = find_json_parent_of_app_id(&tree, "fixture-2").unwrap();
+    let percent = split["percent"].as_f64().unwrap();
+    assert!(percent < 1., "nested tab child must not report full-parent percent");
+    assert_eq!(parent["nodes"][1]["percent"], 1.0);
+}
+
+#[test]
 fn split_containers_report_sway_container_state_fields() {
     let tree = nested_representation_live_tree();
     let split = find_json_parent_of_app_id(&tree, "fixture-3").unwrap();
