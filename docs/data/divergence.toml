@@ -1276,3 +1276,9 @@ migrated = false
 paths = ["src/backend/headless.rs", "src/backend/mod.rs", "src/tests/ipc/outputs.rs"]
 what = "apply configured and runtime custom modes to headless outputs and keep their output-management mode records current."
 why = "The headless backend is used by sway-compatible IPC clients and the oracle, so a successful output mode command must change the advertised compositor geometry rather than only mutating configuration."
+
+[[edit]]
+migrated = false
+paths = ["swayward-config/src/layout.rs", "resources/default-config.kdl", "docs/wiki/Configuration:-Layout.md", "docs/wiki/Tree-School:-Windows-and-Focus.md", "src/tests/floating.rs", "src/tests/fullscreen.rs", "src/tests/ipc/focus_and_move.rs", "src/tests/window_opening.rs"]
+what = "default inner and outer window gaps to zero and update inherited configuration and tutorial documentation."
+why = "Match sway's zero gap defaults (`sway/config.c:288-291`); users can still opt into the former 16 px spacing."

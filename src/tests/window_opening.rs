@@ -34,7 +34,7 @@ fn simple_no_workspaces() {
     let window = f.client(id).window(&surface);
     assert_snapshot!(
         window.format_recent_configures(),
-        @"size: 1248 × 688, bounds: 1248 × 688, states: []"
+        @"size: 1280 × 720, bounds: 1280 × 720, states: []"
     );
 }
 
@@ -171,7 +171,7 @@ fn simple() {
     let window = f.client(id).window(&surface);
     assert_snapshot!(
         window.format_recent_configures(),
-        @"size: 1888 × 1048, bounds: 1888 × 1048, states: []"
+        @"size: 1920 × 1080, bounds: 1920 × 1080, states: []"
     );
 
     window.attach_new_buffer();
@@ -181,7 +181,7 @@ fn simple() {
     let window = f.client(id).window(&surface);
     assert_snapshot!(
         window.format_recent_configures(),
-        @"size: 1888 × 1048, bounds: 1888 × 1048, states: [Activated]"
+        @"size: 1920 × 1080, bounds: 1920 × 1080, states: [Activated]"
     );
 }
 

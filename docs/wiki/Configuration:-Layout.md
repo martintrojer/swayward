@@ -50,7 +50,7 @@ The inherited `layout` options configure the tree's presentation:
 
 ```kdl
 layout {
-    gaps 16
+    gaps 0
 
     focus-ring {
         on
@@ -106,8 +106,9 @@ layout {
 
 ### `gaps` and `outer-gaps`
 
-`gaps` sets the space between tiled windows in logical pixels. Fractional values
-are rounded to physical pixels for each output.
+`gaps` sets the space between tiled windows in logical pixels. It defaults to
+zero, matching sway. Fractional values are rounded to physical pixels for each
+output.
 
 `outer-gaps` sets each workspace edge independently. Each edge is added to
 `gaps`; negative values can reduce the effective outer space to zero. Swayward

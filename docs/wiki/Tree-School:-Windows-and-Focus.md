@@ -25,7 +25,7 @@ The full list is in the [tree command reference](Tree-Command-Reference.md).
 
 ## One window claims the kingdom
 
-Open one terminal: `Mod+Return`. It fills the screen, minus a small gap.
+Open one terminal: `Mod+Return`. It fills the workspace.
 
 > One window takes all the space available to it.
 
@@ -34,13 +34,13 @@ That is the whole lesson, and we will now spend four more classes refusing to le
 **Quick check** — You open one terminal on an empty workspace. What do you expect?
 
 1. A small window centred on screen
-2. A window that fills the workspace (minus the configured gap)
+2. A window that fills the workspace
 3. Swayward asks where to place it
 4. A floating window
 
 <details><summary>Answer</summary>
 
-**2.** A window that fills the workspace (minus the configured gap)
+**2.** A window that fills the workspace
 
 A single tiled window expands to fill its workspace. Floating only happens when configured ([Induction V](Tree-School:-Floating-and-Scratchpad.md)) or via auto-rules.
 

@@ -146,7 +146,8 @@ mode as `smart-borders`, so later `smart_borders` directives can override the
 smart flag without changing the edge mode. The translator accepts all six
 `hide_edge_borders` values and sway's `smart_borders` values. It keeps every
 `--i3` form fail-loud because the titlebar model has no singleton suppression
-setting. Swayward's shipped 4 px border and 16 px gaps remain unchanged.
+setting. Swayward's shipped 4 px border remains unchanged. Gaps now default to zero,
+matching sway; set `layout { gaps 16; }` to restore the older swayward default.
 
 ## Bars
 

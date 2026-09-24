@@ -154,6 +154,7 @@ fn focus_follows_mouse_always_refocuses_the_still_hovered_window() {
 fn pointer_moves_on_same_output_focus(mode: swayward_config::input::MouseWarping) -> bool {
     let mut config = swayward_config::Config::default();
     config.input.mouse_warping = mode;
+    config.layout.gaps = 16.;
     config.animations.off = true;
     let mut f = Fixture::with_config(config);
     f.add_output(1, (1280, 800));

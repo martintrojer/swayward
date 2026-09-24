@@ -45,7 +45,7 @@ fn windowed_fullscreen() {
     let window = f.client(id).window(&surface);
     assert_snapshot!(
         window.format_recent_configures(),
-        @"size: 1888 × 1048, bounds: 1888 × 1048, states: [Activated, Fullscreen]"
+        @"size: 1920 × 1080, bounds: 1920 × 1080, states: [Activated, Fullscreen]"
     );
 
     let mapped = f.swayward().layout.windows().next().unwrap().1;
@@ -69,7 +69,7 @@ fn windowed_fullscreen() {
     let window = f.client(id).window(&surface);
     assert_snapshot!(
         window.format_recent_configures(),
-        @"size: 1888 × 1048, bounds: 1888 × 1048, states: [Activated]"
+        @"size: 1920 × 1080, bounds: 1920 × 1080, states: [Activated]"
     );
 
     let mapped = f.swayward().layout.windows().next().unwrap().1;
@@ -108,11 +108,11 @@ fn windowed_fullscreen_chain() {
     let window = f.client(id).window(&surface);
     assert_snapshot!(
         window.format_recent_configures(),
-        @r"
-    size: 1888 × 1048, bounds: 1888 × 1048, states: [Activated, Fullscreen]
-    size: 1888 × 1048, bounds: 1888 × 1048, states: [Activated]
-    size: 1888 × 1048, bounds: 1888 × 1048, states: [Activated, Fullscreen]
-    size: 1888 × 1048, bounds: 1888 × 1048, states: [Activated]
+        @"
+    size: 1920 × 1080, bounds: 1920 × 1080, states: [Activated, Fullscreen]
+    size: 1920 × 1080, bounds: 1920 × 1080, states: [Activated]
+    size: 1920 × 1080, bounds: 1920 × 1080, states: [Activated, Fullscreen]
+    size: 1920 × 1080, bounds: 1920 × 1080, states: [Activated]
     "
     );
 
@@ -170,7 +170,7 @@ fn interactive_move_unfullscreen_to_scrolling_restores_size() {
     // This should request a fullscreen size.
     assert_snapshot!(
         f.client(id).window(&surface).format_recent_configures(),
-        @"size: 1920 × 1080, bounds: 1888 × 1048, states: [Activated, Fullscreen]"
+        @"size: 1920 × 1080, bounds: 1920 × 1080, states: [Activated, Fullscreen]"
     );
 
     // Start an interactive move which causes an unfullscreen.
@@ -192,7 +192,7 @@ fn interactive_move_unfullscreen_to_scrolling_restores_size() {
     // This should request the tiled size.
     assert_snapshot!(
         f.client(id).window(&surface).format_recent_configures(),
-        @"size: 1888 × 1048, bounds: 1920 × 1080, states: [Activated]"
+        @"size: 1920 × 1080, bounds: 1920 × 1080, states: [Activated]"
     );
 }
 
@@ -211,7 +211,7 @@ fn interactive_move_unmaximize_to_scrolling_restores_size() {
     // This should request a maximized size.
     assert_snapshot!(
         f.client(id).window(&surface).format_recent_configures(),
-        @"size: 1920 × 1080, bounds: 1888 × 1048, states: [Activated, Maximized]"
+        @"size: 1920 × 1080, bounds: 1920 × 1080, states: [Activated, Maximized]"
     );
 
     // Start an interactive move which causes an unmaximize.
@@ -233,6 +233,6 @@ fn interactive_move_unmaximize_to_scrolling_restores_size() {
     // This should request the tiled size.
     assert_snapshot!(
         f.client(id).window(&surface).format_recent_configures(),
-        @"size: 1888 × 1048, bounds: 1920 × 1080, states: [Activated]"
+        @"size: 1920 × 1080, bounds: 1920 × 1080, states: [Activated]"
     );
 }

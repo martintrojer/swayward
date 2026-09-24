@@ -75,7 +75,7 @@ impl Default for Layout {
                 width: 0,
                 height: 0,
             },
-            gaps: 16.,
+            gaps: 0.,
             outer_gaps: OuterGaps::default(),
             outer_gaps_configured: false,
             struts: Struts::default(),
@@ -331,6 +331,11 @@ mod sway_enum_tests {
         ] {
             assert_eq!(value.parse::<FocusWrapping>().unwrap(), expected);
         }
+    }
+
+    #[test]
+    fn layout_defaults_to_sways_zero_gaps() {
+        assert_eq!(Layout::default().gaps, 0.);
     }
 
     #[test]

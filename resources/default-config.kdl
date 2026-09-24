@@ -144,7 +144,7 @@ layout {
     default-orientation "auto"
 
     // Set gaps around windows in logical pixels.
-    gaps 16
+    gaps 0
 
     // These inherited options configure the native preset-size actions. Sway commands do not use
     // them. Width changes resize the nearest horizontal tree split.
