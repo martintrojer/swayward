@@ -568,11 +568,8 @@ impl<W: LayoutElement> Monitor<W> {
         }
 
         let prev_active_idx = self.active_workspace_idx;
-        let focused = self.workspaces[prev_active_idx]
-            .active_window()
-            .map(|window| window.id().clone());
         self.active_workspace_idx = idx;
-        self.move_sticky_to_active_workspace(prev_active_idx, focused.as_ref());
+        self.move_sticky_to_active_workspace(prev_active_idx);
 
         let config = config.unwrap_or(self.options.animations.workspace_switch.0);
 
@@ -735,31 +732,26 @@ impl<W: LayoutElement> Monitor<W> {
         }
     }
 
-    fn move_sticky_to_active_workspace(&mut self, old_idx: usize, focused: Option<&W::Id>) {
+    fn move_sticky_to_active_workspace(&mut self, old_idx: usize) {
         if old_idx == self.active_workspace_idx {
             return;
         }
         let sticky = self.workspaces[old_idx].take_sticky_tiles();
         let target = &mut self.workspaces[self.active_workspace_idx];
-        let activate_sticky = !target.has_windows()
-            || sticky
-                .iter()
-                .any(|removed| Some(removed.tile.window().id()) == focused);
+        let target_was_empty = !target.has_windows();
         for removed in sticky {
-            let activate = activate_sticky && Some(removed.tile.window().id()) == focused;
             target.add_tile(
                 removed.tile,
                 WorkspaceAddWindowTarget::Auto,
-                if activate {
-                    ActivateWindow::Yes
-                } else {
-                    ActivateWindow::No
-                },
+                ActivateWindow::No,
                 removed.width,
                 removed.is_full_width,
                 true,
                 None,
             );
+        }
+        if target_was_empty {
+            target.focus_workspace_node();
         }
     }
 

@@ -2346,6 +2346,10 @@ impl<W: LayoutElement> Workspace<W> {
         }
     }
 
+    pub(super) fn focus_workspace_node(&mut self) {
+        self.floating_is_active = FloatingActive::No;
+    }
+
     pub fn focus_tiling(&mut self) {
         let recent = self
             .tiling

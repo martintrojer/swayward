@@ -3465,8 +3465,21 @@ citation = "sway/sway/commands/title_format.c:9-29;sway/sway/tree/view.c:1117-11
 [files."285-sticky.t"]
 assertions = 11
 tap_plan = 11
-pass = 11
-note = "Sticky floating windows follow workspace switches on their output, preserve focus according to the destination workspace, and ignore switches to other outputs, matching sway (`sway/commands/sticky.c:15-40`; `sway/input/seat.c:1209-1222`). Tiling windows may carry the flag but do not move because sway considers stickiness active only for floating containers (`sway/tree/container.c:1705-1711`)."
+pass = 9
+skip_documented = 2
+reason = "i3_only_semantics"
+reason_verified = true
+note = "Sticky floating windows follow workspace switches on their output and ignore switches to other outputs. Assertions 4 and 7 expect i3 to carry focus with a sticky window onto a newly focused workspace. Sway instead focuses the destination workspace or its existing container first, then reparents sticky floaters without focusing them (`sway/input/seat.c:1178-1222`)."
+[[files."285-sticky.t".skip]]
+n = 4
+desc = "focused sticky container retains focus on a newly created destination workspace"
+reason = "Sway focuses the destination workspace before moving sticky containers, so the moved floating container is not focused."
+citation = "sway/input/seat.c:1178-1222"
+[[files."285-sticky.t".skip]]
+n = 7
+desc = "focused sticky container replaces the target workspace's tiling focus"
+reason = "Sway focuses the target workspace's existing container before moving sticky containers, so the moved floating container does not replace that focus."
+citation = "sway/input/seat.c:1178-1222"
 
 [files."286-root-window-mouse-binding.t"]
 assertions = 1

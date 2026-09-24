@@ -1318,3 +1318,9 @@ migrated = false
 paths = ["src/ipc/tree.rs", "src/tests/ipc/tree_commands.rs"]
 what = "report each workspace rect from its effective working area, including configured outer and edge gaps."
 why = "Sway applies workspace gaps before serializing the workspace box (`sway/tree/workspace.c`; `sway/tree/arrange.c`)."
+
+[[edit]]
+migrated = false
+paths = ["tests/i3/lib/i3test.pm", "tests/i3/coverage.toml"]
+what = "classify i3's sticky-focus assertions as skips while preserving the raw comparisons for all other assertions."
+why = "Sway focuses the destination before reparenting sticky containers, unlike i3's expectation that the sticky container retains focus (`sway/input/seat.c:1178-1222`)."

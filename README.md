@@ -11,7 +11,7 @@ clients and scripts. It is a very serious amount of engineering in service of
 putting one rectangle beside another rectangle, but correctly.
 
 **Status: beta.** The compositor runs live sessions,
-speaks sway's IPC to real clients, and passes 109 of i3's own test files
+speaks sway's IPC to real clients, and passes 108 of i3's own test files
 unmodified. What it has not had is people: automated testing here is
 headless, so nothing yet tells us how it behaves on your hardware, and no
 stranger has installed it.
@@ -200,15 +200,15 @@ a pinned i3 revision and runs them against a real headless compositor, real
 Wayland clients and the sway IPC socket. The adapter replaces X11 window
 setup; it does not edit upstream assertions.
 
-At this revision **109 files pass in full**, unmodified. Across the 3,171
-assertions in captured TAP plans, 2,307 pass, 778 are documented sway
+At this revision **108 files pass in full**, unmodified. Across the 3,171
+assertions in captured TAP plans, 2,305 pass, 780 are documented sway
 divergences, 30 fail and 56 are unreached. The
 [testing and conformance guide](https://github.com/martintrojer/swayward/wiki/Testing-and-Conformance) explains
 what those results prove.
-The green ceiling of 117 files is what this oracle can reach: 109 green, plus
+The green ceiling of 116 files is what this oracle can reach: 108 green, plus
 8 vendored files blocked only by implementation or adapter gaps.
 
-This is evidence, not a compatibility percentage. Half the skips, 394 of 778,
+This is evidence, not a compatibility percentage. Half the skips, 394 of 780,
 are structural: X11-only assertions, i3's own parser binary, i3bar, and tree
 nodes sway does not create either.
 
