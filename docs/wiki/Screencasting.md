@@ -1,16 +1,12 @@
 ### Overview
 
-The primary screencasting interface that niri offers is through portals and pipewire.
+The primary screencasting interface that swayward offers is through portals and pipewire.
 It is supported by [OBS], Firefox, Chromium, Electron, Telegram, and other apps.
 You can screencast both monitors and individual windows.
 
-In order to use it, you need a working D-Bus session, pipewire, `xdg-desktop-portal-gnome`, and [running niri as a session](./Getting-Started.md) (i.e. through `niri-session` or from a display manager).
-On widely used distros this should all "just work".
+To use the default integrated path, you need a working D-Bus session, PipeWire, `xdg-desktop-portal-gnome`, and [a full swayward session](./Getting-Started.md). Start the session through `swayward-session` or a display manager. This path provides the GNOME window and monitor picker and swayward's dynamic cast target.
 
-Alternatively, you can use tools that rely on the `wlr-screencopy` protocol, which niri also supports.
-
-There are several features in niri designed for screencasting.
-Let's take a look!
+As a less integrated fallback, install `xdg-desktop-portal-wlr` and route ScreenCast and Screenshot to `wlr` in `swayward-portals.conf`. You can also use tools that call the `wlr-screencopy` protocol directly. The fallback supports monitor capture but not the GNOME window picker or dynamic cast target.
 
 ### Block out windows
 
@@ -48,10 +44,12 @@ Check [the corresponding wiki section](./Configuration:-Window-Rules.md#block-ou
 
 <sup>Since: 25.05</sup>
 
-Niri provides a special screencast stream that you can change dynamically.
-It shows up as "niri Dynamic Cast Target" in the screencast window dialog.
+This feature requires the default `xdg-desktop-portal-gnome` backend. It is not available through `xdg-desktop-portal-wlr`.
 
-![Screencast dialog showing niri Dynamic Cast Target.](https://github.com/user-attachments/assets/e236ce74-98ec-4f3a-a99b-29ac1ff324dd)
+swayward provides a special screencast stream that you can change dynamically.
+It shows up as "swayward Dynamic Cast Target" in the screencast window dialog.
+
+![Screencast dialog showing swayward Dynamic Cast Target.](https://github.com/user-attachments/assets/e236ce74-98ec-4f3a-a99b-29ac1ff324dd)
 
 Choose it, then use the following binds to change what it shows.
 The stream won't start until you make your first target selection.
@@ -60,11 +58,8 @@ The stream won't start until you make your first target selection.
 - `set-dynamic-cast-monitor` to cast the focused monitor.
 - `clear-dynamic-cast-target` to reset to an empty video stream.
 
-You can also use these actions from the command line, for example to interactively pick which window to cast:
-
-```sh
-$ niri msg action set-dynamic-cast-window --id $(niri msg --json pick-window | jq .id)
-```
+These are native bind actions, not sway IPC commands. Add them to the `binds`
+block in your KDL configuration.
 
 <video controls src="https://github.com/user-attachments/assets/c617a9d6-7d5e-4f1f-b8cc-9301182d9634">
 
@@ -80,7 +75,7 @@ All dynamic casts share the same target, but new ones start out empty until the 
 
 <sup>Since: 25.02</sup>
 
-The [`is-window-cast-target=true` window rule](./Configuration:-Window-Rules.md#is-window-cast-target) matches windows targeted by an ongoing window screencast.
+With `xdg-desktop-portal-gnome`, the [`is-window-cast-target=true` window rule](./Configuration:-Window-Rules.md#is-window-cast-target) matches windows targeted by an ongoing window screencast.
 You use it with a special border color to clearly indicate screencasted windows.
 
 This also works for windows targeted by dynamic screencasts.
@@ -131,7 +126,7 @@ binds {
 }
 ```
 
-Keep in mind that not all apps react to fullscreening, so it may sometimes look as if the bind did nothing.
+Not all apps react to fullscreening, so it may sometimes look as if the bind did nothing.
 
 Here's an example showing a windowed-fullscreen Google Slides [presentation](https://youtu.be/Kmz8ODolnDg), along with the presenter view and a meeting app:
 
@@ -140,14 +135,18 @@ Here's an example showing a windowed-fullscreen Google Slides [presentation](htt
 ### Screen mirroring
 
 For presentations it can be useful to mirror an output to another.
-Currently, niri doesn't have built-in output mirroring, but you can use a third-party tool [`wl-mirror`](https://github.com/Ferdi265/wl-mirror) that mirrors an output to a window.
-Note that the command below requires [`jq`](https://jqlang.org/download/) to be installed.
+Currently, swayward doesn't have built-in output mirroring, but you can use a third-party tool [`wl-mirror`](https://github.com/Ferdi265/wl-mirror) that mirrors an output to a window.
+The command below requires [`jq`](https://jqlang.org/download/) to be installed.
 ```kdl
 binds {
-    Mod+P repeat=false { spawn-sh "wl-mirror $(niri msg --json focused-output | jq -r .name)"; }
+    Mod+P repeat=false { spawn-sh "wl-mirror $(swaywardmsg -t get_outputs | jq -r '.[] | select(.focused).name')"; }
 }
 ```
 Focus the output you want to mirror, press <kbd>Mod</kbd><kbd>P</kbd> and move the `wl-mirror` window to the target output.
 Finally, fullscreen the `wl-mirror` window (by default, <kbd>Mod</kbd><kbd>Shift</kbd><kbd>F</kbd>).
 
 [OBS]: https://obsproject.com/
+
+---
+
+*This page is adapted from the niri documentation.*

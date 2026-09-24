@@ -1,9 +1,12 @@
+> **Inherited from niri.** This is an additive feature swayward keeps from
+> niri. Sway has no equivalent and no sway client can observe it, so nothing
+> here affects sway compatibility. Safe to ignore entirely if you want
+> swayward to behave like sway.
+
 ### Overview
 
-Niri has several animations which you can configure in the same way.
-Additionally, you can disable or slow down all animations at once.
-
-Here's a quick glance at the available animations with their default values.
+swayward has several animations which you can configure in the same way.
+You can also disable or slow down all animations at once.
 
 ```kdl
 animations {
@@ -30,10 +33,6 @@ animations {
         curve "ease-out-quad"
     }
 
-    horizontal-view-movement {
-        spring damping-ratio=1.0 stiffness=800 epsilon=0.0001
-    }
-
     window-movement {
         spring damping-ratio=1.0 stiffness=800 epsilon=0.0001
     }
@@ -55,10 +54,6 @@ animations {
         curve "ease-out-quad"
     }
 
-    overview-open-close {
-        spring damping-ratio=1.0 stiffness=800 epsilon=0.0001
-    }
-
     recent-windows-close {
         spring damping-ratio=1.0 stiffness=800 epsilon=0.001
     }
@@ -68,7 +63,6 @@ animations {
 ### Animation Types
 
 There are two animation types: easing and spring.
-Each animation can be either an easing or a spring.
 
 #### Easing
 
@@ -88,7 +82,7 @@ animations {
 }
 ```
 
-Currently, niri only supports five curves.
+Currently, swayward only supports five curves.
 You can get a feel for them on pages like [easings.net](https://easings.net/).
 
 - `ease-out-quad` <sup>Since: 0.1.5</sup>
@@ -114,7 +108,7 @@ They notably feel better with touchpad gestures, because they take into account 
 Springs can also oscillate / bounce at the end with the right parameters if you like that sort of thing, but they don't have to (and by default they mostly don't).
 
 Due to springs using a physical model, the animation parameters are less obvious and generally should be tuned with trial and error.
-Notably, you cannot directly set the duration.
+You cannot directly set the duration.
 You can use the [Elastic](https://flathub.org/apps/app.drey.Elastic) app to help visualize how the spring parameters change the animation.
 
 A spring animation is configured like this, with three mandatory parameters:
@@ -150,11 +144,9 @@ Set `epsilon` to a lower value if the animation "jumps" at the end.
 
 ### Animations
 
-Now let's go into more detail on the animations that you can configure.
-
 #### `workspace-switch`
 
-Animation when switching workspaces up and down, including after the vertical touchpad gesture (a spring is recommended).
+Animation when switching workspaces (a spring is recommended).
 
 ```kdl
 animations {
@@ -187,13 +179,13 @@ You can write a custom shader for drawing the window during an open animation.
 
 See [this example shader](./examples/open_custom_shader.frag) for a full documentation with several animations to experiment with.
 
-If a custom shader fails to compile, niri will print a warning and fall back to the default, or previous successfully compiled shader.
-When running niri as a systemd service, you can see the warnings in the journal: `journalctl -ef /usr/bin/niri`
+If a custom shader fails to compile, swayward will print a warning and fall back to the default, or previous successfully compiled shader.
+When running swayward as a systemd service, you can see the warnings in the journal: `journalctl -ef /usr/bin/swayward`
 
 > [!WARNING]
 >
 > Custom shaders do not have a backwards compatibility guarantee.
-> I may need to change their interface as I'm developing new features.
+> Their interface may change as new features are developed.
 
 Example: open will fill the current geometry with a solid gradient that gradually fades in.
 
@@ -247,13 +239,13 @@ You can write a custom shader for drawing the window during a close animation.
 
 See [this example shader](./examples/close_custom_shader.frag) for a full documentation with several animations to experiment with.
 
-If a custom shader fails to compile, niri will print a warning and fall back to the default, or previous successfully compiled shader.
-When running niri as a systemd service, you can see the warnings in the journal: `journalctl -ef /usr/bin/niri`
+If a custom shader fails to compile, swayward will print a warning and fall back to the default, or previous successfully compiled shader.
+When running swayward as a systemd service, you can see the warnings in the journal: `journalctl -ef /usr/bin/swayward`
 
 > [!WARNING]
 >
 > Custom shaders do not have a backwards compatibility guarantee.
-> I may need to change their interface as I'm developing new features.
+> Their interface may change as new features are developed.
 
 Example: close will fill the current geometry with a solid gradient that gradually fades away.
 
@@ -279,36 +271,13 @@ animations {
 }
 ```
 
-#### `horizontal-view-movement`
-
-All horizontal camera view movement animations, such as:
-
-- When a window off-screen is focused and the camera scrolls to it.
-- When a new window appears off-screen and the camera scrolls to it.
-- After a horizontal touchpad gesture (a spring is recommended).
-
-```kdl
-animations {
-    horizontal-view-movement {
-        spring damping-ratio=1.0 stiffness=800 epsilon=0.0001
-    }
-}
-```
-
 #### `window-movement`
 
 <sup>Since: 0.1.5</sup>
 
 Movement of individual windows within a workspace.
 
-Includes:
-
-- Moving window columns with `move-column-left` and `move-column-right`.
-- Moving windows inside a column with `move-window-up` and `move-window-down`.
-- Moving windows out of the way upon window opening and closing.
-- Window movement between columns when consuming/expelling.
-
-This animation *does not* include the camera view movement, such as scrolling the workspace left and right.
+This includes tree mutations, window opening and closing, and moves between containers.
 
 ```kdl
 animations {
@@ -324,8 +293,7 @@ animations {
 
 Window resize animation.
 
-Only manual window resizes are animated, i.e. when you resize the window with `switch-preset-column-width` or `maximize-column`.
-Also, very small resizes (up to 10 pixels) are not animated.
+Manual window resizes are animated. Very small resizes (up to 10 pixels) are not animated.
 
 ```kdl
 animations {
@@ -343,13 +311,13 @@ You can write a custom shader for drawing the window during a resize animation.
 
 See [this example shader](./examples/resize_custom_shader.frag) for a full documentation with several animations to experiment with.
 
-If a custom shader fails to compile, niri will print a warning and fall back to the default, or previous successfully compiled shader.
-When running niri as a systemd service, you can see the warnings in the journal: `journalctl -ef /usr/bin/niri`
+If a custom shader fails to compile, swayward will print a warning and fall back to the default, or previous successfully compiled shader.
+When running swayward as a systemd service, you can see the warnings in the journal: `journalctl -ef /usr/bin/swayward`
 
 > [!WARNING]
 >
 > Custom shaders do not have a backwards compatibility guarantee.
-> I may need to change their interface as I'm developing new features.
+> Their interface may change as new features are developed.
 
 Example: resize will show the next (after resize) window texture right away, stretched to the current geometry.
 
@@ -412,20 +380,6 @@ animations {
 }
 ```
 
-#### `overview-open-close`
-
-<sup>Since: 25.05</sup>
-
-The open/close zoom animation of the [Overview](./Overview.md).
-
-```kdl
-animations {
-    overview-open-close {
-        spring damping-ratio=1.0 stiffness=800 epsilon=0.0001
-    }
-}
-```
-
 #### `recent-windows-close`
 
 <sup>Since: 25.11</sup>
@@ -440,21 +394,6 @@ animations {
 }
 ```
 
-### Synchronized Animations
+---
 
-<sup>Since: 0.1.5</sup>
-
-Sometimes, when two animations are meant to play together synchronized, niri will drive them both with the same configuration.
-
-For example, if a window resize causes the view to move, then that view movement animation will also use the `window-resize` configuration (rather than the `horizontal-view-movement` configuration).
-This is especially important for animated resizes to look good when using `center-focused-column "always"`.
-
-As another example, resizing a window in a column vertically causes other windows to move up or down into their new position.
-This movement will use the `window-resize` configuration, rather than the `window-movement` configuration, to keep the animations synchronized.
-
-A few actions are still missing this synchronization logic, since in some cases it is difficult to implement properly.
-Therefore, for the best results, consider using the same parameters for related animations (they are all the same by default):
-
-- `horizontal-view-movement`
-- `window-movement`
-- `window-resize`
+*This page is adapted from the niri documentation.*

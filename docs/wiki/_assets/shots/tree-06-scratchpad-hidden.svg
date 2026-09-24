@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" role="img" aria-labelledby="title">
+<title id="title">Window A in the workspace while B is hidden outside it in the scratchpad</title>
+<rect width="640" height="400" rx="16" fill="#111318"/>
+<rect x="25" y="25" width="370" height="350" rx="10" fill="none" stroke="#89b4fa" stroke-width="3"/>
+<text x="41" y="55" text-anchor="start" fill="#cdd6f4" font-family="monospace" font-size="22">workspace</text><rect x="75" y="110" width="270" height="220" rx="10" fill="#1e1e2e" stroke="#ffc87f" stroke-width="3"/>
+<text x="210.0" y="233.33333333333334" text-anchor="middle" fill="#cdd6f4" font-family="monospace" font-size="40">A</text><rect x="425" y="25" width="190" height="350" rx="10" fill="none" stroke="#6c7086" stroke-width="3"/>
+<text x="441" y="55" text-anchor="start" fill="#cdd6f4" font-family="monospace" font-size="22">scratchpad</text><rect x="450" y="110" width="140" height="220" rx="10" fill="#1e1e2e" stroke="#6c7086" stroke-width="3"/>
+<text x="520.0" y="214.0" text-anchor="middle" fill="#cdd6f4" font-family="monospace" font-size="24"><tspan x="520.0" dy="0">B</tspan><tspan x="520.0" dy="28">hidden</tspan></text>
+</svg>

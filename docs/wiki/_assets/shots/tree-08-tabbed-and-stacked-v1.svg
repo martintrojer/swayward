@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" role="img" aria-labelledby="title">
+<title id="title">A horizontal container holding a tabbed container beside a stacked one</title>
+<rect width="640" height="400" rx="16" fill="#111318"/>
+<rect x="30" y="25" width="580" height="350" rx="10" fill="none" stroke="#89b4fa" stroke-width="3"/>
+<text x="46" y="55" text-anchor="start" fill="#cdd6f4" font-family="monospace" font-size="22">splith</text><rect x="55" y="80" width="260" height="265" rx="10" fill="none" stroke="#a6e3a1" stroke-width="3"/>
+<text x="71" y="110" text-anchor="start" fill="#cdd6f4" font-family="monospace" font-size="20">tabbed</text><rect x="75" y="120" width="105" height="40" rx="10" fill="#1e1e2e" stroke="#6c7086" stroke-width="3"/>
+<text x="127.5" y="146.66666666666666" text-anchor="middle" fill="#cdd6f4" font-family="monospace" font-size="20">A</text><rect x="185" y="120" width="110" height="40" rx="10" fill="#1e1e2e" stroke="#ffc87f" stroke-width="5"/>
+<text x="240.0" y="146.66666666666666" text-anchor="middle" fill="#cdd6f4" font-family="monospace" font-size="20">B</text><rect x="75" y="175" width="220" height="150" rx="10" fill="#1e1e2e" stroke="#6c7086" stroke-width="3"/>
+<text x="185.0" y="244.0" text-anchor="middle" fill="#cdd6f4" font-family="monospace" font-size="24"><tspan x="185.0" dy="0">B</tspan><tspan x="185.0" dy="28">visible</tspan></text><rect x="340" y="80" width="245" height="265" rx="10" fill="none" stroke="#a6e3a1" stroke-width="3"/>
+<text x="356" y="110" text-anchor="start" fill="#cdd6f4" font-family="monospace" font-size="20">stacked</text><rect x="360" y="120" width="205" height="40" rx="10" fill="#1e1e2e" stroke="#6c7086" stroke-width="3"/>
+<text x="462.5" y="146.66666666666666" text-anchor="middle" fill="#cdd6f4" font-family="monospace" font-size="20">C</text><rect x="360" y="165" width="205" height="40" rx="10" fill="#1e1e2e" stroke="#ffc87f" stroke-width="5"/>
+<text x="462.5" y="191.66666666666666" text-anchor="middle" fill="#cdd6f4" font-family="monospace" font-size="20">D</text><rect x="360" y="215" width="205" height="110" rx="10" fill="#1e1e2e" stroke="#6c7086" stroke-width="3"/>
+<text x="462.5" y="264.0" text-anchor="middle" fill="#cdd6f4" font-family="monospace" font-size="24"><tspan x="462.5" dy="0">D</tspan><tspan x="462.5" dy="28">visible</tspan></text>
+</svg>
