@@ -1,4 +1,4 @@
-This reference records what `src/tests/ipc.rs` verifies against sway and where it can still accept an incompatible reply. Treat each entry as narrow: a caught mutation proves only the listed behavior.
+This reference records what `src/tests/ipc/` verifies against sway and where it can still accept an incompatible reply. Treat each entry as narrow: a caught mutation proves only the listed behavior.
 
 ## Why we break things on purpose
 

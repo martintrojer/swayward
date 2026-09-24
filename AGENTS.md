@@ -68,7 +68,7 @@ way back.
 The production behaviour is correct. The hazard is that `cargo test --all`
 inherits the operator's interactive `SWAYSOCK`, so no test may call
 `IpcServer::start`. Use `start_at` with an explicit private path.
-`src/tests/ipc.rs::test_socket_path` provides one, and
+`src/tests/ipc/fixtures.rs::test_socket_path` provides one, and
 `no_test_server_adopts_the_ambient_swaysock` fails if a caller reappears.
 
 A probe connection cannot detect the victim, because an unlinked path is

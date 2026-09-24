@@ -1,6 +1,6 @@
 # Sway IPC client coverage
 
-This reference maps the fixed ecosystem clients from the [foundation spec](internal/specs/2026-09-12-swayward-foundation.md#testing-approach) to `src/tests/ipc.rs`. **Tested** means an existing swayward test exercises the listed protocol behavior. **Researched only** means the client source establishes the dependency, but no existing test covers the full behavior. The opt-in probes below now run selected third-party clients against swayward; rows without a probe remain source-level research.
+This reference maps the fixed ecosystem clients from the [foundation spec](internal/specs/2026-09-12-swayward-foundation.md#testing-approach) to `src/tests/ipc/`. **Tested** means an existing swayward test exercises the listed protocol behavior. **Researched only** means the client source establishes the dependency, but no existing test covers the full behavior. The opt-in probes below now run selected third-party clients against swayward; rows without a probe remain source-level research.
 
 The source review used sway 1.12, Waybar `3672eee`, Quickshell `fae96f1`, autotiling 1.9.4, and DankMaterialShell `eb0b56e`. The links below pin those revisions.
 
