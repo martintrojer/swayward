@@ -189,7 +189,7 @@ jobs:
     needs: build-ubuntu
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: ubuntu-artifacts
           path: artifact
@@ -272,7 +272,7 @@ jobs:
         fedora: [43, 44]
     container: fedora:${{ matrix.fedora }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: rpm-artifact-fedora${{ matrix.fedora }}
           path: artifact
@@ -349,7 +349,7 @@ jobs:
     runs-on: ubuntu-24.04
     container: archlinux:latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: arch-artifact
           path: artifact
@@ -366,7 +366,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: release-files
           merge-multiple: true
