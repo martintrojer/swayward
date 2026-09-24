@@ -447,10 +447,12 @@ fn refresh_all_query_state(state: &mut State) {
     query_state.binding_modes = binding_modes(&state.swayward.config.borrow());
     query_state.binding_state = binding_state(&state.swayward.binding_mode);
     refresh_input_query_state(&state.swayward, &mut query_state);
+    let ipc_outputs = state.backend.ipc_outputs().lock().unwrap().clone();
     refresh_query_state(
         &state.swayward.layout,
         &state.swayward.global_space,
         &state.swayward.output_power,
+        &ipc_outputs,
         &state.swayward.marks_by_window,
         &state.swayward.marks_by_container,
         &mut query_state,
@@ -748,6 +750,7 @@ fn refresh_query_state(
     layout: &crate::layout::Layout<Mapped>,
     global_space: &smithay::desktop::Space<smithay::desktop::Window>,
     output_power: &std::collections::HashMap<String, bool>,
+    ipc_outputs: &crate::backend::IpcOutputMap,
     marks: &std::collections::HashMap<crate::window::mapped::MappedId, Vec<String>>,
     container_marks: &std::collections::HashMap<
         (
@@ -768,12 +771,44 @@ fn refresh_query_state(
         container_marks,
     ))
     .unwrap_or_else(|_| r#"{"success":false,"error":"serialization failed"}"#.into());
-    state.outputs = serde_json::to_string(&crate::ipc::tree::describe_outputs_with_power(
+    let mut outputs = serde_json::to_value(crate::ipc::tree::describe_outputs_with_power(
         layout,
         global_space,
         output_power,
     ))
-    .unwrap_or_else(|_| r#"{"success":false,"error":"serialization failed"}"#.into());
+    .unwrap_or_default();
+    if let Some(outputs) = outputs.as_array_mut() {
+        outputs.extend(
+            ipc_outputs
+                .values()
+                .filter(|output| output.logical.is_none())
+                .map(|output| {
+                    serde_json::json!({
+                        "active": false,
+                        "current_workspace": null,
+                        "dpms": false,
+                        "features": { "adaptive_sync": false, "hdr": false },
+                        "make": output.make,
+                        "model": output.model,
+                        "modes": output.modes.iter().map(|mode| serde_json::json!({
+                            "width": mode.width,
+                            "height": mode.height,
+                            "refresh": mode.refresh_rate,
+                        })).collect::<Vec<_>>(),
+                        "name": output.name,
+                        "non_desktop": false,
+                        "percent": null,
+                        "power": false,
+                        "primary": false,
+                        "rect": swayward_ipc::Rect::default(),
+                        "serial": output.serial,
+                        "type": "output",
+                    })
+                }),
+        );
+    }
+    state.outputs = serde_json::to_string(&outputs)
+        .unwrap_or_else(|_| r#"{"success":false,"error":"serialization failed"}"#.into());
     // Sway walks the container tree and appends each container's marks in the
     // order it meets them (`sway/tree/root.c:246-260`,
     // `sway/ipc-server.c:604-610,825-834`). Collecting from the tree we just
@@ -1171,10 +1206,12 @@ impl State {
             let mut query_state = server.query_state.borrow_mut();
             query_state.binding_state = binding_state(&self.swayward.binding_mode);
             refresh_input_query_state(&self.swayward, &mut query_state);
+            let ipc_outputs = self.backend.ipc_outputs().lock().unwrap().clone();
             refresh_query_state(
                 &self.swayward.layout,
                 &self.swayward.global_space,
                 &self.swayward.output_power,
+                &ipc_outputs,
                 &self.swayward.marks_by_window,
                 &self.swayward.marks_by_container,
                 &mut query_state,

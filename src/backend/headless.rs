@@ -3,6 +3,7 @@
 //! This can eventually grow into a more complete backend if needed, but for now it's missing some
 //! crucial parts like dmabufs.
 
+use std::collections::HashSet;
 use std::mem;
 use std::sync::{Arc, Mutex};
 
@@ -26,6 +27,8 @@ use crate::utils::{get_monotonic_time, logical_output};
 pub struct Headless {
     renderer: Option<GlesRenderer>,
     ipc_outputs: Arc<Mutex<IpcOutputMap>>,
+    outputs: Vec<Output>,
+    disabled_outputs: HashSet<String>,
     last_output_number: u8,
     #[cfg(test)]
     skip_next_render: bool,
@@ -36,6 +39,8 @@ impl Headless {
         Self {
             renderer: None,
             ipc_outputs: Default::default(),
+            outputs: Vec::new(),
+            disabled_outputs: HashSet::new(),
             last_output_number: 0,
             #[cfg(test)]
             skip_next_render: false,
@@ -165,6 +170,7 @@ impl Headless {
                     ..Default::default()
                 });
         }
+        self.outputs.push(output.clone());
         swayward.add_output(output, None, false);
         self.on_output_config_changed(swayward);
     }
@@ -174,25 +180,70 @@ impl Headless {
             .lock()
             .unwrap()
             .retain(|_, output| names.contains(&output.name));
+        self.outputs.retain(|output| names.contains(&output.name()));
+        self.disabled_outputs.retain(|name| names.contains(name));
     }
 
     pub fn on_output_config_changed(&mut self, swayward: &mut Swayward) {
-        let outputs = swayward.global_space.outputs().cloned().collect::<Vec<_>>();
-        for output in outputs {
+        self.outputs.retain(|output| {
+            let externally_removed =
+                !swayward.output_exists(output) && !self.disabled_outputs.contains(&output.name());
+            if externally_removed {
+                self.ipc_outputs
+                    .lock()
+                    .unwrap()
+                    .retain(|_, ipc_output| ipc_output.name != output.name());
+            }
+            !externally_removed
+        });
+        for output in self.outputs.clone() {
             let name = output.user_data().get::<OutputName>().unwrap();
-            let mode = swayward
+            let config = swayward
                 .config
                 .borrow()
                 .outputs
                 .find(name)
-                .and_then(|config| config.mode)
-                .map(|mode| Mode {
-                    size: Size::from((i32::from(mode.mode.width), i32::from(mode.mode.height))),
-                    refresh: mode
-                        .mode
-                        .refresh
-                        .map_or(60_000, |refresh| (refresh * 1000.).round() as i32),
-                });
+                .cloned()
+                .unwrap_or_default();
+            let connected = swayward.output_exists(&output);
+            if config.off {
+                if connected {
+                    swayward.remove_output(&output);
+                    self.disabled_outputs.insert(output.name());
+                    if let Some(ipc_output) = self
+                        .ipc_outputs
+                        .lock()
+                        .unwrap()
+                        .values_mut()
+                        .find(|ipc_output| ipc_output.name == output.name())
+                    {
+                        ipc_output.current_mode = None;
+                        ipc_output.logical = None;
+                    }
+                }
+                continue;
+            }
+            if !connected && self.disabled_outputs.remove(&output.name()) {
+                if let Some(ipc_output) = self
+                    .ipc_outputs
+                    .lock()
+                    .unwrap()
+                    .values_mut()
+                    .find(|ipc_output| ipc_output.name == output.name())
+                {
+                    ipc_output.current_mode = Some(0);
+                    ipc_output.logical = Some(logical_output(&output));
+                }
+                swayward.add_output(output.clone(), None, false);
+            }
+
+            let mode = config.mode.map(|mode| Mode {
+                size: Size::from((i32::from(mode.mode.width), i32::from(mode.mode.height))),
+                refresh: mode
+                    .mode
+                    .refresh
+                    .map_or(60_000, |refresh| (refresh * 1000.).round() as i32),
+            });
             let Some(mode) = mode.filter(|mode| output.current_mode() != Some(*mode)) else {
                 continue;
             };

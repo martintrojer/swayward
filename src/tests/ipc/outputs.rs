@@ -14,6 +14,35 @@ fn headless_output_uses_configured_mode_when_added() {
 }
 
 #[test]
+fn headless_output_disable_evacuates_workspaces_and_enable_reconnects_it() {
+    let mut fixture = Fixture::new();
+    fixture.add_output(1, (800, 600));
+    fixture.add_output(2, (1024, 768));
+    fixture.niri_focus_output(2);
+    let client = fixture.add_client();
+    let window = fixture.client(client).create_window();
+    let surface = window.surface.clone();
+    window.commit();
+    fixture.roundtrip(client);
+    let window = fixture.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    fixture.double_roundtrip(client);
+
+    assert!(crate::command::execute(fixture.niri_state(), "output headless-2 disable")[0].success);
+    assert_eq!(fixture.swayward().layout.outputs().count(), 1);
+    assert_eq!(fixture.swayward().layout.windows().count(), 1);
+    assert!(fixture
+        .swayward()
+        .layout
+        .windows()
+        .all(|(monitor, _)| monitor.unwrap().output_name() == "headless-1"));
+
+    assert!(crate::command::execute(fixture.niri_state(), "output headless-2 enable")[0].success);
+    assert_eq!(fixture.swayward().layout.outputs().count(), 2);
+}
+
+#[test]
 fn output_runtime_commands_apply_named_state_and_wildcard_fanout() {
     let (mut fixture, socket) = ipc_fixture();
     fixture.add_named_output_at("left".into(), (800, 600), Some((0, 0)));
