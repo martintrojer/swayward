@@ -3,7 +3,7 @@
 # derives every request, event-family, and runtime-command census count. The
 # fixture scenario list matches the cases loaded by live_ipc_descriptions_
 # match_sway_schema_and_values; other tree fixtures support separate tests.
-# Keep this aligned with tests/fixtures/sway/schema-version.json.
+# Keep this aligned with sway-ipc/fixtures/schema-version.json in the pinned oracle.
 sway_version = "1.12"
 sway_commit = "88869399f421d9180dd8b6ed0b5a1f4a3585d252"
 previous_probe_total = 81

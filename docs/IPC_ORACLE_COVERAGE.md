@@ -1,5 +1,10 @@
 This reference records what `src/tests/ipc/` verifies against sway and where it can still accept an incompatible reply. Treat each entry as narrow: a caught mutation proves only the listed behavior.
 
+Public black-box results live in `sway-ipc/results/swayward.toml` in the
+[sway IPC oracle](https://github.com/martintrojer/sway-ipc-oracle). The pinned
+result records 90 matches, 3 not-applicable scenarios, and 0 mismatches. This
+page describes swayward's focused in-process mutation checks.
+
 ## Why we break things on purpose
 
 A green test suite tells you the tests passed. It doesn't tell you they'd notice if the code were wrong. A test that compares a reply against itself, or checks one field and waves the other forty through, stays green whatever the compositor sends. It feels like evidence and isn't.
@@ -83,8 +88,8 @@ order, whitespace, or numeric spelling. “Matches sway schema” therefore mean
 the tested JSON structure and selected semantics, not byte-for-byte payload
 identity.
 
-`contrib/check-sway-fixture-schema /path/to/sway` requires the checkout to be the
-commit pinned in `tests/fixtures/sway/schema-version.json`. It extracts the
+`.cache/sway-ipc-oracle/contrib/check-sway-fixture-schema /path/to/sway` requires the checkout to be the
+commit pinned in `sway-ipc/fixtures/schema-version.json` in the pinned oracle. It extracts the
 `GET_OUTPUTS`, output-node, native-view, and output-feature field sets from
 sway's serializers and compares them with representative fixtures. CI clones
 the pinned tag and runs this check, so a target-version bump cannot silently
@@ -96,4 +101,4 @@ Unsupported message types are now enumerated. `every_message_type_replies_and_le
 
 ## Event fixture boundary
 
-`tests/fixtures/sway/events/` contains every documented workspace and window `change` value requested for the audit, plus `resize` and `default` mode payloads. The headless test exercises one deterministic event from each family. The remaining fixtures preserve real sway schemas but do not yet have one test per change value or semantic value checks beyond `change`.
+`sway-ipc/fixtures/events/` in the pinned oracle contains every documented workspace and window `change` value requested for the audit, plus `resize` and `default` mode payloads. The headless test exercises one deterministic event from each family. The remaining fixtures preserve real sway schemas but do not yet have one test per change value or semantic value checks beyond `change`.

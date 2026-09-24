@@ -252,7 +252,7 @@ def check_unvendored(vendored_names):
     a file we already have, and cannot omit one we do not.
     """
     if not UNVENDORED.exists():
-        return ["tests/i3/unvendored.toml is missing"]
+        return ["pinned oracle i3/unvendored.toml is missing"]
     with UNVENDORED.open("rb") as handle:
         listed = set(tomllib.load(handle).get("files", {}))
 

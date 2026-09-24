@@ -1,6 +1,7 @@
-Swayward runs upstream i3 tests against a real headless compositor, real
-Wayland clients, and the sway IPC socket. The adapter replaces X11 setup but
-does not edit the vendored assertions.
+The independent [sway IPC oracle](https://github.com/martintrojer/sway-ipc-oracle)
+runs upstream i3 tests and captured sway IPC scenarios against i3, sway, and
+swayward. The public figures come from its black-box runners, not swayward's
+in-process adapter.
 
 A passing test is evidence for the behavior it exercises, not a compatibility
 percentage. Some i3 assertions cannot test sway behavior because they require
@@ -10,12 +11,11 @@ adapter substitutions.
 
 The project keeps two kinds of evidence:
 
-- `tests/i3/coverage.toml` records every vendored test's current TAP result.
-  `contrib/coverage-report` prints the census and work queue.
-- Captured sway replies and focused headless tests check IPC schemas and selected
-  semantics. They do not prove every scalar value or every event variant.
+- The oracle's `i3/results/swayward.toml` and
+  `sway-ipc/results/swayward.toml` record the public pass, skip, fail, match,
+  mismatch, and not-applicable figures.
+- `tests/i3/coverage.toml` records the faster in-process development run.
+  `contrib/coverage-report` prints its census and work queue.
 
-For exact counts and per-assertion citations, read the
-[i3 conformance report](https://github.com/martintrojer/swayward/blob/main/tests/i3/README.md).
-For the mutation-tested IPC boundary, read the
-[IPC oracle report](https://github.com/martintrojer/swayward/blob/main/docs/IPC_ORACLE_COVERAGE.md).
+Run `./contrib/fetch-oracle` before local tests. The commit in
+`tests/oracle.toml` pins the test files, fixtures, and black-box results.

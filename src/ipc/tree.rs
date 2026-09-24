@@ -597,7 +597,7 @@ fn clear_focused(node: &mut Node) {
 ///
 /// Sway reports `visible` per window: a window on a workspace that is not its
 /// output's active one is not visible (`sway/tree/container.c`, and the
-/// captured `tests/fixtures/sway/two_workspaces.tree.json` shows
+/// captured `sway-ipc/fixtures/two_workspaces.tree.json` in the pinned oracle shows
 /// `visible: false` for the window on the background workspace). Waybar's
 /// `hasFlag` recurses into child nodes, so a window wrongly claiming to be
 /// visible marks its whole workspace button visible.

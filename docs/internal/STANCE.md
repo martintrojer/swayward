@@ -80,9 +80,10 @@ not ship.
 
 Not on trust. On evidence you can check without our help:
 
-- **An oracle we cannot edit.** `tests/i3/t/*.t` is i3's own suite, vendored
-  byte for byte. `contrib/coverage-report` reports which files pass in full,
-  unmodified. A test we could edit to pass would not be evidence.
+- **An oracle we cannot edit.** i3's own suite lives byte-for-byte in
+  [`sway-ipc-oracle`](https://github.com/martintrojer/sway-ipc-oracle), pinned
+  by `tests/oracle.toml`. Its black-box results report passes, skips, and
+  failures together. A test we could edit to pass would not be evidence.
 - **Deviations cited to source.** Every intentional difference from sway is
   written down with a citation into sway's C, and `coverage-report --check`
   fails when the ledger drifts from the measurement.

@@ -199,7 +199,7 @@ GTK backend as documented in [Important software](https://github.com/martintroje
 `GET_VERSION` uses sway's six-field reply schema: `human_readable`, `variant`,
 `major`, `minor`, `patch`, and `loaded_config_file_name`. Sway defines that
 schema in sway 1.12's `sway/sway/ipc-json.c:225-238`; the target tag and exact
-commit are recorded in `tests/fixtures/sway/schema-version.json`.
+commit are recorded in `sway-ipc/fixtures/schema-version.json` in the pinned oracle.
 Swayward reports its own variant and package version in those fields rather than
 claiming to be sway or i3. Therefore, i3's `193-ipc-version.t` assertion that
 the major version is always 4 does not apply.
@@ -452,7 +452,7 @@ output and its workspaces. The i3 IPC guide shows this hierarchy at
 Sway has no equivalent node. Its node types are root, output, workspace, and
 container (`sway/include/sway/tree/node.h:18-23`). Its `GET_TREE` serializer
 adds workspaces directly to output nodes (`sway/sway/ipc-json.c:854-894`). None
-of the 14 trees captured from real sway in `tests/fixtures/sway/*.tree.json`
+of the 14 trees captured from real sway in `sway-ipc/fixtures/*.tree.json` in the pinned oracle
 contains a `content` node. Swayward therefore follows sway, as required by the
 IPC compatibility decisions Q1 and Q8.
 

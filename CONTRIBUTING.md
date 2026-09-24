@@ -124,8 +124,9 @@ authorship:
   suite passes" is a claim about a command you ran, not a substitute for it.
 - Behaviour that differs from sway needs a citation into sway's source, and a
   line in [`docs/KNOWN_DEVIATIONS.md`](docs/KNOWN_DEVIATIONS.md) saying why.
-- Never edit the vendored i3 tests under `tests/i3/t/`. They are the external
-  oracle, and a test you can edit to pass is not evidence.
+- Never edit the unchanged i3 tests in
+  [`sway-ipc-oracle`](https://github.com/martintrojer/sway-ipc-oracle). Swayward
+  pins them in `tests/oracle.toml`; a test you can edit to pass is not evidence.
 - Read what you submit. Unverified output wastes a reviewer's time whether a
   model or a person produced it, and reviewers here are scarce.
 

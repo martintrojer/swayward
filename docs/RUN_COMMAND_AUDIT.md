@@ -7,7 +7,7 @@ makes reachable over IPC. It does not audit the other IPC request rows in
 This audit uses sway 1.12 commit
 `88869399f421d9180dd8b6ed0b5a1f4a3585d252`, recorded in
 [`tests/sway/compatibility.toml`](https://github.com/martintrojer/swayward/blob/main/tests/sway/compatibility.toml)
-and matching `tests/fixtures/sway/schema-version.json`. Sway selects
+and matching `sway-ipc/fixtures/schema-version.json` in the pinned oracle. Sway selects
 `command_handlers[]` while the configuration is active, then falls back to the
 shared `handlers[]` table (`sway/sway/commands.c:44-129,162-173`). The tables
 contain 82 unique command names because `fullscreen` appears in both.

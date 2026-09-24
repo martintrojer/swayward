@@ -21,7 +21,7 @@ Those are reasons to be curious, not evidence that sway made the wrong choices.
 Fair question. swayward was built largely with AI assistance. That is stated
 plainly because hiding it would be dishonest, not because it is a feature.
 
-The answer is executable evidence: i3's test files are vendored without edits
+The answer is executable evidence: i3's test files are pinned in sway-ipc-oracle without edits
 to their assertions, sway compatibility claims cite sway's C source, generated
 tree operations search for broken invariants, and release packages must install
 and run in clean distro containers. The Linux kernel's rule applies here too:
@@ -39,7 +39,7 @@ driver.
 
 The suite includes:
 
-- i3's upstream tests, vendored byte for byte and run against a real headless
+- i3's upstream tests, pinned byte for byte in sway-ipc-oracle and run against a real headless
   compositor, real Wayland clients, and sway-shaped IPC;
 - reply schemas and selected values captured from sway, plus row-by-row checks
   against sway's C source;
@@ -258,7 +258,7 @@ tarball.
 
 The repository also provides a Nix flake. Install the current source with
 `nix profile install github:martintrojer/swayward`, or use the flake as a NixOS
-input. `nix flake check` runs the full test suite, including the vendored i3
+input. `nix flake check` runs the full test suite, including the pinned i3
 conformance oracle.
 
 No public beta release exists yet. COPR and AUR publication are deliberately

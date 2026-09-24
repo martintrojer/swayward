@@ -137,7 +137,7 @@ jobs:
           # check-divergence diffs against the recorded niri base commit.
           fetch-depth: 0
       - run: sudo apt-get update -y && sudo apt-get install -y ripgrep shellcheck
-      - run: shellcheck -S warning contrib/*.sh resources/swayward-session tests/i3/sway-calibration/*.sh
+      - run: shellcheck -S warning contrib/*.sh resources/swayward-session
       - run: ./contrib/test-dev-run.sh
       - run: ./contrib/test-install-session.sh
       - run: ./contrib/test-session-environment.sh
@@ -147,10 +147,7 @@ jobs:
       - run: ./contrib/command-census --check
       - run: ./contrib/coverage-report --unvendored
       - run: ./contrib/coverage-report --check
-      - name: Check sway fixture schema
-        run: |
-          git clone --branch 1.12 --depth 1 https://github.com/swaywm/sway.git /tmp/sway
-          ./contrib/check-sway-fixture-schema /tmp/sway
+      - run: .cache/sway-ipc-oracle/contrib/coverage-report .cache/sway-ipc-oracle/i3/results/swayward.toml --check
 
   release-consistency:
     name: release metadata agrees

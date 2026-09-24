@@ -11,8 +11,8 @@ clients and scripts. It is a very serious amount of engineering in service of
 putting one rectangle beside another rectangle, but correctly.
 
 **Status: beta.** The compositor runs live sessions,
-speaks sway's IPC to real clients, and passes 108 of i3's own test files
-unmodified. What it has not had is people: automated testing here is
+speaks sway's IPC to real clients. The external oracle currently records 1,427
+passes, 800 skips, and 1,084 failures or unreached assertions from i3's suite. What it has not had is people: automated testing here is
 headless, so nothing yet tells us how it behaves on your hardware, and no
 stranger has installed it.
 
@@ -122,7 +122,7 @@ nix profile install github:martintrojer/swayward
 ```
 
 The repository flake provides `swayward`, `swayward-debug`, and a development
-shell. `nix flake check` runs the full test suite, including the vendored i3
+shell. `nix flake check` runs the full test suite, including the pinned i3
 conformance oracle. Without Nix, follow
 [Build swayward](docs/BUILDING.md); it needs Rust 1.87 or newer and the usual
 wlroots-style build dependencies.
@@ -195,22 +195,19 @@ See [Migrate a sway config](docs/SWAY_CONFIG_MIGRATION.md).
 
 ## How compatibility is measured
 
-i3 ships 285 Perl test files. swayward vendors 242 of them byte-for-byte from
-a pinned i3 revision and runs them against a real headless compositor, real
-Wayland clients and the sway IPC socket. The adapter replaces X11 window
-setup; it does not edit upstream assertions.
+The independent [sway IPC oracle](https://github.com/martintrojer/sway-ipc-oracle)
+runs i3's unchanged tests and sway IPC scenarios against i3, sway, and
+swayward. Its black-box swayward results record **1,427 passes, 800 skips, and
+1,084 failures or unreached assertions** for the i3 suite, plus **90 matches,
+3 not-applicable scenarios, and 0 mismatches** for the sway IPC suite. Results
+live in `i3/results/swayward.toml` and `sway-ipc/results/swayward.toml` in the
+oracle repository.
 
-At this revision **108 files pass in full**, unmodified. Across the 3,171
-assertions in captured TAP plans, 2,305 pass, 780 are documented sway
-divergences, 30 fail and 56 are unreached. The
-[testing and conformance guide](https://github.com/martintrojer/swayward/wiki/Testing-and-Conformance) explains
-what those results prove.
-The green ceiling of 116 files is what this oracle can reach: 108 green, plus
-8 vendored files blocked only by implementation or adapter gaps.
-
-This is evidence, not a compatibility percentage. Half the skips, 394 of 780,
-are structural: X11-only assertions, i3's own parser binary, i3bar, and tree
-nodes sway does not create either.
+Swayward also keeps a faster in-process development harness. Its
+`tests/i3/coverage.toml` ledger remains at 2,305 passes, 780 documented skips,
+30 failures, and 56 unreached assertions. Differences between that harness and
+the public black-box run are filed in the oracle's
+`i3/results/swayward-black-box-findings.tsv`.
 
 ## What differs from sway
 
@@ -250,5 +247,6 @@ backend, protocol and portal work. See [Fork base](docs/FORK-BASE.md).
 - [i3](https://i3wm.org) — the tree model, and the conformance suite that keeps
   us honest about it.
 
-Licensed under **GPL-3.0-or-later**. The vendored i3 tests keep their upstream
-BSD licence in [`tests/i3/LICENSE`](tests/i3/LICENSE).
+Licensed under **GPL-3.0-or-later**. The i3 tests in
+[sway-ipc-oracle](https://github.com/martintrojer/sway-ipc-oracle) keep their
+upstream BSD licence.
