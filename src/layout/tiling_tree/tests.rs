@@ -1190,6 +1190,23 @@ fn configured_default_orientations_set_the_root_at_creation() {
 }
 
 #[test]
+fn moving_a_single_window_sets_the_workspace_split_axis() {
+    let mut t = tree_with_options((800., 1200.), 0., |options| {
+        options.layout.default_orientation = swayward_config::DefaultOrientation::Auto;
+    });
+    let window = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+
+    assert!(!t.move_direction(window, Direction::Right));
+    assert!(matches!(
+        t.nodes[&t.root].value,
+        TreeNode::Split {
+            layout: Layout::SplitH,
+            ..
+        }
+    ));
+}
+
+#[test]
 fn layout_on_an_empty_tree_sets_the_root_layout() {
     let mut t = tree((1200., 800.), 0.);
 

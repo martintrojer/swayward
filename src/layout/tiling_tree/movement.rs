@@ -154,11 +154,7 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     fn move_direction_inner(&mut self, id: NodeId, direction: Direction) -> bool {
-        if !self.nodes.contains_key(&id)
-            || id == self.root
-            || self.windows().nth(1).is_none()
-            || self.split_len(self.root) == Some(1) && self.root_branch(id) == Some(id)
-        {
+        if !self.nodes.contains_key(&id) || id == self.root {
             return false;
         }
         if self
@@ -172,6 +168,12 @@ impl<W: LayoutElement> TilingTree<W> {
             Direction::Left | Direction::Right => Layout::SplitH,
             Direction::Up | Direction::Down => Layout::SplitV,
         };
+        if self.windows().nth(1).is_none()
+            || self.split_len(self.root) == Some(1) && self.root_branch(id) == Some(id)
+        {
+            self.set_layout(self.root, wanted_layout);
+            return false;
+        }
         let backwards = matches!(direction, Direction::Left | Direction::Up);
         let mut branch = id;
         let mut parent = self.nodes.get(&id).and_then(|node| node.parent);
