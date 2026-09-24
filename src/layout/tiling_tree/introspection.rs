@@ -95,6 +95,13 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub fn ipc_tree(&self) -> IpcNode<W::Id> {
+        fn inset_split_by_parent_titlebar<I>(node: &mut IpcNode<I>, height: f64) {
+            if let IpcNode::Split { rect, .. } = node {
+                rect.loc.y += height;
+                rect.size.h = (rect.size.h - height).max(0.);
+            }
+        }
+
         fn snapshot<W: LayoutElement>(
             tree: &TilingTree<W>,
             id: NodeId,
@@ -183,7 +190,17 @@ impl<W: LayoutElement> TilingTree<W> {
                                     }
                                 }
                             };
-                            snapshot(tree, *child, Some(percent), geometries)
+                            let mut node = snapshot(tree, *child, Some(percent), geometries);
+                            let titlebar_rows = match layout {
+                                Layout::Tabbed => 1,
+                                Layout::Stacked => children.len(),
+                                Layout::SplitH | Layout::SplitV => 0,
+                            };
+                            inset_split_by_parent_titlebar(
+                                &mut node,
+                                tree.titlebar_height * titlebar_rows as f64,
+                            );
+                            node
                         })
                         .collect(),
                 },

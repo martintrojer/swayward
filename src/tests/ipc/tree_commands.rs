@@ -547,6 +547,12 @@ fn layout_on_a_focused_nested_split_does_not_promote_to_the_workspace_root() {
                 .len(),
             2
         );
+        let outer = &workspace["nodes"][0]["rect"];
+        let inner = &workspace["nodes"][0]["nodes"][0]["rect"];
+        assert_eq!(outer["y"], 44);
+        assert_eq!(outer["height"], 1036);
+        assert_eq!(inner["y"], if expected_inner == "stacked" { 110 } else { 66 });
+        assert_eq!(inner["height"], if expected_inner == "stacked" { 970 } else { 1014 });
     }
 }
 

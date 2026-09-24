@@ -77,21 +77,29 @@ pub fn height(scale: f64, config: &swayward_config::Titlebar) -> f64 {
     height_measured(scale, config)
 }
 
-#[cfg(not(test))]
 fn height_measured(scale: f64, config: &swayward_config::Titlebar) -> f64 {
     let measured = ImageSurface::create(cairo::Format::ARgb32, 1, 1)
         .ok()
         .and_then(|surface| cairo::Context::new(&surface).ok())
         .map(|cr| {
             let layout = pangocairo::functions::create_layout(&cr);
-            let mut font = FontDescription::from_string(&config.font);
-            font.set_absolute_size(to_physical_precise_round(scale, font.size()));
+            let font = scaled_font_description(&config.font, scale);
             layout.set_font_description(Some(&font));
             layout.set_text("Mg");
             layout.pixel_size().1
         })
         .unwrap_or(14);
     f64::from(measured) / scale + config.vertical_padding * 2.
+}
+
+fn scaled_font_description(font: &str, scale: f64) -> FontDescription {
+    let mut font = FontDescription::from_string(font);
+    if font.is_size_absolute() {
+        font.set_absolute_size(to_physical_precise_round(scale, font.size()));
+    } else {
+        font.set_size(to_physical_precise_round(scale, font.size()));
+    }
+    font
 }
 
 pub(crate) fn physical_extent(scale: f64, offset: f64, length: f64) -> i32 {
@@ -278,8 +286,7 @@ fn paint_titlebar(
 
     let layout = pangocairo::functions::create_layout(&cr);
     layout.context().set_round_glyph_positions(false);
-    let mut font = FontDescription::from_string(&config.font);
-    font.set_absolute_size(to_physical_precise_round(scale, font.size()));
+    let font = scaled_font_description(&config.font, scale);
     layout.set_font_description(Some(&font));
     layout.set_ellipsize(EllipsizeMode::End);
     let horizontal_padding = to_physical_precise_round::<i32>(scale, config.horizontal_padding);
@@ -370,6 +377,19 @@ mod tests {
     fn rgb(color: swayward_config::Color) -> [u8; 3] {
         let [r, g, b, _] = color.to_array_unpremul();
         [r, g, b].map(|c| (c * 255.).round() as u8)
+    }
+
+    #[test]
+    fn configured_font_size_remains_point_based() {
+        let config = swayward_config::Titlebar::default();
+        let surface = ImageSurface::create(cairo::Format::ARgb32, 1, 1).unwrap();
+        let cr = cairo::Context::new(&surface).unwrap();
+        let layout = pangocairo::functions::create_layout(&cr);
+        layout.set_font_description(Some(&FontDescription::from_string(&config.font)));
+        layout.set_text("Mg");
+        let expected = f64::from(layout.pixel_size().1) + config.vertical_padding * 2.;
+
+        assert_eq!(height_measured(1., &config), expected);
     }
 
     #[test]
