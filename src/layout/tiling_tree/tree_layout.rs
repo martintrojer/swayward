@@ -126,7 +126,7 @@ impl<W: LayoutElement> TilingTree<W> {
         }
     }
 
-    pub fn toggle_column_tabbed_display(&mut self) {
+    pub fn toggle_focused_tabbed_display(&mut self) {
         let Some(parent) = self.focus.and_then(|id| self.nodes.get(&id)?.parent) else {
             return;
         };
@@ -365,7 +365,7 @@ impl<W: LayoutElement> TilingTree<W> {
         self.split(focus, layout);
     }
 
-    pub fn set_column_display(&mut self, display: ColumnDisplay) {
+    pub fn set_focused_display(&mut self, display: ColumnDisplay) {
         let Some(parent) = self.focus.and_then(|id| self.nodes.get(&id)?.parent) else {
             return;
         };

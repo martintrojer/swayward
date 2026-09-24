@@ -355,7 +355,7 @@ fn fullscreen_round_trip_restores_the_original_nested_tree_position() {
     let _first = map_window(&mut f, client, "first");
     let second = map_window(&mut f, client, "second");
     let _third = map_window(&mut f, client, "third");
-    f.swayward().layout.consume_or_expel_window_left(None);
+    f.swayward().layout.nest_or_unnest_window_left(None);
     let before = tree_shape(
         &f.swayward()
             .layout

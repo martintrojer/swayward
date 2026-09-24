@@ -399,14 +399,14 @@ impl<W: LayoutElement> TilingTree<W> {
         }
     }
 
-    pub fn focus_window_in_column(&mut self, index: u8) {
+    pub fn focus_window_in_parent(&mut self, index: u8) {
         let Some(subtree) = self.focus.and_then(|id| self.nodes.get(&id)?.parent) else {
             return;
         };
         self.focus_window_in_subtree(subtree, usize::from(index));
     }
 
-    pub fn focus_column(&mut self, index: usize) {
+    pub fn focus_root_child(&mut self, index: usize) {
         let branch = self
             .root_children()
             .and_then(|children| children.get(index))
@@ -416,16 +416,16 @@ impl<W: LayoutElement> TilingTree<W> {
         }
     }
 
-    pub fn focus_column_first(&mut self) {
-        self.focus_column(0);
+    pub fn focus_first_root_child(&mut self) {
+        self.focus_root_child(0);
     }
 
-    pub fn focus_column_last(&mut self) {
+    pub fn focus_last_root_child(&mut self) {
         if let Some(last) = self
             .root_children()
             .and_then(|children| children.len().checked_sub(1))
         {
-            self.focus_column(last);
+            self.focus_root_child(last);
         }
     }
 

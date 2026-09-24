@@ -9,13 +9,13 @@ use swayward_config::{PresetSize, RelativeTo};
 use swayward_ipc::{PositionChange, SizeChange, WindowLayout};
 
 use super::closing_window::{ClosingWindow, ClosingWindowRenderElement};
-use super::scrolling::ColumnWidth;
 use super::tile::{Tile, TileRenderElement, TileRenderSnapshot};
 use super::tiling_tree::NodeId;
 use super::titlebar::{self, Titlebar, TitlebarRenderer, TitlebarState};
 use super::workspace::{InteractiveResize, ResolvedSize};
 use super::{
     ConfigureIntent, InteractiveResizeData, LayoutElement, Options, RemovedTile, SizeFrac,
+    TiledWidth,
 };
 use crate::animation::{Animation, Clock};
 use crate::layout::RenderLayer;
@@ -683,7 +683,7 @@ impl<W: LayoutElement> FloatingSpace<W> {
         // Store the floating position.
         tile.floating_pos = Some(data.pos);
 
-        let width = ColumnWidth::Fixed(tile.tile_expected_or_current_size().w);
+        let width = TiledWidth::Fixed(tile.tile_expected_or_current_size().w);
         RemovedTile {
             tile,
             width,

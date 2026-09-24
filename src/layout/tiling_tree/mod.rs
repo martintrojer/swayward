@@ -24,7 +24,6 @@ use swayward_ipc::command::{LayoutToggle, LayoutToggleEntry};
 use swayward_ipc::{ColumnDisplay, SizeChange, WindowLayout};
 
 use super::closing_window::{ClosingWindow, ClosingWindowRenderElement};
-use super::scrolling::ScrollDirection;
 use super::tab_indicator::{TabIndicator, TabIndicatorRenderElement, TabInfo};
 use super::tile::{DecoratedCorners, Tile, TileRenderElement};
 use super::titlebar::TitlebarState;

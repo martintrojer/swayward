@@ -23,7 +23,7 @@ fn unfullscreen_window_in_column() {
         Op::AddWindow {
             params: TestWindowParams::new(2),
         },
-        Op::ConsumeOrExpelWindowLeft { id: None },
+        Op::NestOrUnnestWindowLeft { id: None },
         Op::SetFullscreenWindow {
             window: 2,
             is_fullscreen: false,
@@ -44,7 +44,7 @@ fn unfullscreen_view_offset_not_reset_on_removal() {
         Op::AddWindow {
             params: TestWindowParams::new(1),
         },
-        Op::ConsumeOrExpelWindowRight { id: None },
+        Op::NestOrUnnestWindowRight { id: None },
     ];
 
     check_ops(ops);
@@ -61,7 +61,7 @@ fn unfullscreen_view_offset_not_reset_on_consume() {
         Op::AddWindow {
             params: TestWindowParams::new(1),
         },
-        Op::ConsumeWindowIntoColumn,
+        Op::NestFocusedWindow,
     ];
 
     check_ops(ops);
@@ -91,7 +91,7 @@ fn unfullscreen_view_offset_set_on_fullscreening_inactive_tile_in_column() {
         Op::AddWindow {
             params: TestWindowParams::new(1),
         },
-        Op::ConsumeOrExpelWindowLeft { id: None },
+        Op::NestOrUnnestWindowLeft { id: None },
         Op::FullscreenWindow(0),
     ];
 
@@ -132,11 +132,11 @@ fn one_window_in_column_becomes_weight_1_after_fullscreen() {
         Op::AddWindow {
             params: TestWindowParams::new(1),
         },
-        Op::ConsumeOrExpelWindowLeft { id: None },
+        Op::NestOrUnnestWindowLeft { id: None },
         Op::AddWindow {
             params: TestWindowParams::new(2),
         },
-        Op::ConsumeOrExpelWindowLeft { id: None },
+        Op::NestOrUnnestWindowLeft { id: None },
         Op::SetWindowHeight {
             id: None,
             change: SizeChange::SetFixed(100),
@@ -165,10 +165,10 @@ fn disable_tabbed_mode_in_fullscreen() {
         Op::AddWindow {
             params: TestWindowParams::new(1),
         },
-        Op::ConsumeOrExpelWindowLeft { id: None },
-        Op::ToggleColumnTabbedDisplay,
+        Op::NestOrUnnestWindowLeft { id: None },
+        Op::ToggleFocusedTabbedDisplay,
         Op::FullscreenWindow(0),
-        Op::ToggleColumnTabbedDisplay,
+        Op::ToggleFocusedTabbedDisplay,
     ];
 
     check_ops(ops);
@@ -242,7 +242,7 @@ fn move_pending_unfullscreen_window_out_of_active_column() {
         Op::AddWindow {
             params: TestWindowParams::new(2),
         },
-        Op::ConsumeWindowIntoColumn,
+        Op::NestFocusedWindow,
         // Window 1 is now pending unfullscreen.
         // Moving it out should reset view_offset_before_fullscreen.
         Op::MoveWindowToWorkspaceDown(true),
@@ -263,7 +263,7 @@ fn move_unfocused_pending_unfullscreen_window_out_of_active_column() {
         Op::AddWindow {
             params: TestWindowParams::new(2),
         },
-        Op::ConsumeWindowIntoColumn,
+        Op::NestFocusedWindow,
         // Window 1 is now pending unfullscreen.
         // Moving it out should reset view_offset_before_fullscreen.
         Op::FocusWindowDown,

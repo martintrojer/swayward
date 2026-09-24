@@ -11,14 +11,13 @@ use smithay::utils::{Logical, Point, Rectangle, Size};
 use swayward_config::{CornerRadius, LayoutPart};
 
 use super::insert_hint_element::{InsertHintElement, InsertHintRenderElement};
-use super::scrolling::ColumnWidth;
 use super::tile::Tile;
 use super::tiling_tree::NodeId;
 use super::workspace::{
     compute_working_area, OutputId, Workspace, WorkspaceAddWindowTarget, WorkspaceId,
     WorkspaceRenderElement,
 };
-use super::{compute_overview_zoom, ActivateWindow, HitType, LayoutElement, Options};
+use super::{compute_overview_zoom, ActivateWindow, HitType, LayoutElement, Options, TiledWidth};
 use crate::animation::{Animation, Clock};
 use crate::input::swipe_tracker::SwipeTracker;
 use crate::layout::RenderLayer;
@@ -641,7 +640,7 @@ impl<W: LayoutElement> Monitor<W> {
         window: W,
         target: MonitorAddWindowTarget<W>,
         activate: ActivateWindow,
-        width: ColumnWidth,
+        width: TiledWidth,
         is_full_width: bool,
         is_floating: bool,
     ) {
@@ -684,7 +683,7 @@ impl<W: LayoutElement> Monitor<W> {
         activate: ActivateWindow,
         // FIXME: Refactor ActivateWindow enum to make this better.
         allow_to_activate_workspace: bool,
-        width: ColumnWidth,
+        width: TiledWidth,
         is_full_width: bool,
         is_floating: bool,
         anim: Option<swayward_config::Animation>,
@@ -1073,7 +1072,7 @@ impl<W: LayoutElement> Monitor<W> {
         tile.set_anim_y_between_workspaces();
     }
 
-    pub fn move_column_to_workspace(&mut self, target: WorkspaceId, activate: bool) {
+    pub fn move_focused_to_workspace(&mut self, target: WorkspaceId, activate: bool) {
         let source_workspace = self.active_workspace_ref().id();
         if target == source_workspace {
             return;

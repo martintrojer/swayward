@@ -25,7 +25,6 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use monitor::{InsertHint, InsertPosition, InsertWorkspace, MonitorAddWindowTarget};
-use scrolling::ColumnWidth;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::utils::RescaleRenderElement;
 use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture};
@@ -46,7 +45,6 @@ pub use self::monitor::MonitorRenderElement;
 use self::workspace::{OutputId, Workspace};
 use crate::animation::{Animation, Clock};
 use crate::input::swipe_tracker::SwipeTracker;
-use crate::layout::scrolling::ScrollDirection;
 use crate::render_helpers::background_effect::BackgroundEffectElement;
 use crate::render_helpers::offscreen::OffscreenData;
 use crate::render_helpers::renderer::NiriRenderer;
@@ -70,8 +68,6 @@ pub mod focus_ring;
 pub mod insert_hint_element;
 pub mod monitor;
 pub mod opening_window;
-#[allow(dead_code)]
-pub mod scrolling;
 pub mod shadow;
 pub mod tab_indicator;
 pub mod tile;
@@ -463,7 +459,7 @@ struct InteractiveMoveData<W: LayoutElement> {
     /// Current pointer position within output.
     pub(self) pointer_pos_within_output: Point<f64, Logical>,
     /// Window column width.
-    pub(self) width: ColumnWidth,
+    pub(self) width: TiledWidth,
     /// Whether the window column was full-width.
     pub(self) is_full_width: bool,
     /// Whether the window targets the floating layout.
@@ -532,13 +528,22 @@ pub enum ConfigureIntent {
 pub struct RemovedTile<W: LayoutElement> {
     tile: Tile<W>,
     /// Width of the column the tile was in.
-    width: ColumnWidth,
+    width: TiledWidth,
     /// Whether the column the tile was in was full-width.
     is_full_width: bool,
     /// Whether the tile was floating.
     is_floating: bool,
     /// Working area whose coordinates the stored floating position uses.
     floating_working_area: Option<Rectangle<f64, Logical>>,
+}
+
+/// Width requested for a tiled window.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TiledWidth {
+    /// Proportion of the current view width.
+    Proportion(f64),
+    /// Fixed width in logical pixels.
+    Fixed(f64),
 }
 
 /// Whether to activate a newly added window.
@@ -2464,47 +2469,47 @@ impl<W: LayoutElement> Layout<W> {
             .is_some_and(|workspace| workspace.move_tiling_node_in_direction(node, direction))
     }
 
-    pub fn move_column_to_first(&mut self) {
+    pub fn move_focused_root_child_to_first(&mut self) {
         let Some(workspace) = self.active_workspace_mut() else {
             return;
         };
-        workspace.move_column_to_first();
+        workspace.move_focused_root_child_to_first();
     }
 
-    pub fn move_column_to_last(&mut self) {
+    pub fn move_focused_root_child_to_last(&mut self) {
         let Some(workspace) = self.active_workspace_mut() else {
             return;
         };
-        workspace.move_column_to_last();
+        workspace.move_focused_root_child_to_last();
     }
 
-    pub fn move_column_left_or_to_output(&mut self, output: &Output) -> bool {
+    pub fn move_left_or_to_output(&mut self, output: &Output) -> bool {
         if let Some(workspace) = self.active_workspace_mut() {
             if workspace.move_left() {
                 return false;
             }
         }
 
-        self.move_column_to_output(output, None, true);
+        self.move_focused_to_output(output, None, true);
         true
     }
 
-    pub fn move_column_right_or_to_output(&mut self, output: &Output) -> bool {
+    pub fn move_right_or_to_output(&mut self, output: &Output) -> bool {
         if let Some(workspace) = self.active_workspace_mut() {
             if workspace.move_right() {
                 return false;
             }
         }
 
-        self.move_column_to_output(output, None, true);
+        self.move_focused_to_output(output, None, true);
         true
     }
 
-    pub fn move_column_to_index(&mut self, index: usize) {
+    pub fn move_focused_root_child_to_index(&mut self, index: usize) {
         let Some(workspace) = self.active_workspace_mut() else {
             return;
         };
-        workspace.move_column_to_index(index);
+        workspace.move_focused_root_child_to_index(index);
     }
 
     pub fn move_down(&mut self) -> bool {
@@ -2538,7 +2543,7 @@ impl<W: LayoutElement> Layout<W> {
         self.move_to_workspace_up(true);
     }
 
-    pub fn consume_or_expel_window_left(&mut self, window: Option<&W::Id>) {
+    pub fn nest_or_unnest_window_left(&mut self, window: Option<&W::Id>) {
         if window.is_some_and(|window| self.is_scratchpad_hidden(window)) {
             return;
         }
@@ -2561,10 +2566,10 @@ impl<W: LayoutElement> Layout<W> {
         let Some(workspace) = workspace else {
             return;
         };
-        workspace.consume_or_expel_window_left(window);
+        workspace.nest_or_unnest_window_left(window);
     }
 
-    pub fn consume_or_expel_window_right(&mut self, window: Option<&W::Id>) {
+    pub fn nest_or_unnest_window_right(&mut self, window: Option<&W::Id>) {
         if window.is_some_and(|window| self.is_scratchpad_hidden(window)) {
             return;
         }
@@ -2587,7 +2592,7 @@ impl<W: LayoutElement> Layout<W> {
         let Some(workspace) = workspace else {
             return;
         };
-        workspace.consume_or_expel_window_right(window);
+        workspace.nest_or_unnest_window_right(window);
     }
 
     pub fn focus_parent(&mut self) {
@@ -2660,39 +2665,39 @@ impl<W: LayoutElement> Layout<W> {
             .is_some_and(Workspace::focus_right_without_wrap)
     }
 
-    pub fn focus_column_first(&mut self) {
+    pub fn focus_first_root_child(&mut self) {
         let Some(workspace) = self.active_workspace_mut() else {
             return;
         };
-        workspace.focus_column_first();
+        workspace.focus_first_root_child();
     }
 
-    pub fn focus_column_last(&mut self) {
+    pub fn focus_last_root_child(&mut self) {
         let Some(workspace) = self.active_workspace_mut() else {
             return;
         };
-        workspace.focus_column_last();
+        workspace.focus_last_root_child();
     }
 
-    pub fn focus_column_right_or_first(&mut self) {
+    pub fn focus_right_or_first_root_child(&mut self) {
         let Some(workspace) = self.active_workspace_mut() else {
             return;
         };
-        workspace.focus_column_right_or_first();
+        workspace.focus_right_or_first_root_child();
     }
 
-    pub fn focus_column_left_or_last(&mut self) {
+    pub fn focus_left_or_last_root_child(&mut self) {
         let Some(workspace) = self.active_workspace_mut() else {
             return;
         };
-        workspace.focus_column_left_or_last();
+        workspace.focus_left_or_last_root_child();
     }
 
-    pub fn focus_column(&mut self, index: usize) {
+    pub fn focus_root_child(&mut self, index: usize) {
         let Some(workspace) = self.active_workspace_mut() else {
             return;
         };
-        workspace.focus_column(index);
+        workspace.focus_root_child(index);
     }
 
     fn focus_output_from_direction(
@@ -2727,7 +2732,7 @@ impl<W: LayoutElement> Layout<W> {
         true
     }
 
-    pub fn focus_column_left_or_output(&mut self, output: &Output) -> bool {
+    pub fn focus_left_or_output(&mut self, output: &Output) -> bool {
         if let Some(workspace) = self.active_workspace_mut() {
             if workspace.focus_left_without_wrap() {
                 return false;
@@ -2738,7 +2743,7 @@ impl<W: LayoutElement> Layout<W> {
         true
     }
 
-    pub fn focus_column_right_or_output(&mut self, output: &Output) -> bool {
+    pub fn focus_right_or_output(&mut self, output: &Output) -> bool {
         if let Some(workspace) = self.active_workspace_mut() {
             if workspace.focus_right_without_wrap() {
                 return false;
@@ -2749,11 +2754,11 @@ impl<W: LayoutElement> Layout<W> {
         true
     }
 
-    pub fn focus_window_in_column(&mut self, index: u8) {
+    pub fn focus_window_in_parent(&mut self, index: u8) {
         let Some(workspace) = self.active_workspace_mut() else {
             return;
         };
-        workspace.focus_window_in_column(index);
+        workspace.focus_window_in_parent(index);
     }
 
     pub fn focus_down(&mut self) -> bool {
@@ -2965,7 +2970,7 @@ impl<W: LayoutElement> Layout<W> {
         monitor.move_to_workspace(window, target, activate);
     }
 
-    pub fn move_column_to_workspace_up(&mut self, activate: bool) {
+    pub fn move_focused_to_workspace_up(&mut self, activate: bool) {
         let Some(target) = self.active_monitor_ref().and_then(|monitor| {
             monitor
                 .active_workspace_idx
@@ -2974,10 +2979,10 @@ impl<W: LayoutElement> Layout<W> {
         }) else {
             return;
         };
-        self.move_column_to_workspace_id(target, activate);
+        self.move_focused_to_workspace_id(target, activate);
     }
 
-    pub fn move_column_to_workspace_down(&mut self, activate: bool) {
+    pub fn move_focused_to_workspace_down(&mut self, activate: bool) {
         let Some((output, target_index)) = self
             .active_monitor_ref()
             .filter(|monitor| monitor.active_workspace_ref().active_window().is_some())
@@ -2988,10 +2993,10 @@ impl<W: LayoutElement> Layout<W> {
         let target = self
             .prepare_workspace_at(&output, target_index)
             .unwrap_or_else(|| self.create_next_workspace(&output));
-        self.move_column_to_workspace_id(target, activate);
+        self.move_focused_to_workspace_id(target, activate);
     }
 
-    pub fn move_column_to_workspace(&mut self, idx: usize, activate: bool) {
+    pub fn move_focused_to_workspace(&mut self, idx: usize, activate: bool) {
         if self
             .active_workspace()
             .and_then(Workspace::active_window)
@@ -3003,15 +3008,15 @@ impl<W: LayoutElement> Layout<W> {
             return;
         };
         if let Some(target) = self.prepare_workspace_at(&output, idx) {
-            self.move_column_to_workspace_id(target, activate);
+            self.move_focused_to_workspace_id(target, activate);
         }
     }
 
-    fn move_column_to_workspace_id(&mut self, target: WorkspaceId, activate: bool) {
+    fn move_focused_to_workspace_id(&mut self, target: WorkspaceId, activate: bool) {
         let Some(monitor) = self.active_monitor() else {
             return;
         };
-        monitor.move_column_to_workspace(target, activate);
+        monitor.move_focused_to_workspace(target, activate);
     }
 
     pub fn switch_workspace_up(&mut self) {
@@ -4222,32 +4227,32 @@ impl<W: LayoutElement> Layout<W> {
         Ok(())
     }
 
-    pub fn consume_into_column(&mut self) {
+    pub fn nest_focused_window(&mut self) {
         let Some(workspace) = self.active_workspace_mut() else {
             return;
         };
-        workspace.consume_into_column();
+        workspace.nest_focused_window();
     }
 
-    pub fn expel_from_column(&mut self) {
+    pub fn unnest_focused_window(&mut self) {
         let Some(workspace) = self.active_workspace_mut() else {
             return;
         };
-        workspace.expel_from_column();
+        workspace.unnest_focused_window();
     }
 
-    pub fn swap_window_in_direction(&mut self, direction: ScrollDirection) {
+    pub fn swap_window_horizontal(&mut self, right: bool) {
         let Some(workspace) = self.active_workspace_mut() else {
             return;
         };
-        workspace.swap_window_in_direction(direction);
+        workspace.swap_window_horizontal(right);
     }
 
-    pub fn toggle_column_tabbed_display(&mut self) {
+    pub fn toggle_focused_tabbed_display(&mut self) {
         let Some(workspace) = self.active_workspace_mut() else {
             return;
         };
-        workspace.toggle_column_tabbed_display();
+        workspace.toggle_focused_tabbed_display();
     }
 
     pub fn set_focused_layout(
@@ -4409,18 +4414,11 @@ impl<W: LayoutElement> Layout<W> {
         }
     }
 
-    pub fn set_column_display(&mut self, display: ColumnDisplay) {
+    pub fn set_focused_display(&mut self, display: ColumnDisplay) {
         let Some(workspace) = self.active_workspace_mut() else {
             return;
         };
-        workspace.set_column_display(display);
-    }
-
-    pub fn center_column(&mut self) {
-        let Some(workspace) = self.active_workspace_mut() else {
-            return;
-        };
-        workspace.center_column();
+        workspace.set_focused_display(display);
     }
 
     pub fn center_window(&mut self, id: Option<&W::Id>) {
@@ -4443,13 +4441,6 @@ impl<W: LayoutElement> Layout<W> {
             return;
         };
         workspace.center_window(id);
-    }
-
-    pub fn center_visible_columns(&mut self) {
-        let Some(workspace) = self.active_workspace_mut() else {
-            return;
-        };
-        workspace.center_visible_columns();
     }
 
     pub fn focus(&self) -> Option<&W> {
@@ -5248,11 +5239,11 @@ impl<W: LayoutElement> Layout<W> {
         workspace.toggle_full_width();
     }
 
-    pub fn set_column_width(&mut self, change: SizeChange) {
+    pub fn set_focused_width(&mut self, change: SizeChange) {
         let Some(workspace) = self.active_workspace_mut() else {
             return;
         };
-        workspace.set_column_width(change);
+        workspace.set_focused_width(change);
     }
 
     pub fn set_window_width(&mut self, window: Option<&W::Id>, change: SizeChange) {
@@ -5407,11 +5398,11 @@ impl<W: LayoutElement> Layout<W> {
         workspace.reset_window_height(window);
     }
 
-    pub fn expand_column_to_available_width(&mut self) {
+    pub fn expand_focused_to_available_width(&mut self) {
         let Some(workspace) = self.active_workspace_mut() else {
             return;
         };
-        workspace.expand_column_to_available_width();
+        workspace.expand_focused_to_available_width();
     }
 
     pub fn toggle_window_floating(&mut self, window: Option<&W::Id>) {
@@ -5705,7 +5696,7 @@ impl<W: LayoutElement> Layout<W> {
         }
     }
 
-    pub fn move_column_to_output(
+    pub fn move_focused_to_output(
         &mut self,
         output: &Output,
         target_ws_idx: Option<usize>,
@@ -5755,7 +5746,7 @@ impl<W: LayoutElement> Layout<W> {
             .position(|monitor| monitor.has_ws(target))
             .unwrap();
         if source_monitor == target_monitor {
-            monitors[source_monitor].move_column_to_workspace(target, activate);
+            monitors[source_monitor].move_focused_to_workspace(target, activate);
             return;
         }
 

@@ -1040,7 +1040,7 @@ fn title_format_updates_a_split_container_representation() {
         window.ack_last_and_commit();
         fixture.double_roundtrip(client);
     }
-    fixture.swayward().layout.consume_or_expel_window_left(None);
+    fixture.swayward().layout.nest_or_unnest_window_left(None);
     assert!(crate::command::execute(fixture.niri_state(), "focus parent")[0].success);
     assert!(crate::command::execute(fixture.niri_state(), "mark formatted-split")[0].success);
     assert!(crate::command::execute(fixture.niri_state(), "layout tabbed")[0].success);

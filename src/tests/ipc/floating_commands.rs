@@ -386,7 +386,7 @@ fn focused_split_rejects_border_and_resizes_as_one_container() {
         window.ack_last_and_commit();
         f.double_roundtrip(client);
     }
-    f.swayward().layout.consume_or_expel_window_left(None);
+    f.swayward().layout.nest_or_unnest_window_left(None);
     assert!(crate::command::execute(f.niri_state(), "move down")[0].success);
     assert!(crate::command::execute(f.niri_state(), "focus parent")[0].success);
 

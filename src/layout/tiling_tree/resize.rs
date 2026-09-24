@@ -50,10 +50,6 @@ impl<W: LayoutElement> TilingTree<W> {
         true
     }
 
-    pub fn center_column(&mut self) {}
-    pub fn center_window(&mut self, _window: Option<&W::Id>) {}
-    pub fn center_visible_columns(&mut self) {}
-
     pub fn toggle_width(&mut self, forwards: bool) {
         self.toggle_window_width(None, forwards);
     }
@@ -208,7 +204,7 @@ impl<W: LayoutElement> TilingTree<W> {
         self.toggle_preset(window, false, forwards);
     }
 
-    pub fn expand_column_to_available_width(&mut self) {
+    pub fn expand_focused_to_available_width(&mut self) {
         self.toggle_full_width();
     }
 

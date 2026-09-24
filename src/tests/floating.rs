@@ -100,7 +100,7 @@ fn floating_honors_committed_xdg_min_max_size_and_zero_sentinels() {
     let _ = f.client(id).window(&surface).recent_configures();
     f.swayward()
         .layout
-        .set_column_width(SizeChange::SetFixed(500));
+        .set_focused_width(SizeChange::SetFixed(500));
     f.swayward()
         .layout
         .set_window_height(None, SizeChange::SetFixed(450));
@@ -120,7 +120,7 @@ fn floating_honors_committed_xdg_min_max_size_and_zero_sentinels() {
 
     f.swayward()
         .layout
-        .set_column_width(SizeChange::SetFixed(500));
+        .set_focused_width(SizeChange::SetFixed(500));
     f.swayward()
         .layout
         .set_window_height(None, SizeChange::SetFixed(200));
@@ -198,7 +198,7 @@ fn resize_to_different_size() {
     f.swayward().layout.toggle_window_floating(None);
     f.swayward()
         .layout
-        .set_column_width(SizeChange::SetFixed(500));
+        .set_focused_width(SizeChange::SetFixed(500));
     f.double_roundtrip(id);
 
     // This should request the new size, 500 × 100.
@@ -267,7 +267,7 @@ fn set_window_width_uses_current_height() {
     // Request a width change.
     f.swayward()
         .layout
-        .set_column_width(SizeChange::SetFixed(500));
+        .set_focused_width(SizeChange::SetFixed(500));
 
     f.double_roundtrip(id);
 
@@ -323,7 +323,7 @@ fn resize_to_same_size() {
     // Request a size change to the same size.
     f.swayward()
         .layout
-        .set_column_width(SizeChange::SetFixed(200));
+        .set_focused_width(SizeChange::SetFixed(200));
 
     f.double_roundtrip(id);
 
@@ -355,7 +355,7 @@ fn resize_to_different_then_same() {
     // Request a size change to a different size.
     f.swayward()
         .layout
-        .set_column_width(SizeChange::SetFixed(500));
+        .set_focused_width(SizeChange::SetFixed(500));
 
     f.double_roundtrip(id);
 
@@ -368,7 +368,7 @@ fn resize_to_different_then_same() {
     // Before the window has a chance to respond, request a size change to the same, new size.
     f.swayward()
         .layout
-        .set_column_width(SizeChange::SetFixed(500));
+        .set_focused_width(SizeChange::SetFixed(500));
 
     // And also drop the Activated state to have some pending change.
     f.niri_focus_output(2);
@@ -462,7 +462,7 @@ fn moving_across_workspaces_doesnt_cancel_resize() {
     // Request a size change to a different size.
     f.swayward()
         .layout
-        .set_column_width(SizeChange::SetFixed(500));
+        .set_focused_width(SizeChange::SetFixed(500));
     f.double_roundtrip(id);
 
     // This should request the new size.
@@ -732,7 +732,7 @@ fn resize_in_steps() {
     // Request a size change to a different size in two steps.
     f.swayward()
         .layout
-        .set_column_width(SizeChange::SetFixed(500));
+        .set_focused_width(SizeChange::SetFixed(500));
     f.swayward()
         .layout
         .set_window_height(None, SizeChange::SetFixed(500));
@@ -750,7 +750,7 @@ fn resize_in_steps() {
     // Request a size change now that the previous one is pending-but-not-acked.
     f.swayward()
         .layout
-        .set_column_width(SizeChange::SetFixed(600));
+        .set_focused_width(SizeChange::SetFixed(600));
     // Drop Activated to work around resize throttling.
     f.niri_focus_output(2);
     f.double_roundtrip(id);
@@ -808,7 +808,7 @@ fn state_change_doesnt_break_use_window_size() {
     // Request a size change to a different size.
     f.swayward()
         .layout
-        .set_column_width(SizeChange::SetFixed(500));
+        .set_focused_width(SizeChange::SetFixed(500));
     f.double_roundtrip(id);
 
     // This should request the new size (500 × 100).
@@ -1521,7 +1521,7 @@ fn repeated_size_request() {
     // Request a size change to the same size as we have just requested.
     f.swayward()
         .layout
-        .set_column_width(SizeChange::SetFixed(200));
+        .set_focused_width(SizeChange::SetFixed(200));
     f.double_roundtrip(id);
 
     // Should request nothing as this is a repeated same-size request in floating and the surface
@@ -1539,7 +1539,7 @@ fn repeated_size_request() {
     // Request a size change to the same size as we have just requested.
     f.swayward()
         .layout
-        .set_column_width(SizeChange::SetFixed(200));
+        .set_focused_width(SizeChange::SetFixed(200));
     f.double_roundtrip(id);
 
     // Should request nothing as this is a repeated same-size request in floating and the surface
@@ -1557,7 +1557,7 @@ fn repeated_size_request() {
     // Request the size change again.
     f.swayward()
         .layout
-        .set_column_width(SizeChange::SetFixed(200));
+        .set_focused_width(SizeChange::SetFixed(200));
     f.double_roundtrip(id);
 
     // This should send a new configure since the window had committed.

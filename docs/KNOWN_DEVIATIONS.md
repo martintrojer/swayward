@@ -252,6 +252,23 @@ Swayward has no scrollable-tiling mode. It uses an i3-style nested container tre
 Niri's horizontal viewport and overview animations were retired because their
 layout no longer exists.
 
+### Retired niri column actions
+
+**Config format.**
+
+The typed KDL actions inherited from niri still use their old spellings, but
+the nested tree gives them sway-style tree meanings: left/right focus and move
+are directional tree operations; column index and first/last operations target
+the workspace root's children; consume and expel nest or unnest a node; column
+workspace and output moves move the focused node; and column width actions
+resize the focused node. Column display actions select the focused tree
+container's layout.
+
+The viewport-only `center-column` and `center-visible-columns` actions have no
+sway equivalent. They are accepted as no-ops for configuration compatibility.
+`center-window` still centers a floating window and is a no-op for tiled
+windows.
+
 ### Layout restoration
 
 **Command gap.**

@@ -49,7 +49,6 @@ use self::resize_grab::ResizeGrab;
 use self::spatial_movement_grab::SpatialMovementGrab;
 #[cfg(feature = "dbus")]
 use crate::dbus::freedesktop_a11y::KbMonBlock;
-use crate::layout::scrolling::ScrollDirection;
 use crate::layout::{ActivateWindow, HitType, LayoutElement as _};
 use crate::swayward::{CastTarget, PointerVisibility, State};
 use crate::ui::mru::{WindowMru, WindowMruUi};
@@ -1057,7 +1056,7 @@ impl State {
                 }
             }
             Action::FocusWindowInColumn(index) => {
-                self.swayward.layout.focus_window_in_column(index);
+                self.swayward.layout.focus_window_in_parent(index);
                 self.maybe_warp_cursor_to_focus();
                 self.swayward.layer_shell_on_demand_focus = None;
                 // FIXME: granular
@@ -1122,13 +1121,13 @@ impl State {
                 self.swayward.queue_redraw_all();
             }
             Action::MoveColumnToFirst => {
-                self.swayward.layout.move_column_to_first();
+                self.swayward.layout.move_focused_root_child_to_first();
                 self.maybe_warp_cursor_to_focus();
                 // FIXME: granular
                 self.swayward.queue_redraw_all();
             }
             Action::MoveColumnToLast => {
-                self.swayward.layout.move_column_to_last();
+                self.swayward.layout.move_focused_root_child_to_last();
                 self.maybe_warp_cursor_to_focus();
                 // FIXME: granular
                 self.swayward.queue_redraw_all();
@@ -1137,7 +1136,7 @@ impl State {
                 if self.swayward.screenshot_ui.is_open() {
                     self.swayward.screenshot_ui.move_left();
                 } else if let Some(output) = self.swayward.output_left() {
-                    if self.swayward.layout.move_column_left_or_to_output(&output)
+                    if self.swayward.layout.move_left_or_to_output(&output)
                         && !self.maybe_warp_cursor_to_focus_centered()
                     {
                         self.move_cursor_to_output(&output);
@@ -1156,7 +1155,7 @@ impl State {
                 if self.swayward.screenshot_ui.is_open() {
                     self.swayward.screenshot_ui.move_right();
                 } else if let Some(output) = self.swayward.output_right() {
-                    if self.swayward.layout.move_column_right_or_to_output(&output)
+                    if self.swayward.layout.move_right_or_to_output(&output)
                         && !self.maybe_warp_cursor_to_focus_centered()
                     {
                         self.move_cursor_to_output(&output);
@@ -1218,7 +1217,7 @@ impl State {
                 self.swayward.queue_redraw_all();
             }
             Action::ConsumeOrExpelWindowLeft => {
-                self.swayward.layout.consume_or_expel_window_left(None);
+                self.swayward.layout.nest_or_unnest_window_left(None);
                 self.maybe_warp_cursor_to_focus();
                 // FIXME: granular
                 self.swayward.queue_redraw_all();
@@ -1233,14 +1232,14 @@ impl State {
                 if let Some(window) = window {
                     self.swayward
                         .layout
-                        .consume_or_expel_window_left(Some(&window));
+                        .nest_or_unnest_window_left(Some(&window));
                     self.maybe_warp_cursor_to_focus();
                     // FIXME: granular
                     self.swayward.queue_redraw_all();
                 }
             }
             Action::ConsumeOrExpelWindowRight => {
-                self.swayward.layout.consume_or_expel_window_right(None);
+                self.swayward.layout.nest_or_unnest_window_right(None);
                 self.maybe_warp_cursor_to_focus();
                 // FIXME: granular
                 self.swayward.queue_redraw_all();
@@ -1255,7 +1254,7 @@ impl State {
                 if let Some(window) = window {
                     self.swayward
                         .layout
-                        .consume_or_expel_window_right(Some(&window));
+                        .nest_or_unnest_window_right(Some(&window));
                     self.maybe_warp_cursor_to_focus();
                     // FIXME: granular
                     self.swayward.queue_redraw_all();
@@ -1302,35 +1301,35 @@ impl State {
                 }
             }
             Action::FocusColumnFirst => {
-                self.swayward.layout.focus_column_first();
+                self.swayward.layout.focus_first_root_child();
                 self.maybe_warp_cursor_to_focus();
                 self.swayward.layer_shell_on_demand_focus = None;
                 // FIXME: granular
                 self.swayward.queue_redraw_all();
             }
             Action::FocusColumnLast => {
-                self.swayward.layout.focus_column_last();
+                self.swayward.layout.focus_last_root_child();
                 self.maybe_warp_cursor_to_focus();
                 self.swayward.layer_shell_on_demand_focus = None;
                 // FIXME: granular
                 self.swayward.queue_redraw_all();
             }
             Action::FocusColumnRightOrFirst => {
-                self.swayward.layout.focus_column_right_or_first();
+                self.swayward.layout.focus_right_or_first_root_child();
                 self.maybe_warp_cursor_to_focus();
                 self.swayward.layer_shell_on_demand_focus = None;
                 // FIXME: granular
                 self.swayward.queue_redraw_all();
             }
             Action::FocusColumnLeftOrLast => {
-                self.swayward.layout.focus_column_left_or_last();
+                self.swayward.layout.focus_left_or_last_root_child();
                 self.maybe_warp_cursor_to_focus();
                 self.swayward.layer_shell_on_demand_focus = None;
                 // FIXME: granular
                 self.swayward.queue_redraw_all();
             }
             Action::FocusColumn(index) => {
-                self.swayward.layout.focus_column(index);
+                self.swayward.layout.focus_root_child(index);
                 self.maybe_warp_cursor_to_focus();
                 self.swayward.layer_shell_on_demand_focus = None;
                 // FIXME: granular
@@ -1374,7 +1373,7 @@ impl State {
             }
             Action::FocusColumnOrMonitorLeft => {
                 if let Some(output) = self.swayward.adjacent_output_left() {
-                    if self.swayward.layout.focus_column_left_or_output(&output)
+                    if self.swayward.layout.focus_left_or_output(&output)
                         && !self.maybe_warp_cursor_to_focus_centered()
                     {
                         self.move_cursor_to_output(&output);
@@ -1392,7 +1391,7 @@ impl State {
             }
             Action::FocusColumnOrMonitorRight => {
                 if let Some(output) = self.swayward.adjacent_output_right() {
-                    if self.swayward.layout.focus_column_right_or_output(&output)
+                    if self.swayward.layout.focus_right_or_output(&output)
                         && !self.maybe_warp_cursor_to_focus_centered()
                     {
                         self.move_cursor_to_output(&output);
@@ -1607,13 +1606,13 @@ impl State {
                 }
             }
             Action::MoveColumnToWorkspaceDown(focus) => {
-                self.swayward.layout.move_column_to_workspace_down(focus);
+                self.swayward.layout.move_focused_to_workspace_down(focus);
                 self.maybe_warp_cursor_to_focus();
                 // FIXME: granular
                 self.swayward.queue_redraw_all();
             }
             Action::MoveColumnToWorkspaceUp(focus) => {
-                self.swayward.layout.move_column_to_workspace_up(focus);
+                self.swayward.layout.move_focused_to_workspace_up(focus);
                 self.maybe_warp_cursor_to_focus();
                 // FIXME: granular
                 self.swayward.queue_redraw_all();
@@ -1631,12 +1630,12 @@ impl State {
                     if let Some(output) = output {
                         self.swayward
                             .layout
-                            .move_column_to_output(&output, Some(index), focus);
+                            .move_focused_to_output(&output, Some(index), focus);
                         if focus && !self.maybe_warp_cursor_to_focus_centered() {
                             self.move_cursor_to_output(&output);
                         }
                     } else {
-                        self.swayward.layout.move_column_to_workspace(index, focus);
+                        self.swayward.layout.move_focused_to_workspace(index, focus);
                         if focus {
                             self.maybe_warp_cursor_to_focus();
                         }
@@ -1647,7 +1646,7 @@ impl State {
                 }
             }
             Action::MoveColumnToIndex(idx) => {
-                self.swayward.layout.move_column_to_index(idx);
+                self.swayward.layout.move_focused_root_child_to_index(idx);
                 self.maybe_warp_cursor_to_focus();
                 // FIXME: granular
                 self.swayward.queue_redraw_all();
@@ -1779,42 +1778,38 @@ impl State {
                 self.swayward.layout.unset_workspace_name(Some(reference));
             }
             Action::ConsumeWindowIntoColumn => {
-                self.swayward.layout.consume_into_column();
+                self.swayward.layout.nest_focused_window();
                 // This does not cause immediate focus or window size change, so warping mouse to
                 // focus won't do anything here.
                 // FIXME: granular
                 self.swayward.queue_redraw_all();
             }
             Action::ExpelWindowFromColumn => {
-                self.swayward.layout.expel_from_column();
+                self.swayward.layout.unnest_focused_window();
                 self.maybe_warp_cursor_to_focus();
                 // FIXME: granular
                 self.swayward.queue_redraw_all();
             }
             Action::SwapWindowRight => {
-                self.swayward
-                    .layout
-                    .swap_window_in_direction(ScrollDirection::Right);
+                self.swayward.layout.swap_window_horizontal(true);
                 self.maybe_warp_cursor_to_focus();
                 // FIXME: granular
                 self.swayward.queue_redraw_all();
             }
             Action::SwapWindowLeft => {
-                self.swayward
-                    .layout
-                    .swap_window_in_direction(ScrollDirection::Left);
+                self.swayward.layout.swap_window_horizontal(false);
                 self.maybe_warp_cursor_to_focus();
                 // FIXME: granular
                 self.swayward.queue_redraw_all();
             }
             Action::ToggleColumnTabbedDisplay => {
-                self.swayward.layout.toggle_column_tabbed_display();
+                self.swayward.layout.toggle_focused_tabbed_display();
                 self.maybe_warp_cursor_to_focus();
                 // FIXME: granular
                 self.swayward.queue_redraw_all();
             }
             Action::SetColumnDisplay(display) => {
-                self.swayward.layout.set_column_display(display);
+                self.swayward.layout.set_focused_display(display);
                 self.maybe_warp_cursor_to_focus();
                 // FIXME: granular
                 self.swayward.queue_redraw_all();
@@ -1890,9 +1885,7 @@ impl State {
                 }
             }
             Action::CenterColumn => {
-                self.swayward.layout.center_column();
-                // FIXME: granular
-                self.swayward.queue_redraw_all();
+                warn!("center-column has no sway equivalent and is not supported");
             }
             Action::CenterWindow => {
                 self.swayward.layout.center_window(None);
@@ -1913,9 +1906,7 @@ impl State {
                 }
             }
             Action::CenterVisibleColumns => {
-                self.swayward.layout.center_visible_columns();
-                // FIXME: granular
-                self.swayward.queue_redraw_all();
+                warn!("center-visible-columns has no sway equivalent and is not supported");
             }
             Action::MaximizeColumn => {
                 self.swayward.layout.toggle_full_width();
@@ -2163,7 +2154,7 @@ impl State {
                 } else if let Some(output) = self.swayward.output_left() {
                     self.swayward
                         .layout
-                        .move_column_to_output(&output, None, true);
+                        .move_focused_to_output(&output, None, true);
                     self.swayward.layout.focus_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
@@ -2179,7 +2170,7 @@ impl State {
                 } else if let Some(output) = self.swayward.output_right() {
                     self.swayward
                         .layout
-                        .move_column_to_output(&output, None, true);
+                        .move_focused_to_output(&output, None, true);
                     self.swayward.layout.focus_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
@@ -2195,7 +2186,7 @@ impl State {
                 } else if let Some(output) = self.swayward.output_down() {
                     self.swayward
                         .layout
-                        .move_column_to_output(&output, None, true);
+                        .move_focused_to_output(&output, None, true);
                     self.swayward.layout.focus_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
@@ -2211,7 +2202,7 @@ impl State {
                 } else if let Some(output) = self.swayward.output_up() {
                     self.swayward
                         .layout
-                        .move_column_to_output(&output, None, true);
+                        .move_focused_to_output(&output, None, true);
                     self.swayward.layout.focus_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
@@ -2227,7 +2218,7 @@ impl State {
                 } else if let Some(output) = self.swayward.output_previous() {
                     self.swayward
                         .layout
-                        .move_column_to_output(&output, None, true);
+                        .move_focused_to_output(&output, None, true);
                     self.swayward.layout.focus_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
@@ -2243,7 +2234,7 @@ impl State {
                 } else if let Some(output) = self.swayward.output_next() {
                     self.swayward
                         .layout
-                        .move_column_to_output(&output, None, true);
+                        .move_focused_to_output(&output, None, true);
                     self.swayward.layout.focus_output(&output);
                     if !self.maybe_warp_cursor_to_focus_centered() {
                         self.move_cursor_to_output(&output);
@@ -2258,7 +2249,7 @@ impl State {
                     } else {
                         self.swayward
                             .layout
-                            .move_column_to_output(&output, None, true);
+                            .move_focused_to_output(&output, None, true);
                         self.swayward.layout.focus_output(&output);
                         if !self.maybe_warp_cursor_to_focus_centered() {
                             self.move_cursor_to_output(&output);
@@ -2273,7 +2264,7 @@ impl State {
                     // FIXME: granular
                     self.swayward.queue_redraw_all();
                 } else {
-                    self.swayward.layout.set_column_width(change);
+                    self.swayward.layout.set_focused_width(change);
                 }
             }
             Action::SetWindowWidth(change) => {
@@ -2335,7 +2326,7 @@ impl State {
                 }
             }
             Action::ExpandColumnToAvailableWidth => {
-                self.swayward.layout.expand_column_to_available_width();
+                self.swayward.layout.expand_focused_to_available_width();
             }
             Action::ShowHotkeyOverlay => {
                 if self.swayward.hotkey_overlay.show() {

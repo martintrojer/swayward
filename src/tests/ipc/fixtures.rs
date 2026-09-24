@@ -552,7 +552,7 @@ fn nested_live_tree() -> Value {
         window.ack_last_and_commit();
         f.double_roundtrip(id);
     }
-    f.swayward().layout.consume_or_expel_window_left(None);
+    f.swayward().layout.nest_or_unnest_window_left(None);
     f.swayward().layout.move_down();
     let mut stream = UnixStream::connect(socket).unwrap();
     query_ipc(&mut f, &mut stream, MessageType::GetTree)

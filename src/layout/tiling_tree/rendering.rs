@@ -461,13 +461,6 @@ impl<W: LayoutElement> TilingTree<W> {
         0.
     }
 
-    pub fn active_column_idx(&self) -> usize {
-        self.focus
-            .and_then(|id| self.root_branch(id))
-            .and_then(|branch| self.root_children()?.iter().position(|id| *id == branch))
-            .unwrap_or(0)
-    }
-
     fn node_depth(&self, mut id: NodeId) -> usize {
         let mut depth = 0;
         while let Some(parent) = self.nodes.get(&id).and_then(|node| node.parent) {

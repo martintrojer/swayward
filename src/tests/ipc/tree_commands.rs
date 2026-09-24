@@ -249,7 +249,7 @@ fn focused_container_can_be_marked_and_targeted_by_con_id() {
         f.double_roundtrip(client);
     }
 
-    f.swayward().layout.consume_or_expel_window_left(None);
+    f.swayward().layout.nest_or_unnest_window_left(None);
     assert!(crate::command::execute(f.niri_state(), "focus parent")[0].success);
     assert!(crate::command::execute(f.niri_state(), "mark parent")[0].success);
     let swayward = f.swayward();
@@ -433,7 +433,7 @@ fn criteria_split_command_applies_to_a_matched_split_container() {
         f.double_roundtrip(client);
     }
 
-    f.swayward().layout.consume_or_expel_window_left(None);
+    f.swayward().layout.nest_or_unnest_window_left(None);
     assert!(crate::command::execute(f.niri_state(), "focus parent")[0].success);
     assert!(crate::command::execute(f.niri_state(), "mark split-target")[0].success);
     let outcome = crate::command::execute(f.niri_state(), "[con_mark=split-target] split vertical");
@@ -538,7 +538,7 @@ fn criteria_fullscreen_applies_to_every_matched_split_and_its_descendants() {
                 f.swayward().layout.focus().unwrap().window.clone(),
             ));
         }
-        f.swayward().layout.consume_or_expel_window_left(None);
+        f.swayward().layout.nest_or_unnest_window_left(None);
         assert!(crate::command::execute(f.niri_state(), "focus parent")[0].success);
         assert!(
             crate::command::execute(
@@ -598,7 +598,7 @@ fn criteria_kill_closes_every_descendant_of_every_matched_split() {
             f.double_roundtrip(client);
             surfaces.push((app_id, surface));
         }
-        f.swayward().layout.consume_or_expel_window_left(None);
+        f.swayward().layout.nest_or_unnest_window_left(None);
         assert!(crate::command::execute(f.niri_state(), "focus parent")[0].success);
         assert!(
             crate::command::execute(f.niri_state(), &format!("mark kill-group-{workspace}"))[0]
@@ -635,7 +635,7 @@ fn kill_closes_every_descendant_of_the_focused_split() {
         f.double_roundtrip(client);
         surfaces.push(surface);
     }
-    f.swayward().layout.consume_or_expel_window_left(None);
+    f.swayward().layout.nest_or_unnest_window_left(None);
     assert!(crate::command::execute(f.niri_state(), "focus parent")[0].success);
 
     let outcome = crate::command::execute(f.niri_state(), "kill");
@@ -690,7 +690,7 @@ fn view_criteria_exclude_splits_but_container_criteria_include_them() {
         f.double_roundtrip(client);
     }
 
-    f.swayward().layout.consume_or_expel_window_left(None);
+    f.swayward().layout.nest_or_unnest_window_left(None);
     assert!(crate::command::execute(f.niri_state(), "focus parent")[0].success);
     assert!(crate::command::execute(f.niri_state(), "mark split")[0].success);
     let swayward = f.swayward();
