@@ -776,6 +776,8 @@ fn ipc_output_rects_use_global_positions() {
     assert_eq!(rects[0].width, 1280);
     assert_eq!(rects[1].x, 1280);
     assert_eq!(rects[1].width, 1920);
+    assert_eq!(outputs[0].percent, Some(1280. / 3200.));
+    assert_eq!(outputs[1].percent, Some(1920. / 3200.));
 
     let root = describe_tree(
         &swayward.layout,
@@ -785,10 +787,7 @@ fn ipc_output_rects_use_global_positions() {
     );
     assert_eq!(root.rect.width, 3200);
     assert_eq!(root.rect.height, 1080);
-    assert_eq!(
-        root.nodes[1].percent,
-        Some((1280 * 720) as f64 / (3200 * 1080) as f64)
-    );
+    assert_eq!(root.nodes[1].percent, Some(1280. / 3200.));
     assert_eq!(root.nodes[2].percent, Some(1920. / 3200.));
 }
 

@@ -214,6 +214,11 @@ pub fn describe_outputs_with_power(
     global_space: &Space<Window>,
     output_power: &std::collections::HashMap<String, bool>,
 ) -> Vec<Output> {
+    let root_width = layout
+        .monitors()
+        .filter_map(|monitor| global_space.output_geometry(monitor.output()))
+        .reduce(|a, b| a.merge(b))
+        .map_or(0, |rect| rect.size.w);
     layout
         .monitors()
         .map(|monitor| {
@@ -292,7 +297,9 @@ pub fn describe_outputs_with_power(
                 nodes: vec![],
                 non_desktop: false,
                 orientation: "none".into(),
-                percent: Some(1.),
+                percent: (root_width != 0).then(|| {
+                    f64::from(output_rect(global_space, output).width) / f64::from(root_width)
+                }),
                 power: powered,
                 primary: false,
                 rect: output_rect(global_space, output),
@@ -405,9 +412,8 @@ fn describe_output_node(
             transform: output.transform,
         }),
     );
-    let root_area = i64::from(root_rect.width) * i64::from(root_rect.height);
-    let output_area = i64::from(rect.width) * i64::from(rect.height);
-    node.percent = (root_area != 0).then(|| output_area as f64 / root_area as f64);
+    node.percent =
+        (root_rect.width != 0).then(|| f64::from(rect.width) / f64::from(root_rect.width));
     node
 }
 

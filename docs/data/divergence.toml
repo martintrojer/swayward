@@ -1321,6 +1321,12 @@ why = "Sway applies workspace gaps before serializing the workspace box (`sway/t
 
 [[edit]]
 migrated = false
+paths = ["src/ipc/tree.rs", "src/tests/ipc/workspace_output.rs"]
+what = "report output percentages as each output's width divided by the root width in GET_OUTPUTS and GET_TREE."
+why = "Sway computes an output container's percentage from its horizontal share of the root layout (`sway/ipc-json.c`)."
+
+[[edit]]
+migrated = false
 paths = ["tests/i3/lib/i3test.pm", "tests/i3/coverage.toml"]
 what = "classify i3's sticky-focus assertions as skips while preserving the raw comparisons for all other assertions."
 why = "Sway focuses the destination before reparenting sticky containers, unlike i3's expectation that the sticky container retains focus (`sway/input/seat.c:1178-1222`)."
