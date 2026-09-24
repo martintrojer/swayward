@@ -278,6 +278,69 @@ fn emptied_workspace_is_recreated_with_default_layout() {
 }
 
 #[test]
+fn layout_on_a_focused_nested_split_does_not_promote_to_the_workspace_root() {
+    for (outer, expected_outer, inner, expected_inner) in [
+        ("stacking", "stacked", "tabbed", "tabbed"),
+        ("tabbed", "tabbed", "stacking", "stacked"),
+    ] {
+        let mut f = Fixture::new();
+        let handle = f.swayward().event_loop.clone();
+        let ipc_server =
+            crate::ipc::server::IpcServer::start_at(&handle, Some(test_socket_path())).unwrap();
+        let socket = ipc_server.socket_path.clone().unwrap();
+        f.swayward().ipc_server = Some(ipc_server);
+        f.niri_state().ipc_keyboard_layouts_changed();
+        f.add_output(1, (1920, 1080));
+        let client = f.add_client();
+
+        assert!(crate::command::execute(f.niri_state(), "splith")[0].success);
+        for app_id in ["fixture-1", "fixture-2"] {
+            let window = f.client(client).create_window();
+            window.xdg_toplevel.set_app_id(app_id.into());
+            let surface = window.surface.clone();
+            window.commit();
+            f.roundtrip(client);
+            let window = f.client(client).window(&surface);
+            window.attach_new_buffer();
+            window.ack_last_and_commit();
+            f.double_roundtrip(client);
+        }
+        assert!(crate::command::execute(f.niri_state(), "focus parent")[0].success);
+        assert!(crate::command::execute(f.niri_state(), &format!("layout {outer}"))[0].success);
+        assert!(crate::command::execute(f.niri_state(), r#"[app_id="^fixture-1$"] focus"#)[0].success);
+        assert!(crate::command::execute(f.niri_state(), "splith")[0].success);
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id("fixture-3".into());
+        let surface = window.surface.clone();
+        window.commit();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+        assert!(crate::command::execute(f.niri_state(), "focus parent")[0].success);
+        assert!(crate::command::execute(f.niri_state(), &format!("layout {inner}"))[0].success);
+        f.niri_state().ipc_refresh_layout();
+
+        let mut stream = UnixStream::connect(socket).unwrap();
+        let tree = query_ipc(&mut f, &mut stream, MessageType::GetTree);
+        let workspace = &tree["nodes"][1]["nodes"][0];
+        assert_eq!(workspace["layout"], expected_outer);
+        assert_eq!(workspace["nodes"].as_array().unwrap().len(), 1);
+        assert_eq!(workspace["nodes"][0]["layout"], expected_inner);
+        assert_eq!(workspace["nodes"][0]["nodes"].as_array().unwrap().len(), 2);
+        assert_eq!(workspace["nodes"][0]["nodes"][0]["layout"], "splith");
+        assert_eq!(
+            workspace["nodes"][0]["nodes"][0]["nodes"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+    }
+}
+
+#[test]
 fn focus_parent_then_layout_targets_the_parent_of_the_focused_container() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));

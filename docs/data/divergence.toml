@@ -1294,3 +1294,9 @@ migrated = false
 paths = ["src/ipc/tree.rs", "src/layout/tiling_tree/mod.rs", "src/layout/workspace.rs", "src/tests/ipc/tree_commands.rs"]
 what = "retain whether a workspace tiling tree has contained a window and serialize an emptied root as its layout letter followed by empty brackets, including workspaces containing only floating or scratchpad windows."
 why = "Sway initializes a workspace representation only after inserting a tiling container, then retains the empty representation when that container leaves, so an emptied default vertical root reports `V[]` while a never-populated workspace remains null (`sway/tree/container.c`; `sway/ipc-json.c:523-524`)."
+
+[[edit]]
+migrated = false
+paths = ["src/layout/tiling_tree/tree_layout.rs", "src/tests/ipc/tree_commands.rs"]
+what = "wrap the workspace's children when tabbed or stacking layout is applied to a focused split whose command target is the workspace root."
+why = "Sway changes the workspace layout in place only when the workspace itself is focused; a focused child split at the root gains a nested layout container instead (`sway/commands/layout.c`; `sway/tree/container.c`)."
