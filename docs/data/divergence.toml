@@ -1312,3 +1312,9 @@ migrated = false
 paths = ["src/layout/tiling_tree/introspection.rs", "src/ipc/tree.rs", "src/tests/ipc/tree_commands.rs"]
 what = "report split-child IPC percentages from their rounded arranged extents; recompute tabbed and stacked descendants from sway's pending container boxes while retaining 1.0 for direct view children."
 why = "Sway derives `percent` from arranged container dimensions, including gap space and nested titlebar offsets in the parent extent, rather than returning the stored split fraction (`sway/ipc-json.c:746-755`; `sway/tree/arrange.c:185-215`)."
+
+[[edit]]
+migrated = false
+paths = ["src/ipc/tree.rs", "src/tests/ipc/tree_commands.rs"]
+what = "report each workspace rect from its effective working area, including configured outer and edge gaps."
+why = "Sway applies workspace gaps before serializing the workspace box (`sway/tree/workspace.c`; `sway/tree/arrange.c`)."

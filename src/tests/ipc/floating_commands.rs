@@ -761,7 +761,7 @@ fn move_absolute_position_is_verbatim_under_a_bar_and_gaps() {
         ws["width"].as_i64().unwrap(),
         ws["height"].as_i64().unwrap(),
     );
-    assert_eq!(ws_y, 20, "workspace rect starts below the bar");
+    assert_eq!(ws_y, 24, "workspace rect starts below the bar and outer gap");
 
     // The tallCenter preset from a real script: full workspace height at the
     // workspace origin, computed from the IPC workspace rect. Zero slack, so

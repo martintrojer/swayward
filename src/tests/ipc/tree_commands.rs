@@ -179,6 +179,29 @@ fn workspace_with_only_floating_windows_reports_empty_tiling_representation() {
 }
 
 #[test]
+fn workspace_rect_includes_outer_and_edge_gaps() {
+    let mut config = swayward_config::Config::default();
+    config.layout.gaps = 17.;
+    config.layout.outer_gaps = swayward_config::OuterGaps::all(23.);
+    config.layout.outer_gaps_configured = true;
+    let mut f = Fixture::with_config(config);
+    f.add_output(1, (1270, 1408));
+
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &Default::default(),
+        &Default::default(),
+    ))
+    .unwrap();
+    assert_eq!(
+        tree["nodes"][1]["nodes"][0]["rect"],
+        serde_json::json!({"x": 40, "y": 40, "width": 1190, "height": 1328})
+    );
+}
+
+#[test]
 fn split_children_report_their_arranged_share_including_gaps() {
     let mut f = Fixture::new();
     let handle = f.swayward().event_loop.clone();

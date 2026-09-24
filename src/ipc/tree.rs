@@ -138,7 +138,7 @@ pub(crate) fn describe_workspaces_with_marks(
                 workspace,
                 monitor.output_name(),
                 index,
-                workspace_rect(global_space, monitor.output()),
+                workspace_rect(global_space, monitor.output(), workspace),
                 output_rect(global_space, monitor.output()),
                 marks,
                 container_marks,
@@ -327,7 +327,11 @@ fn describe_output_node(
     // sway/sway-ipc.7.scd, where the output is y=0 h=1080 while its workspace
     // is y=23 h=1057 under a 23px bar. Scripts size floating windows from this
     // rect, so reporting the full output puts them under the bar.
-    let workspace_rect = workspace_rect(global_space, monitor.output());
+    let workspace_rect = workspace_rect(
+        global_space,
+        monitor.output(),
+        monitor.active_workspace_ref(),
+    );
     let workspaces = layout
         .workspaces()
         .filter(|(candidate, _, workspace)| {
@@ -1104,14 +1108,16 @@ fn output_rect(global_space: &Space<Window>, output: &smithay::output::Output) -
 /// This is the output rect minus layer-shell exclusive zones and the
 /// workspace's effective outer gaps. Sway includes the edge half of the inner
 /// gap in this inset as well.
-fn workspace_rect(global_space: &Space<Window>, output: &smithay::output::Output) -> Rect {
+fn workspace_rect(
+    global_space: &Space<Window>,
+    output: &smithay::output::Output,
+    workspace: &crate::layout::workspace::Workspace<Mapped>,
+) -> Rect {
     let Some(geometry) = global_space.output_geometry(output) else {
         return Rect::default();
     };
-    let usable = crate::layout::workspace::compute_working_area(output);
-    rect_from_rectangle(
-        Rectangle::new(geometry.loc.to_f64() + usable.loc, usable.size).to_i32_round(),
-    )
+    let area = workspace.working_area();
+    rect_from_rectangle(Rectangle::new(geometry.loc.to_f64() + area.loc, area.size).to_i32_round())
 }
 
 #[cfg(test)]
