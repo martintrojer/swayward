@@ -1,0 +1,155 @@
+[
+  {
+    "border": "none",
+    "current_border_width": 0,
+    "deco_rect": {
+      "height": 0,
+      "width": 0,
+      "x": 0,
+      "y": 0
+    },
+    "floating": null,
+    "floating_nodes": [],
+    "focus": [
+      59
+    ],
+    "focused": false,
+    "fullscreen_mode": 1,
+    "geometry": {
+      "height": 0,
+      "width": 0,
+      "x": 0,
+      "y": 0
+    },
+    "id": 58,
+    "layout": "splitv",
+    "marks": [],
+    "name": "1",
+    "nodes": [],
+    "num": 1,
+    "orientation": "vertical",
+    "output": "WL-1",
+    "percent": null,
+    "rect": {
+      "height": 1408,
+      "width": 1270,
+      "x": 0,
+      "y": 0
+    },
+    "representation": "V[fixture-1]",
+    "scratchpad_state": null,
+    "sticky": false,
+    "type": "workspace",
+    "urgent": false,
+    "visible": false,
+    "window": null,
+    "window_rect": {
+      "height": 0,
+      "width": 0,
+      "x": 0,
+      "y": 0
+    }
+  },
+  {
+    "border": "none",
+    "current_border_width": 0,
+    "deco_rect": {
+      "height": 0,
+      "width": 0,
+      "x": 0,
+      "y": 0
+    },
+    "floating": null,
+    "floating_nodes": [],
+    "focus": [
+      61
+    ],
+    "focused": false,
+    "fullscreen_mode": 1,
+    "geometry": {
+      "height": 0,
+      "width": 0,
+      "x": 0,
+      "y": 0
+    },
+    "id": 60,
+    "layout": "splitv",
+    "marks": [],
+    "name": "3",
+    "nodes": [],
+    "num": 3,
+    "orientation": "vertical",
+    "output": "WL-1",
+    "percent": null,
+    "rect": {
+      "height": 1408,
+      "width": 1270,
+      "x": 0,
+      "y": 0
+    },
+    "representation": "V[fixture-3]",
+    "scratchpad_state": null,
+    "sticky": false,
+    "type": "workspace",
+    "urgent": false,
+    "visible": false,
+    "window": null,
+    "window_rect": {
+      "height": 0,
+      "width": 0,
+      "x": 0,
+      "y": 0
+    }
+  },
+  {
+    "border": "none",
+    "current_border_width": 0,
+    "deco_rect": {
+      "height": 0,
+      "width": 0,
+      "x": 0,
+      "y": 0
+    },
+    "floating": null,
+    "floating_nodes": [],
+    "focus": [
+      63
+    ],
+    "focused": true,
+    "fullscreen_mode": 1,
+    "geometry": {
+      "height": 0,
+      "width": 0,
+      "x": 0,
+      "y": 0
+    },
+    "id": 62,
+    "layout": "splitv",
+    "marks": [],
+    "name": "7",
+    "nodes": [],
+    "num": 7,
+    "orientation": "vertical",
+    "output": "WL-1",
+    "percent": null,
+    "rect": {
+      "height": 1408,
+      "width": 1270,
+      "x": 0,
+      "y": 0
+    },
+    "representation": "V[fixture-7]",
+    "scratchpad_state": null,
+    "sticky": false,
+    "type": "workspace",
+    "urgent": false,
+    "visible": true,
+    "window": null,
+    "window_rect": {
+      "height": 0,
+      "width": 0,
+      "x": 0,
+      "y": 0
+    }
+  }
+]
