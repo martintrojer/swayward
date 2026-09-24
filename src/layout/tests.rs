@@ -2138,6 +2138,32 @@ fn move_column_down_creates_named_destination_before_detaching() {
 }
 
 #[test]
+fn workspace_focus_history_tracks_every_visited_workspace() {
+    let mut layout = Layout::default();
+    Op::AddOutput(1).apply(&mut layout);
+    for name in ["93", "92", "94", "96", "foo"] {
+        layout
+            .activate_sway_workspace(crate::command::WorkspaceTarget::Name(name.into()))
+            .unwrap();
+    }
+
+    let monitor = layout.active_monitor_ref().unwrap();
+    let names = monitor
+        .workspace_focus_history
+        .iter()
+        .map(|id| {
+            monitor
+                .workspaces
+                .iter()
+                .find(|workspace| workspace.id() == *id)
+                .and_then(Workspace::sway_name)
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(names, ["foo", "96", "94", "92", "93", "1"]);
+}
+
+#[test]
 fn move_focused_to_output_names_destination_before_detaching() {
     let mut layout = Layout::default();
     Op::AddOutput(1).apply(&mut layout);

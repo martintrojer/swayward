@@ -358,23 +358,11 @@ fn describe_output_node(
             )
         })
         .collect::<Vec<_>>();
-    let active_workspace_id = workspace_id(monitor.active_workspace_ref().id().get());
-    let previous_workspace_id = monitor
-        .previous_workspace_id()
-        .map(|id| workspace_id(id.get()));
-    let mut focus = workspaces
-        .iter()
-        .map(|workspace| workspace.id)
-        .collect::<Vec<_>>();
-    focus.sort_by_key(|id| {
-        if *id == active_workspace_id {
-            0
-        } else if Some(*id) == previous_workspace_id {
-            1
-        } else {
-            2
-        }
-    });
+    let focus = monitor
+        .workspace_focus_history()
+        .map(|id| workspace_id(id.get()))
+        .filter(|id| workspaces.iter().any(|workspace| workspace.id == *id))
+        .collect();
     let output = describe_outputs(layout, global_space)
         .into_iter()
         .find(|output| output.name == *monitor.output_name())

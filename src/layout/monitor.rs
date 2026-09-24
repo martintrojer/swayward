@@ -58,6 +58,8 @@ pub struct Monitor<W: LayoutElement> {
     pub(super) workspaces: Vec<Workspace<W>>,
     /// Index of the currently active workspace.
     pub(super) active_workspace_idx: usize,
+    /// Workspaces ordered from most to least recently focused.
+    pub(super) workspace_focus_history: Vec<WorkspaceId>,
     /// ID of the previously active workspace.
     pub(super) previous_workspace_id: Option<WorkspaceId>,
     /// Sway name of the previously active workspace, retained after cleanup.
@@ -339,6 +341,8 @@ impl<W: LayoutElement> Monitor<W> {
             workspaces.push(ws);
         }
 
+        let workspace_focus_history = workspaces.iter().map(Workspace::id).rev().collect();
+
         Self {
             output_name: output.name(),
             output,
@@ -347,6 +351,7 @@ impl<W: LayoutElement> Monitor<W> {
             working_area,
             workspaces,
             active_workspace_idx,
+            workspace_focus_history,
             previous_workspace_id: None,
             previous_workspace_name: None,
             insert_hint: None,
@@ -569,6 +574,9 @@ impl<W: LayoutElement> Monitor<W> {
 
         let prev_active_idx = self.active_workspace_idx;
         self.active_workspace_idx = idx;
+        let active = self.active_workspace_ref().id();
+        self.workspace_focus_history.retain(|id| *id != active);
+        self.workspace_focus_history.insert(0, active);
         self.move_sticky_to_active_workspace(prev_active_idx);
 
         let config = config.unwrap_or(self.options.animations.workspace_switch.0);
@@ -1182,6 +1190,10 @@ impl<W: LayoutElement> Monitor<W> {
 
     pub fn previous_workspace_id(&self) -> Option<WorkspaceId> {
         self.previous_workspace_id
+    }
+
+    pub(crate) fn workspace_focus_history(&self) -> impl Iterator<Item = WorkspaceId> + '_ {
+        self.workspace_focus_history.iter().copied()
     }
 
     /// Re-read the cached back-and-forth name for `id` after a rename.
