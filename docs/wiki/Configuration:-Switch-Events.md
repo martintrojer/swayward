@@ -4,8 +4,6 @@
 
 Switch event bindings are declared in the `switch-events {}` section of the config.
 
-Here are all the events that you can bind at a glance:
-
 ```kdl
 switch-events {
     lid-close { spawn "notify-send" "The laptop lid is closed!"; }
@@ -25,7 +23,7 @@ Currently, only the [`spawn` action](./Configuration:-Key-Bindings.md#spawn) are
 
 These events correspond to closing and opening of the laptop lid.
 
-Note that niri will already automatically turn the internal laptop monitor on and off in accordance with the laptop lid.
+swayward will already automatically turn the internal laptop monitor on and off in accordance with the laptop lid.
 
 ```kdl
 switch-events {
@@ -48,3 +46,7 @@ switch-events {
     tablet-mode-off { spawn "bash" "-c" "gsettings set org.gnome.desktop.a11y.applications screen-keyboard-enabled false"; }
 }
 ```
+
+---
+
+*This page is adapted from the niri documentation.*

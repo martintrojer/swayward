@@ -1,35 +1,41 @@
-### Overview
+A tabbed container gives its full content area to one child at a time. The
+other children remain in the tree and keep their layout state, so tabbing is
+a property of a *container*, not a mode the window is in.
 
-<sup>Since: 25.02</sup>
+Any container can be tabbed, not just a whole workspace. Tab a split that
+holds two terminals and you get one tab containing both, still side by side
+inside it.
 
-You can switch a column to present windows as tabs, rather than as vertical tiles.
-All tabs in a column have the same window size, so this is useful to get more vertical space.
+## Commands
 
-![Terminal with a tab indicator on the left.](https://github.com/user-attachments/assets/0e94ac0d-796d-4f85-a264-c105ef41c13f)
-
-Use this bind to toggle a column between normal and tabbed display:
-
-```kdl
-binds {
-   Mod+W { toggle-column-tabbed-display; }
-}
-```
-
-All other binds remain the same: switch tabs with `focus-window-down/up`, add or remove windows with `consume-window-into-column`/`expel-window-from-column`, and so on.
-
-Unlike regular columns, tabbed columns can go full-screen with multiple windows.
-
-### Tab indicator
-
-Tabbed columns show a tab indicator on the side.
-You can click on the indicator to switch tabs.
-
-See the [`tab-indicator` section in the layout section](./Configuration:-Layout.md#tab-indicator) to configure it.
-
-By default, the indicator draws "outside" the column, so it can overlay other windows or go off-screen.
-The `place-within-column` flag puts the indicator "inside" the column, adjusting the window size to make space for it.
-This is especially useful for thicker tab indicators, or when you have very small gaps.
-
-| Default | `place-within-column` |
+| Command | Effect |
 | --- | --- |
-| ![A screenshot showing 4 windows, with the middle column being focused. The tab indicator overflows onto the left column](https://github.com/user-attachments/assets/c2f51f50-3d87-403a-8beb-cbbe5ec5c880) | ![A screenshot showing 4 windows, with the middle column being focused. The tab indicator is contained within its respective column](https://github.com/user-attachments/assets/f1797cd0-d518-4be6-95b4-3540523c4370) |
+| `layout tabbed` | make the focused container tabbed |
+| `layout stacking` | stack instead: one child shown, titles listed vertically |
+| `layout splith` / `layout splitv` | back to a side-by-side or top-to-bottom split |
+| `layout toggle split` | flip between horizontal and vertical |
+| `layout default` | return to the inherited default |
+| `focus parent` | select the container holding the focused window |
+| `focus child` | descend again |
+
+`focus parent` is the key to using tabs deliberately. Layout commands act on
+the focused *container*, so to tab a group rather than a single window, focus
+the parent first and then run `layout tabbed`.
+
+Focus and move commands operate on the same nested tree in every layout.
+`focus left` and `focus right` move between children of a tabbed container;
+`focus up` and `focus down` move between children of a stacked container. In a
+nested split, swayward first resolves the direction at the innermost container
+with the matching axis.
+
+## Tab indicator
+
+The title strip identifies each tab and lets you click it to change focus.
+Swayward disables niri's additional edge indicator by default because it
+would duplicate the title strip.
+
+You can enable the edge indicator in the [`tab-indicator` layout
+section](./Configuration:-Layout.md#tab-indicator). You can change its side,
+width, length, spacing, corner radius, and active, inactive, and urgent colours.
+Set `hide-when-single-tab` to hide the indicator when a tabbed container has one
+child.

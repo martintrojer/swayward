@@ -1,49 +1,84 @@
-## Usage
-* [Getting Started](./Getting-Started.md)
-* [Example systemd Setup](./Example-systemd-Setup.md)
-* [Important Software](./Important-Software.md)
-* [Workspaces](./Workspaces.md)
-* [Floating Windows](./Floating-Windows.md)
-* [Tabs](./Tabs.md)
-* [Overview](./Overview.md)
-* [Screencasting](./Screencasting.md)
-* [Layer‐Shell Components](./Layer%E2%80%90Shell-Components.md)
-* [IPC, `niri msg`](./IPC.md)
-* [Application-Specific Issues](./Application-Issues.md)
-* [Nvidia](./Nvidia.md)
-* [Xwayland](./Xwayland.md)
-* [Gestures](./Gestures.md)
-* [Fullscreen and Maximize](./Fullscreen-and-Maximize.md)
-* [Window Effects](./Window-Effects.md)
-* [Packaging niri](./Packaging-niri.md)
-* [Integrating niri](./Integrating-niri.md)
-* [Security Model](./Security-Model.md)
-* [Accessibility](./Accessibility.md)
-* [Name and Logo](./Name-and-Logo.md)
-* [FAQ](./FAQ.md)
+# swayward documentation
+
+* [Home](Home.md)
+* [Getting started](Getting-Started.md)
+* [FAQ](FAQ.md)
+
+## Coming from sway or i3
+
+* [Migrate a sway config](https://github.com/martintrojer/swayward/wiki/SWAY_CONFIG_MIGRATION)
+* [Sway compatibility](Sway-Compatibility.md)
+* [Differences from sway](Differences-from-Sway.md)
+* [Important software](Important-Software.md)
+
+## Learn the tree
+
+* [Why care about window management?](Why-Window-Management.md)
+* [Cult of the Tree](Sway-School.md)
+  * [I: Windows and focus](Tree-School:-Windows-and-Focus.md)
+  * [II: Splits become a tree](Tree-School:-Splits-and-Containers.md)
+  * [III: Focus the container](Tree-School:-Focus-the-Container.md)
+  * [IV: Reshape the tree](Tree-School:-Reshape-the-Tree.md)
+  * [V: Floating and scratchpad](Tree-School:-Floating-and-Scratchpad.md)
+  * [Tree command reference](Tree-Command-Reference.md)
+* [Who planted the tree](Who-Planted-The-Tree.md)
+
+## Using the tree
+
+* [Workspaces](Workspaces.md)
+* [Tabbed and stacked containers](Tabs.md)
+* [Floating windows](Floating-Windows.md)
+* [Fullscreen and maximize](Fullscreen-and-Maximize.md)
 
 ## Configuration
-* [Introduction](./Configuration:-Introduction.md)
-* [Input](./Configuration:-Input.md)
-* [Outputs](./Configuration:-Outputs.md)
-* [Key Bindings](./Configuration:-Key-Bindings.md)
-* [Switch Events](./Configuration:-Switch-Events.md)
-* [Layout](./Configuration:-Layout.md)
-* [Named Workspaces](./Configuration:-Named-Workspaces.md)
-* [Miscellaneous](./Configuration:-Miscellaneous.md)
-* [Window Rules](./Configuration:-Window-Rules.md)
-* [Layer Rules](./Configuration:-Layer-Rules.md)
-* [Animations](./Configuration:-Animations.md)
-* [Gestures](./Configuration:-Gestures.md)
-* [Recent Windows](./Configuration:-Recent-Windows.md)
-* [Debug Options](./Configuration:-Debug-Options.md)
-* [Include](./Configuration:-Include.md)
+
+* [Introduction](Configuration:-Introduction.md)
+* [Key bindings](Configuration:-Key-Bindings.md)
+* [Layout](Configuration:-Layout.md)
+* [Window rules](Configuration:-Window-Rules.md)
+* [Layer rules](Configuration:-Layer-Rules.md)
+* [Named workspaces](Configuration:-Named-Workspaces.md)
+* [Input](Configuration:-Input.md)
+* [Outputs](Configuration:-Outputs.md)
+* [Switch events](Configuration:-Switch-Events.md)
+* [Miscellaneous](Configuration:-Miscellaneous.md)
+* [Include](Configuration:-Include.md)
+* [Debug options](Configuration:-Debug-Options.md)
+
+### Inherited from niri
+
+Additive features swayward keeps from niri. No sway client can observe them,
+and sway has no equivalent.
+
+* [Animations](Configuration:-Animations.md)
+* [Window effects](Window-Effects.md)
+* [Touchpad gestures](Gestures.md)
+* [Gesture configuration](Configuration:-Gestures.md)
+* [Recent windows](Configuration:-Recent-Windows.md)
+
+## Scripting and IPC
+
+* [IPC overview](IPC.md)
+* [Testing and conformance](Testing-and-Conformance.md)
+
+## System integration
+
+* [Xwayland](Xwayland.md)
+* [Screencasting](Screencasting.md)
+* [Layer-shell components](Layer‐Shell-Components.md)
+* [Integrating swayward](Integrating-swayward.md)
+* [Example systemd setup](Example-systemd-Setup.md)
+* [Nvidia](Nvidia.md)
+* [Application issues](Application-Issues.md)
+* [Security model](Security-Model.md)
+* [Accessibility](Accessibility.md)
 
 ## Development
-* [Design Principles](./Development:-Design-Principles.md)
-* [Developing niri](./Development:-Developing-niri.md)
-* [Documenting niri](./Development:-Documenting-niri.md)
-* [Releasing niri](./Development:-Releasing-niri.md)
-* [Fractional Layout](./Development:-Fractional-Layout.md)
-* [Redraw Loop](./Development:-Redraw-Loop.md)
-* [Animation Timing](./Development:-Animation-Timing.md)
+
+* [Design principles](Development:-Design-Principles.md)
+* [Developing swayward](Development:-Developing-swayward.md)
+* [Documenting swayward](Development:-Documenting-swayward.md)
+* [Releasing swayward](Development:-Releasing-swayward.md)
+* [Packaging swayward](Packaging-swayward.md)
+* [Redraw loop](Development:-Redraw-Loop.md)
+* [Animation timing](Development:-Animation-Timing.md)

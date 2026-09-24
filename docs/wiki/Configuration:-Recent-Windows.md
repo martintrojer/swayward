@@ -1,10 +1,11 @@
+> **Inherited from niri.** This is an additive feature swayward keeps from
+> niri. Sway has no equivalent and no sway client can observe it, so nothing
+> here affects sway compatibility. Safe to ignore entirely if you want
+> swayward to behave like sway.
+
 ### Overview
 
 <sup>Since: 25.11</sup>
-
-In this section you can configure the recent windows switcher (Alt-Tab).
-
-Here is an outline of the available settings and their default values:
 
 ```kdl
 recent-windows {
@@ -52,7 +53,7 @@ When you want to focus some window, you might end up focusing some unrelated win
 
 The debounce delay prevents those intermediate windows from polluting the recent windows list.
 
-Note that some actions, like keyboard input into the target window, will skip this delay and commit the window to the list immediately.
+Some actions, like keyboard input into the target window, will skip this delay and commit the window to the list immediately.
 This way, the recent windows list stays responsive while not getting polluted too much with unintended windows.
 
 If you want windows to appear in recent windows right away, including intermediate windows, you can reduce the delay or set it to zero:
@@ -103,7 +104,7 @@ Controls the window previews in the switcher.
 - `max-scale`: maximum scale of the window previews.
 Windows cannot be scaled bigger than this value.
 - `max-height`: maximum height of the window previews.
-Further limits the size of the previews in order to occupy less space on large monitors.
+Further limits the size of the previews to occupy less space on large monitors.
 
 On smaller monitors, the previews will be primarily limited by `max-scale`, and on larger monitors they will be primarily limited by `max-height`.
 
@@ -179,15 +180,21 @@ When the switcher is open, some hardcoded binds are available:
 - <kbd>S</kbd> cycles between scopes, as indicated by the panel at the top.
 - <kbd>←</kbd>, <kbd>→</kbd>, <kbd>Home</kbd>, <kbd>End</kbd> move the selection directionally.
 
-Additionally, certain regular binds will automatically work in the switcher:
+Certain regular binds will also work in the switcher:
 
-- focus column left/right and their variants: will move the selection left/right inside the switcher.
-- focus column first/last: will move the selection to the first or last window.
-- close window: will close the window currently focused in the switcher.
-- screenshot: will open the screenshot UI.
+- Inherited typed focus-left and focus-right actions move backward and forward through MRU order.
+- Inherited typed focus-first and focus-last actions move to the first or last window.
+- The close-window action closes the window currently focused in the switcher.
+- The screenshot action opens the screenshot UI.
+
+Sway command-string binds do not generate these aliases. The arrow, Home, and End keys remain available through the hardcoded binds above.
 
 The way this works is by finding all regular binds corresponding to these actions and taking just the trigger key without modifiers.
 For example, if you have <kbd>Mod</kbd><kbd>Shift</kbd><kbd>C</kbd> bound to `close-window`, in the window switcher pressing <kbd>C</kbd> on its own will close the window.
 
 This way we don't need to hardcode things like HJKL directional movements.
 If you have, say, Colemak-DH MNEI binds instead, they will work for you in the window switcher (as long as they don't conflict with the hardcoded ones).
+
+---
+
+*This page is adapted from the niri documentation.*

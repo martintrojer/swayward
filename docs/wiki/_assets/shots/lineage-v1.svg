@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="700" viewBox="0 0 760 700" role="img" aria-labelledby="title">
+<title id="title">The family tree of the nested container tree: Plan 9, wmi, wmii, i3, sway and swayward, with niri joining swayward as a second parent</title>
+<rect width="760" height="700" rx="16" fill="#111318"/>
+<defs><marker id="head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6c7086"/></marker></defs>
+<line x1="250" y1="96.0" x2="250" y2="142.0" stroke="#6c7086" stroke-width="2.5" marker-end="url(#head)"/>
+<line x1="250" y1="196.0" x2="250" y2="232.0" stroke="#6c7086" stroke-width="2.5" marker-end="url(#head)"/>
+<line x1="250" y1="286.0" x2="250" y2="332.0" stroke="#6c7086" stroke-width="2.5" marker-end="url(#head)"/>
+<line x1="250" y1="386.0" x2="250" y2="432.0" stroke="#6c7086" stroke-width="2.5" marker-end="url(#head)"/>
+<line x1="250" y1="486.0" x2="250" y2="582.0" stroke="#6c7086" stroke-width="2.5" marker-end="url(#head)"/>
+<rect x="150.0" y="44.0" width="200" height="52" rx="10" fill="#1e1e2e" stroke="#6c7086" stroke-width="3"/>
+<text x="250" y="76" text-anchor="middle" fill="#cdd6f4" font-family="monospace" font-size="20" font-weight="bold">Plan 9</text>
+<text x="136.0" y="76" text-anchor="end" fill="#9399b2" font-family="monospace" font-size="15" font-weight="normal">~1989</text>
+<rect x="150.0" y="144.0" width="200" height="52" rx="10" fill="#1e1e2e" stroke="#6c7086" stroke-width="3"/>
+<text x="250" y="176" text-anchor="middle" fill="#cdd6f4" font-family="monospace" font-size="20" font-weight="bold">wmi</text>
+<text x="136.0" y="176" text-anchor="end" fill="#9399b2" font-family="monospace" font-size="15" font-weight="normal">2003</text>
+<rect x="150.0" y="234.0" width="200" height="52" rx="10" fill="#1e1e2e" stroke="#6c7086" stroke-width="3"/>
+<text x="250" y="266" text-anchor="middle" fill="#cdd6f4" font-family="monospace" font-size="20" font-weight="bold">wmii</text>
+<text x="136.0" y="266" text-anchor="end" fill="#9399b2" font-family="monospace" font-size="15" font-weight="normal">2005</text>
+<rect x="150.0" y="334.0" width="200" height="52" rx="10" fill="#1e1e2e" stroke="#ffc87f" stroke-width="4"/>
+<text x="250" y="366" text-anchor="middle" fill="#cdd6f4" font-family="monospace" font-size="20" font-weight="bold">i3</text>
+<text x="136.0" y="366" text-anchor="end" fill="#9399b2" font-family="monospace" font-size="15" font-weight="normal">2009</text>
+<rect x="150.0" y="434.0" width="200" height="52" rx="10" fill="#1e1e2e" stroke="#89b4fa" stroke-width="4"/>
+<text x="250" y="466" text-anchor="middle" fill="#cdd6f4" font-family="monospace" font-size="20" font-weight="bold">sway</text>
+<text x="136.0" y="466" text-anchor="end" fill="#9399b2" font-family="monospace" font-size="15" font-weight="normal">2015</text>
+<rect x="150.0" y="584.0" width="200" height="52" rx="10" fill="#1e1e2e" stroke="#a6e3a1" stroke-width="4"/>
+<text x="250" y="616" text-anchor="middle" fill="#cdd6f4" font-family="monospace" font-size="20" font-weight="bold">swayward</text>
+<text x="136.0" y="616" text-anchor="end" fill="#9399b2" font-family="monospace" font-size="15" font-weight="normal">2026</text>
+<text x="250" y="112" text-anchor="middle" fill="#9399b2" font-family="monospace" font-size="14" font-weight="normal">8½ · rio · acme</text>
+<text x="366.0" y="366" text-anchor="start" fill="#ffc87f" font-family="monospace" font-size="15" font-weight="normal">← the tree is invented here</text>
+<text x="366.0" y="466" text-anchor="start" fill="#89b4fa" font-family="monospace" font-size="15" font-weight="normal">← the tree moves to Wayland</text>
+<rect x="440" y="130.0" width="170" height="40" rx="8" fill="none" stroke="#6c7086" stroke-width="2" stroke-dasharray="6 4"/>
+<text x="525.0" y="156" text-anchor="middle" fill="#cdd6f4" font-family="monospace" font-size="17" font-weight="normal">Ion · larswm</text>
+<text x="622" y="156" text-anchor="start" fill="#9399b2" font-family="monospace" font-size="14" font-weight="normal">and ratpoison, evilwm</text>
+<line x1="440" y1="150" x2="354.0" y2="166" stroke="#6c7086" stroke-width="2.5" stroke-dasharray="5 4" marker-end="url(#head)"/>
+<rect x="440" y="230.0" width="170" height="40" rx="8" fill="none" stroke="#6c7086" stroke-width="2" stroke-dasharray="6 4"/>
+<text x="525.0" y="256" text-anchor="middle" fill="#cdd6f4" font-family="monospace" font-size="17" font-weight="normal">dwm</text>
+<text x="622" y="256" text-anchor="start" fill="#9399b2" font-family="monospace" font-size="14" font-weight="normal">a sibling, same community</text>
+<line x1="352.0" y1="258" x2="438" y2="252" stroke="#6c7086" stroke-width="2.5" stroke-dasharray="5 4" marker-end="url(#head)"/>
+<rect x="440" y="390.0" width="170" height="40" rx="8" fill="none" stroke="#6c7086" stroke-width="2" stroke-dasharray="6 4"/>
+<text x="525.0" y="416" text-anchor="middle" fill="#cdd6f4" font-family="monospace" font-size="17" font-weight="normal">i3-gaps</text>
+<text x="622" y="416" text-anchor="start" fill="#9399b2" font-family="monospace" font-size="14" font-weight="normal">fork of i3</text>
+<line x1="352.0" y1="372" x2="438" y2="406" stroke="#6c7086" stroke-width="2.5" stroke-dasharray="5 4" marker-end="url(#head)"/>
+<rect x="440" y="500.0" width="170" height="40" rx="8" fill="none" stroke="#6c7086" stroke-width="2" stroke-dasharray="6 4"/>
+<text x="525.0" y="526" text-anchor="middle" fill="#cdd6f4" font-family="monospace" font-size="17" font-weight="normal">SwayFX</text>
+<text x="622" y="526" text-anchor="start" fill="#9399b2" font-family="monospace" font-size="14" font-weight="normal">fork of sway</text>
+<line x1="352.0" y1="472" x2="438" y2="516" stroke="#6c7086" stroke-width="2.5" stroke-dasharray="5 4" marker-end="url(#head)"/>
+<rect x="480.0" y="584.0" width="200" height="52" rx="10" fill="#1e1e2e" stroke="#a6e3a1" stroke-width="3"/>
+<text x="580" y="616" text-anchor="middle" fill="#cdd6f4" font-family="monospace" font-size="20" font-weight="bold">niri</text>
+
+<line x1="478.0" y1="610" x2="354.0" y2="610" stroke="#a6e3a1" stroke-width="2.5" marker-end="url(#head)"/>
+<text x="580" y="658.0" text-anchor="middle" fill="#9399b2" font-family="monospace" font-size="14" font-weight="normal">2024 · scrolling, not a tree</text>
+<text x="380.0" y="684" text-anchor="middle" fill="#9399b2" font-family="monospace" font-size="14" font-weight="normal">cousins, not ancestors: xmonad · awesome · Hyprland (+ hy3)</text>
+</svg>

@@ -43,11 +43,17 @@ window-rule {
     default-window-height { fixed 500; }
     open-on-output "Some Company CoolMonitor 1234"
     open-on-workspace "chat"
+    open-on-workspace-number "3"
     open-maximized true
     open-maximized-to-edges true
     open-fullscreen true
     open-floating true
     open-focused false
+    sway-border "pixel"
+    sway-border-width 2
+    sway-floating-border "normal"
+    sway-floating-border-width 2
+    sway-for-window-command "mark --add example"
 
     // Properties that apply continuously.
     draw-border-with-background false
@@ -169,7 +175,7 @@ window-rule {
 }
 ```
 
-Let's look at the matchers in more detail.
+The matchers:
 
 #### `title` and `app-id`
 
@@ -193,7 +199,7 @@ window-rule {
 }
 ```
 
-You can find the title and the app ID of a window by running `niri msg pick-window` and clicking on the window in question.
+Run `swaywardmsg -t get_tree -p` to inspect each window's `name` and `app_id`.
 
 > [!TIP]
 > Another way to find the window title and app ID is to configure the `wlr/taskbar` module in [Waybar](https://github.com/Alexays/Waybar) to include them in the tooltip:
@@ -209,8 +215,8 @@ You can find the title and the app ID of a window by running `niri msg pick-wind
 Can be `true` or `false`.
 Matches active windows (same windows that have the active border / focus ring color).
 
-Every workspace on the focused monitor will have one active window.
-This means that you will usually have multiple active windows (one per workspace), and when you switch between workspaces, you can see two active windows at once.
+The focused workspace has one active leaf. Inactive workspaces can retain an active
+leaf, but those workspaces are not visible.
 
 ```kdl
 window-rule {
@@ -238,10 +244,7 @@ window-rule {
 <sup>Since: 0.1.6</sup>
 
 Can be `true` or `false`.
-Matches the window that is the "active" window in its column.
-
-Contrary to `is-active`, there is always one `is-active-in-column` window in each column.
-It is the window that was last focused in the column, i.e. the one that will gain focus if this column is focused.
+This inherited matcher is `true` for the focused leaf in the container tree. It is kept for config compatibility; the name still refers to niri's removed column layout.
 
 <sup>Since: 25.01</sup> This rule will match `true` during the initial window opening.
 
@@ -326,12 +329,12 @@ window-rule {
 <sup>Since: 0.1.6</sup>
 
 Can be `true` or `false`.
-Matches during the first 60 seconds after starting niri.
+Matches during the first 60 seconds after starting swayward.
 
-This is useful for properties like `open-on-output` which you may want to apply only right after starting niri.
+This is useful for properties like `open-on-output` which you may want to apply only right after starting swayward.
 
 ```kdl
-// Open windows on the HDMI-A-1 monitor at niri startup, but not afterwards.
+// Open windows on the HDMI-A-1 monitor at swayward startup, but not afterwards.
 window-rule {
     match at-startup=true
     open-on-output "HDMI-A-1"
@@ -342,13 +345,11 @@ window-rule {
 
 These properties apply once, when a window first opens.
 
-To be precise, they apply at the point when niri sends the initial configure request to the window.
+To be precise, they apply at the point when swayward sends the initial configure request to the window.
 
 #### `default-column-width`
 
-Set the default width for the new window.
-
-This works for floating windows too, despite the word "column" in the name.
+This inherited setting is accepted for config compatibility. It affects the initial size of floating windows but does not constrain tiled nodes.
 
 ```kdl
 // Give Blender and GIMP some guaranteed width on opening.
@@ -424,9 +425,24 @@ window-rule {
 }
 ```
 
+#### `open-on-workspace-number`
+
+Make the window open on a workspace selected by sway's numeric workspace
+matching. Unlike `open-on-workspace`, this setting treats the argument as a
+workspace number and can resolve a named workspace whose number matches it. A
+later matching rule can replace a name assignment with a number assignment, or
+the reverse.
+
+```kdl
+window-rule {
+    match app-id=r#"^org\.gnome\.Fractal$"#
+    open-on-workspace-number "3"
+}
+```
+
 #### `open-maximized`
 
-Make the window open as a maximized column.
+Make the window open maximized.
 
 ```kdl
 // Maximize Firefox by default.
@@ -499,6 +515,37 @@ You can also set this to `false` to *prevent* a window from opening in the float
 // Open all windows in the tiling layout, overriding any auto-floating logic.
 window-rule {
     open-floating false
+}
+```
+
+#### `sway-border`, `sway-border-width`, `sway-floating-border`, and `sway-floating-border-width`
+
+These properties set the initial sway border style and width. `sway-border`
+applies when the window opens tiled, and `sway-floating-border` applies when it
+opens floating. Use the styles `"normal"`, `"pixel"`, or `"none"`; widths are
+logical pixels.
+
+```kdl
+window-rule {
+    match app-id="^foot$"
+    sway-border "pixel"
+    sway-border-width 2
+    sway-floating-border "normal"
+    sway-floating-border-width 3
+}
+```
+
+#### `sway-for-window-command`
+
+Run a sway command against the new window after it maps. Repeat the node to run
+multiple commands in order. Use this for map-time actions that have no typed
+window-rule property.
+
+```kdl
+window-rule {
+    match app-id=r#"^spotify$"#
+    sway-for-window-command "move scratchpad"
+    sway-for-window-command "mark --add music"
 }
 ```
 
@@ -593,13 +640,13 @@ window-rule {
 > It will work, but when switching from a sensitive tab to a regular tab, the contents of the sensitive tab **will show up on a screencast** for an instant.
 >
 > This is because window title (and app ID) are not double-buffered in the Wayland protocol, so they are not tied to specific window contents.
-> There's no robust way for Firefox to synchronize visibly showing a different tab and changing the window title.
+> There's no reliable way for Firefox to synchronize visibly showing a different tab and changing the window title.
 
 #### `on-xdg-activate`
 
-<sup>Since: next release</sup>
+<sup>Since: unreleased niri</sup>
 
-Set what niri does when a window requests activation through [xdg-activation](https://wayland.app/protocols/xdg-activation-v1).
+Set what swayward does when a window requests activation through [xdg-activation](https://wayland.app/protocols/xdg-activation-v1).
 
 Values:
 
@@ -610,7 +657,7 @@ Values:
 The default behavior, when this rule is unset, picks between focusing and marking the window urgent based on the serial that the application provides when creating the activation token.
 Requests with a valid serial focus the target window, and requests without a serial mark it urgent.
 
-Requests with a set, but invalid, serial, are always ignored, which you can change with the [`honor-xdg-activation-with-invalid-serial`](https://niri-wm.github.io/niri/Configuration%3A-Debug-Options.html#honor-xdg-activation-with-invalid-serial) debug flag.
+Requests with a set, but invalid, serial, are always ignored, which you can change with the [`honor-xdg-activation-with-invalid-serial`](https://martintrojer.github.io/swayward/Configuration%3A-Debug-Options.html#honor-xdg-activation-with-invalid-serial) debug flag.
 
 This is useful for apps that steal focus on incoming messages or when opening popup windows like Picture-in-Picture.
 
@@ -671,17 +718,10 @@ window-rule {
 
 <sup>Since: 25.02</sup>
 
-Set the default display mode for columns created from this window.
-Can be `normal` or `tabbed`.
-
-This is used any time a window goes into its own column.
-For example:
-- Opening a new window.
-- Expelling a window into its own column.
-- Moving a window from the floating layout to the tiling layout.
+This inherited setting is accepted for config compatibility but does not affect the container tree. Valid values are `normal` and `tabbed`.
 
 ```kdl
-// Make Evince windows open as tabbed columns.
+// This compatibility setting currently has no effect.
 window-rule {
     match app-id="^evince$"
 
@@ -924,7 +964,7 @@ Informs the window that it is tiled.
 Usually, windows will react by becoming rectangular and hiding their client-side shadows.
 Windows that snap their size to a grid (e.g. terminals like [foot](https://codeberg.org/dnkl/foot)) will usually disable this snapping when they are tiled.
 
-By default, niri will set the tiled state to `true` together with [`prefer-no-csd`](./Configuration:-Miscellaneous.md#prefer-no-csd) in order to improve behavior for apps that don't support server-side decorations.
+By default, swayward will set the tiled state to `true` together with [`prefer-no-csd`](./Configuration:-Miscellaneous.md#prefer-no-csd) to improve behavior for apps that don't support server-side decorations.
 You can use this window rule to override this, for example to get rectangular windows with CSD.
 
 ```kdl
@@ -1007,7 +1047,7 @@ Other properties apply independently.
 >
 > - Uses a wl-subsurface instead of an xdg-popup.
 > Common in older apps using GTK 3, notably Firefox still uses these for some menus.
-> Subsurfaces are an indivisible part of a surface and they aren't usually pop-ups, so it wouldn't make sense for niri to apply these rules to them.
+> Subsurfaces are an indivisible part of a surface and they aren't usually pop-ups, so it wouldn't make sense for swayward to apply these rules to them.
 >
 > These emulated pop-ups come with other downsides: they cannot reliably extend outside their window, and if the app tries to do that, they will be clipped by rules such as `clip-to-geometry`.
 > So most modern apps will correctly use xdg-popup, which is the intended way to show pop-ups on Wayland.
@@ -1052,13 +1092,13 @@ These pop-ups with custom shapes will need the app to implement the [ext-backgro
 You can amend the window's minimum and maximum size in logical pixels.
 
 Keep in mind that the window itself always has a final say in its size.
-These values instruct niri to never ask the window to be smaller than the minimum you set, or to be bigger than the maximum you set.
+These values instruct swayward to never ask the window to be smaller than the minimum you set, or to be bigger than the maximum you set.
 
 > [!NOTE]
 > `max-height` will only apply to automatically-sized windows if it is equal to `min-height`.
 > Either set it equal to `min-height`, or change the window height manually after opening it with `set-window-height`.
 >
-> This is a limitation of niri's window height distribution algorithm.
+> This is a limitation of swayward's window height distribution algorithm.
 
 ```kdl
 window-rule {
@@ -1077,3 +1117,7 @@ window-rule {
     min-width 876
 }
 ```
+
+---
+
+*This page is adapted from the niri documentation.*
