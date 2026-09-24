@@ -31,8 +31,9 @@ import tomllib
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DATA = ROOT / "tests" / "i3" / "coverage.toml"
-UNVENDORED = ROOT / "tests" / "i3" / "unvendored.toml"
-VENDOR = ROOT / "tests" / "i3" / "t"
+ORACLE = ROOT / ".cache" / "sway-ipc-oracle" / "i3"
+UNVENDORED = ORACLE / "unvendored.toml"
+VENDOR = ORACLE / "t"
 
 LABELS = ("pass", "skip", "unproven", "fail", "unaccounted")
 
@@ -57,6 +58,8 @@ STRUCTURAL_REASONS = frozenset(
 
 
 def load():
+    if not VENDOR.is_dir():
+        raise SystemExit("i3 oracle is missing; run ./contrib/fetch-oracle")
     with DATA.open("rb") as handle:
         return tomllib.load(handle)
 

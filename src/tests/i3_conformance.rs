@@ -18,6 +18,15 @@ use super::Fixture;
 
 static NEXT_SOCKET: AtomicU64 = AtomicU64::new(0);
 
+fn oracle_i3_dir() -> PathBuf {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".cache/sway-ipc-oracle/i3");
+    assert!(
+        path.join("t").is_dir(),
+        "i3 oracle is missing; run ./contrib/fetch-oracle"
+    );
+    path
+}
+
 struct AllowedRejection {
     test: &'static str,
     command: &'static str,
@@ -1190,9 +1199,10 @@ fn run_i3_test(test: &str) {
     };
 
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let oracle = oracle_i3_dir();
     let mut child = Command::new("perl")
         .arg(format!("-I{}", root.join("tests/i3/lib").display()))
-        .arg(root.join("tests/i3/t").join(test))
+        .arg(oracle.join("t").join(test))
         .env("I3SOCK", &ipc_socket)
         .env("SWAYWARD_TEST_CONTROL", &control_path)
         .env("SWAYWARD_I3_TEST", test)
@@ -2078,8 +2088,8 @@ fn documented_green_ceiling_matches_the_manifest() {
             "the gap-only table also lists green file {file}"
         );
         assert!(
-            std::path::Path::new("tests/i3/t").join(file).is_file(),
-            "the gap-only table lists non-vendored file {file}"
+            oracle_i3_dir().join("t").join(file).is_file(),
+            "the gap-only table lists a file absent from the pinned oracle: {file}"
         );
     }
     assert_eq!(

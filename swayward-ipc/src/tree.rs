@@ -250,110 +250,37 @@ pub struct Output {
 mod tests {
     use super::*;
 
-    const SCENARIOS: &[(&str, &str, &str, &str)] = &[
-        (
-            "empty",
-            include_str!("../../tests/fixtures/sway/empty.tree.json"),
-            include_str!("../../tests/fixtures/sway/empty.workspaces.json"),
-            include_str!("../../tests/fixtures/sway/empty.outputs.json"),
-        ),
-        (
-            "empty_named",
-            include_str!("../../tests/fixtures/sway/empty_named.tree.json"),
-            include_str!("../../tests/fixtures/sway/empty_named.workspaces.json"),
-            include_str!("../../tests/fixtures/sway/empty_named.outputs.json"),
-        ),
-        (
-            "fullscreen",
-            include_str!("../../tests/fixtures/sway/fullscreen.tree.json"),
-            include_str!("../../tests/fixtures/sway/fullscreen.workspaces.json"),
-            include_str!("../../tests/fixtures/sway/fullscreen.outputs.json"),
-        ),
-        (
-            "marked",
-            include_str!("../../tests/fixtures/sway/marked.tree.json"),
-            include_str!("../../tests/fixtures/sway/marked.workspaces.json"),
-            include_str!("../../tests/fixtures/sway/marked.outputs.json"),
-        ),
-        (
-            "named_workspace",
-            include_str!("../../tests/fixtures/sway/named_workspace.tree.json"),
-            include_str!("../../tests/fixtures/sway/named_workspace.workspaces.json"),
-            include_str!("../../tests/fixtures/sway/named_workspace.outputs.json"),
-        ),
-        (
-            "nested_h_in_v",
-            include_str!("../../tests/fixtures/sway/nested_h_in_v.tree.json"),
-            include_str!("../../tests/fixtures/sway/nested_h_in_v.workspaces.json"),
-            include_str!("../../tests/fixtures/sway/nested_h_in_v.outputs.json"),
-        ),
-        (
-            "numbered_sparse",
-            include_str!("../../tests/fixtures/sway/numbered_sparse.tree.json"),
-            include_str!("../../tests/fixtures/sway/numbered_sparse.workspaces.json"),
-            include_str!("../../tests/fixtures/sway/numbered_sparse.outputs.json"),
-        ),
-        (
-            "one_floating",
-            include_str!("../../tests/fixtures/sway/one_floating.tree.json"),
-            include_str!("../../tests/fixtures/sway/one_floating.workspaces.json"),
-            include_str!("../../tests/fixtures/sway/one_floating.outputs.json"),
-        ),
-        (
-            "two_floating",
-            include_str!("../../tests/fixtures/sway/two_floating.tree.json"),
-            include_str!("../../tests/fixtures/sway/two_floating.workspaces.json"),
-            include_str!("../../tests/fixtures/sway/two_floating.outputs.json"),
-        ),
-        (
-            "three_floating_before_raise",
-            include_str!("../../tests/fixtures/sway/three_floating_before_raise.tree.json"),
-            include_str!("../../tests/fixtures/sway/three_floating_before_raise.workspaces.json"),
-            include_str!("../../tests/fixtures/sway/three_floating_before_raise.outputs.json"),
-        ),
-        (
-            "three_floating_after_raise",
-            include_str!("../../tests/fixtures/sway/three_floating_after_raise.tree.json"),
-            include_str!("../../tests/fixtures/sway/three_floating_after_raise.workspaces.json"),
-            include_str!("../../tests/fixtures/sway/three_floating_after_raise.outputs.json"),
-        ),
-        (
-            "one_window",
-            include_str!("../../tests/fixtures/sway/one_window.tree.json"),
-            include_str!("../../tests/fixtures/sway/one_window.workspaces.json"),
-            include_str!("../../tests/fixtures/sway/one_window.outputs.json"),
-        ),
-        (
-            "stacked",
-            include_str!("../../tests/fixtures/sway/stacked.tree.json"),
-            include_str!("../../tests/fixtures/sway/stacked.workspaces.json"),
-            include_str!("../../tests/fixtures/sway/stacked.outputs.json"),
-        ),
-        (
-            "tabbed",
-            include_str!("../../tests/fixtures/sway/tabbed.tree.json"),
-            include_str!("../../tests/fixtures/sway/tabbed.workspaces.json"),
-            include_str!("../../tests/fixtures/sway/tabbed.outputs.json"),
-        ),
-        (
-            "two_split_h",
-            include_str!("../../tests/fixtures/sway/two_split_h.tree.json"),
-            include_str!("../../tests/fixtures/sway/two_split_h.workspaces.json"),
-            include_str!("../../tests/fixtures/sway/two_split_h.outputs.json"),
-        ),
-        (
-            "two_split_v",
-            include_str!("../../tests/fixtures/sway/two_split_v.tree.json"),
-            include_str!("../../tests/fixtures/sway/two_split_v.workspaces.json"),
-            include_str!("../../tests/fixtures/sway/two_split_v.outputs.json"),
-        ),
-        (
-            "two_workspaces",
-            include_str!("../../tests/fixtures/sway/two_workspaces.tree.json"),
-            include_str!("../../tests/fixtures/sway/two_workspaces.workspaces.json"),
-            include_str!("../../tests/fixtures/sway/two_workspaces.outputs.json"),
-        ),
+    const SCENARIOS: &[&str] = &[
+        "empty",
+        "empty_named",
+        "fullscreen",
+        "marked",
+        "named_workspace",
+        "nested_h_in_v",
+        "numbered_sparse",
+        "one_floating",
+        "two_floating",
+        "three_floating_before_raise",
+        "three_floating_after_raise",
+        "one_window",
+        "stacked",
+        "tabbed",
+        "two_split_h",
+        "two_split_v",
+        "two_workspaces",
     ];
+
+    fn fixture(scenario: &str, kind: &str) -> String {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../.cache/sway-ipc-oracle/sway-ipc/fixtures")
+            .join(format!("{scenario}.{kind}.json"));
+        std::fs::read_to_string(&path).unwrap_or_else(|error| {
+            panic!(
+                "cannot read sway IPC oracle fixture {}: {error}; run ./contrib/fetch-oracle",
+                path.display()
+            )
+        })
+    }
 
     fn assert_round_trip<T>(scenario: &str, kind: &str, json: &str)
     where
@@ -371,10 +298,14 @@ mod tests {
 
     #[test]
     fn round_trips_all_real_sway_fixtures_without_schema_drift() {
-        for &(scenario, tree, workspaces, outputs) in SCENARIOS {
-            assert_round_trip::<Node>(scenario, "tree", tree);
-            assert_round_trip::<Vec<Workspace>>(scenario, "workspaces", workspaces);
-            assert_round_trip::<Vec<Output>>(scenario, "outputs", outputs);
+        for &scenario in SCENARIOS {
+            assert_round_trip::<Node>(scenario, "tree", &fixture(scenario, "tree"));
+            assert_round_trip::<Vec<Workspace>>(
+                scenario,
+                "workspaces",
+                &fixture(scenario, "workspaces"),
+            );
+            assert_round_trip::<Vec<Output>>(scenario, "outputs", &fixture(scenario, "outputs"));
         }
     }
 }

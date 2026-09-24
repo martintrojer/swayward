@@ -19,6 +19,7 @@ AUDIT = ROOT / "docs" / "RUN_COMMAND_AUDIT.md"
 COMPATIBILITY = ROOT / "docs" / "SWAY_COMPATIBILITY.md"
 ORACLE = ROOT / "docs" / "IPC_ORACLE_COVERAGE.md"
 DATA = ROOT / "tests" / "sway" / "compatibility.toml"
+FIXTURES = ROOT / ".cache" / "sway-ipc-oracle" / "sway-ipc" / "fixtures"
 
 def load():
     with DATA.open("rb") as handle:
@@ -230,7 +231,7 @@ def validate(data, counts):
     if "sway_commit" not in data:
         violations.append("missing pinned sway commit for command semantics audit")
     else:
-        with (ROOT / "tests/fixtures/sway/schema-version.json").open() as handle:
+        with (FIXTURES / "schema-version.json").open() as handle:
             fixture_version = json.load(handle)
         if data["sway_version"] != fixture_version["version"]:
             violations.append("command audit and fixture sway versions disagree")
@@ -240,7 +241,7 @@ def validate(data, counts):
     tree_scenarios = data["fixtures"]["tree_scenarios"]
     if repeated := duplicates(tree_scenarios):
         violations.append(f"duplicate tree fixture scenarios: {repeated}")
-    with (ROOT / "tests/fixtures/sway/inputs-libinput.json").open() as handle:
+    with (FIXTURES / "inputs-libinput.json").open() as handle:
         input_fields = {key for device in json.load(handle) for key in device}
     if set(data["get_inputs_fields"]) != input_fields:
         violations.append("GET_INPUTS fields disagree with inputs-libinput.json")
