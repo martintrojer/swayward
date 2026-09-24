@@ -26,10 +26,10 @@
 
 %global version {{{ git_dir_version }}}
 
-Name:           niri
+Name:           swayward
 Version:        %{version}
 Release:        1%{?dist}
-Summary:        Scrollable-tiling Wayland compositor
+Summary:        An i3/sway-compatible Wayland compositor
 
 SourceLicense:  GPL-3.0-or-later
 
@@ -58,7 +58,7 @@ SourceLicense:  GPL-3.0-or-later
 License:        ((MIT OR Apache-2.0) AND BSD-3-Clause) AND ((MIT OR Apache-2.0) AND Unicode-3.0) AND (0BSD OR MIT OR Apache-2.0) AND Apache-2.0 AND (Apache-2.0 AND MIT) AND (Apache-2.0 OR MIT) AND (Apache-2.0 OR MIT OR Unlicense) AND (Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT) AND BSD-2-Clause AND (BSD-2-Clause OR Apache-2.0 OR MIT) AND (BSD-3-Clause OR MIT OR Apache-2.0) AND GPL-3.0-or-later AND ISC AND MIT AND (MIT OR Apache-2.0) AND (MIT OR Apache-2.0 OR LGPL-2.1-or-later) AND (MIT OR Apache-2.0 OR Zlib) AND (MIT OR Zlib OR Apache-2.0) AND MPL-2.0 AND (Unlicense OR MIT) AND Zlib AND (Zlib OR Apache-2.0 OR MIT)
 # LICENSE.dependencies contains a full license breakdown
 
-URL:            https://github.com/niri-wm/niri
+URL:            https://github.com/martintrojer/swayward
 VCS:            {{{ git_dir_vcs }}}
 Source:         {{{ git_dir_pack }}}
 
@@ -86,18 +86,26 @@ Requires:       mesa-libEGL
 # Loaded through dlopen
 Requires:       libwayland-server
 
+# swayward-sway-to-kdl is a Python script
+Requires:       python3
+
 # Integrated Xwayland support. Not packaged on EPEL
 %if 0%{?fedora}
 Requires:       xwayland-satellite >= 0.7
 %endif
 
-# Portal implementations used by niri
-Recommends:     xdg-desktop-portal-gtk
+# Portal backends named by resources/swayward-portals.conf. The GNOME backend
+# uses swayward's Mutter-compatible interfaces for window and monitor capture.
 Recommends:     xdg-desktop-portal-gnome
+Recommends:     xdg-desktop-portal-gtk
 Recommends:     gnome-keyring
 
+# Optional: sway's own client. swayward ships swaywardmsg, so sway is not
+# required to drive the IPC socket.
+Suggests:       sway
+
 # Suggested utilities, bound in the default config
-Recommends:     alacritty
+Recommends:     foot
 Recommends:     fuzzel
 Recommends:     swaylock
 Recommends:     waybar
@@ -107,10 +115,16 @@ Recommends:     mako
 Recommends:     swayidle
 
 %description
-A scrollable-tiling Wayland compositor.
+An i3/sway-compatible Wayland compositor, built in Rust on Smithay.
 
-Windows are arranged in columns on an infinite strip going to the right.
-Opening a new window never causes existing windows to resize.
+Windows live in i3's fully nested container tree: splits inside splits, tabbed
+and stacked containers, marks, criteria, floating windows and the scratchpad.
+Swayward speaks sway's IPC protocol on SWAYSOCK, so swaymsg, Waybar and other
+existing sway tooling work against it unmodified.
+
+Swayward is a fork of niri and keeps its rendering, backend, protocol and
+portal work. It is configured in KDL rather than sway's config format; a
+translator is provided for migrating an existing sway config.
 
 %prep
 {{{ git_dir_setup_macro }}}
@@ -124,48 +138,65 @@ sed -i 's/^offline = true$//' .cargo/config.toml
 sed -i 's/.*please-remove-me$//' .cargo/config.toml
 
 # Set the commit string.
-sed -i 's/\[env\]/[env]\nNIRI_BUILD_COMMIT="%{version}"/' .cargo/config.toml
+sed -i 's/\[env\]/[env]\nSWAYWARD_BUILD_COMMIT="%{version}"/' .cargo/config.toml
 
 %build
 %cargo_build
+# swaywardmsg is an auto-discovered binary in the swayward-ipc workspace
+# member, while Fedora's default Cargo build targets only the root package.
+%{__cargo} build %{__cargo_common_opts} --profile rpm -p swayward-ipc --bin swaywardmsg
 
-target/rpm/niri completions bash > ./niri
-target/rpm/niri completions fish > ./niri.fish
-target/rpm/niri completions zsh > ./_niri
+target/rpm/swayward completions bash > ./swayward
+target/rpm/swayward completions fish > ./swayward.fish
+target/rpm/swayward completions zsh > ./_swayward
 
 %install
 %cargo_install
+# Fedora's default Cargo install handles only the root package binary.
+# swaywardmsg is an auto-discovered bin in the swayward-ipc workspace member,
+# so install the binary produced by the explicit build above.
+install -Dm755 target/rpm/swaywardmsg %{buildroot}%{_bindir}/swaywardmsg
 
-install -Dm755 -t %{buildroot}%{_bindir} ./resources/niri-session
-install -Dm644 -t %{buildroot}%{_datadir}/wayland-sessions ./resources/niri.desktop
-install -Dm644 -t %{buildroot}%{_datadir}/xdg-desktop-portal ./resources/niri-portals.conf
-install -Dm644 -t %{buildroot}%{_userunitdir} ./resources/niri.service
-install -Dm644 -t %{buildroot}%{_userunitdir} ./resources/niri-shutdown.target
+install -Dm755 -t %{buildroot}%{_bindir} ./resources/swayward-session
+# The config translator is useless from a source checkout nobody has after
+# installing a package, so ship it on PATH under a namespaced name.
+install -Dm755 ./contrib/sway-to-kdl %{buildroot}%{_bindir}/swayward-sway-to-kdl
+# The reference copy of the commented default config. The binary embeds its
+# own and writes it on first run, so this is what a user diffs against after
+# an upgrade or restores from, not a runtime dependency.
+install -Dm644 -t %{buildroot}%{_datadir}/swayward ./resources/default-config.kdl
+install -Dm644 -t %{buildroot}%{_datadir}/wayland-sessions ./resources/swayward.desktop
+install -Dm644 -t %{buildroot}%{_datadir}/xdg-desktop-portal ./resources/swayward-portals.conf
+install -Dm644 -t %{buildroot}%{_userunitdir} ./resources/swayward.service
+install -Dm644 -t %{buildroot}%{_userunitdir} ./resources/swayward-shutdown.target
 
-install -Dm644 -t %{buildroot}%{bash_completions_dir} ./niri
-install -Dm644 -t %{buildroot}%{fish_completions_dir} ./niri.fish
-install -Dm644 -t %{buildroot}%{zsh_completions_dir} ./_niri
+install -Dm644 -t %{buildroot}%{bash_completions_dir} ./swayward
+install -Dm644 -t %{buildroot}%{fish_completions_dir} ./swayward.fish
+install -Dm644 -t %{buildroot}%{zsh_completions_dir} ./_swayward
 
 %if %{with check}
 %check
-%cargo_test -- --workspace --exclude niri-visual-tests
+%cargo_test -- --workspace --exclude swayward-visual-tests
 %endif
 
 %files
 %license LICENSE
 %doc README.md
-%doc resources/default-config.kdl
 %doc docs/wiki
-%{_bindir}/niri
-%{_bindir}/niri-session
-%{_datadir}/wayland-sessions/niri.desktop
+%{_bindir}/swayward
+%{_bindir}/swaywardmsg
+%{_bindir}/swayward-session
+%{_bindir}/swayward-sway-to-kdl
+%dir %{_datadir}/swayward
+%{_datadir}/swayward/default-config.kdl
+%{_datadir}/wayland-sessions/swayward.desktop
 %dir %{_datadir}/xdg-desktop-portal
-%{_datadir}/xdg-desktop-portal/niri-portals.conf
-%{_userunitdir}/niri.service
-%{_userunitdir}/niri-shutdown.target
-%{bash_completions_dir}/niri
-%{fish_completions_dir}/niri.fish
-%{zsh_completions_dir}/_niri
+%{_datadir}/xdg-desktop-portal/swayward-portals.conf
+%{_userunitdir}/swayward.service
+%{_userunitdir}/swayward-shutdown.target
+%{bash_completions_dir}/swayward
+%{fish_completions_dir}/swayward.fish
+%{zsh_completions_dir}/_swayward
 
 %changelog
 {{{ git_dir_changelog }}}

@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# Build a .deb from an already-built release binary.
+#
+# This is deliberately a plain dpkg-deb build rather than a debhelper source
+# package. swayward is not in Debian and is not seeking to be yet; the goal is
+# an installable artefact for Ubuntu users, produced by the release workflow
+# that already builds on ubuntu-24.04.
+#
+# UBUNTU 24.04 ONLY. The binary links libdisplay-info.so.1, the soname 24.04
+# ships. Ubuntu 22.04 and Debian 12 have no libdisplay-info package at all,
+# Debian 13 ships .so.2, so a .deb built here installs and then fails to start
+# on all three. Widening that needs static linking or per-distro builds.
+# See the rationale block in .github/workflows/release.yml.
+#
+# Usage: contrib/build-deb <version> [staging-dir]
+#   Expects target/release/swayward and target/release/swaywardmsg to exist.
+
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+version=${1:?usage: build-deb <version> [staging-dir]}
+version=${version#v}
+deb_version=$(./contrib/package-version debian "$version")
+outdir=${2:-.}
+
+arch=$(dpkg --print-architecture 2>/dev/null || echo amd64)
+pkgdir=$(mktemp -d)
+trap 'rm -rf "$pkgdir"' EXIT
+
+for binary in swayward swaywardmsg; do
+    if [ ! -x "target/release/$binary" ]; then
+        echo "build-deb: target/release/$binary is missing; cargo build --release first" >&2
+        exit 1
+    fi
+done
+
+install -Dm755 target/release/swayward "$pkgdir/usr/bin/swayward"
+install -Dm755 target/release/swaywardmsg "$pkgdir/usr/bin/swaywardmsg"
+install -Dm755 resources/swayward-session "$pkgdir/usr/bin/swayward-session"
+install -Dm755 contrib/sway-to-kdl "$pkgdir/usr/bin/swayward-sway-to-kdl"
+
+install -Dm644 resources/swayward.desktop \
+    "$pkgdir/usr/share/wayland-sessions/swayward.desktop"
+install -Dm644 resources/swayward-portals.conf \
+    "$pkgdir/usr/share/xdg-desktop-portal/swayward-portals.conf"
+install -Dm644 resources/swayward.service \
+    "$pkgdir/usr/lib/systemd/user/swayward.service"
+install -Dm644 resources/swayward-shutdown.target \
+    "$pkgdir/usr/lib/systemd/user/swayward-shutdown.target"
+install -Dm644 resources/default-config.kdl \
+    "$pkgdir/usr/share/swayward/default-config.kdl"
+install -Dm644 LICENSE "$pkgdir/usr/share/doc/swayward/copyright"
+
+# Runtime dependencies are the libraries the binary actually links, resolved
+# from the build machine rather than guessed. Anything dlopened at runtime
+# (mesa drivers) or invoked as a program (python3) has to be listed by hand,
+# because dpkg-shlibdeps cannot see either.
+shlibdeps=""
+if command -v dpkg-shlibdeps >/dev/null 2>&1; then
+    mkdir -p "$pkgdir/DEBIAN"
+    # dpkg-shlibdeps insists on running from a package root with debian/control.
+    ctldir=$(mktemp -d)
+    mkdir -p "$ctldir/debian"
+    printf 'Source: swayward\n\nPackage: swayward\nArchitecture: any\n' \
+        > "$ctldir/debian/control"
+    # $pkgdir is already absolute (mktemp -d), so pass it unprefixed. An
+    # earlier version prefixed it with $OLDPWD, which bash expands after the
+    # cd to the repo root rather than to $ctldir, producing /repo//tmp/... and
+    # a path that never exists. dpkg-shlibdeps then failed on every run and
+    # every .deb shipped the hand-written fallback below, silently.
+    if (cd "$ctldir" && dpkg-shlibdeps -O --ignore-missing-info \
+            "$pkgdir/usr/bin/swayward" 2>/dev/null) > "$ctldir/deps"; then
+        shlibdeps=$(sed 's/^shlibs:Depends=//' "$ctldir/deps")
+    fi
+    # dpkg-shlibdeps sees only what the binary links. libwayland-server is
+    # dlopened from main.rs and libEGL comes in through the mesa drivers, so
+    # neither appears in its output and both are required at runtime.
+    if [ -n "$shlibdeps" ]; then
+        shlibdeps="$shlibdeps, libwayland-server0, libegl1"
+    fi
+    rm -rf "$ctldir"
+fi
+
+# Fall back to the minimum set if shlibdeps was unavailable, so the package is
+# still installable rather than silently dependency-free.
+if [ -z "$shlibdeps" ]; then
+    shlibdeps="libc6, libwayland-server0, libinput10, libxkbcommon0, libgbm1, libegl1, libudev1, libseat1, libpipewire-0.3-0, libpango-1.0-0, libpangocairo-1.0-0, libcairo2, libdisplay-info1"
+fi
+
+mkdir -p "$pkgdir/DEBIAN"
+cat > "$pkgdir/DEBIAN/control" <<CONTROL
+Package: swayward
+Version: $deb_version
+Section: x11
+Priority: optional
+Architecture: $arch
+Maintainer: Martin Trojer <martin.trojer@gmail.com>
+Depends: $shlibdeps, python3, mesa-utils | libgl1-mesa-dri
+Recommends: xdg-desktop-portal-gnome, xdg-desktop-portal-gtk, gnome-keyring, xwayland-satellite
+Suggests: waybar, fuzzel, foot, swaylock, swayidle
+Homepage: https://github.com/martintrojer/swayward
+Description: i3/sway-compatible Wayland compositor
+ swayward gives you i3's fully nested container tree on a modern Wayland
+ compositor: splits inside splits, tabbed and stacked containers, marks,
+ criteria, the scratchpad, and sway's IPC protocol on SWAYSOCK for
+ compatible clients and scripts.
+ .
+ It is configured in KDL rather than sway's config syntax; the bundled
+ swayward-sway-to-kdl translates an existing sway or i3 config.
+CONTROL
+
+deb="$outdir/swayward_${version}_${arch}.deb"
+dpkg-deb --build --root-owner-group "$pkgdir" "$deb" >/dev/null
+echo "$deb"

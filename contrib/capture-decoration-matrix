@@ -1,0 +1,355 @@
+#!/bin/bash
+# Capture a decoration matrix for eyeballing rendering defects.
+#
+# Output goes to a scratch directory, not the repository: these are throwaway
+# diagnostics, not published assets. Override with OUTDIR=.
+#
+# Every scene is captured twice: once with square window corners and once with
+# rounded ones, because the defects this exists to catch live where a square
+# decoration meets a rounded frame. The two modes sit side by side in the
+# generated page so a wrong corner is obvious without measuring pixels.
+#
+# Window flavours:
+#   A  terminal keeping its own client-drawn header (sway `border normal`)
+#   B  terminal with the compositor header stripped (sway `border pixel`)
+#
+# Run this from the operator's live swayward session. It identifies the nested
+# compositor by its private socket and resizes only that exact host container.
+# It never sends a broad criterion command to the host or lets the nested
+# server adopt the ambient SWAYSOCK.
+#
+# The capture fails if stray active-border pixels exceed the checked-in
+# baseline. After an intentional rendering improvement, recapture and lower the
+# baseline in one command:
+#
+#   ./contrib/capture-decoration-matrix --update-baseline
+set -euo pipefail
+
+case ${1:-} in
+    "") PAGE_ARGS=() ;;
+    --update-baseline) PAGE_ARGS=(--update-baseline) ;;
+    *) echo "usage: $0 [--update-baseline]" >&2; exit 2 ;;
+esac
+
+cd "$(dirname "$(readlink -f "$0")")/.." || exit
+REPO=$PWD
+HOST_SWAYSOCK=${SWAYSOCK:?capture-decoration-matrix must run inside a live swayward session}
+CONTAINER=${CONTAINER:-swayward-dev}
+OUTDIR=${OUTDIR:-${TMPDIR:-/tmp}/swayward-decoration-matrix}
+TIMEOUT=${TIMEOUT:-600}
+MEMMAX=${MEMMAX:-2G}
+
+mkdir -p "$OUTDIR/shots"
+
+for MODE in square rounded; do
+distrobox enter "$CONTAINER" -- env \
+    MODE="$MODE" \
+    CAPTURE_REPO="$REPO" \
+    CAPTURE_HOST_SWAYSOCK="$HOST_SWAYSOCK" \
+    CAPTURE_OUTDIR="$OUTDIR/shots" \
+    CAPTURE_TIMEOUT="$TIMEOUT" \
+    CAPTURE_MEMMAX="$MEMMAX" \
+    bash -s <<'INNER'
+set -euo pipefail
+cd "$CAPTURE_REPO"
+
+cargo build -p swayward --bin swayward >/dev/null
+cargo build -p swayward-ipc --bin swaywardmsg >/dev/null
+
+RUNDIR=$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/swayward-deco-matrix.XXXXXX")
+PIDS=""
+SOCK=""
+cleanup() {
+    for pid in $PIDS; do
+        kill -9 "$pid" 2>/dev/null || true
+    done
+    [ -n "${NESTED_PID:-}" ] && kill -9 "$NESTED_PID" 2>/dev/null || true
+    [ -n "$SOCK" ] && rm -f "$SOCK" 2>/dev/null || true
+    rm -rf "$RUNDIR"
+}
+trap cleanup EXIT
+
+MODE=${MODE:?}
+python3 - "$RUNDIR/config.kdl" "$MODE" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+source = Path("resources/default-config.kdl").read_text()
+source = "\n".join(
+    line for line in source.splitlines() if "spawn-at-startup" not in line
+) + "\n"
+source = source.replace('font "monospace 10"', 'font "monospace 18"')
+source = source.replace("horizontal-padding 5", "horizontal-padding 10")
+# The titlebar ring and vertical padding stay as shipped, so the matrix measures
+# the default decorations rather than a variant of them.
+source = source.replace("    // skip-at-startup", "    skip-at-startup", 1)
+
+# The shipped config rounds every window at 12. Mode `square` sets that to 0 so
+# the two runs differ only in corner radius; anything that changes between them
+# and should not is a rendering defect.
+if sys.argv[2] == "square":
+    source = re.sub(r"(?m)^(\s*)geometry-corner-radius 12$", r"\g<1>geometry-corner-radius 0", source)
+
+source += '\noutput "winit" { background-color "#111318"; }\n'
+Path(sys.argv[1]).write_text(source)
+PY
+
+unset SWAYSOCK I3SOCK
+STAMP=$(mktemp)
+systemd-run --user --scope --quiet \
+    -p MemoryMax="$CAPTURE_MEMMAX" -p MemorySwapMax=0 \
+    timeout "$CAPTURE_TIMEOUT" ./target/debug/swayward -c "$RUNDIR/config.kdl" \
+    >"$RUNDIR/swayward.log" 2>&1 &
+NESTED_PID=$!
+
+for _ in $(seq 1 80); do
+    SOCK=$(find "/run/user/$UID" -maxdepth 1 -name 'swayward-ipc.*.sock' \
+        -newer "$STAMP" -printf '%T@ %p\n' 2>/dev/null |
+        sort -rn | head -1 | cut -d' ' -f2-)
+    [ -n "$SOCK" ] && break
+    sleep .25
+done
+rm -f "$STAMP"
+test -n "$SOCK"
+
+REALPID=$(basename "$SOCK" | cut -d. -f3)
+CON_ID=""
+for _ in $(seq 1 40); do
+    CON_ID=$(./target/debug/swaywardmsg -s "$CAPTURE_HOST_SWAYSOCK" -t get_tree -r |
+        jq -r --argjson pid "$REALPID" \
+            '.. | objects | select(.pid? == $pid) | .id' | head -1)
+    [ -n "$CON_ID" ] && break
+    sleep .25
+done
+test -n "$CON_ID"
+
+./target/debug/swaywardmsg -s "$CAPTURE_HOST_SWAYSOCK" \
+    "[con_id=$CON_ID] floating enable" >/dev/null
+./target/debug/swaywardmsg -s "$CAPTURE_HOST_SWAYSOCK" \
+    "[con_id=$CON_ID] resize set width 1280 px height 800 px" >/dev/null
+./target/debug/swaywardmsg -s "$CAPTURE_HOST_SWAYSOCK" \
+    "[con_id=$CON_ID] move position center" >/dev/null
+sleep 1
+
+DISP=$(basename "$SOCK" | cut -d. -f2)
+export SWAYSOCK="$SOCK" WAYLAND_DISPLAY="$DISP"
+
+msg() { ./target/debug/swaywardmsg -s "$SOCK" "$@"; }
+
+window_count() {
+    msg -t get_tree -r |
+        jq '[.. | objects
+             | select(.type? == "con" or .type? == "floating_con")
+             | select(.app_id? | strings | startswith("m-"))] | length'
+}
+
+wait_windows() {
+    expected=$1
+    for _ in $(seq 1 100); do
+        [ "$(window_count)" = "$expected" ] && return
+        sleep .1
+    done
+    echo "timed out waiting for $expected windows" >&2
+    exit 1
+}
+
+clear_scene() {
+    msg '[app_id="^m-"] kill' >/dev/null 2>&1 || true
+    wait_windows 0
+}
+
+# One terminal. `flavour` selects whether the compositor draws a header.
+open_term() {
+    label=$1
+    foot -T "$label" -a "m-$label" -f 'monospace:size=20' \
+        -o colors.background=1e1e2e -o colors.foreground=cdd6f4 \
+        sh -c "printf '\033[2J\033[H\n  $label\n'; exec sleep 550" \
+        >"$RUNDIR/foot-$label.log" 2>&1 &
+    PIDS="$PIDS $!"
+}
+
+# A keeps a compositor titlebar (`border normal`); B strips it (`border pixel`).
+apply_flavour() {
+    case $1 in
+        A) msg '[app_id="^m-"] border normal 2' >/dev/null ;;
+        B) msg '[app_id="^m-"] border pixel 2' >/dev/null ;;
+    esac
+}
+
+capture() {
+    name=$1
+    sleep .6
+    grim -o winit "$CAPTURE_OUTDIR/$MODE-$name.png"
+    magick "$CAPTURE_OUTDIR/$MODE-$name.png" -strip \
+        -define png:compression-level=9 "$CAPTURE_OUTDIR/$MODE-$name.png"
+    # The top-left corner at 6x, where a square strip over a rounded frame is
+    # visible without measuring pixels.
+    magick "$CAPTURE_OUTDIR/$MODE-$name.png" -crop 120x120+0+0 +repage \
+        -filter point -resize 600% "$CAPTURE_OUTDIR/$MODE-$name.crop.png"
+    echo "captured $MODE-$name.png"
+}
+
+# --- single window -------------------------------------------------------
+for f in A B; do
+    clear_scene
+    open_term 1; wait_windows 1
+    apply_flavour $f
+    capture "S$f"
+done
+
+# --- plain splits --------------------------------------------------------
+for f in A B; do
+    clear_scene
+    open_term 1; wait_windows 1
+    msg 'split h' >/dev/null
+    open_term 2; wait_windows 2
+    apply_flavour $f
+    capture "H$f"
+
+    clear_scene
+    open_term 1; wait_windows 1
+    msg 'split v' >/dev/null
+    open_term 2; wait_windows 2
+    apply_flavour $f
+    capture "V$f"
+done
+
+# --- a single window inside a tabbed or stacked container ----------------
+for f in A B; do
+    for layout in tabbed stacked; do
+        clear_scene
+        open_term 1; wait_windows 1
+        msg "layout $layout" >/dev/null
+        apply_flavour $f
+        case $layout in
+            tabbed)  capture "T$f" ;;
+            stacked) capture "St$f" ;;
+        esac
+    done
+done
+
+# --- two windows inside a tabbed or stacked container --------------------
+# The multi-tab case is where only the first tab may round its left corner and
+# only the last its right, so it is the interesting one.
+for f in A B; do
+    for layout in tabbed stacked; do
+        clear_scene
+        open_term 1; wait_windows 1
+        msg "layout $layout" >/dev/null
+        open_term 2; wait_windows 2
+        apply_flavour $f
+        case $layout in
+            tabbed)  capture "T2$f" ;;
+            stacked) capture "St2$f" ;;
+        esac
+    done
+done
+
+# --- a split nested inside a tabbed or stacked container -----------------
+for f in A B; do
+    clear_scene
+    open_term 1; wait_windows 1
+    msg 'split h' >/dev/null
+    open_term 2; wait_windows 2
+    msg 'focus parent' >/dev/null
+    msg 'layout tabbed' >/dev/null
+    msg 'focus child' >/dev/null
+    apply_flavour $f
+    capture "TH$f"
+
+    clear_scene
+    open_term 1; wait_windows 1
+    msg 'split h' >/dev/null
+    open_term 2; wait_windows 2
+    msg 'focus parent' >/dev/null
+    msg 'layout stacked' >/dev/null
+    msg 'focus child' >/dev/null
+    apply_flavour $f
+    capture "StH$f"
+done
+
+# --- tabbed containers side by side inside a split -----------------------
+# Two independent tab strips on one row: an inner container's corners must not
+# borrow the outer frame's.
+for f in A B; do
+    clear_scene
+    open_term 1; wait_windows 1
+    msg 'layout tabbed' >/dev/null
+    open_term 2; wait_windows 2
+    msg 'focus parent' >/dev/null
+    msg 'split h' >/dev/null
+    msg 'focus right' >/dev/null
+    open_term 3; wait_windows 3
+    msg 'layout tabbed' >/dev/null
+    open_term 4; wait_windows 4
+    apply_flavour $f
+    capture "HT$f"
+
+    clear_scene
+    open_term 1; wait_windows 1
+    msg 'layout stacked' >/dev/null
+    open_term 2; wait_windows 2
+    msg 'focus parent' >/dev/null
+    msg 'split h' >/dev/null
+    msg 'focus right' >/dev/null
+    open_term 3; wait_windows 3
+    msg 'layout stacked' >/dev/null
+    open_term 4; wait_windows 4
+    apply_flavour $f
+    capture "HSt$f"
+done
+
+# --- stacked inside tabbed, and tabbed inside stacked --------------------
+for f in A B; do
+    clear_scene
+    open_term 1; wait_windows 1
+    msg 'layout stacked' >/dev/null
+    open_term 2; wait_windows 2
+    msg 'focus parent' >/dev/null
+    msg 'layout tabbed' >/dev/null
+    msg 'focus child' >/dev/null
+    apply_flavour $f
+    capture "TSt$f"
+
+    clear_scene
+    open_term 1; wait_windows 1
+    msg 'layout tabbed' >/dev/null
+    open_term 2; wait_windows 2
+    msg 'focus parent' >/dev/null
+    msg 'layout stacked' >/dev/null
+    msg 'focus child' >/dev/null
+    apply_flavour $f
+    capture "StT$f"
+done
+
+# --- three levels of tabs, focus at the top ------------------------------
+# tabbed[1, tabbed[2, tabbed[3, 4]]] with window 1 focused. The two inner
+# containers are on hidden tabs, so only the outer strip may be drawn and
+# window 1 must start directly beneath it. Drawing hidden branches' strips
+# stacked them over the focused window.
+for f in A B; do
+    clear_scene
+    open_term 1; wait_windows 1
+    # clear_scene removes windows, not the workspace layout. The previous scene
+    # leaves the workspace tabbed, which would make this four levels deep.
+    msg 'layout splith' >/dev/null
+    msg 'layout tabbed' >/dev/null
+    open_term 2; wait_windows 2
+    msg 'split v' >/dev/null
+    msg 'layout tabbed' >/dev/null
+    open_term 3; wait_windows 3
+    msg 'split v' >/dev/null
+    msg 'layout tabbed' >/dev/null
+    open_term 4; wait_windows 4
+    msg '[app_id="^m-1$"] focus' >/dev/null
+    apply_flavour $f
+    capture "TTT$f"
+done
+
+clear_scene
+INNER
+done
+
+python3 "$REPO/contrib/build-decoration-matrix-page" "${PAGE_ARGS[@]}" "$OUTDIR"
+echo "page: $OUTDIR/index.html"

@@ -1,0 +1,235 @@
+#!/usr/bin/env bash
+# Watch what a bar would see while you drive the UI.
+#
+# Waybar's sway workspaces module ignores the event payload and re-reads
+# GET_TREE on every event, rendering `focused` and `visible` from the
+# workspace nodes of that reply
+# (Waybar/src/modules/sway/workspaces.cpp:88-113,146-172,307-321,363-371).
+#
+# So a bar goes stale if EITHER the event never arrives, OR the event arrives
+# and the GET_TREE served right after it still names the old workspace. This
+# logs both, side by side, with timestamps, so the two are distinguishable.
+#
+#   contrib/probe-workspace-events            # find the nested swayward
+#   contrib/probe-workspace-events -s PATH    # a specific socket
+#   PROBE_LIVE=1 contrib/probe-workspace-events   # your own live session
+#
+# Before blaming the compositor, check the bar is the one you think it is.
+# A bar is usually a systemd user unit: `systemctl --user list-units | grep
+# -i bar` finds it. Never pkill it -- Restart=always brings back a second
+# copy while yours is still running, and two bars on one output look exactly
+# like a rendering bug. Use `systemctl --user restart <unit>` instead.
+#
+# Then drive the UI: open the overview, jump workspaces, close it. Compare
+# what the log says with what your bar is drawing. Stop with Ctrl-C; the
+# summary at the end is the part to paste back.
+set -uo pipefail
+
+cd "$(dirname "$(readlink -f "$0")")/.." || exit
+MSG=./target/debug/swaywardmsg
+SOCK=""
+LOG=${PROBE_LOG:-/tmp/swayward-probe-$$.log}
+
+while [ $# -gt 0 ]; do
+	case "$1" in
+	-s | --socket) SOCK=$2; shift 2 ;;
+	-h | --help) sed -n '2,18p' "$0"; exit 0 ;;
+	*) echo "unknown option: $1" >&2; exit 2 ;;
+	esac
+done
+
+[ -x "$MSG" ] || { echo "build first: cargo build --bin swaywardmsg" >&2; exit 1; }
+
+# Never adopt the operator's live session: swaymsg against $SWAYSOCK drives
+# the compositor they are sitting in. Resolve the nested one by name instead.
+if [ -z "$SOCK" ]; then
+	# A crashed or timed-out compositor leaves its socket file behind, and
+	# the newest file on disk is often one of those: a test run that ended
+	# thirty seconds ago outranks the session you are sitting in. The name
+	# is swayward-ipc.<display>.<pid>.<id>.sock, so ask the kernel whether
+	# that pid is still alive rather than trusting the mtime.
+	ALIVE=()
+	DEAD=()
+	while IFS= read -r candidate; do
+		[ -n "$candidate" ] || continue
+		pid=$(basename "$candidate" | cut -d. -f3)
+		if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+			ALIVE+=("$candidate")
+		else
+			DEAD+=("$candidate")
+		fi
+	done < <(find "/run/user/$UID" -maxdepth 1 \
+		-name 'swayward-ipc.*.sock' -printf '%T@ %p\n' 2>/dev/null |
+		sort -rn | cut -d' ' -f2-)
+
+	if [ ${#DEAD[@]} -gt 0 ]; then
+		echo "note: ignoring ${#DEAD[@]} socket(s) whose compositor has exited:" >&2
+		printf '  %s\n' "${DEAD[@]}" >&2
+		echo "  (remove them with: rm ${DEAD[*]})" >&2
+		echo >&2
+	fi
+
+	if [ ${#ALIVE[@]} -eq 0 ]; then
+		echo "no live swayward IPC socket found. Start one with contrib/dev-run.sh" >&2
+		exit 1
+	fi
+
+	# Prefer the session the operator is actually in over any other live one.
+	SOCK=${ALIVE[0]}
+	for candidate in "${ALIVE[@]}"; do
+		if [ "$candidate" = "${SWAYSOCK:-}" ]; then
+			SOCK=$candidate
+			break
+		fi
+	done
+	if [ ${#ALIVE[@]} -gt 1 ]; then
+		echo "note: ${#ALIVE[@]} live sockets, using $SOCK" >&2
+		printf '  %s\n' "${ALIVE[@]}" >&2
+	fi
+fi
+
+# Probing your own live session is the interesting case when the bar that is
+# stuck is the one on your screen. It is safe here because everything this
+# script sends is a read: get_version, get_tree, subscribe. It never runs a
+# command, so it cannot move you between workspaces. Still make it deliberate.
+if [ "${SWAYSOCK:-}" = "$SOCK" ]; then
+	if [ "${PROBE_LIVE:-0}" != 1 ]; then
+		echo "this is \$SWAYSOCK, your live session." >&2
+		echo "Re-run with PROBE_LIVE=1 to watch it. Read-only: get_version," >&2
+		echo "get_tree and subscribe, no commands, so it cannot move you." >&2
+		exit 1
+	fi
+	echo "probing the LIVE session (read-only)"
+fi
+
+# Prove what we are attached to before touching it.
+VERSION=$(SWAYSOCK=$SOCK "$MSG" -s "$SOCK" -t get_version -r 2>&1) || {
+	echo "socket did not answer get_version: $VERSION" >&2
+	echo >&2
+	echo "tried: $SOCK" >&2
+	echo "If your session is elsewhere, pass it explicitly:" >&2
+	echo "  PROBE_LIVE=1 $0 -s \"\$SWAYSOCK\"" >&2
+	exit 1
+}
+
+echo "socket : $SOCK"
+echo "version: $VERSION"
+echo "log    : $LOG"
+echo
+
+# What GET_TREE says right now, as a bar would read it: which workspaces are
+# focused and which are visible, flattened to one line.
+tree_state() {
+	SWAYSOCK=$SOCK "$MSG" -s "$SOCK" -t get_tree -r 2>/dev/null |
+		python3 -c '
+import json, sys
+try:
+    tree = json.load(sys.stdin)
+except Exception as exc:
+    print(f"GET_TREE unreadable: {exc}")
+    sys.exit()
+
+found = []
+def walk(node):
+    if node.get("type") == "workspace":
+        found.append(node)
+    for key in ("nodes", "floating_nodes"):
+        for child in node.get(key) or []:
+            walk(child)
+walk(tree)
+
+focused = [w.get("name") for w in found if w.get("focused")]
+visible = [w.get("name") for w in found if w.get("visible")]
+names = [w.get("name") for w in found]
+print(f"focused={focused or None} visible={visible or None} all={names}")
+'
+}
+
+{
+	echo "=== probe started $(date -Is) ==="
+	echo "socket: $SOCK"
+	echo "baseline: $(tree_state)"
+} | tee "$LOG"
+
+# Counters live in files, not variables. The event reader runs in a pipeline,
+# and a `while read` on the right of a pipe is a subshell, so anything it
+# increments is lost to the trap that reports it. Measured: the summary
+# printed 0 events after a run that clearly had several.
+COUNTDIR=$(mktemp -d)
+echo 0 >"$COUNTDIR/events"
+echo 0 >"$COUNTDIR/stale"
+
+cleanup() {
+	EVENTS=$(cat "$COUNTDIR/events" 2>/dev/null || echo 0)
+	STALE=$(cat "$COUNTDIR/stale" 2>/dev/null || echo 0)
+	# The summary is the point of the exercise, so print it even on Ctrl-C.
+	{
+		echo
+		echo "=== probe stopped $(date -Is) ==="
+		echo "events seen      : $EVENTS"
+		echo "stale-tree events: $STALE"
+		echo
+		if [ "$EVENTS" -eq 0 ]; then
+			echo "NO EVENTS AT ALL. The bar was never told anything changed."
+			echo "That points at emission, not at GET_TREE."
+		elif [ "$STALE" -gt 0 ]; then
+			echo "EVENTS ARRIVED BUT GET_TREE LAGGED on $STALE of them."
+			echo "The bar was told to re-read, and re-read the old answer."
+		else
+			echo "Events arrived and GET_TREE agreed with each one."
+			echo "If the bar still looked wrong, the gap is in the bar or in"
+			echo "which workspaces it was told to show, not in these two."
+		fi
+		echo
+		echo "full log: $LOG"
+	} | tee -a "$LOG"
+	rm -rf "$COUNTDIR"
+}
+trap cleanup EXIT INT TERM
+
+echo "watching. Drive the UI now: open the overview, jump workspace, close it."
+echo "Ctrl-C when done."
+echo
+
+# -m keeps the subscription open and prints one JSON object per event, which
+# is the same stream a bar's worker thread reads.
+SWAYSOCK=$SOCK "$MSG" -s "$SOCK" -t subscribe -m -r '["workspace","window"]' 2>&1 |
+	while IFS= read -r line; do
+		case "$line" in
+		'{"success"'*) continue ;;
+		'{'*) ;;
+		*) continue ;;
+		esac
+
+		CHANGE=$(printf '%s' "$line" |
+			python3 -c 'import json,sys
+try:
+    event = json.load(sys.stdin)
+except Exception:
+    print("?"); raise SystemExit
+change = event.get("change", "?")
+current = event.get("current") or {}
+print(f"{change} -> {current.get(\"name\")}" if isinstance(current, dict) else change)
+' 2>/dev/null)
+
+		# Query immediately, which is exactly what waybar does on an event.
+		STATE=$(tree_state)
+		echo $(( $(cat "$COUNTDIR/events") + 1 )) >"$COUNTDIR/events"
+
+		# The event names a workspace; if GET_TREE does not agree it is
+		# focused, a bar re-reading right now draws the wrong one.
+		WANT=${CHANGE##*-> }
+		FLAG=""
+		case "$CHANGE" in
+		focus*)
+			if [ -n "$WANT" ] && [ "$WANT" != "None" ] &&
+				! printf '%s' "$STATE" | grep -q "focused=\['$WANT'\]"; then
+				FLAG="   <<< STALE: event says $WANT, tree disagrees"
+				echo $(( $(cat "$COUNTDIR/stale") + 1 )) >"$COUNTDIR/stale"
+			fi
+			;;
+		esac
+
+		printf '%s  %-28s %s%s\n' "$(date +%H:%M:%S.%3N)" "$CHANGE" "$STATE" "$FLAG" |
+			tee -a "$LOG"
+	done

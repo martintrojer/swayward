@@ -1,0 +1,137 @@
+#!/usr/bin/env python3
+"""Opt-in probe for the unmodified autotiling 1.9.4 event loop."""
+
+import hashlib
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tarfile
+import time
+import urllib.request
+
+import i3ipc
+
+COMMIT = "2a29a9b37c41f62f49478a160d42c44f7529a61c"
+SHA256 = "721754c15541228662cf64789321e8dd87345ac29444a3ebbc1216706d6b1454"
+URL = f"https://github.com/nwg-piotr/autotiling/archive/{COMMIT}.tar.gz"
+
+
+def require(value, description):
+    if not value:
+        raise AssertionError(description)
+    return value
+
+
+def source_tree():
+    cache = Path(__file__).resolve().parent.parent / ".cache" / "autotiling"
+    archive = cache / f"{COMMIT}.tar.gz"
+    source = cache / f"autotiling-{COMMIT}"
+    cache.mkdir(parents=True, exist_ok=True)
+    if not archive.exists():
+        print(f"fetching autotiling 1.9.4 ({COMMIT})")
+        with urllib.request.urlopen(URL) as response, open(archive, "wb") as target:
+            shutil.copyfileobj(response, target)
+    digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+    require(digest == SHA256, f"autotiling archive hash mismatch: {digest}")
+    if not source.exists():
+        with tarfile.open(archive, "r:gz") as tar:
+            tar.extractall(cache, filter="data")
+    require('version = 1.9.4' in (source / "setup.cfg").read_text(), "source is not autotiling 1.9.4")
+    return source
+
+
+def find_window(connection, app_id):
+    for _ in range(100):
+        for window in connection.get_tree().descendants():
+            if window.app_id == app_id:
+                return window
+        time.sleep(0.1)
+    raise AssertionError(f"window {app_id} did not appear")
+
+
+def wait_for_shape(connection, app_id, shape):
+    for _ in range(100):
+        window = find_window(connection, app_id)
+        actual = "wide" if window.rect.width >= window.rect.height else "tall"
+        if actual == shape:
+            return window.rect.width, window.rect.height
+        time.sleep(0.1)
+    raise AssertionError(f"{app_id}: expected {shape}; got {actual} {window.rect.width}x{window.rect.height}")
+
+
+def wait_for_layout(connection, app_id, expected):
+    for _ in range(100):
+        layout = find_window(connection, app_id).parent.layout
+        if layout == expected:
+            return
+        time.sleep(0.1)
+    raise AssertionError(f"{app_id}: expected layout {expected}; got {layout}")
+
+
+def main():
+    require(os.environ.get("RUN_REAL_CLIENT_TESTS") == "1", "set RUN_REAL_CLIENT_TESTS=1")
+    socket_path = os.environ.get("SWAYSOCK", "")
+    require(socket_path and Path(socket_path).is_socket(), "SWAYSOCK must be the private dev-run.sh socket")
+    require(Path(socket_path).name.startswith("swayward-ipc."), "refusing a non-swayward socket")
+
+    source = source_tree()
+    log_path = Path(os.environ.get("TMPDIR", "/tmp")) / f"autotiling-probe-{os.getpid()}.log"
+    expected_wide = "splitv" if os.environ.get("MUTATE_AUTOTILING_EXPECTATION") == "1" else "splith"
+    autotiling = None
+    feet = []
+    try:
+        with open(log_path, "w") as log:
+            autotiling = subprocess.Popen(
+                [sys.executable, "-u", str(source / "autotiling" / "main.py"), "--debug"],
+                stdout=log,
+                stderr=subprocess.STDOUT,
+            )
+        time.sleep(0.5)
+        require(autotiling.poll() is None, f"autotiling exited early; see {log_path}")
+
+        connection = i3ipc.Connection(socket_path=socket_path)
+        feet.append(subprocess.Popen(["foot", "--app-id=autotiling-first", "sh", "-c", "sleep 20"]))
+        find_window(connection, "autotiling-first")
+        feet.append(subprocess.Popen(["foot", "--app-id=autotiling-probe", "sh", "-c", "sleep 20"]))
+
+        width, height = wait_for_shape(connection, "autotiling-probe", "wide")
+        require(connection.command("mode resize")[0].success, "could not emit the wide-container mode event")
+        wait_for_layout(connection, "autotiling-probe", "splith")
+        layout = find_window(connection, "autotiling-probe").parent.layout
+        require(layout == expected_wide, f"mutated wide-layout expectation {expected_wide}; got {layout}")
+        print(f"PROBE PASS wide={width}x{height} resulting-layout={layout}")
+
+        feet.append(subprocess.Popen(["foot", "--app-id=autotiling-tall", "sh", "-c", "sleep 20"]))
+        width, height = wait_for_shape(connection, "autotiling-tall", "tall")
+        require(connection.command("mode default")[0].success, "could not emit the tall-container mode event")
+        wait_for_layout(connection, "autotiling-tall", "splitv")
+        print(f"PROBE PASS tall={width}x{height} resulting-layout=splitv")
+        require(autotiling.poll() is None, f"autotiling exited; see {log_path}")
+        print(f"PROBE PASS autotiling=1.9.4 commit={COMMIT} sha256={SHA256}")
+    finally:
+        for foot in feet:
+            foot.terminate()
+        for foot in feet:
+            try:
+                foot.wait(2)
+            except subprocess.TimeoutExpired:
+                foot.kill()
+        if autotiling is not None:
+            autotiling.terminate()
+            try:
+                autotiling.wait(2)
+            except subprocess.TimeoutExpired:
+                autotiling.kill()
+        if log_path.exists():
+            print(log_path.read_text(), end="")
+            log_path.unlink()
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as error:
+        print(f"PROBE FAIL: {error}", file=sys.stderr)
+        raise

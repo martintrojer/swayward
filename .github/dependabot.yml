@@ -15,6 +15,28 @@ updates:
           - "patch"
     cooldown:
       default-days: 7
+    # Our MSRV follows upstream niri (rust-version in Cargo.toml). These
+    # updates need a newer compiler, or do not build, so Dependabot would
+    # open PRs that cannot land. Revisit when niri raises its MSRV.
+    ignore:
+      # gtk-rs 0.22 requires Rust 1.92, and the crates must move together.
+      - dependency-name: "pango"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "pangocairo"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "cairo-rs"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "glib"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "gio"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      # ordered-float 5.5 requires Rust 1.90.
+      - dependency-name: "ordered-float"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      # tracy-client 0.19 needs a tracy-client-sys feature that no compatible
+      # release provides; niri is on 0.18 as well.
+      - dependency-name: "tracy-client"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"

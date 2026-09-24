@@ -1,0 +1,135 @@
+# Maintainer: Martin Trojer <martin.trojer@gmail.com>
+#
+# Reference PKGBUILD for the AUR package. Build and lint it with an Arch
+# container before publishing:
+#
+#   distrobox create --name arch-pkg --image docker.io/library/archlinux:latest
+#   distrobox enter arch-pkg -- bash -lc 'sudo pacman -S --needed base-devel namcap'
+#   cd contrib && makepkg -s && namcap PKGBUILD *.pkg.tar.zst
+#
+# Publishing needs an AUR account with an SSH key; see
+# https://wiki.archlinux.org/title/AUR_submission_guidelines
+
+pkgname=swayward
+pkgver=26.4.0
+_tagver=26.4.0
+pkgrel=1
+pkgdesc="An i3/sway-compatible Wayland compositor, built in Rust on Smithay"
+arch=('x86_64' 'aarch64')
+url="https://github.com/martintrojer/swayward"
+license=('GPL-3.0-or-later')
+
+# Arch enables LTO by default. libspa-sys generates a C shim for SPA's static
+# inline functions (wrap_static_fns), and LTO discards those objects before
+# the Rust side links against them, so the build fails with
+# "undefined symbol: spa_format_parse_libspa_rs" and friends. Reproduced on a
+# clean archlinux:latest container; unrelated to the libpipewire version.
+options=('!lto')
+
+depends=(
+  'bash'          # swayward-session is a shell script
+  'cairo'
+  'libdisplay-info'
+  'libinput'
+  'libxkbcommon'
+  'mesa'          # libgbm.so.1, libEGL
+  'pango'
+  'python'        # swayward-sway-to-kdl
+  'libpipewire'   # libspa-0.2.pc and libpipewire-0.3.so; the `pipewire`
+                  # package is the daemon and does not carry them
+  'seatd'         # libseat.so.1
+  'systemd-libs'
+  # namcap reports wayland as possibly unneeded because nothing links it at
+  # build time: src/main.rs dlopens libwayland-server.so.0 with RTLD_NOLOAD
+  # to set the max buffer size. It is required at runtime.
+  'wayland'
+)
+
+makedepends=(
+  'cargo'
+  'clang'
+  'git'
+)
+
+# The Rust fixture suite compiles real XKB keymaps. libxkbcommon is the
+# library; the keymap data is a separate Arch package.
+checkdepends=(
+  'xkeyboard-config'
+)
+
+optdepends=(
+  'xwayland-satellite: Xwayland support'
+  'xdg-desktop-portal-gnome: preferred portal backend for integrated window and monitor capture'
+  'xdg-desktop-portal-gtk: fallback portal backend and provider for Access and Notification'
+  'nautilus: FileChooser implementation used by xdg-desktop-portal-gnome 47 and later'
+  'xdg-desktop-portal-wlr: optional ScreenCast and Screenshot fallback'
+  'gnome-keyring: Secret portal'
+  'waybar: status bar, works unmodified against swayward IPC'
+  'fuzzel: application launcher bound in the default config'
+  'foot: terminal bound in the default config'
+  'swaylock: screen locker'
+  'swayidle: idle management'
+  'swaybg: wallpaper'
+  'mako: notifications'
+  'sway: provides swaymsg; swayward ships swaywardmsg, so this is optional'
+)
+
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/swayward-v$_tagver.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=target
+  # Exclude swayward-visual-tests: it is a GTK4 developer tool, not part of
+  # the compositor, and building it would drag gtk4 and gdk-pixbuf into the
+  # package's build dependencies for no runtime benefit.
+  cargo build --frozen --release \
+    --workspace --exclude swayward-visual-tests
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  # The i3 conformance suite needs Perl modules that are not build
+  # dependencies, so run the Rust tests only.
+  # makepkg's unprivileged user defaults to 1024 open files even when the
+  # container's hard limit is much higher. The Wayland fixture suite exceeds
+  # that over its lifetime and then cascades into misleading BadKeymap and
+  # allocation failures. CI already runs the parallel gate; package validation
+  # uses a modest raised soft limit and runs serially.
+  ulimit -n 8192
+  cargo test --frozen --release --lib \
+    -p swayward -p swayward-ipc -p swayward-config -- --test-threads=1
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+
+  install -Dm755 target/release/swayward "$pkgdir/usr/bin/swayward"
+  install -Dm755 target/release/swaywardmsg "$pkgdir/usr/bin/swaywardmsg"
+  install -Dm755 resources/swayward-session "$pkgdir/usr/bin/swayward-session"
+  # The config translator is useless from a source checkout nobody has after
+  # installing a package, so ship it on PATH under a namespaced name.
+  install -Dm755 contrib/sway-to-kdl "$pkgdir/usr/bin/swayward-sway-to-kdl"
+
+  install -Dm644 resources/swayward.desktop \
+    "$pkgdir/usr/share/wayland-sessions/swayward.desktop"
+  install -Dm644 resources/swayward-portals.conf \
+    "$pkgdir/usr/share/xdg-desktop-portal/swayward-portals.conf"
+  install -Dm644 resources/swayward.service \
+    "$pkgdir/usr/lib/systemd/user/swayward.service"
+  install -Dm644 resources/swayward-shutdown.target \
+    "$pkgdir/usr/lib/systemd/user/swayward-shutdown.target"
+
+  install -Dm644 resources/default-config.kdl \
+    "$pkgdir/usr/share/swayward/default-config.kdl"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

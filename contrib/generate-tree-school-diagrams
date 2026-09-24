@@ -1,0 +1,220 @@
+#!/usr/bin/env python3
+"""Generate the small tree diagrams paired with Tree School screenshots."""
+
+from pathlib import Path
+from xml.sax.saxutils import escape
+
+OUT = Path(__file__).resolve().parent.parent / "docs/wiki/_assets/shots"
+OUT.mkdir(parents=True, exist_ok=True)
+
+BG = "#111318"
+PANEL = "#1e1e2e"
+LINE = "#6c7086"
+TEXT = "#cdd6f4"
+BLUE = "#89b4fa"
+GOLD = "#ffc87f"
+GREEN = "#a6e3a1"
+
+
+def rect(x, y, w, h):
+    return (x, y, w, h)
+
+
+def contains(outer, inner):
+    ox, oy, ow, oh = outer
+    ix, iy, iw, ih = inner
+    return ox <= ix and oy <= iy and ix + iw <= ox + ow and iy + ih <= oy + oh
+
+
+def disjoint(left, right):
+    lx, ly, lw, lh = left
+    rx, ry, rw, rh = right
+    return lx + lw <= rx or rx + rw <= lx or ly + lh <= ry or ry + rh <= ly
+
+
+def label(x, y, text, *, size=24, anchor="middle"):
+    lines = text.split("\n")
+    if len(lines) == 1:
+        return f'<text x="{x}" y="{y}" text-anchor="{anchor}" fill="{TEXT}" font-family="monospace" font-size="{size}">{escape(text)}</text>'
+    spans = "".join(
+        f'<tspan x="{x}" dy="{0 if index == 0 else size + 4}">{escape(line)}</tspan>'
+        for index, line in enumerate(lines)
+    )
+    return f'<text x="{x}" y="{y - (len(lines) - 1) * (size + 4) / 2}" text-anchor="{anchor}" fill="{TEXT}" font-family="monospace" font-size="{size}">{spans}</text>'
+
+
+def box(area, text, *, stroke=LINE, fill=PANEL, width=3, size=24):
+    x, y, w, h = area
+    return f'''<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="10" fill="{fill}" stroke="{stroke}" stroke-width="{width}"/>
+{label(x + w / 2, y + h / 2 + size / 3, text, size=size)}'''
+
+
+def container(area, text, *, stroke=LINE, width=3, size=22):
+    x, y, w, h = area
+    return f'''<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="10" fill="none" stroke="{stroke}" stroke-width="{width}"/>
+{label(x + 16, y + 30, text, size=size, anchor="start")}'''
+
+
+def svg(title, body):
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" role="img" aria-labelledby="title">
+<title id="title">{escape(title)}</title>
+<rect width="640" height="400" rx="16" fill="{BG}"/>
+{body}
+</svg>
+'''
+
+
+workspace = rect(35, 25, 570, 350)
+row_a = rect(60, 100, 150, 230)
+row_b = rect(245, 100, 150, 230)
+row_c = rect(430, 100, 150, 230)
+assert all(contains(workspace, child) for child in (row_a, row_b, row_c))
+assert row_a[1] == row_b[1] == row_c[1]
+assert row_a[0] < row_b[0] < row_c[0]
+
+nested_a = rect(60, 90, 240, 250)
+column = rect(330, 90, 250, 250)
+column_b = rect(350, 130, 210, 85)
+column_c = rect(350, 235, 210, 85)
+assert contains(workspace, nested_a) and contains(workspace, column)
+assert contains(column, column_b) and contains(column, column_c)
+assert column_b[0] == column_c[0] and column_b[1] < column_c[1]
+assert disjoint(nested_a, column)
+
+visible_column = rect(60, 120, 520, 225)
+tab_b = rect(80, 150, 480, 75)
+tab_c = rect(80, 245, 480, 75)
+assert contains(workspace, visible_column)
+assert contains(visible_column, tab_b) and contains(visible_column, tab_c)
+assert tab_b[0] == tab_c[0] and tab_b[1] < tab_c[1]
+
+stage_workspace = rect(25, 25, 590, 350)
+tiled_stage = rect(50, 80, 300, 260)
+tiled_a = rect(75, 125, 250, 180)
+floating_stage = rect(380, 80, 210, 260)
+floating_b = rect(405, 125, 160, 180)
+assert all(
+    contains(stage_workspace, child)
+    for child in (tiled_stage, tiled_a, floating_stage, floating_b)
+)
+assert contains(tiled_stage, tiled_a) and contains(floating_stage, floating_b)
+assert disjoint(tiled_stage, floating_stage) and disjoint(tiled_a, floating_b)
+
+hidden_workspace = rect(25, 25, 370, 350)
+hidden_a = rect(75, 110, 270, 220)
+scratchpad = rect(425, 25, 190, 350)
+hidden_b = rect(450, 110, 140, 220)
+assert contains(hidden_workspace, hidden_a) and contains(scratchpad, hidden_b)
+assert disjoint(hidden_workspace, scratchpad)
+
+# Scene VII summons B onto workspace 2, whose tiled side is a splitv of C and D.
+# Summoning it back onto workspace 1 restores the exact position scene V left,
+# so that frame was byte-identical to scene V and could not show anything new.
+summon_workspace = rect(25, 25, 590, 350)
+summon_tiled = rect(50, 80, 300, 260)
+summon_c = rect(75, 125, 250, 85)
+summon_d = rect(75, 230, 250, 85)
+summon_stage = rect(380, 80, 210, 260)
+summon_b = rect(405, 125, 160, 180)
+assert contains(summon_workspace, summon_tiled) and contains(summon_workspace, summon_stage)
+assert contains(summon_tiled, summon_c) and contains(summon_tiled, summon_d)
+assert summon_c[0] == summon_d[0] and summon_c[1] < summon_d[1]
+assert contains(summon_stage, summon_b)
+assert disjoint(summon_tiled, summon_stage) and disjoint(summon_c, summon_b)
+
+# Scene VIII places a tabbed container beside a stacked one under one splith.
+split_row = rect(30, 25, 580, 350)
+tabbed_side = rect(55, 80, 260, 265)
+tabbed_tab_a = rect(75, 120, 105, 40)
+tabbed_tab_b = rect(185, 120, 110, 40)
+tabbed_body = rect(75, 175, 220, 150)
+stacked_side = rect(340, 80, 245, 265)
+stacked_title_c = rect(360, 120, 205, 40)
+stacked_title_d = rect(360, 165, 205, 40)
+stacked_body = rect(360, 215, 205, 110)
+assert contains(split_row, tabbed_side) and contains(split_row, stacked_side)
+assert disjoint(tabbed_side, stacked_side)
+assert all(contains(tabbed_side, part) for part in (tabbed_tab_a, tabbed_tab_b, tabbed_body))
+assert tabbed_tab_a[1] == tabbed_tab_b[1] and tabbed_tab_a[0] < tabbed_tab_b[0]
+assert disjoint(tabbed_tab_a, tabbed_tab_b) and disjoint(tabbed_tab_a, tabbed_body)
+assert all(
+    contains(stacked_side, part)
+    for part in (stacked_title_c, stacked_title_d, stacked_body)
+)
+assert stacked_title_c[0] == stacked_title_d[0] and stacked_title_c[1] < stacked_title_d[1]
+assert disjoint(stacked_title_c, stacked_title_d) and disjoint(stacked_title_d, stacked_body)
+
+scenes = {
+    "tree-01-three-window-row.svg": svg(
+        "A horizontal container with three side-by-side window children",
+        container(workspace, "splith", stroke=BLUE)
+        + box(row_a, "A", stroke=GOLD, size=36)
+        + box(row_b, "B", size=36)
+        + box(row_c, "C", size=36),
+    ),
+    "tree-02-nested-split.svg": svg(
+        "A horizontal container holding window A beside a vertical B and C column",
+        container(workspace, "splith", stroke=BLUE)
+        + box(nested_a, "A", stroke=GOLD, size=36)
+        + container(column, "splitv", stroke=GREEN)
+        + box(column_b, "B", size=30)
+        + box(column_c, "C", size=30),
+    ),
+    "tree-03-parent-focus.svg": svg(
+        "The vertical B and C column selected as one focused branch",
+        container(workspace, "splith")
+        + box(nested_a, "A", size=36)
+        + container(column, "splitv — FOCUSED", stroke=GOLD, width=7, size=20)
+        + box(column_b, "B", size=30)
+        + box(column_c, "C", size=30),
+    ),
+    "tree-04-tabbed-branch.svg": svg(
+        "A tabbed container whose visible tab is the vertical B and C column",
+        container(workspace, "tabbed", stroke=BLUE)
+        + box(rect(60, 65, 150, 45), "A", size=20)
+        + box(rect(210, 65, 370, 45), "splitv [ B, C ]", stroke=GOLD, width=5, size=20)
+        + container(visible_column, "visible splitv tab", stroke=GREEN, size=20)
+        + box(tab_b, "B", size=30)
+        + box(tab_c, "C", size=30),
+    ),
+    "tree-05-floating-stage.svg": svg(
+        "A workspace containing a tiled tree and a separate floating stage",
+        container(stage_workspace, "workspace", stroke=BLUE)
+        + container(tiled_stage, "tiled tree")
+        + box(tiled_a, "A", size=40)
+        + container(floating_stage, "floating stage", stroke=GOLD)
+        + box(floating_b, "B", stroke=GOLD, fill="#313244", width=7, size=40),
+    ),
+    "tree-06-scratchpad-hidden.svg": svg(
+        "Window A in the workspace while B is hidden outside it in the scratchpad",
+        container(hidden_workspace, "workspace", stroke=BLUE)
+        + box(hidden_a, "A", stroke=GOLD, size=40)
+        + container(scratchpad, "scratchpad")
+        + box(hidden_b, "B\nhidden", size=24),
+    ),
+    "tree-07-scratchpad-summoned-v2.svg": svg(
+        "Window B summoned onto workspace 2's floating stage beside a tiled C and D column",
+        container(summon_workspace, "workspace 2", stroke=BLUE)
+        + container(summon_tiled, "splitv")
+        + box(summon_c, "C", size=30)
+        + box(summon_d, "D", size=30)
+        + container(summon_stage, "floating stage", stroke=GOLD)
+        + box(summon_b, "B\nsummoned", stroke=GOLD, fill="#313244", width=7, size=24),
+    ),
+    "tree-08-tabbed-and-stacked-v1.svg": svg(
+        "A horizontal container holding a tabbed container beside a stacked one",
+        container(split_row, "splith", stroke=BLUE)
+        + container(tabbed_side, "tabbed", stroke=GREEN, size=20)
+        + box(tabbed_tab_a, "A", size=20)
+        + box(tabbed_tab_b, "B", stroke=GOLD, width=5, size=20)
+        + box(tabbed_body, "B\nvisible", size=24)
+        + container(stacked_side, "stacked", stroke=GREEN, size=20)
+        + box(stacked_title_c, "C", size=20)
+        + box(stacked_title_d, "D", stroke=GOLD, width=5, size=20)
+        + box(stacked_body, "D\nvisible", size=24),
+    ),
+}
+
+for name, content in scenes.items():
+    (OUT / name).write_text(content)
+    print(OUT / name)

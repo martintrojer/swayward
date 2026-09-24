@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=Swayward
+Comment=An i3-compatible Wayland compositor
+Exec=swayward-session
+Type=Application
+DesktopNames=swayward
