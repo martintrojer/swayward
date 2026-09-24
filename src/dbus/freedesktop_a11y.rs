@@ -18,7 +18,7 @@ use zbus::object_server::SignalEmitter;
 use zbus::zvariant::{NoneValue, OwnedObjectPath, SerializeDict, Type, Value};
 use zbus::{interface, DBusError};
 
-use crate::niri::{PointContents, State};
+use crate::swayward::{PointContents, State};
 use crate::utils::get_credentials_for_surface;
 
 pub struct Manager {
@@ -443,7 +443,7 @@ impl PointerLocator {
         let sender = OwnedUniqueName::from(sender.to_owned());
 
         if let Err(err) = self.to_niri.send(A11yManagerToNiri::QueryPointer) {
-            warn!("error sending message to niri: {err:?}");
+            warn!("error sending message to swayward: {err:?}");
             return Err(A11yError::Failed("internal error".to_owned()));
         }
 
@@ -451,7 +451,7 @@ impl PointerLocator {
             Ok(NiriToA11yManager::PointerContents(Some((data, x, y)))) => Ok((data, x, y)),
             Ok(NiriToA11yManager::PointerContents(None)) => Err(A11yError::UnknownToplevel),
             Err(err) => {
-                warn!("error receiving message from niri: {err:?}");
+                warn!("error receiving message from swayward: {err:?}");
                 Err(A11yError::Failed("internal error".to_owned()))
             }
         };
@@ -633,11 +633,11 @@ impl State {
         keycode: Keycode,
         state: KeyState,
     ) -> KbMonBlock {
-        if self.niri.a11y_manager.is_none() {
+        if self.swayward.a11y_manager.is_none() {
             return KbMonBlock::Pass;
         }
 
-        let keyboard = self.niri.seat.get_keyboard().unwrap();
+        let keyboard = self.swayward.seat.get_keyboard().unwrap();
 
         let (mods, keysym, unichar) = keyboard.with_xkb_state(self, |context| {
             let xkb = context.xkb().lock().unwrap();
@@ -651,11 +651,11 @@ impl State {
             (mods, keysym, unichar)
         });
 
-        let config = self.niri.config.borrow();
+        let config = self.swayward.config.borrow();
         let repeat_delay = Duration::from_millis(u64::from(config.input.keyboard.repeat_delay));
         let released = state == KeyState::Released;
 
-        let Some(manager) = &self.niri.a11y_manager else {
+        let Some(manager) = &self.swayward.a11y_manager else {
             return KbMonBlock::Pass;
         };
         let monitor = &manager.keyboard_monitor;
@@ -663,7 +663,7 @@ impl State {
     }
 
     pub fn a11y_notify_pointer_motion(&mut self) {
-        let Some(manager) = &self.niri.a11y_manager else {
+        let Some(manager) = &self.swayward.a11y_manager else {
             return;
         };
 
@@ -678,12 +678,12 @@ impl State {
         let A11yManagerToNiri::QueryPointer = msg;
         let _span = tracy_client::span!("QueryPointer");
 
-        let pointer = &self.niri.seat.get_pointer().unwrap();
+        let pointer = &self.swayward.seat.get_pointer().unwrap();
         let pointer_pos = pointer.current_location();
 
         // Grabs can modify pointer focus, but here let's ignore them. I'm not entirely sure what's
         // expected by a11y users though.
-        let contents = match &self.niri.pointer_contents {
+        let contents = match &self.swayward.pointer_contents {
             PointContents {
                 surface: Some((surface, surface_pos)),
                 ..

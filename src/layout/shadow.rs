@@ -1,7 +1,7 @@
 use std::iter::zip;
 
-use niri_config::CornerRadius;
 use smithay::utils::{Logical, Point, Rectangle, Size};
+use swayward_config::CornerRadius;
 
 use crate::render_helpers::renderer::NiriRenderer;
 use crate::render_helpers::shadow::ShadowRenderElement;
@@ -10,19 +10,23 @@ use crate::render_helpers::shadow::ShadowRenderElement;
 pub struct Shadow {
     shader_rects: Vec<Rectangle<f64, Logical>>,
     shaders: Vec<ShadowRenderElement>,
-    config: niri_config::Shadow,
+    config: swayward_config::Shadow,
+    #[cfg(test)]
+    window_corner_radius: CornerRadius,
 }
 
 impl Shadow {
-    pub fn new(config: niri_config::Shadow) -> Self {
+    pub fn new(config: swayward_config::Shadow) -> Self {
         Self {
             shader_rects: Vec::new(),
             shaders: Vec::new(),
             config,
+            #[cfg(test)]
+            window_corner_radius: Default::default(),
         }
     }
 
-    pub fn update_config(&mut self, config: niri_config::Shadow) {
+    pub fn update_config(&mut self, config: swayward_config::Shadow) {
         self.config = config;
     }
 
@@ -40,6 +44,10 @@ impl Shadow {
         scale: f64,
         alpha: f32,
     ) {
+        #[cfg(test)]
+        {
+            self.window_corner_radius = radius;
+        }
         let ceil = |logical: f64| (logical * scale).ceil() / scale;
 
         // All of this stuff should end up aligned to physical pixels because:
@@ -160,6 +168,11 @@ impl Shadow {
 
             self.shader_rects[0].loc += offset;
         }
+    }
+
+    #[cfg(test)]
+    pub fn window_corner_radius(&self) -> CornerRadius {
+        self.window_corner_radius
     }
 
     pub fn render(

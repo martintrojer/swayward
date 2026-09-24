@@ -3,7 +3,7 @@ use std::os::unix::net::UnixStream;
 use zbus::{fdo, interface, zvariant};
 
 use super::Start;
-use crate::niri::NewClient;
+use crate::swayward::NewClient;
 
 pub struct ServiceChannel {
     to_niri: calloop::channel::Sender<NewClient>,
@@ -27,9 +27,10 @@ impl ServiceChannel {
             restricted: false,
             // FIXME: maybe you can get the PID from D-Bus somehow?
             credentials_unknown: true,
+            security_context: None,
         };
         if let Err(err) = self.to_niri.send(client) {
-            warn!("error sending message to niri: {err:?}");
+            warn!("error sending message to swayward: {err:?}");
             return Err(fdo::Error::Failed("internal error".to_owned()));
         }
 

@@ -13,7 +13,6 @@ use anyhow::{ensure, Context};
 use bitflags::bitflags;
 use directories::UserDirs;
 use git_version::git_version;
-use niri_config::{Config, OutputName};
 use smithay::backend::renderer::utils::{
     with_renderer_surface_state, RendererSurfaceStateUserData,
 };
@@ -31,10 +30,11 @@ use smithay::wayland::shell::xdg::{
     ToplevelCachedState, ToplevelConfigure, ToplevelState, ToplevelSurface, XdgToplevelSurfaceData,
     XdgToplevelSurfaceRoleAttributes,
 };
+use swayward_config::{Config, OutputName};
 use wayland_backend::server::Credentials;
 
 use crate::handlers::KdeDecorationsModeState;
-use crate::niri::ClientState;
+use crate::swayward::ClientState;
 
 pub mod id;
 pub mod region;
@@ -141,7 +141,7 @@ impl ResizeEdge {
 }
 
 pub fn version() -> String {
-    if let Some(v) = option_env!("NIRI_BUILD_VERSION_STRING") {
+    if let Some(v) = option_env!("SWAYWARD_BUILD_VERSION_STRING") {
         return String::from(v);
     }
 
@@ -150,7 +150,7 @@ pub fn version() -> String {
     const PATCH: &str = env!("CARGO_PKG_VERSION_PATCH");
 
     let commit =
-        option_env!("NIRI_BUILD_COMMIT").unwrap_or(git_version!(fallback = "unknown commit"));
+        option_env!("SWAYWARD_BUILD_COMMIT").unwrap_or(git_version!(fallback = "unknown commit"));
 
     if PATCH == "0" {
         format!("{MAJOR}.{MINOR:0>2} ({commit})")
@@ -205,20 +205,20 @@ pub fn output_size(output: &Output) -> Size<f64, Logical> {
     output_transform.transform_size(logical_size)
 }
 
-pub fn logical_output(output: &Output) -> niri_ipc::LogicalOutput {
+pub fn logical_output(output: &Output) -> swayward_ipc::LogicalOutput {
     let loc = output.current_location();
     let size = output_size(output);
     let transform = match output.current_transform() {
-        Transform::Normal => niri_ipc::Transform::Normal,
-        Transform::_90 => niri_ipc::Transform::_90,
-        Transform::_180 => niri_ipc::Transform::_180,
-        Transform::_270 => niri_ipc::Transform::_270,
-        Transform::Flipped => niri_ipc::Transform::Flipped,
-        Transform::Flipped90 => niri_ipc::Transform::Flipped90,
-        Transform::Flipped180 => niri_ipc::Transform::Flipped180,
-        Transform::Flipped270 => niri_ipc::Transform::Flipped270,
+        Transform::Normal => swayward_ipc::Transform::Normal,
+        Transform::_90 => swayward_ipc::Transform::_90,
+        Transform::_180 => swayward_ipc::Transform::_180,
+        Transform::_270 => swayward_ipc::Transform::_270,
+        Transform::Flipped => swayward_ipc::Transform::Flipped,
+        Transform::Flipped90 => swayward_ipc::Transform::Flipped90,
+        Transform::Flipped180 => swayward_ipc::Transform::Flipped180,
+        Transform::Flipped270 => swayward_ipc::Transform::Flipped270,
     };
-    niri_ipc::LogicalOutput {
+    swayward_ipc::LogicalOutput {
         x: loc.x,
         y: loc.y,
         width: size.w as u32,
@@ -237,16 +237,16 @@ pub fn panel_orientation(output: &Output) -> Transform {
         .unwrap_or(Transform::Normal)
 }
 
-pub fn ipc_transform_to_smithay(transform: niri_ipc::Transform) -> Transform {
+pub fn ipc_transform_to_smithay(transform: swayward_ipc::Transform) -> Transform {
     match transform {
-        niri_ipc::Transform::Normal => Transform::Normal,
-        niri_ipc::Transform::_90 => Transform::_90,
-        niri_ipc::Transform::_180 => Transform::_180,
-        niri_ipc::Transform::_270 => Transform::_270,
-        niri_ipc::Transform::Flipped => Transform::Flipped,
-        niri_ipc::Transform::Flipped90 => Transform::Flipped90,
-        niri_ipc::Transform::Flipped180 => Transform::Flipped180,
-        niri_ipc::Transform::Flipped270 => Transform::Flipped270,
+        swayward_ipc::Transform::Normal => Transform::Normal,
+        swayward_ipc::Transform::_90 => Transform::_90,
+        swayward_ipc::Transform::_180 => Transform::_180,
+        swayward_ipc::Transform::_270 => Transform::_270,
+        swayward_ipc::Transform::Flipped => Transform::Flipped,
+        swayward_ipc::Transform::Flipped90 => Transform::Flipped90,
+        swayward_ipc::Transform::Flipped180 => Transform::Flipped180,
+        swayward_ipc::Transform::Flipped270 => Transform::Flipped270,
     }
 }
 
@@ -442,16 +442,9 @@ pub fn update_tiled_state(
             // The client doesn't see or doesn't care about the decoration protocols. In this
             // case, use the current prefer_no_csd value as the user's intention.
             //
-            // This is a bit weird because it makes it seem like prefer_no_csd can apply live,
-            // while that isn't really the case. That's because prefer_no_csd controls two separate
-            // things: whether the client sees the decoration globals, and the tiled state.
-            //
-            // A more accurate way would perhaps be to check if the client cannot see the
-            // decoration globals, and in this case behave as if prefer_no_csd was false. However,
-            // this also regresses the common case of GTK 4 applications that do not react to
-            // xdg-decoration in any way, and therefore the tiled state *is* the "no CSD" mode from
-            // the user's perspective, so by artificially gating it we would artificially make it
-            // impossible to apply it live for GTK 4 applications.
+            // Clients such as GTK 4 do not react to xdg-decoration, so the tiled state is the
+            // "no CSD" mechanism they understand. Unlike decoration negotiation, this can be
+            // updated live.
             prefer_no_csd
         }
     };
@@ -575,7 +568,7 @@ pub fn show_screenshot_notification(image_path: Option<&Path>) -> anyhow::Result
         Some("org.freedesktop.Notifications"),
         "Notify",
         &(
-            "niri",
+            "swayward",
             0u32,
             image_url.as_ref().map(|url| url.as_str()).unwrap_or(""),
             "Screenshot captured",

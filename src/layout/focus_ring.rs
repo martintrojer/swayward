@@ -1,13 +1,14 @@
 use std::iter::zip;
 
-use niri_config::{CornerRadius, Gradient, GradientRelativeTo};
 use smithay::backend::renderer::element::{Element as _, Kind};
 use smithay::utils::{Logical, Point, Rectangle, Size};
+use swayward_config::{CornerRadius, Gradient, GradientRelativeTo};
 
-use crate::niri_render_elements;
 use crate::render_helpers::border::BorderRenderElement;
 use crate::render_helpers::renderer::NiriRenderer;
 use crate::render_helpers::solid_color::{SolidColorBuffer, SolidColorRenderElement};
+use crate::swayward_render_elements;
+use crate::utils::ResizeEdge;
 
 #[derive(Debug)]
 pub struct FocusRing {
@@ -18,11 +19,14 @@ pub struct FocusRing {
     full_size: Size<f64, Logical>,
     is_border: bool,
     use_border_shader: bool,
-    config: niri_config::FocusRing,
+    config: swayward_config::FocusRing,
     thicken_corners: bool,
+    edges: ResizeEdge,
+    #[cfg(test)]
+    corner_radius: CornerRadius,
 }
 
-niri_render_elements! {
+swayward_render_elements! {
     FocusRingRenderElement => {
         SolidColor = SolidColorRenderElement,
         Gradient = BorderRenderElement,
@@ -30,7 +34,7 @@ niri_render_elements! {
 }
 
 impl FocusRing {
-    pub fn new(config: niri_config::FocusRing) -> Self {
+    pub fn new(config: swayward_config::FocusRing) -> Self {
         Self {
             buffers: Default::default(),
             locations: Default::default(),
@@ -41,10 +45,13 @@ impl FocusRing {
             use_border_shader: false,
             config,
             thicken_corners: true,
+            edges: ResizeEdge::all(),
+            #[cfg(test)]
+            corner_radius: Default::default(),
         }
     }
 
-    pub fn update_config(&mut self, config: niri_config::FocusRing) {
+    pub fn update_config(&mut self, config: swayward_config::FocusRing) {
         self.config = config;
     }
 
@@ -83,6 +90,10 @@ impl FocusRing {
         }
 
         let radius = radius.fit_to(self.full_size.w as f32, self.full_size.h as f32);
+        #[cfg(test)]
+        {
+            self.corner_radius = radius;
+        }
 
         let gradient = if is_urgent {
             self.config.urgent_gradient
@@ -139,22 +150,62 @@ impl FocusRing {
                 ),
             );
 
+            let top_left_x = if self.edges.contains(ResizeEdge::LEFT) {
+                -width + top_left
+            } else {
+                0.
+            };
+            let top_right_x = if self.edges.contains(ResizeEdge::RIGHT) {
+                win_size.w + width - top_right
+            } else {
+                win_size.w
+            };
+            let bottom_left_x = if self.edges.contains(ResizeEdge::LEFT) {
+                -width + bottom_left
+            } else {
+                0.
+            };
+            let bottom_right_x = if self.edges.contains(ResizeEdge::RIGHT) {
+                win_size.w + width - bottom_right
+            } else {
+                win_size.w
+            };
+            let left_top_y = if self.edges.contains(ResizeEdge::TOP) {
+                -width + top_left
+            } else {
+                0.
+            };
+            let left_bottom_y = if self.edges.contains(ResizeEdge::BOTTOM) {
+                win_size.h + width - bottom_left
+            } else {
+                win_size.h
+            };
+            let right_top_y = if self.edges.contains(ResizeEdge::TOP) {
+                -width + top_right
+            } else {
+                0.
+            };
+            let right_bottom_y = if self.edges.contains(ResizeEdge::BOTTOM) {
+                win_size.h + width - bottom_right
+            } else {
+                win_size.h
+            };
+
             // Top edge.
-            self.sizes[0] = Size::from((win_size.w + width * 2. - top_left - top_right, width));
-            self.locations[0] = Point::from((-width + top_left, -width));
+            self.sizes[0] = Size::from(((top_right_x - top_left_x).max(0.), width));
+            self.locations[0] = Point::from((top_left_x, -width));
 
             // Bottom edge.
-            self.sizes[1] =
-                Size::from((win_size.w + width * 2. - bottom_left - bottom_right, width));
-            self.locations[1] = Point::from((-width + bottom_left, win_size.h));
+            self.sizes[1] = Size::from(((bottom_right_x - bottom_left_x).max(0.), width));
+            self.locations[1] = Point::from((bottom_left_x, win_size.h));
 
             // Left edge.
-            self.sizes[2] = Size::from((width, win_size.h + width * 2. - top_left - bottom_left));
-            self.locations[2] = Point::from((-width, -width + top_left));
+            self.sizes[2] = Size::from((width, (left_bottom_y - left_top_y).max(0.)));
+            self.locations[2] = Point::from((-width, left_top_y));
 
             // Right edge.
-            self.sizes[3] = Size::from((width, win_size.h + width * 2. - top_right - bottom_right));
-            self.locations[3] = Point::from((win_size.w, -width + top_right));
+            self.sizes[3] = Size::from((width, (right_bottom_y - right_top_y).max(0.)));
+            self.locations[3] = Point::from((win_size.w, right_top_y));
 
             // Top-left corner.
             self.sizes[4] = Size::from((top_left, top_left));
@@ -246,8 +297,28 @@ impl FocusRing {
         };
 
         if self.is_border {
-            for ((buf, border), loc) in zip(zip(&self.buffers, &self.borders), self.locations) {
-                push(buf, border, location + loc);
+            let edges = [
+                ResizeEdge::TOP,
+                ResizeEdge::BOTTOM,
+                ResizeEdge::LEFT,
+                ResizeEdge::RIGHT,
+                ResizeEdge::TOP_LEFT,
+                ResizeEdge::TOP_RIGHT,
+                ResizeEdge::BOTTOM_RIGHT,
+                ResizeEdge::BOTTOM_LEFT,
+            ];
+            for (((buf, border), loc), edge) in zip(
+                zip(zip(&self.buffers, &self.borders), self.locations),
+                edges,
+            ) {
+                // A corner belongs to the outline only when BOTH of its edges
+                // are drawn. `intersects` on the composite TOP_LEFT and
+                // friends is true whenever either half is present, so a
+                // three-sided border silently grew the two corners of the
+                // side it had deliberately left open.
+                if draws_segment(self.edges, edge) {
+                    push(buf, border, location + loc);
+                }
             }
         } else {
             push(
@@ -270,7 +341,73 @@ impl FocusRing {
         self.thicken_corners = value;
     }
 
-    pub fn config(&self) -> &niri_config::FocusRing {
+    pub fn set_edges(&mut self, edges: ResizeEdge) {
+        self.edges = edges;
+    }
+
+    pub fn config(&self) -> &swayward_config::FocusRing {
         &self.config
+    }
+
+    #[cfg(test)]
+    pub fn corner_radius(&self) -> CornerRadius {
+        self.corner_radius
+    }
+}
+
+/// Whether a border segment is part of the outline.
+///
+/// A corner belongs to it only when BOTH of its edges are drawn. The corner
+/// constants are composites (`TOP_LEFT` is `TOP | LEFT`), so an `intersects`
+/// test is true whenever either half is present, and a three-sided border
+/// grew the two corners of the side it had deliberately left open.
+fn draws_segment(edges: ResizeEdge, segment: ResizeEdge) -> bool {
+    edges.contains(segment)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Which of the eight buffers a given edge set draws.
+    fn drawn(edges: ResizeEdge) -> Vec<&'static str> {
+        [
+            (ResizeEdge::TOP, "TOP"),
+            (ResizeEdge::BOTTOM, "BOTTOM"),
+            (ResizeEdge::LEFT, "LEFT"),
+            (ResizeEdge::RIGHT, "RIGHT"),
+            (ResizeEdge::TOP_LEFT, "TOP_LEFT"),
+            (ResizeEdge::TOP_RIGHT, "TOP_RIGHT"),
+            (ResizeEdge::BOTTOM_RIGHT, "BOTTOM_RIGHT"),
+            (ResizeEdge::BOTTOM_LEFT, "BOTTOM_LEFT"),
+        ]
+        .into_iter()
+        .filter(|(edge, _)| draws_segment(edges, *edge))
+        .map(|(_, name)| name)
+        .collect()
+    }
+
+    #[test]
+    fn a_corner_is_drawn_only_when_both_of_its_edges_are() {
+        // TOP_LEFT is TOP|LEFT, so testing with `intersects` made a
+        // three-sided border draw the two corners of the side it had
+        // deliberately left open. A selected tab strip then closed itself off
+        // from the window below, which looked like the border running under
+        // the tab instead of around it.
+        assert_eq!(
+            drawn(ResizeEdge::LEFT | ResizeEdge::TOP | ResizeEdge::RIGHT),
+            ["TOP", "LEFT", "RIGHT", "TOP_LEFT", "TOP_RIGHT"],
+            "an open-bottomed border must not draw its bottom corners"
+        );
+        assert_eq!(
+            drawn(ResizeEdge::BOTTOM),
+            ["BOTTOM"],
+            "a lone baseline draws no corners"
+        );
+        assert_eq!(
+            drawn(ResizeEdge::all()).len(),
+            8,
+            "a full border still draws every buffer"
+        );
     }
 }

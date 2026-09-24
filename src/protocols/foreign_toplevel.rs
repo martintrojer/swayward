@@ -5,11 +5,13 @@ use std::sync::Arc;
 use arrayvec::ArrayVec;
 use smithay::output::Output;
 use smithay::reexports::wayland_protocols::ext::foreign_toplevel_list::v1::server::{
-    ext_foreign_toplevel_handle_v1::{self, ExtForeignToplevelHandleV1}, ext_foreign_toplevel_list_v1::{self, ExtForeignToplevelListV1},
+    ext_foreign_toplevel_handle_v1::{self, ExtForeignToplevelHandleV1},
+    ext_foreign_toplevel_list_v1::{self, ExtForeignToplevelListV1},
 };
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::reexports::wayland_protocols_wlr::foreign_toplevel::v1::server::{
-    zwlr_foreign_toplevel_handle_v1::{self, ZwlrForeignToplevelHandleV1}, zwlr_foreign_toplevel_manager_v1::{self, ZwlrForeignToplevelManagerV1},
+    zwlr_foreign_toplevel_handle_v1::{self, ZwlrForeignToplevelHandleV1},
+    zwlr_foreign_toplevel_manager_v1::{self, ZwlrForeignToplevelManagerV1},
 };
 use smithay::reexports::wayland_server::backend::ClientId;
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
@@ -17,15 +19,15 @@ use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{
     Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
 };
-use smithay::wayland::{Dispatch2, GlobalDispatch2};
 use smithay::wayland::shell::xdg::{
-    ToplevelState, ToplevelStateSet, XdgToplevelSurfaceRoleAttributes
+    ToplevelState, ToplevelStateSet, XdgToplevelSurfaceRoleAttributes,
 };
+use smithay::wayland::{Dispatch2, GlobalDispatch2};
 
-use crate::niri::State;
 use crate::protocols::EmptyData;
-use crate::window::mapped::MappedId;
+use crate::swayward::State;
 use crate::utils::with_toplevel_role_and_current;
+use crate::window::mapped::MappedId;
 
 const EXT_LIST_VERSION: u32 = 1;
 const WLR_MANAGEMENT_VERSION: u32 = 3;
@@ -45,13 +47,15 @@ pub trait ForeignToplevelHandler {
     fn unset_fullscreen(&mut self, wl_surface: WlSurface);
     fn set_maximized(&mut self, wl_surface: WlSurface);
     fn unset_maximized(&mut self, wl_surface: WlSurface);
+    fn set_minimized(&mut self, wl_surface: WlSurface);
+    fn unset_minimized(&mut self, wl_surface: WlSurface);
 }
 
 struct ToplevelData {
     identifier: MappedId,
     title: Option<String>,
     app_id: Option<String>,
-    states: ArrayVec<u32, 3>,
+    states: ArrayVec<u32, 4>,
     output: Option<Output>,
 
     ext_list_instances: HashSet<ExtForeignToplevelHandleV1>,
@@ -93,11 +97,16 @@ impl ForeignToplevelManagerState {
 pub fn refresh(state: &mut State) {
     let _span = tracy_client::span!("foreign_toplevel::refresh");
 
-    let protocol_state = &mut state.niri.foreign_toplevel_state;
+    let protocol_state = &mut state.swayward.foreign_toplevel_state;
 
     // Handle closed windows.
     protocol_state.toplevels.retain(|surface, data| {
-        if state.niri.layout.find_window_and_output(surface).is_some() {
+        if state
+            .swayward
+            .layout
+            .find_window_and_output(surface)
+            .is_some()
+        {
             return true;
         }
 
@@ -117,7 +126,7 @@ pub fn refresh(state: &mut State) {
     // Save the focused window for last, this way when the focus changes, we will first deactivate
     // the previous window and only then activate the newly focused window.
     let mut focused = None;
-    state.niri.layout.with_windows(|mapped, output, _, _| {
+    state.swayward.layout.with_windows(|mapped, output, _, _| {
         let toplevel = mapped.toplevel();
         let wl_surface = toplevel.wl_surface();
         with_toplevel_role_and_current(toplevel, |role, cur| {
@@ -126,8 +135,14 @@ pub fn refresh(state: &mut State) {
                 return;
             };
 
-            if state.niri.keyboard_focus.surface() == Some(wl_surface) {
-                focused = Some((mapped.id(), mapped.window.clone(), output.cloned()));
+            let minimized = state.swayward.layout.is_scratchpad_hidden(&mapped.window);
+            if state.swayward.keyboard_focus.surface() == Some(wl_surface) {
+                focused = Some((
+                    mapped.id(),
+                    mapped.window.clone(),
+                    output.cloned(),
+                    minimized,
+                ));
             } else {
                 refresh_toplevel(
                     protocol_state,
@@ -137,13 +152,14 @@ pub fn refresh(state: &mut State) {
                     cur,
                     output,
                     false,
+                    minimized,
                 );
             }
         });
     });
 
     // Finally, refresh the focused window.
-    if let Some((identifier, window, output)) = focused {
+    if let Some((identifier, window, output, minimized)) = focused {
         let toplevel = window.toplevel().expect("no X11 support");
         let wl_surface = toplevel.wl_surface();
         with_toplevel_role_and_current(toplevel, |role, cur| {
@@ -160,6 +176,7 @@ pub fn refresh(state: &mut State) {
                 cur,
                 output.as_ref(),
                 true,
+                minimized,
             );
         });
     }
@@ -172,7 +189,7 @@ pub fn on_output_bound(state: &mut State, output: &Output, wl_output: &WlOutput)
         return;
     };
 
-    let protocol_state = &mut state.niri.foreign_toplevel_state;
+    let protocol_state = &mut state.swayward.foreign_toplevel_state;
     for data in protocol_state.toplevels.values_mut() {
         if data.output.as_ref() != Some(output) {
             continue;
@@ -190,6 +207,9 @@ pub fn on_output_bound(state: &mut State, output: &Output, wl_output: &WlOutput)
     }
 }
 
+// Inherited signature, now carrying the scratchpad-minimized flag as well. Each
+// argument is an independent piece of protocol state with no natural grouping.
+#[allow(clippy::too_many_arguments)]
 fn refresh_toplevel(
     protocol_state: &mut ForeignToplevelManagerState,
     wl_surface: &WlSurface,
@@ -198,8 +218,9 @@ fn refresh_toplevel(
     current: &ToplevelState,
     output: Option<&Output>,
     has_focus: bool,
+    minimized: bool,
 ) {
-    let states = to_state_vec(&current.states, has_focus);
+    let states = to_state_vec(&current.states, has_focus, minimized);
 
     match protocol_state.toplevels.entry(wl_surface.clone()) {
         Entry::Occupied(entry) => {
@@ -571,8 +592,10 @@ where
             zwlr_foreign_toplevel_handle_v1::Request::UnsetMaximized => {
                 state.unset_maximized(surface)
             }
-            zwlr_foreign_toplevel_handle_v1::Request::SetMinimized => (),
-            zwlr_foreign_toplevel_handle_v1::Request::UnsetMinimized => (),
+            zwlr_foreign_toplevel_handle_v1::Request::SetMinimized => state.set_minimized(surface),
+            zwlr_foreign_toplevel_handle_v1::Request::UnsetMinimized => {
+                state.unset_minimized(surface)
+            }
             zwlr_foreign_toplevel_handle_v1::Request::Activate { .. } => {
                 state.activate(surface);
             }
@@ -599,13 +622,16 @@ where
     }
 }
 
-fn to_state_vec(states: &ToplevelStateSet, has_focus: bool) -> ArrayVec<u32, 3> {
+fn to_state_vec(states: &ToplevelStateSet, has_focus: bool, minimized: bool) -> ArrayVec<u32, 4> {
     let mut rv = ArrayVec::new();
     if states.contains(xdg_toplevel::State::Maximized) {
         rv.push(zwlr_foreign_toplevel_handle_v1::State::Maximized as u32);
     }
     if states.contains(xdg_toplevel::State::Fullscreen) {
         rv.push(zwlr_foreign_toplevel_handle_v1::State::Fullscreen as u32);
+    }
+    if minimized {
+        rv.push(zwlr_foreign_toplevel_handle_v1::State::Minimized as u32);
     }
 
     // HACK: wlr-foreign-toplevel-management states:
@@ -621,4 +647,17 @@ fn to_state_vec(states: &ToplevelStateSet, has_focus: bool) -> ArrayVec<u32, 3> 
     }
 
     rv
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn minimized_state_is_reported_only_for_hidden_scratchpad_windows() {
+        let states = ToplevelStateSet::default();
+        let minimized = zwlr_foreign_toplevel_handle_v1::State::Minimized as u32;
+        assert!(to_state_vec(&states, false, true).contains(&minimized));
+        assert!(!to_state_vec(&states, false, false).contains(&minimized));
+    }
 }

@@ -5,7 +5,6 @@ use std::fmt::Write as _;
 use std::iter::zip;
 use std::rc::Rc;
 
-use niri_config::{Action, Bind, Config, Key, ModKey, Modifiers, Trigger};
 use pangocairo::cairo::{self, ImageSurface};
 use pangocairo::pango::{AttrColor, AttrInt, AttrList, AttrString, FontDescription, Weight};
 use smithay::backend::renderer::element::Kind;
@@ -14,6 +13,7 @@ use smithay::input::keyboard::xkb::keysym_get_name;
 use smithay::output::{Output, WeakOutput};
 use smithay::reexports::gbm::Format as Fourcc;
 use smithay::utils::{Scale, Transform};
+use swayward_config::{Action, Bind, Config, Key, ModKey, Modifiers, Trigger};
 
 use crate::render_helpers::primary_gpu_texture::PrimaryGpuTextureRenderElement;
 use crate::render_helpers::renderer::NiriRenderer;
@@ -127,25 +127,24 @@ impl HotkeyOverlay {
 
     pub fn a11y_text(&self) -> String {
         let config = self.config.borrow();
-        let actions = collect_actions(&config);
+        let entries = collect_entries(&config);
 
         let mut buf = String::new();
         writeln!(&mut buf, "{TITLE}").unwrap();
 
-        for action in actions {
-            let Some((key, action)) = format_bind(&config.binds.0, action) else {
-                continue;
-            };
-
-            let key = key.map(|key| key_name(true, self.mod_key, &key));
-            let key = key.as_deref().unwrap_or("not bound");
-
-            let action = match pango::parse_markup(&action, '\0') {
+        for entry in entries {
+            let keys = entry
+                .keys
+                .iter()
+                .map(|key| key_name(true, self.mod_key, key))
+                .collect::<Vec<_>>()
+                .join(" / ");
+            let label = match pango::parse_markup(&entry.label, '\0') {
                 Ok((_attrs, text, _accel)) => text,
-                Err(_) => action.into(),
+                Err(_) => entry.label.into(),
             };
 
-            writeln!(&mut buf, "{key} {action}").unwrap();
+            writeln!(&mut buf, "{keys} {label}").unwrap();
         }
 
         buf
@@ -194,113 +193,164 @@ fn format_bind(binds: &[Bind], action: &Action) -> Option<(Option<Key>, String)>
     Some((key, title))
 }
 
-fn collect_actions(config: &Config) -> Vec<&Action> {
+#[derive(Debug, PartialEq)]
+struct Entry {
+    keys: Vec<Key>,
+    label: String,
+}
+
+const COMMAND_GROUPS: &[&[&str]] = &[
+    &["exec foot"],
+    &["exec fuzzel"],
+    &["kill"],
+    &["focus left", "focus down", "focus up", "focus right"],
+    &["move left", "move down", "move up", "move right"],
+    &["split h", "split v"],
+    &["layout tabbed"],
+    &["layout stacking"],
+    &["layout toggle split"],
+    &["focus parent"],
+    &["fullscreen"],
+    &["floating toggle"],
+    &[
+        "workspace number 1",
+        "workspace number 2",
+        "workspace number 3",
+        "workspace number 4",
+        "workspace number 5",
+        "workspace number 6",
+        "workspace number 7",
+        "workspace number 8",
+        "workspace number 9",
+        "workspace number 10",
+    ],
+    &[
+        "move to workspace number 1",
+        "move to workspace number 2",
+        "move to workspace number 3",
+        "move to workspace number 4",
+        "move to workspace number 5",
+        "move to workspace number 6",
+        "move to workspace number 7",
+        "move to workspace number 8",
+        "move to workspace number 9",
+        "move to workspace number 10",
+    ],
+    &["mode resize"],
+    &["move scratchpad"],
+    &["scratchpad show"],
+];
+
+fn collect_entries(config: &Config) -> Vec<Entry> {
     let binds = &config.binds.0;
+    let mut entries = COMMAND_GROUPS
+        .iter()
+        .filter_map(|commands| {
+            let matching = commands
+                .iter()
+                .filter_map(|command| {
+                    binds.iter().find(|bind| {
+                        matches!(&bind.action, Action::SwayCommand(bound) if bound == command)
+                            && bind.hotkey_overlay_title != Some(None)
+                    })
+                })
+                .collect::<Vec<_>>();
+            let first = matching.first()?;
+            let label = first
+                .hotkey_overlay_title
+                .as_ref()
+                .and_then(Clone::clone)
+                .unwrap_or_else(|| command_label(commands));
+            Some(Entry {
+                keys: matching.iter().map(|bind| bind.key).collect(),
+                label,
+            })
+        })
+        .collect::<Vec<_>>();
 
-    // Collect actions that we want to show.
-    let mut actions = vec![&Action::ShowHotkeyOverlay];
-
-    // Prefer Quit(false) if found, otherwise try Quit(true), and if there's neither, fall back to
-    // Quit(false).
-    if binds.iter().any(|bind| bind.action == Action::Quit(false)) {
-        actions.push(&Action::Quit(false));
-    } else if binds.iter().any(|bind| bind.action == Action::Quit(true)) {
-        actions.push(&Action::Quit(true));
-    } else {
-        actions.push(&Action::Quit(false));
+    for bind in binds
+        .iter()
+        .filter(|bind| matches!(bind.hotkey_overlay_title, Some(Some(_))))
+    {
+        if !entries.iter().any(|entry| entry.keys.contains(&bind.key)) {
+            entries.push(Entry {
+                keys: vec![bind.key],
+                label: bind.hotkey_overlay_title.clone().flatten().unwrap(),
+            });
+        }
     }
 
-    actions.extend(&[
-        &Action::CloseWindow,
-        &Action::FocusColumnLeft,
-        &Action::FocusColumnRight,
-        &Action::MoveColumnLeft,
-        &Action::MoveColumnRight,
-        &Action::FocusWorkspaceDown,
-        &Action::FocusWorkspaceUp,
-    ]);
-
-    // Prefer move-column-to-workspace-down, but fall back to move-window-to-workspace-down.
-    if let Some(bind) = binds
-        .iter()
-        .find(|bind| matches!(bind.action, Action::MoveColumnToWorkspaceDown(_)))
-    {
-        actions.push(&bind.action);
-    } else if binds
-        .iter()
-        .any(|bind| matches!(bind.action, Action::MoveWindowToWorkspaceDown(_)))
-    {
-        actions.push(&Action::MoveWindowToWorkspaceDown(true));
-    } else {
-        actions.push(&Action::MoveColumnToWorkspaceDown(true));
-    }
-
-    // Same for -up.
-    if let Some(bind) = binds
-        .iter()
-        .find(|bind| matches!(bind.action, Action::MoveColumnToWorkspaceUp(_)))
-    {
-        actions.push(&bind.action);
-    } else if binds
-        .iter()
-        .any(|bind| matches!(bind.action, Action::MoveWindowToWorkspaceUp(_)))
-    {
-        actions.push(&Action::MoveWindowToWorkspaceUp(true));
-    } else {
-        actions.push(&Action::MoveColumnToWorkspaceUp(true));
-    }
-
-    actions.extend(&[
-        &Action::SwitchPresetColumnWidth,
-        &Action::MaximizeColumn,
-        &Action::ConsumeOrExpelWindowLeft,
-        &Action::ConsumeOrExpelWindowRight,
-        &Action::ToggleWindowFloating,
-        &Action::SwitchFocusBetweenFloatingAndTiling,
-        &Action::ToggleOverview,
-    ]);
-
-    // Screenshot is not as important, can omit if not bound.
-    if let Some(bind) = binds
-        .iter()
-        .find(|bind| matches!(bind.action, Action::Screenshot(_, _)))
-    {
-        actions.push(&bind.action);
-    }
-
-    // Add actions with a custom hotkey-overlay-title.
-    for bind in binds {
-        if matches!(bind.hotkey_overlay_title, Some(Some(_))) {
-            // Avoid duplicate actions.
-            if !actions.contains(&&bind.action) {
-                actions.push(&bind.action);
+    for action in [
+        Action::ShowHotkeyOverlay,
+        Action::Quit(false),
+        Action::Quit(true),
+    ] {
+        if let Some((key, label)) = format_bind(binds, &action) {
+            if let Some(key) = key {
+                entries.push(Entry {
+                    keys: vec![key],
+                    label,
+                });
             }
         }
     }
+    entries
+}
 
-    // Add the spawn actions.
-    for bind in binds.iter().filter(|bind| {
-        matches!(bind.action, Action::Spawn(_) | Action::SpawnSh(_))
-            // Only show binds with Mod or Super to filter out stuff like volume up/down.
-            && (bind.key.modifiers.contains(Modifiers::COMPOSITOR)
-                || bind.key.modifiers.contains(Modifiers::SUPER))
-            // Also filter out wheel and touchpad scroll binds.
-            && matches!(bind.key.trigger, Trigger::Keysym(_))
-    }) {
-        let action = &bind.action;
-
-        // We only show one bind for each action, so we need to deduplicate the Spawn actions.
-        if !actions.contains(&action) {
-            actions.push(action);
+fn command_label(commands: &[&str]) -> String {
+    match commands {
+        ["kill"] => "Close Focused Window".into(),
+        ["focus left", "focus down", "focus up", "focus right"] => {
+            "Focus Left / Down / Up / Right".into()
         }
+        ["move left", "move down", "move up", "move right"] => {
+            "Move Window Left / Down / Up / Right".into()
+        }
+        ["split h", "split v"] => "Split Horizontally / Vertically".into(),
+        ["layout tabbed"] => "Tabbed Layout".into(),
+        ["layout stacking"] => "Stacked Layout".into(),
+        ["layout toggle split"] => "Toggle Split Direction".into(),
+        ["focus parent"] => "Focus Parent Container".into(),
+        ["fullscreen"] => "Toggle Fullscreen".into(),
+        ["floating toggle"] => "Toggle Floating".into(),
+        ["mode resize"] => "Resize Mode".into(),
+        ["move scratchpad"] => "Hide in Scratchpad".into(),
+        ["scratchpad show"] => "Show Scratchpad".into(),
+        commands if commands[0].starts_with("workspace number ") => "Switch Workspace 1–10".into(),
+        commands if commands[0].starts_with("move to workspace number ") => {
+            "Move Window to Workspace 1–10".into()
+        }
+        [command] => (*command).into(),
+        _ => commands.join(" / "),
+    }
+}
+
+fn format_keys(keys: &[Key], mod_key: ModKey) -> String {
+    let names = keys
+        .iter()
+        .map(|key| key_name(false, mod_key, key))
+        .collect::<Vec<_>>();
+    if names.len() == 1 {
+        return names[0].clone();
     }
 
-    if config.hotkey_overlay.hide_not_bound {
-        // Only keep actions that have been bound
-        actions.retain(|&action| binds.iter().any(|bind| bind.action == *action))
+    let mut common = names[0].split(" + ").collect::<Vec<_>>();
+    common.pop();
+    let prefix = common.join(" + ");
+    let suffixes = names
+        .iter()
+        .map(|name| name.rsplit(" + ").next().unwrap_or(name))
+        .collect::<Vec<_>>();
+    let suffixes = if suffixes == ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"] {
+        "1–0".into()
+    } else {
+        suffixes.join(" / ")
+    };
+    if prefix.is_empty() {
+        suffixes
+    } else {
+        format!("{prefix} + {suffixes}")
     }
-
-    actions
 }
 
 fn render(
@@ -321,14 +371,11 @@ fn render(
     // target_size.h -= margin * 2;
     // anyhow::ensure!(target_size.w > 0 && target_size.h > 0);
 
-    let strings = collect_actions(config)
+    let strings = collect_entries(config)
         .into_iter()
-        .filter_map(|action| format_bind(&config.binds.0, action))
-        .map(|(key, action)| {
-            let key = key.map(|key| key_name(false, mod_key, &key));
-            let key = key.as_deref().unwrap_or("(not bound)");
-            let key = format!(" {key} ");
-            (key, action)
+        .map(|entry| {
+            let keys = format_keys(&entry.keys, mod_key);
+            (format!(" {keys} "), entry.label)
         })
         .collect::<Vec<_>>();
 
@@ -369,14 +416,14 @@ fn render(
         })
         .collect::<Vec<_>>();
 
-    let key_width = key_sizes.iter().map(|(w, _)| w).max().unwrap();
-    let action_width = action_sizes.iter().map(|(w, _)| w).max().unwrap();
+    let key_width = key_sizes.iter().map(|(w, _)| *w).max().unwrap_or(0);
+    let action_width = action_sizes.iter().map(|(w, _)| *w).max().unwrap_or(0);
     let mut width = key_width + padding + action_width;
 
     let mut height = zip(&key_sizes, &action_sizes)
         .map(|((_, key_h), (_, act_h))| max(key_h, act_h))
         .sum::<i32>()
-        + (key_sizes.len() - 1) as i32 * line_interval
+        + key_sizes.len().saturating_sub(1) as i32 * line_interval
         + title_size.1
         + padding;
 
@@ -457,7 +504,8 @@ fn render(
 
 fn action_name(action: &Action) -> String {
     match action {
-        Action::Quit(_) => String::from("Exit niri"),
+        Action::SwayCommand(command) => command.clone(),
+        Action::Quit(_) => String::from("Exit swayward"),
         Action::ShowHotkeyOverlay => String::from("Show Important Hotkeys"),
         Action::CloseWindow => String::from("Close Focused Window"),
         Action::FocusColumnLeft => String::from("Focus Column to the Left"),
@@ -501,6 +549,7 @@ fn key_name(screen_reader: bool, mod_key: ModKey, key: &Key) -> String {
     // Compositor mod goes first.
     if has_comp_mod {
         match mod_key {
+            ModKey::None => {}
             ModKey::Super => {
                 name.push_str("Super + ");
             }
@@ -534,6 +583,12 @@ fn key_name(screen_reader: bool, mod_key: ModKey, key: &Key) -> String {
     if key.modifiers.contains(Modifiers::ALT) && !(has_comp_mod && mod_key == ModKey::Alt) {
         name.push_str("Alt + ");
     }
+    if key.modifiers.contains(Modifiers::NUM) {
+        name.push_str("Num + ");
+    }
+    if key.modifiers.contains(Modifiers::CAPS) {
+        name.push_str("Caps Lock + ");
+    }
     if key.modifiers.contains(Modifiers::ISO_LEVEL3_SHIFT)
         && !(has_comp_mod && mod_key == ModKey::IsoLevel3Shift)
     {
@@ -547,6 +602,7 @@ fn key_name(screen_reader: bool, mod_key: ModKey, key: &Key) -> String {
 
     let pretty = match key.trigger {
         Trigger::Keysym(keysym) => prettify_keysym_name(screen_reader, &keysym_get_name(keysym)),
+        Trigger::Keycode(keycode) => format!("code:{keycode}"),
         Trigger::MouseLeft => String::from("Mouse Left"),
         Trigger::MouseRight => String::from("Mouse Right"),
         Trigger::MouseMiddle => String::from("Mouse Middle"),
@@ -625,6 +681,44 @@ mod tests {
         } else {
             String::from("None")
         }
+    }
+
+    #[test]
+    fn key_name_includes_lock_modifiers() {
+        let key = "Lock+Num+Q".parse().unwrap();
+        assert_eq!(key_name(false, ModKey::None, &key), "Num + Caps Lock + Q");
+    }
+
+    #[test]
+    fn default_overlay_entries_are_bound_and_use_sway_vocabulary() {
+        let config = Config::load_default();
+        let entries = collect_entries(&config);
+        assert!(entries.iter().all(|entry| {
+            entry.keys.iter().all(|key| {
+                config
+                    .binds
+                    .0
+                    .iter()
+                    .any(|bind| bind.key == *key && bind.hotkey_overlay_title != Some(None))
+            })
+        }));
+        assert!(config.binds.0.iter().all(|bind| {
+            !matches!(bind.hotkey_overlay_title, Some(Some(_)))
+                || entries.iter().any(|entry| entry.keys.contains(&bind.key))
+        }));
+        assert!(entries.iter().any(|entry| entry.label == "Tabbed Layout"));
+        assert!(entries.iter().any(|entry| entry.label == "Resize Mode"));
+        assert!(!entries.iter().any(|entry| entry.label.contains("Column")));
+    }
+
+    #[test]
+    fn empty_config_does_not_advertise_unbound_hotkeys() {
+        assert!(collect_entries(&Config::parse_mem("").unwrap()).is_empty());
+    }
+
+    #[test]
+    fn unlisted_sway_command_uses_its_raw_string() {
+        assert_eq!(command_label(&["frobnicate"]), "frobnicate");
     }
 
     #[test]

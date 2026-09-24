@@ -7,8 +7,6 @@ use std::rc::Rc;
 
 use anyhow::Context;
 use arrayvec::ArrayVec;
-use niri_config::{Action, Config};
-use niri_ipc::SizeChange;
 use pango::{Alignment, FontDescription};
 use pangocairo::cairo::{self, ImageSurface};
 use smithay::backend::allocator::Fourcc;
@@ -20,14 +18,16 @@ use smithay::backend::renderer::{ExportMem, Texture as _};
 use smithay::input::keyboard::{Keysym, ModifiersState};
 use smithay::output::{Output, WeakOutput};
 use smithay::utils::{Buffer, Physical, Point, Rectangle, Scale, Size, Transform};
+use swayward_config::{Action, Config};
+use swayward_ipc::SizeChange;
 
 use crate::animation::{Animation, Clock};
 use crate::layout::floating::DIRECTIONAL_MOVE_PX;
-use crate::niri_render_elements;
 use crate::render_helpers::primary_gpu_texture::PrimaryGpuTextureRenderElement;
 use crate::render_helpers::solid_color::{SolidColorBuffer, SolidColorRenderElement};
 use crate::render_helpers::texture::{TextureBuffer, TextureRenderElement};
 use crate::render_helpers::{render_to_texture, RenderTarget};
+use crate::swayward_render_elements;
 use crate::utils::to_physical_precise_round;
 
 const SELECTION_BORDER: i32 = 2;
@@ -103,7 +103,7 @@ pub struct OutputScreenshot {
     pointer: Option<PrimaryGpuTextureRenderElement>,
 }
 
-niri_render_elements! {
+swayward_render_elements! {
     ScreenshotUiRenderElement => {
         Screenshot = PrimaryGpuTextureRenderElement,
         SolidColor = SolidColorRenderElement,
