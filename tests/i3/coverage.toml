@@ -8,9 +8,10 @@
 #   pass        a count. A passing assertion needs no documentation.
 #   skip        ITEMISED, one table per assertion, each with a reason and a
 #               citation. This is the permanent, finished state for anything
-#               that cannot pass. A skip says "we asked, and the expectation
-#               is not sway behaviour" -- so it must prove that with a source
-#               reference, or it is just a fail wearing a better label.
+#               the unchanged test cannot validly ask. A skip must identify
+#               either a sway semantic difference or the exact adapter/premise
+#               boundary -- and prove that with a source reference -- or it is
+#               just a fail wearing a better label.
 #   tap_plan    the plan captured from the latest unchanged run, or "none" if
 #               that run aborted without emitting one. A file-level `1..0`
 #               skip records assertions = 0, tap_plan = 0, source_assertions
@@ -49,9 +50,9 @@ i3_output_content = "i3 places a `content` container under each output. Sway pla
 i3_parser_internals = "The file tests i3's own config parser implementation, which swayward does not share."
 obsolete_mode_toggle = "The file uses i3's obsolete `mode toggle` to float a window. Neither the pinned i3 nor sway reads that as a floating command (sway/sway/commands/mode.c:23-45)."
 workspace_model = "Blocked on the workspace identity and ordering model."
-x11_absolute_geometry = "i3 sets an absolute initial rectangle through X11. xdg_toplevel has no equivalent request, so the window is never at the size or position the assertion assumes."
-x11_dock = "The file uses X11 dock windows. swayward's equivalent is wlr-layer-shell, covered natively instead."
-x11_ewmh = "The assertion depends on EWMH/ICCCM X11 properties that a native Wayland client cannot set."
+x11_absolute_geometry = "The unchanged test sets an absolute rectangle through X11. The in-process adapter uses xdg_toplevel, which has no equivalent request, so it cannot establish the assertion's premise."
+x11_dock = "The unchanged test uses X11 dock windows. The in-process adapter creates native Wayland clients; swayward's equivalent is wlr-layer-shell, covered natively instead."
+x11_ewmh = "The assertion depends on EWMH/ICCCM X11 properties that the in-process native Wayland client cannot set."
 
 [files."001-tile.t"]
 assertions = 3
@@ -828,7 +829,7 @@ assertions = 31
 tap_plan = 31
 pass = 8
 fail = 11
-reason = "i3_only_semantics"
+reason = "The in-process adapter uses asynchronous native Wayland close requests; the external sway calibration uses X11 clients whose different close lifecycle makes these assertions pass."
 reason_verified = true
 note = "Fresh measurement after removing assertion interception: 8 pass, 12 documented skip, 11 fail. Raw TAP runs the real comparisons; each retained skip has an assertion-level sway citation below."
 [[files."120-multiple-cmds.t".skip]]
@@ -1217,7 +1218,7 @@ tap_plan = 84
 pass = 79
 reason = "i3_floating_wrapper"
 reason_verified = true
-note = "The fresh unchanged run reaches `1..84` with 80 raw passes and four failures. Assertions 61, 70, and 77 use the adapter's `open_floating_window`, which maps a native window tiled at output size and floats it afterward. Assertions 83-84 both use a helper that searches only inside i3 floating-wrapper children; under sway both old and new rectangles are absent, making assertion 83's `undef == undef` comparison vacuously pass while assertion 84 fails. Effective coverage is therefore 79 passes and five documented skips."
+note = "The fresh unchanged run reaches `1..84` with 80 raw passes and four failures. Assertions 61, 70, and 77 use the adapter's `open_floating_window`, which maps a native window tiled at output size and floats it afterward; the external sway calibration's X11 clients establish different initial rectangles. Assertions 83-84 both use a helper that searches only inside i3 floating-wrapper children; under sway both old and new rectangles are absent, making assertion 83's `undef == undef` comparison vacuously pass while assertion 84 fails. Effective coverage is therefore 79 passes and five documented skips."
 [[files."141-resize.t".skip]]
 n = 61
 desc = "a full-output native float grows farther to the right"
@@ -2245,9 +2246,9 @@ assertions = 15
 tap_plan = 15
 pass = 5
 fail = 2
-reason = "i3_only_semantics"
+reason = "The in-process adapter requests xdg-shell content dimensions, while these assertions compare X11 ConfigureRequest outer dimensions. The external sway calibration's X11 clients therefore pass without contradicting the native adapter boundary."
 reason_verified = true
-note = "Fresh measurement emits 1..15: the five mapping checks pass, the eight cited outer-size assertions fail as documented i3-only semantics, and assertions 11-12 are genuine swayward failures. The same 5-pass, 10-fail result occurs at c5fd5bc8, the baseline named by the audit, so the old 7-pass row was incorrect rather than evidence of a later regression."
+note = "Fresh measurement emits 1..15: the five mapping checks pass, the eight cited outer-size assertions fail at the native Wayland geometry boundary, and assertions 11-12 are genuine swayward failures. The same 5-pass, 10-fail result occurs at c5fd5bc8, the baseline named by the audit, so the old 7-pass row was incorrect rather than evidence of a later regression."
 [[files."194-regress-floating-size.t".skip]]
 n = 2
 desc = "default-border outer width remains 400"
@@ -4110,7 +4111,7 @@ citation = "sway/sway/tree/workspace.c:613-677"
 [[files."503-workspace.t".skip]]
 n = 8
 desc = "global next visits equal-prefix workspace 6:c after 6:b"
-reason = "Sway's global next never selects another workspace with the same parsed numeric prefix; this chained i3 expectation therefore cannot hold."
+reason = "Sway's global next never selects another workspace with the same parsed numeric prefix; this chained i3 expectation therefore cannot hold. The external sway calibration passed incidentally because its untranslated `fake-outputs` premise did not create the asserted two-output workspace distribution."
 citation = "sway/sway/tree/workspace.c:613-677"
 note = "Fresh measurement reaches `1..18` with sixteen passes and cited skips at assertions 7-8. Assertions 12 and 17 now pass: next_on_output and prev_on_output index the focused output's stored workspace list and wrap at its ends, matching sway (`sway/sway/tree/workspace.c:680-706`)."
 [files."504-move-workspace-to-output.t"]
@@ -4424,7 +4425,7 @@ citation = "tests/i3/t/522-rename-assigned-workspace.t:65-70; sway/sway/commands
 [[files."522-rename-assigned-workspace.t".skip]]
 n = 7
 desc = "renaming empty workspace 1 to assigned name baz closes it"
-reason = "Sway rejects a rename when the destination workspace name already exists; it does not merge or destroy the source workspace."
+reason = "Sway rejects a rename when the destination workspace name already exists; it does not merge or destroy the source workspace. The external sway calibration passed incidentally because its untranslated output-assignment setup did not establish that collision premise."
 citation = "tests/i3/t/522-rename-assigned-workspace.t:98-105; sway/sway/commands/rename.c:84-104"
 [[files."522-rename-assigned-workspace.t".skip]]
 n = 8
