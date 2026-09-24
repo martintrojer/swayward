@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Fail if any public document or source file references docs/internal/.
+#
+# Internal documents are working notes: they assume maintainer context, may
+# describe work that was never done, and change without warning. A public page
+# that links inward sends readers somewhere that cannot serve them, and makes
+# the split meaningless, since anything one click from the front page is
+# published whatever directory it lives in.
+#
+# docs/internal/README.md and AGENTS.md are exempt: both address maintainers.
+#
+# See docs/internal/README.md.
+
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+if ! command -v rg >/dev/null 2>&1; then
+    echo "check-internal-links: ripgrep (rg) is required" >&2
+    exit 2
+fi
+
+hits=$(rg -n --glob '!docs/internal/**' --glob '!AGENTS.md' --glob '!contrib/check-internal-links' \
+    'docs/internal' . || true)
+
+if [ -n "$hits" ]; then
+    echo "Public documents must not reference docs/internal/:" >&2
+    echo >&2
+    echo "$hits" >&2
+    echo >&2
+    echo "State the fact in the public document instead of linking to the spec." >&2
+    echo "See docs/internal/README.md." >&2
+    exit 1
+fi
+
+echo "0 violation(s): no public reference to docs/internal/"

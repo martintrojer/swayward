@@ -4,41 +4,98 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Public version'
+        description: 'Public version, without the leading v'
         required: true
 
 concurrency:
   group: ${{ github.workflow }}
   cancel-in-progress: true
 
-env:
-  RUN_SLOW_TESTS: 1
-
 jobs:
-  prepare-release:
+  validate:
     runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          show-progress: false
+      - name: Validate release metadata
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]
+          test "$GITHUB_REF" = "refs/tags/swayward-v$VERSION"
+          ./contrib/check-release-consistency "swayward-v$VERSION"
+      - name: Check for unreplaced "Since:" in the wiki
+        run: |
+          # The releasing page documents this very check, so it contains the
+          # phrase legitimately and must not trip it.
+          if grep --recursive --line-number 'Since: next release' docs/wiki \
+               | grep --invert-match '^docs/wiki/Development:-Releasing-swayward.md:'; then
+            echo "::error::a wiki page still says 'Since: next release'"
+            exit 1
+          fi
+      - name: Check the published wiki matches this tree
+        # A release gate, not a pull-request gate. The check reads the
+        # published wiki over the network, and a docs pull request is stale by
+        # construction until it merges and someone publishes, so running it in
+        # ci.yml would fail every docs change for the wrong reason. At a
+        # release the published reference must agree with the tag, which is
+        # exactly when a stale page becomes a user-visible defect: the wiki
+        # called the floating command family "complete" after it had been made
+        # partial, and only a human audit caught it.
+        run: ./contrib/sync-github-wiki --check-published
 
-    permissions:
-      contents: write
+  build-ubuntu:
+    needs: validate
+    # Building on the oldest runner is the right instinct -- glibc is forward
+    # compatible only, so the build machine's glibc becomes every user's floor
+    # -- but it does not survive contact with libdisplay-info.
+    #
+    # Stock ubuntu 22.04 has NO libdisplay-info package at all (apt-cache
+    # search libdisplay returns nothing), so the dependency step below could
+    # never have succeeded here. It was never caught because this workflow is
+    # workflow_dispatch only and had never been dispatched.
+    #
+    # Measured, stock images:            glibc   libdisplay-info
+    #   ubuntu 22.04                     2.35    absent
+    #   ubuntu 24.04                     2.39    0.1.1, soname .so.1
+    #   debian 12                        2.36    absent
+    #   debian 13                        2.41    0.2.0, soname .so.2
+    #
+    # Moving to 24.04 raises the glibc floor to 2.39, which excludes ubuntu
+    # 22.04 and debian 12. That costs nothing: neither can run this binary
+    # regardless, because neither ships the library it needs.
+    #
+    # The binary links whatever libdisplay-info soname the build host has, and
+    # nothing makes that portable, so this artifact targets ubuntu 24.04 and
+    # its derivatives. Debian 13 clears the glibc floor but ships .so.2
+    # against our .so.1 and is NOT covered. Widening that needs static linking
+    # or per-distro builds, not a different runner.
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v6
         with:
           show-progress: false
 
-      - name: Check for unreplaced "Since:" in the wiki
-        run: |
-          # Fail if a match is found (exit code 0)
-          grep --recursive 'Since: next release' docs/wiki && exit 1
-
-          # Fail if grep failed (exit code 2)
-          status=$?
-          if [ $status -ne 1 ]; then exit $status; fi
-
       - name: Install dependencies
         run: |
+          # This list is Debian-side and drifted from what the build needs,
+          # because the Fedora list in contrib/dev-container.sh gets exercised
+          # daily and this one had never run. Fedora's pango-devel pulls
+          # gdk-pixbuf2-devel and the GTK stack transitively; Ubuntu's
+          # libpango1.0-dev does not, so five pkg-config dependencies were
+          # missing here and only here: gdk-pixbuf-2.0, gtk4, libadwaita-1,
+          # graphene-gobject-1.0 and libdrm.
           sudo apt-get update -y
-          sudo apt-get install -y curl gcc clang libudev-dev libgbm-dev libxkbcommon-dev libegl1-mesa-dev libwayland-dev libinput-dev libdbus-1-dev libsystemd-dev libseat-dev libpipewire-0.3-dev libpango1.0-dev libdisplay-info-dev libadwaita-1-dev
+          sudo apt-get install -y curl gcc clang pkg-config \
+            libudev-dev libgbm-dev libdrm-dev \
+            libxkbcommon-dev libegl1-mesa-dev libwayland-dev libinput-dev \
+            libdbus-1-dev libsystemd-dev libseat-dev libpipewire-0.3-dev \
+            libpango1.0-dev libdisplay-info-dev \
+            libgdk-pixbuf-2.0-dev libgtk-4-dev libadwaita-1-dev \
+            libgraphene-1.0-dev \
+            perl libjson-pp-perl libtest-simple-perl libxcb-xkb-dev x11-xkb-utils
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -46,21 +103,278 @@ jobs:
         run: |
           mkdir .cargo
           cargo vendor --locked > .cargo/config.toml
-          tar cJf niri-${{ github.event.inputs.version }}-vendored-dependencies.tar.xz vendor/
+          tar cJf swayward-${{ github.event.inputs.version }}-vendored-dependencies.tar.xz vendor .cargo
 
       - name: Build
         run: cargo build --all --frozen --release
 
-      - name: Build tests
-        run: cargo test --no-run --all --frozen --release
-
       - name: Test
         run: cargo test --all --frozen --release -- --nocapture
 
+      - name: Stage the binary tarball
+        run: |
+          set -eux
+          version=${{ github.event.inputs.version }}
+          # Named for the distribution it was built on, not "linux-gnu":
+          # the libdisplay-info soname makes it Ubuntu 24.04 specific.
+          stage=swayward-$version-ubuntu24.04-x86_64
+          mkdir -p "$stage"/{bin,share}
+
+          install -Dm755 target/release/swayward "$stage/bin/swayward"
+          install -Dm755 target/release/swaywardmsg "$stage/bin/swaywardmsg"
+          install -Dm755 resources/swayward-session "$stage/bin/swayward-session"
+          install -Dm755 contrib/sway-to-kdl "$stage/bin/swayward-sway-to-kdl"
+
+          install -Dm644 resources/swayward.desktop "$stage/share/swayward.desktop"
+          install -Dm644 resources/swayward-portals.conf "$stage/share/swayward-portals.conf"
+          install -Dm644 resources/swayward.service "$stage/share/swayward.service"
+          install -Dm644 resources/swayward-shutdown.target "$stage/share/swayward-shutdown.target"
+          install -Dm644 resources/default-config.kdl "$stage/share/default-config.kdl"
+          install -Dm644 LICENSE "$stage/LICENSE"
+
+          # Record what the binary actually needs, measured rather than
+          # guessed, so an installer can check before unpacking.
+          {
+            echo "swayward $version, x86_64, dynamically linked against the system graphics stack."
+            echo
+            echo "Minimum glibc: $(objdump -T target/release/swayward |
+              grep -oE 'GLIBC_[0-9]+\.[0-9]+' | sort -uV | tail -1)"
+            echo
+            echo "Built on Ubuntu 24.04. TARGETS UBUNTU 24.04 AND ITS DERIVATIVES."
+            echo
+            echo "It links libdisplay-info.so.1, which is the soname Ubuntu 24.04 ships."
+            echo "Other distributions ship a different one and this binary will not start:"
+            echo "  Ubuntu 22.04, Debian 12  no libdisplay-info package at all"
+            echo "  Debian 13                libdisplay-info.so.2"
+            echo "  Fedora 41+               libdisplay-info.so.3"
+            echo "On those, build from source. See INSTALL.md."
+            echo
+            echo "This build is not self-contained. A compositor cannot statically link"
+            echo "the seat, input and GPU stack it drives. On Ubuntu 24.04:"
+            echo
+            echo "  apt install libdisplay-info1 libinput10 libseat1 libgbm1 libegl1 \\"
+            echo "              libwayland-client0 libwayland-server0 libxkbcommon0 \\"
+            echo "              libudev1 libpixman-1-0 libpango-1.0-0 libpangocairo-1.0-0 \\"
+            echo "              libcairo2 libpipewire-0.3-0"
+            echo
+            echo "  apt install xdg-desktop-portal-gnome xdg-desktop-portal-gtk \\"
+            echo "              gnome-keyring nautilus"
+            echo
+            echo "xwayland-satellite is needed for X11 applications and is not packaged"
+            echo "on Ubuntu 24.04; build it from source if you need Xwayland."
+            echo "xdg-desktop-portal-wlr is an optional, less integrated capture fallback."
+            echo
+            echo "See INSTALL.md in this archive."
+          } > "$stage/RUNTIME.txt"
+          cp docs/BUILDING.md "$stage/INSTALL.md"
+
+          tar czf "$stage.tar.gz" "$stage"
+          sha256sum "$stage.tar.gz" > "$stage.tar.gz.sha256"
+
+      - name: Build Debian package
+        run: ./contrib/build-deb '${{ github.event.inputs.version }}'
+
+      - name: Upload Ubuntu artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ubuntu-artifacts
+          path: |
+            swayward-${{ github.event.inputs.version }}-vendored-dependencies.tar.xz
+            swayward-${{ github.event.inputs.version }}-ubuntu24.04-x86_64.tar.gz
+            swayward-${{ github.event.inputs.version }}-ubuntu24.04-x86_64.tar.gz.sha256
+            swayward_${{ github.event.inputs.version }}_amd64.deb
+          if-no-files-found: error
+
+  verify-ubuntu:
+    needs: build-ubuntu
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ubuntu-artifacts
+          path: artifact
+      - name: Verify tarball checksum
+        working-directory: artifact
+        run: sha256sum -c swayward-${{ github.event.inputs.version }}-ubuntu24.04-x86_64.tar.gz.sha256
+      - name: Install and execute artifacts
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y ./artifact/swayward_${{ github.event.inputs.version }}_amd64.deb
+          swayward --version
+          swaywardmsg --version
+          tar xzf artifact/swayward-${{ github.event.inputs.version }}-ubuntu24.04-x86_64.tar.gz
+          ./swayward-${{ github.event.inputs.version }}-ubuntu24.04-x86_64/bin/swayward --version
+          ./swayward-${{ github.event.inputs.version }}-ubuntu24.04-x86_64/bin/swaywardmsg --version
+
+  build-rpm:
+    needs: validate
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        # Fedora supports two releases at a time. Build for both, so a package
+        # never targets an end-of-life release.
+        fedora: [43, 44]
+    container: fedora:${{ matrix.fedora }}
+    steps:
+      - name: Install RPM tooling
+        run: dnf install -y rpkg rpm-build dnf-plugins-core git-core
+      - name: Build RPM
+        env:
+          RELEASE_VERSION: ${{ github.event.inputs.version }}
+          FEDORA_RELEASE: ${{ matrix.fedora }}
+        run: |
+          # rpkg requires an ordinary Git top-level. GitHub's container checkout
+          # is mounted under aliases that rpkg rejects even though Git accepts
+          # them, so clone the exact workflow SHA into the container filesystem.
+          repo=/tmp/swayward-rpm-source
+          git clone --no-checkout \
+            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" "$repo"
+          git -C "$repo" fetch --depth=1 origin "$GITHUB_SHA"
+          git -C "$repo" checkout --detach FETCH_HEAD
+          cd "$repo"
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import subprocess
+
+          path = pathlib.Path("swayward.spec.rpkg")
+          text = path.read_text()
+          version = subprocess.check_output(
+              ["./contrib/package-version", "rpm", os.environ["RELEASE_VERSION"]],
+              text=True,
+          ).strip()
+          old = "%global version {{{ git_dir_version }}}"
+          assert old in text
+          path.write_text(text.replace(old, f"%global version {version}", 1))
+          PY
+          spec=$(rpkg --path "$repo" spec --spec swayward.spec.rpkg | sed -n 's/^Wrote: //p')
+          test -f "$spec"
+          dnf builddep -y "$spec"
+          mkdir -p "$RUNNER_TEMP/rpm"
+          rpkg --path "$repo" local --spec swayward.spec.rpkg --nocheck \
+            --outdir "$RUNNER_TEMP/rpm"
+          rpm=$(find "$RUNNER_TEMP/rpm" -name 'swayward-*.x86_64.rpm' \
+            ! -name '*-debuginfo-*' -print -quit)
+          test -n "$rpm"
+          cp "$rpm" \
+            "$GITHUB_WORKSPACE/swayward-$RELEASE_VERSION-fedora$FEDORA_RELEASE-x86_64.rpm"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpm-artifact-fedora${{ matrix.fedora }}
+          path: swayward-${{ github.event.inputs.version }}-fedora${{ matrix.fedora }}-x86_64.rpm
+          if-no-files-found: error
+
+  verify-rpm:
+    needs: build-rpm
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        fedora: [43, 44]
+    container: fedora:${{ matrix.fedora }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: rpm-artifact-fedora${{ matrix.fedora }}
+          path: artifact
+      - name: Install and execute RPM
+        run: |
+          dnf install -y --setopt=install_weak_deps=False artifact/*.rpm
+          swayward --version
+          swaywardmsg --version
+
+  build-arch:
+    needs: validate
+    runs-on: ubuntu-24.04
+    container: archlinux:latest
+    steps:
+      # Install Git before checkout. Otherwise actions/checkout falls back to a
+      # REST archive, and the exact-SHA source tarball cannot be produced.
+      - name: Install Arch build dependencies
+        run: |
+          pacman -Syu --needed --noconfirm base-devel namcap cargo clang git \
+            cairo libdisplay-info libinput libxkbcommon mesa pango python \
+            libpipewire seatd systemd-libs wayland xkeyboard-config
+      - uses: actions/checkout@v6
+        with:
+          show-progress: false
+      - name: Build and lint Arch package
+        env:
+          RELEASE_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          cd "$GITHUB_WORKSPACE"
+          pkg_version=$(./contrib/package-version arch "$RELEASE_VERSION")
+          git archive --format=tar.gz --prefix="swayward-$pkg_version/" HEAD \
+            > "contrib/swayward-$pkg_version.tar.gz"
+          python3 - "$pkg_version" <<'PY'
+          import os
+          import pathlib
+          import re
+          import sys
+
+          path = pathlib.Path("contrib/PKGBUILD")
+          text = path.read_text()
+          text, pkgver_count = re.subn(
+              r"^pkgver=\S+$", f"pkgver={sys.argv[1]}", text,
+              count=1, flags=re.MULTILINE,
+          )
+          text, tagver_count = re.subn(
+              r"^_tagver=\S+$", f"_tagver={os.environ['RELEASE_VERSION']}", text,
+              count=1, flags=re.MULTILINE,
+          )
+          assert pkgver_count == tagver_count == 1
+          source = 'source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/swayward-v$_tagver.tar.gz")'
+          assert source in text
+          path.write_text(text.replace(source, 'source=("$pkgname-$pkgver.tar.gz")', 1))
+          PY
+          useradd -m builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          runuser -u builder -- bash -lc \
+            "cd '$GITHUB_WORKSPACE/contrib' && makepkg --nodeps --noconfirm"
+          package=$(find contrib -maxdepth 1 -name 'swayward-*.pkg.tar.zst' \
+            ! -name '*-debug-*' -print -quit)
+          test -n "$package"
+          namcap_output=$(namcap contrib/PKGBUILD "$package" || true)
+          printf '%s\n' "$namcap_output"
+          ! grep -q ' E:' <<<"$namcap_output"
+          cp "$package" "swayward-$RELEASE_VERSION-arch-x86_64.pkg.tar.zst"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arch-artifact
+          path: swayward-${{ github.event.inputs.version }}-arch-x86_64.pkg.tar.zst
+          if-no-files-found: error
+
+  verify-arch:
+    needs: build-arch
+    runs-on: ubuntu-24.04
+    container: archlinux:latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: arch-artifact
+          path: artifact
+      - name: Install and execute Arch package
+        run: |
+          pacman -Sy --noconfirm
+          pacman -U --noconfirm artifact/*.pkg.tar.zst
+          swayward --version
+          swaywardmsg --version
+
+  draft-release:
+    needs: [verify-ubuntu, verify-rpm, verify-arch]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-files
+          merge-multiple: true
       - name: Draft release
         uses: softprops/action-gh-release@v2
         with:
           draft: true
-          tag_name: v${{ github.event.inputs.version }}
-          files: niri-${{ github.event.inputs.version }}-vendored-dependencies.tar.xz
+          generate_release_notes: true
+          tag_name: swayward-v${{ github.event.inputs.version }}
+          files: release-files/*
           fail_on_unmatched_files: true

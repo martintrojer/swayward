@@ -1,0 +1,6 @@
+type           = internal
+restart        = false
+depends-on:    swayward
+waits-for.d:   $XDG_CONFIG_HOME/dinit.d/swayward.d/
+waits-for.d:   $HOME/.config/dinit.d/swayward.d/
+waits-for.d:   /etc/dinit.d/user/swayward.d/

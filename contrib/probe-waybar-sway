@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+# Opt-in compatibility probe for Fedora Waybar 0.15.0.
+set -euo pipefail
+
+EXPECTED='Waybar v0.15.0'
+EXPECTED_PACKAGE='waybar-0.15.0-2.fc44.x86_64'
+[ "${RUN_REAL_CLIENT_TESTS:-}" = 1 ] || {
+    echo 'set RUN_REAL_CLIENT_TESTS=1 to run the Waybar compatibility probe' >&2
+    exit 2
+}
+[ -n "${SWAYSOCK:-}" ] && [ -S "$SWAYSOCK" ] || {
+    echo 'SWAYSOCK must name the private socket supplied by contrib/dev-run.sh' >&2
+    exit 2
+}
+actual=$(waybar --version 2>&1)
+package=$(rpm -q waybar 2>&1)
+printf 'client: %s (%s)\n' "$actual" "$package"
+[ "$actual" = "$EXPECTED" ] && [ "$package" = "$EXPECTED_PACKAGE" ] || {
+    echo "expected: $EXPECTED ($EXPECTED_PACKAGE)" >&2
+    echo "actual:   $actual ($package)" >&2
+    exit 2
+}
+
+for command in foot python3; do
+    command -v "$command" >/dev/null || {
+        echo "$command is required by the Waybar compatibility probe" >&2
+        exit 2
+    }
+done
+python3 -c 'import pyatspi' 2>/dev/null || {
+    echo 'python3-pyatspi is required to read Waybar labels' >&2
+    exit 2
+}
+
+run_dir=$(mktemp -d)
+waybar_pid=""
+foot_pid=""
+cleanup() {
+    [ -z "$foot_pid" ] || kill "$foot_pid" 2>/dev/null || true
+    [ -z "$waybar_pid" ] || kill "$waybar_pid" 2>/dev/null || true
+    rm -rf "$run_dir"
+}
+trap cleanup EXIT
+
+cat >"$run_dir/config.json" <<'EOF'
+{
+  "layer": "top",
+  "modules-left": ["sway/workspaces", "sway/window", "sway/mode"],
+  "sway/workspaces": {
+    "format": "WS={value}:{icon}",
+    "format-icons": {"focused": "FOCUSED", "default": "IDLE"}
+  },
+  "sway/window": {"format": "TITLE={title}"},
+  "sway/mode": {"format": "MODE={}"}
+}
+EOF
+cat >"$run_dir/style.css" <<'EOF'
+* { font-family: monospace; font-size: 12px; }
+EOF
+
+GTK_MODULES=gail waybar -l trace -c "$run_dir/config.json" -s "$run_dir/style.css" >"$run_dir/waybar.log" 2>&1 &
+waybar_pid=$!
+
+labels() {
+    python3 - <<'PY'
+import pyatspi
+
+for app in pyatspi.Registry.getDesktop(0):
+    if app.name == "waybar":
+        def walk(node):
+            try:
+                state = node.getState()
+                if node.name and state.contains(pyatspi.STATE_SHOWING):
+                    print(node.name)
+                for child in node:
+                    walk(child)
+            except Exception:
+                pass
+        walk(app)
+PY
+}
+wait_for() {
+    expected=$1
+    for _ in $(seq 1 100); do
+        output=$(labels)
+        printf '%s\n' "$output" | grep -Fxq "$expected" && {
+            echo "PROBE observed $expected"
+            return
+        }
+        sleep 0.1
+    done
+    echo "PROBE FAIL: Waybar did not expose label: $expected" >&2
+    cat "$run_dir/waybar.log" >&2
+    exit 1
+}
+wait_absent() {
+    unexpected=$1
+    for _ in $(seq 1 100); do
+        output=$(labels)
+        printf '%s\n' "$output" | grep -Fxq "$unexpected" || {
+            echo "PROBE observed absent $unexpected"
+            return
+        }
+        sleep 0.1
+    done
+    echo "PROBE FAIL: Waybar still exposes label: $unexpected" >&2
+    cat "$run_dir/waybar.log" >&2
+    exit 1
+}
+
+msg="$(dirname "$0")/../target/debug/swaywardmsg"
+wait_for 'WS=1:FOCUSED'
+"$msg" workspace number 2 >/dev/null
+wait_for 'WS=2:FOCUSED'
+
+fifo="$run_dir/title"
+mkfifo "$fifo"
+foot --app-id=waybar-probe sh -c 'printf "\033]2;TITLE-BEFORE\007"; read _ <"$1"; printf "\033]2;TITLE-AFTER\007"; sleep 20' sh "$fifo" \
+    >"$run_dir/foot.log" 2>&1 &
+foot_pid=$!
+wait_for 'TITLE=TITLE-BEFORE'
+printf go >"$fifo"
+wait_for 'TITLE=TITLE-AFTER'
+
+"$msg" mode resize >/dev/null
+wait_for 'MODE=resize'
+"$msg" mode default >/dev/null
+wait_absent 'MODE=resize'
+
+[ "${MUTATE_WAYBAR_EXPECTATION:-}" != 1 ] || wait_for 'MODE=mutation-must-fail'
+kill -0 "$waybar_pid" 2>/dev/null || {
+    echo 'PROBE FAIL: Waybar exited early' >&2
+    cat "$run_dir/waybar.log" >&2
+    exit 1
+}
+! grep -Eiq '\[(error|critical)\]' "$run_dir/waybar.log" || {
+    echo 'PROBE FAIL: Waybar logged an error' >&2
+    cat "$run_dir/waybar.log" >&2
+    exit 1
+}
+echo 'PROBE PASS waybar-sway-modules'

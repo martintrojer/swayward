@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# Opt-in parser and exit-status probe for Fedora swaymsg 1.11.
+set -euo pipefail
+
+EXPECTED_PACKAGE=sway-1.11-3.fc44.x86_64
+SOCKET=${SWAYSOCK:-}
+
+fail() {
+	echo "PROBE FAIL: $*" >&2
+	exit 1
+}
+
+[ "${RUN_REAL_CLIENT_TESTS:-}" = 1 ] || fail "set RUN_REAL_CLIENT_TESTS=1"
+[ -S "$SOCKET" ] || fail "SWAYSOCK must be the private dev-run.sh socket"
+case $(basename "$SOCKET") in
+swayward-ipc.*) ;;
+*) fail "refusing a non-swayward socket" ;;
+esac
+
+PACKAGE=$(rpm -q sway)
+[ "$PACKAGE" = "$EXPECTED_PACKAGE" ] || fail "expected $EXPECTED_PACKAGE, got $PACKAGE"
+[ "$(swaymsg -s "$SOCKET" --version)" = "swaymsg version 1.11" ] || fail "expected swaymsg 1.11"
+command -v jq >/dev/null || fail "jq is required"
+echo "client: swaymsg 1.11 ($PACKAGE)"
+
+# A wrong environment socket proves that every invocation depends on -s.
+export SWAYSOCK=/definitely/not-the-private-socket
+
+reply=""
+request() {
+	local type=$1 filter=$2
+	shift 2
+	reply=$(swaymsg -s "$SOCKET" -r -t "$type" "$@") ||
+		fail "$type exited nonzero: $reply"
+	jq -e "$filter" >/dev/null <<<"$reply" ||
+		fail "$type returned unexpected JSON: $reply"
+}
+
+request command 'type == "array" and length == 1 and .[0].success == true' nop
+request get_workspaces 'type == "array" and length > 0 and all(has("name") and has("focused"))'
+request get_inputs 'type == "array" and all(has("identifier") and has("type"))'
+request get_outputs 'type == "array" and length > 0 and all(has("name") and has("active"))'
+request get_tree 'type == "object" and .type == "root" and (.nodes | type == "array")'
+request get_seats 'type == "array" and length > 0 and all(has("name") and has("devices"))'
+request get_marks 'type == "array"'
+request get_bar_config 'type == "array" and length == 0'
+request get_version 'type == "object" and (.major | type == "number") and (.human_readable | type == "string")'
+request get_binding_modes 'type == "array" and index("default") != null'
+request get_binding_state 'type == "object" and (.name | type == "string")'
+request send_tick 'type == "object" and .success == true' swaymsg-probe
+
+refused() {
+	local description=$1 type=$2
+	shift 2
+	set +e
+	reply=$(swaymsg -s "$SOCKET" -r -t "$type" "$@")
+	local status=$?
+	set -e
+	[ "$status" -ne 0 ] || fail "$description exited zero: $reply"
+	jq -e 'type == "object" and .success == false' >/dev/null <<<"$reply" ||
+		fail "$description was not a structured failure: $reply"
+}
+
+refused GET_CONFIG get_config
+refused "unknown bar ID" get_bar_config swaymsg-probe-missing
+
+request command 'type == "array" and length == 2 and all(.success == true)' \
+	'nop; workspace number 2'
+
+EVENTS=$(mktemp)
+MONITOR_PID=""
+cleanup() {
+	if [ -n "$MONITOR_PID" ]; then
+		kill "$MONITOR_PID" 2>/dev/null || true
+		wait "$MONITOR_PID" 2>/dev/null || true
+	fi
+	rm -f "$EVENTS"
+}
+trap cleanup EXIT
+
+timeout 10 stdbuf -oL swaymsg -s "$SOCKET" -r -m -t subscribe '["workspace"]' >"$EVENTS" &
+MONITOR_PID=$!
+# swaymsg does not print the subscription acknowledgement in monitor mode.
+# Give the unmodified client time to connect before causing the event.
+sleep 0.25
+kill -0 "$MONITOR_PID" 2>/dev/null || fail "subscribe monitor exited before the mutation"
+
+request command 'type == "array" and length == 1 and .[0].success == true' 'workspace number 3'
+for _ in {1..100}; do
+	if jq -e -s 'any(.change? == "focus" and .current.name? == "3")' "$EVENTS" >/dev/null 2>&1; then
+		break
+	fi
+	kill -0 "$MONITOR_PID" 2>/dev/null || fail "subscribe monitor exited before workspace event"
+	sleep 0.05
+done
+jq -e -s 'any(.change? == "focus" and .current.name? == "3")' "$EVENTS" >/dev/null 2>&1 ||
+	fail "subscribe monitor did not receive the workspace event within 5 seconds"
+
+if [ "${MUTATE_SWAYMSG_EXPECTATION:-}" = 1 ]; then
+	jq -e -s 'any(.change? == "not-a-real-workspace-change")' "$EVENTS" >/dev/null ||
+		fail "mutated workspace-event expectation rejected"
+fi
+
+kill "$MONITOR_PID" 2>/dev/null || true
+wait "$MONITOR_PID" 2>/dev/null || true
+MONITOR_PID=""
+
+echo "PROBE PASS queries=workspaces,inputs,outputs,tree,seats,marks,bar-config,version,binding-modes,binding-state"
+echo "PROBE PASS requests=command,send-tick,subscribe"
+echo "PROBE PASS refused=config,unknown-bar"
+echo "PROBE PASS monitor=workspace multi-command=nop,workspace"

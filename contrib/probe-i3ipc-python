@@ -1,0 +1,263 @@
+#!/usr/bin/env python3
+"""Opt-in decoder probe for Fedora's i3ipc-python 2.2.1 package."""
+
+import json
+import os
+import socket
+import struct
+import subprocess
+import sys
+import threading
+import time
+
+import i3ipc
+from i3ipc import Con
+from i3ipc._private import MessageType
+from i3ipc.events import (
+    BindingEvent,
+    InputEvent,
+    ModeEvent,
+    OutputEvent,
+    ShutdownEvent,
+    TickEvent,
+    WindowEvent,
+    WorkspaceEvent,
+)
+from i3ipc.replies import InputReply, OutputReply, SeatReply, VersionReply, WorkspaceReply
+
+EXPECTED_PACKAGE = "python3-i3ipc-2.2.1-20.fc44.noarch"
+EVENTS = {"workspace", "output", "mode", "window", "binding", "tick", "input", "shutdown"}
+seen = set()
+
+
+def require(value, description):
+    if not value:
+        raise AssertionError(description)
+    return value
+
+
+def raw_request(message_type, payload=""):
+    body = payload.encode()
+    with socket.socket(socket.AF_UNIX) as sock:
+        sock.connect(os.environ["SWAYSOCK"])
+        sock.sendall(b"i3-ipc" + struct.pack("=II", len(body), message_type) + body)
+        header = b""
+        while len(header) < 14:
+            header += sock.recv(14 - len(header))
+        magic, length, reply_type = struct.unpack("=6sII", header)
+        data = b""
+        while len(data) < length:
+            data += sock.recv(length - len(data))
+    require(magic == b"i3-ipc" and reply_type == message_type, "invalid raw IPC reply")
+    return json.loads(data)
+
+
+def inspect_con(con):
+    require(isinstance(con, Con), "tree/event container was not decoded as Con")
+    require(isinstance(con.id, int), "container.id missing")
+    require(isinstance(con.type, str), "container.type missing")
+    require(isinstance(con.rect.width, int), "container.rect.width missing")
+
+
+def on_workspace(_conn, event):
+    require(isinstance(event, WorkspaceEvent), "workspace event has wrong type")
+    require(isinstance(event.change, str), "workspace.change missing")
+    if event.current is not None:
+        inspect_con(event.current)
+        field = "not_a_sway_field" if os.environ.get("MUTATE_IPC_FIELD") == "1" else "name"
+        require(isinstance(getattr(event.current, field), str), f"workspace.current.{field} missing")
+    else:
+        require(event.change == "reload", "workspace.current missing outside reload")
+    seen.add("workspace")
+
+
+def on_output(_conn, event):
+    require(isinstance(event, OutputEvent), "output event has wrong type")
+    require(event.change == "unspecified", "output.change missing")
+    seen.add("output")
+
+
+def on_mode(_conn, event):
+    require(isinstance(event, ModeEvent), "mode event has wrong type")
+    require(isinstance(event.change, str), "mode.change missing")
+    require(isinstance(event.pango_markup, bool), "mode.pango_markup missing")
+    seen.add("mode")
+
+
+def on_window(_conn, event):
+    require(isinstance(event, WindowEvent), "window event has wrong type")
+    require(isinstance(event.change, str), "window.change missing")
+    inspect_con(event.container)
+    seen.add("window")
+
+
+def on_binding(_conn, event):
+    require(isinstance(event, BindingEvent), "binding event has wrong type")
+    require(event.change == "run", "binding.change missing")
+    require(isinstance(event.binding.command, str), "binding.command missing")
+    require(isinstance(event.binding.input_code, int), "binding.input_code missing")
+    require(event.binding.input_type in ("keyboard", "mouse"), "binding.input_type invalid")
+    seen.add("binding")
+
+
+def on_tick(_conn, event):
+    require(isinstance(event, TickEvent), "tick event has wrong type")
+    require(isinstance(event.first, bool), "tick.first missing")
+    require(isinstance(event.payload, str), "tick.payload missing")
+    seen.add("tick")
+
+
+def on_input(_conn, event):
+    require(isinstance(event, InputEvent), "input event has wrong type")
+    require(isinstance(event.change, str), "input.change missing")
+    require(isinstance(event.input, InputReply), "input.input has wrong type")
+    require(isinstance(event.input.identifier, str), "input.identifier missing")
+    require(isinstance(event.input.name, str), "input.name missing")
+    require(isinstance(event.input.type, str), "input.type missing")
+    seen.add("input")
+
+
+def on_shutdown(_conn, event):
+    require(isinstance(event, ShutdownEvent), "shutdown event has wrong type")
+    require(event.change == "exit", "shutdown.change missing")
+    seen.add("shutdown")
+
+
+def main():
+    require(os.environ.get("RUN_REAL_CLIENT_TESTS") == "1", "set RUN_REAL_CLIENT_TESTS=1")
+    path = os.environ.get("SWAYSOCK", "")
+    require(path and os.path.exists(path), "SWAYSOCK must be the private dev-run.sh socket")
+    require(os.path.basename(path).startswith("swayward-ipc."), "refusing a non-swayward socket")
+    package = subprocess.check_output(["rpm", "-q", "python3-i3ipc"], text=True).strip()
+    require(package == EXPECTED_PACKAGE, f"expected {EXPECTED_PACKAGE}, got {package}")
+    print(f"client: i3ipc-python 2.2.1 ({package})")
+
+    conn = i3ipc.Connection(socket_path=path)
+    command = conn.command("nop")
+    require(command and command[0].success is True and command[0].error is None, "RUN_COMMAND decode failed")
+
+    workspaces = conn.get_workspaces()
+    require(workspaces and isinstance(workspaces[0], WorkspaceReply), "GET_WORKSPACES decode failed")
+    workspace = workspaces[0]
+    for attr, kind in (("num", int), ("name", str), ("visible", bool), ("focused", bool),
+                       ("urgent", bool), ("output", str)):
+        require(isinstance(getattr(workspace, attr), kind), f"workspace.{attr} missing")
+    require(isinstance(workspace.rect.width, int), "workspace.rect.width missing")
+
+    outputs = conn.get_outputs()
+    require(outputs and isinstance(outputs[0], OutputReply), "GET_OUTPUTS decode failed")
+    output = outputs[0]
+    for attr, kind in (("name", str), ("active", bool), ("primary", bool),
+                       ("current_workspace", str), ("scale", float), ("focused", bool)):
+        require(isinstance(getattr(output, attr), kind), f"output.{attr} missing")
+    require(isinstance(output.rect.height, int), "output.rect.height missing")
+
+    tree = conn.get_tree()
+    inspect_con(tree)
+    require(tree.type == "root" and tree.workspaces(), "GET_TREE typed traversal failed")
+    require(isinstance(conn.get_marks(), list), "GET_MARKS decode failed")
+    require(conn.get_bar_config_list() == [], "GET_BAR_CONFIG list decode failed")
+
+    version = conn.get_version()
+    require(isinstance(version, VersionReply), "GET_VERSION has wrong type")
+    for attr, kind in (("major", int), ("minor", int), ("patch", int),
+                       ("human_readable", str), ("loaded_config_file_name", str)):
+        require(isinstance(getattr(version, attr), kind), f"version.{attr} missing")
+    require(isinstance(conn.get_binding_modes(), list), "GET_BINDING_MODES decode failed")
+
+    inputs = conn.get_inputs()
+    require(all(isinstance(item, InputReply) for item in inputs), "GET_INPUTS decode failed")
+    for item in inputs:
+        require(isinstance(item.identifier, str) and isinstance(item.type, str), "input fields missing")
+    seats = conn.get_seats()
+    require(seats and isinstance(seats[0], SeatReply), "GET_SEATS decode failed")
+    seat = seats[0]
+    require(isinstance(seat.name, str) and isinstance(seat.capabilities, int), "seat fields missing")
+    require(all(isinstance(item, InputReply) for item in seat.devices), "seat.devices decode failed")
+    tick = conn.send_tick("request-probe")
+    require(tick.success is True, "SEND_TICK decode failed")
+
+    # i3ipc-python 2.2.1 has no GET_BINDING_STATE enum, method, or reply class.
+    state = raw_request(12)
+    require(isinstance(state.get("name"), str), "GET_BINDING_STATE raw compatibility check failed")
+
+    refused = {
+        "GET_CONFIG": json.loads(conn._message(MessageType.GET_CONFIG, "")),
+        "GET_BAR_CONFIG unknown": json.loads(conn._message(MessageType.GET_BAR_CONFIG, "missing")),
+        "IPC_SYNC": raw_request(11),
+        "unknown request": raw_request(999),
+    }
+    for name, reply in refused.items():
+        require(reply.get("success") is False, f"{name} did not return a structured failure: {reply}")
+    rejected_sub = i3ipc.Connection(socket_path=path)
+    reply = json.loads(rejected_sub._message(MessageType.SUBSCRIBE, '["barconfig_update"]'))
+    require(reply.get("success") is False, f"unsupported SUBSCRIBE did not fail: {reply}")
+
+    listener = i3ipc.Connection(socket_path=path)
+    for event, handler in (
+        ("workspace", on_workspace), ("output", on_output), ("mode", on_mode),
+        ("window", on_window), ("binding", on_binding), ("tick", on_tick),
+        ("input", on_input), ("shutdown", on_shutdown),
+    ):
+        listener.on(event, handler)
+    thread = threading.Thread(target=listener.main, kwargs={"timeout": 15}, daemon=True)
+    thread.start()
+    for _ in range(100):
+        if listener._sub_socket is not None:
+            break
+        time.sleep(0.05)
+    require(listener._sub_socket is not None, "subscription did not start")
+
+    conn.command("workspace number 2")
+    conn.command("mode resize")
+    conn.send_tick("event-probe")
+
+    # Reload the private, generated dev-run config with an explicit keymap to
+    # make swayward emit the input event available in a nested winit session.
+    config_path = version.loaded_config_file_name
+    # Only ever rewrite dev-run.sh's generated copy; `--config` may name a real file.
+    require(os.path.basename(os.path.dirname(config_path)).startswith("swayward-dev."),
+            f"refusing to rewrite a config outside dev-run.sh's temp dir: {config_path}")
+    with open(config_path, encoding="utf-8") as source:
+        config = source.read()
+    config = config.replace("        xkb {\n", '        xkb {\n            layout "us,ru"\n', 1)
+    with open(config_path, "w", encoding="utf-8") as target:
+        target.write(config)
+    require(conn.command("reload")[0].success, "config reload failed")
+
+    conn.command("bindsym F12 nop")
+    foot = subprocess.Popen(["foot", "--app-id=i3ipc-probe", "sh", "-c", "sleep 10"])
+    try:
+        subprocess.run(["wtype", "-k", "F12"], check=True)
+        conn.command("output * scale 1.25")
+        for _ in range(100):
+            if EVENTS - {"shutdown"} <= seen:
+                break
+            time.sleep(0.1)
+        missing = (EVENTS - {"shutdown"}) - seen
+        require(not missing, f"events missing before shutdown: {sorted(missing)}")
+        conn.command("exit")
+        thread.join(5)
+        require(not thread.is_alive(), "event listener did not stop")
+        require(EVENTS <= seen, f"events missing: {sorted(EVENTS - seen)}")
+    finally:
+        foot.terminate()
+        try:
+            foot.wait(2)
+        except subprocess.TimeoutExpired:
+            foot.kill()
+
+    print("PROBE PASS requests="
+          "command,workspaces,outputs,tree,marks,bar-config-list,version,"
+          "binding-modes,inputs,seats,tick,subscribe")
+    print("PROBE PASS raw-library-gap=binding-state")
+    print("PROBE PASS refused=config,unknown-bar,unsupported-subscribe,sync,unknown-request")
+    print("PROBE PASS events=" + ",".join(sorted(seen)))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as error:
+        print(f"PROBE FAIL: {error}", file=sys.stderr)
+        raise

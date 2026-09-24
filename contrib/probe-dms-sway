@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+# Opt-in compatibility probe for Arch dms-shell 1.6.2 and Quickshell 0.3.1.
+set -euo pipefail
+
+fail() { echo "PROBE FAIL: $*" >&2; exit 1; }
+[ "${RUN_REAL_CLIENT_TESTS:-}" = 1 ] || fail 'set RUN_REAL_CLIENT_TESTS=1'
+[ -S "${SWAYSOCK:-}" ] || fail 'SWAYSOCK must name the private socket supplied by contrib/dev-run.sh'
+[ -n "${WAYLAND_DISPLAY:-}" ] || fail 'WAYLAND_DISPLAY must name the nested display supplied by contrib/dev-run.sh'
+command -v distrobox-host-exec >/dev/null || fail 'run through contrib/dev-run.sh in swayward-dev'
+
+run_dir=$(mktemp -d)
+dms_pid=
+cleanup() {
+    [ -z "$dms_pid" ] || kill "$dms_pid" 2>/dev/null || true
+    distrobox-host-exec distrobox enter swayward-dms -- dms kill >/dev/null 2>&1 || true
+    rm -rf "$run_dir"
+}
+trap cleanup EXIT
+
+arch() {
+    distrobox-host-exec distrobox enter swayward-dms -- env \
+        -u HYPRLAND_INSTANCE_SIGNATURE -u NIRI_SOCKET -u MIRACLESOCK \
+        -u MANGO_INSTANCE_SIGNATURE -u HOST_COMPOSITOR_PID \
+        SWAYSOCK="$SWAYSOCK" I3SOCK="$SWAYSOCK" \
+        WAYLAND_DISPLAY="$WAYLAND_DISPLAY" XDG_CURRENT_DESKTOP=sway \
+        XDG_SESSION_DESKTOP=sway XDG_CONFIG_HOME="$run_dir/config" \
+        XDG_CACHE_HOME="$run_dir/cache" XDG_STATE_HOME="$run_dir/state" "$@"
+}
+msg() { arch timeout 5 swaymsg -s "$SWAYSOCK" "$@"; }
+
+expected_pid=$(basename "$SWAYSOCK" | cut -d. -f3)
+version=$(msg -t get_version -r)
+printf '%s\n' "$version" >"$run_dir/version.json"
+[ "$(python3 -c 'import json,sys; print(json.load(sys.stdin)["variant"])' <<<"$version")" = swayward ] ||
+    fail 'Arch swaymsg did not reach swayward'
+[ -r "/proc/$expected_pid/comm" ] || fail "nested PID $expected_pid is not alive"
+host_pid=$(pgrep -af 'swayward --session$' | awk 'NR == 1 { print $1 }')
+[ -n "$host_pid" ] || fail 'could not identify the host compositor PID'
+[ "$expected_pid" != "$host_pid" ] || fail 'private socket resolves to the host compositor'
+printf 'PROBE plumbing nested-pid=%s host-pid=%s arch-runtime=%s display=%s\n' \
+    "$expected_pid" "$host_pid" "$(arch printenv XDG_RUNTIME_DIR)" "$WAYLAND_DISPLAY"
+
+packages=$(arch pacman -Q quickshell dms-shell dms-shell-hyprland sway)
+printf '%s\n' "$packages"
+grep -Fxq 'quickshell 0.3.1-1' <<<"$packages" || fail 'unexpected quickshell package'
+grep -Fxq 'dms-shell 1.6.2-1' <<<"$packages" || fail 'unexpected dms-shell package'
+[ "$(arch qs --version)" = 'Quickshell 0.3.1 (revision , distributed by Arch Linux)' ] ||
+    fail 'unexpected Quickshell version'
+[ "$(arch dms version)" = 'dms v1.6.2' ] || fail 'unexpected DMS version'
+
+arch dms run --log-level debug >"$run_dir/dms.log" 2>&1 &
+dms_pid=$!
+for _ in $(seq 1 150); do
+    grep -q 'Configuration Loaded' "$run_dir/dms.log" && break
+    kill -0 "$dms_pid" 2>/dev/null || { cat "$run_dir/dms.log" >&2; fail 'DMS exited during startup'; }
+    sleep 0.1
+done
+grep -q 'Configuration Loaded' "$run_dir/dms.log" || fail 'DMS did not load its QML'
+for _ in $(seq 1 50); do
+    grep -q "Detected sway via SWAYSOCK $SWAYSOCK" "$run_dir/dms.log" && break
+    sleep 0.1
+done
+grep -q "Detected sway via SWAYSOCK $SWAYSOCK" "$run_dir/dms.log" || fail 'DMS did not detect Sway'
+echo 'PROBE PASS client-side sway-detection'
+
+# DMS 1.6.2 exposes no workspace, keyboard-layout, urgency, or compositor-power
+# target through `dms ipc`. Keep the checks below explicitly swayward-side
+# rather than treating a live, subscribed DMS process as proof of its model.
+for _ in $(seq 1 50); do
+    dms_ipc=$(arch timeout 5 dms ipc list)
+    grep -q '^  bar ' <<<"$dms_ipc" && break
+    sleep 0.1
+done
+grep -q '^  bar ' <<<"$dms_ipc" || fail 'could not read the complete live DMS IPC inventory'
+if grep -Eq '^  (workspace|keyboard|compositor|dpms) ' <<<"$dms_ipc"; then
+    fail 'DMS IPC inventory changed; add client-side dispatch and model assertions'
+fi
+echo 'PROBE INFO no client-side workspace, keyboard-layout, urgency, or DPMS IPC in DMS 1.6.2'
+
+arch timeout 5 dms ipc call outputs refresh >/dev/null
+[ "$(arch timeout 5 dms ipc call outputs current)" = '["winit"]' ] ||
+    fail 'DMS output model did not contain winit'
+echo 'PROBE PASS client-side output-model=winit'
+
+workspaces=$(msg -t get_workspaces -r)
+outputs=$(msg -t get_outputs -r)
+python3 -c 'import json,sys; ws=json.load(sys.stdin); assert len(ws) == 1 and ws[0]["name"] == "1" and ws[0]["focused"] and ws[0]["output"] == "winit"' <<<"$workspaces"
+python3 -c 'import json,sys; out=json.load(sys.stdin); assert len(out) == 1 and out[0]["name"] == "winit" and out[0]["focused"]' <<<"$outputs"
+echo 'PROBE PASS swayward-side workspace-list=1 focused-monitor=winit'
+
+# Exercise the exact commands that DMS 1.6.2 emits from UI-only paths.
+msg 'workspace number 2' >/dev/null
+msg -t get_workspaces -r | python3 -c 'import json,sys; assert any(w["num"] == 2 and w["focused"] for w in json.load(sys.stdin))'
+echo 'PROBE PASS swayward-side numeric-workspace=2'
+msg 'workspace "named workspace"' >/dev/null
+for _ in $(seq 1 20); do
+    msg -t get_workspaces -r | python3 -c 'import json,sys; assert any(w["name"] == "named workspace" and w["focused"] for w in json.load(sys.stdin))' 2>/dev/null && break
+    sleep 0.1
+done
+msg -t get_workspaces -r | python3 -c 'import json,sys; assert any(w["name"] == "named workspace" and w["focused"] for w in json.load(sys.stdin))'
+echo 'PROBE PASS swayward-side named-workspace=quoted'
+
+dms_con=$(msg -t get_tree -r | python3 -c 'import json,sys; root=json.load(sys.stdin); stack=[root]; found=None
+while stack:
+ n=stack.pop()
+ if n.get("app_id") == "com.danklinux.dms": found=n["id"]; break
+ stack += n.get("nodes", []) + n.get("floating_nodes", [])
+assert found is not None
+print(found)')
+msg 'workspace number 3' >/dev/null
+msg "[con_id=$dms_con] urgent enable" >/dev/null
+msg -t get_workspaces -r | python3 -c 'import json,sys; assert any(w["urgent"] for w in json.load(sys.stdin))'
+echo 'PROBE PASS swayward-side urgency workspace-state=true'
+
+initial=$(msg -t get_inputs -r)
+python3 -c 'import json,sys; kbd=next(i for i in json.load(sys.stdin) if i["type"] == "keyboard"); assert kbd["xkb_active_layout_name"] == "English (US)"' <<<"$initial"
+set +e
+changed=$(msg 'input type:keyboard xkb_switch_layout next' 2>&1)
+change_status=$?
+set -e
+if [ "$change_status" = 0 ] && grep -q '"success": true' <<<"$changed"; then
+    msg -t get_inputs -r | python3 -c 'import json,sys; kbd=next(i for i in json.load(sys.stdin) if i["type"] == "keyboard"); assert kbd["xkb_active_layout_name"] == "Russian" and kbd["xkb_active_layout_index"] == 1'
+    echo 'PROBE PASS swayward-side keyboard-layout initial=English_(US) changed=Russian'
+else
+    printf 'PROBE BLOCKED keyboard-layout-change: one-layout nested keymap (%s)\n' "$changed"
+fi
+
+# DMS exposes its lock-and-power-off path through IPC. Drive that path, assert
+# DMS's lock model, and observe the resulting compositor power state.
+arch timeout 5 dms ipc call lock lockAndOutputsOff >/dev/null
+for _ in $(seq 1 50); do
+    lock_status=$(arch timeout 5 dms ipc call lock status)
+    outputs=$(msg -t get_outputs -r)
+    grep -q '"sessionLockSecure":true' <<<"$lock_status" &&
+        python3 -c 'import json,sys; assert all(not o["power"] and not o["dpms"] for o in json.load(sys.stdin))' <<<"$outputs" 2>/dev/null && break
+    sleep 0.1
+done
+grep -q '"sessionLockSecure":true' <<<"$lock_status" || fail 'DMS lock model did not become secure'
+python3 -c 'import json,sys; assert all(not o["power"] and not o["dpms"] for o in json.load(sys.stdin))' <<<"$outputs"
+arch timeout 5 dms ipc call lock unlock >/dev/null
+for _ in $(seq 1 50); do
+    outputs=$(msg -t get_outputs -r)
+    python3 -c 'import json,sys; assert all(o["power"] and o["dpms"] for o in json.load(sys.stdin))' <<<"$outputs" 2>/dev/null && break
+    sleep 0.1
+done
+msg -t get_outputs -r | python3 -c 'import json,sys; assert all(o["power"] and o["dpms"] for o in json.load(sys.stdin))'
+echo 'PROBE PASS client-side lock-and-dpms=off,on'
+
+cat "$run_dir/dms.log"

@@ -1,0 +1,311 @@
+#!/usr/bin/env python3
+"""Build and check the decoration matrix page and pixel measurements.
+
+Each scene is one row with its square-corner and rounded-corner captures side
+by side. A border-coloured pixel is stray when it has at most one
+border-coloured 4-neighbour. Measurements are checked against the repository
+baseline and also written to ``measurements.json``.
+"""
+
+from __future__ import annotations
+
+import argparse
+import html
+import json
+import re
+import subprocess
+from pathlib import Path
+
+ACTIVE_BORDER = (255, 200, 127)
+# The focused titlebar ring is the top of the window outline, so the shipped
+# config gives it the active border colour and width. Read both from the
+# config rather than hard-coding them, so the check follows the default.
+DEFAULT_CONFIG = Path(__file__).resolve().parent.parent / "resources/default-config.kdl"
+
+
+def shipped_titlebar_ring() -> tuple[tuple[int, int, int], int]:
+    text = DEFAULT_CONFIG.read_text()
+    block = text[text.index("    titlebar {") :]
+    thickness = int(re.search(r"^\s*border-thickness (\d+)", block, re.M).group(1))
+    focused = block[block.index("        focused {") :]
+    color = re.search(r'border-color "#([0-9a-fA-F]{6})"', focused).group(1)
+    return tuple(int(color[i : i + 2], 16) for i in (0, 2, 4)), thickness
+
+
+TITLEBAR_BORDER, TITLEBAR_BORDER_THICKNESS = shipped_titlebar_ring()
+BASELINE = Path(__file__).with_name("decoration-matrix-baseline.json")
+
+# (id, title, what to look at). Order runs simple to compound so a defect is
+# attributable to the smallest scene that shows it.
+SCENES = [
+    ("SA", "Single window, compositor header", "One titlebar. Its top corners are the frame's top corners."),
+    ("SB", "Single window, header stripped", "No titlebar. The window's own corners are the frame's."),
+    ("HA", "Horizontal split, headers", "Two titlebars side by side. Outer corners round, inner edges square."),
+    ("HB", "Horizontal split, stripped", "Two windows side by side, no compositor headers."),
+    ("VA", "Vertical split, headers", "Stacked vertically. The lower window's top corners meet a titlebar."),
+    ("VB", "Vertical split, stripped", "Stacked vertically, no headers."),
+    ("TA", "Tabbed, one window, header", "A tab strip over one window."),
+    ("TB", "Tabbed, one window, stripped", "A tab strip over one window, no client header."),
+    ("StA", "Stacked, one window, header", "A stack strip over one window."),
+    ("StB", "Stacked, one window, stripped", "A stack strip over one window, no client header."),
+    ("T2A", "Tabbed, two windows, header", "Two tabs. Only the first rounds top-left, only the last top-right."),
+    ("T2B", "Tabbed, two windows, stripped", "Two tabs, no client header. Interior tab edges stay square."),
+    ("St2A", "Stacked, two windows, header", "Two stack rows. Only the top row rounds its top corners."),
+    ("St2B", "Stacked, two windows, stripped", "Two stack rows, no client header."),
+    ("THA", "Split inside tabbed, header", "A tab strip above a horizontal split."),
+    ("THB", "Split inside tabbed, stripped", "A tab strip above a horizontal split, no client header."),
+    ("StHA", "Split inside stacked, header", "A stack strip above a horizontal split."),
+    ("StHB", "Split inside stacked, stripped", "A stack strip above a horizontal split, no client header."),
+    ("HTA", "Tabbed containers side by side, header", "Two independent tab strips. Inner corners must not borrow the outer frame's."),
+    ("HTB", "Tabbed containers side by side, stripped", "Two independent tab strips, no client header."),
+    ("HStA", "Stacked containers side by side, header", "Two independent stack strips."),
+    ("HStB", "Stacked containers side by side, stripped", "Two independent stack strips, no client header."),
+    ("TStA", "Stacked inside tabbed, header", "Nested strips: the inner one must not round against the outer."),
+    ("TStB", "Stacked inside tabbed, stripped", "Nested strips, no client header."),
+    ("StTA", "Tabbed inside stacked, header", "Nested strips the other way round."),
+    ("StTB", "Tabbed inside stacked, stripped", "Nested strips the other way round, no client header."),
+    ("TTTA", "Three tab levels, top focused, header", "Only the outer strip is drawn; the focused window starts directly beneath it."),
+    ("TTTB", "Three tab levels, top focused, stripped", "The two inner strips belong to hidden tabs and must not cover the window."),
+]
+
+MODES = [("square", "Square corners"), ("rounded", "Rounded corners")]
+
+CSS = """
+:root { color-scheme: dark; }
+body { background:#14161a; color:#e6e6e6; font:14px/1.5 system-ui,sans-serif;
+       margin:0; padding:24px 32px; }
+h1 { font-size:20px; margin:0 0 4px; }
+p.lede { color:#9aa4b2; margin:0 0 24px; max-width:70ch; }
+table { border-collapse:collapse; width:100%; }
+th { text-align:left; font-size:12px; text-transform:uppercase;
+     letter-spacing:.06em; color:#9aa4b2; padding:8px 10px;
+     border-bottom:1px solid #2a2f37; position:sticky; top:0; background:#14161a; }
+td { padding:10px; border-bottom:1px solid #22262d; vertical-align:top; }
+td.name { width:210px; }
+code { color:#8fd1ff; font-size:13px; }
+.look { color:#9aa4b2; font-size:12.5px; margin-top:4px; display:block; }
+img { width:100%; max-width:520px; border:1px solid #2a2f37; border-radius:4px;
+      background:#0d0f12; display:block; }
+img.zoom { image-rendering:pixelated; max-width:260px; }
+.missing { color:#e06c6c; font-size:12.5px; }
+.measurement { color:#9aa4b2; font-size:12px; margin-top:5px; }
+.controls { margin:0 0 18px; display:flex; gap:16px; align-items:center; }
+button { background:#222831; color:#e6e6e6; border:1px solid #39404b;
+         border-radius:4px; padding:6px 12px; font:13px system-ui; cursor:pointer; }
+button[aria-pressed="true"] { background:#2f6feb; border-color:#2f6feb; }
+"""
+
+JS = """
+const full = document.querySelectorAll('img[data-full]');
+const zoomBtn = document.getElementById('zoom');
+let zoomed = false;
+zoomBtn.addEventListener('click', () => {
+  zoomed = !zoomed;
+  zoomBtn.setAttribute('aria-pressed', zoomed);
+  zoomBtn.textContent = zoomed ? 'Showing corner crops' : 'Show corner crops';
+  full.forEach(img => {
+    img.src = zoomed ? img.dataset.crop : img.dataset.full;
+    img.classList.toggle('zoom', zoomed);
+  });
+});
+"""
+
+
+def measure_image(path: Path) -> dict[str, int]:
+    size = subprocess.run(
+        ["magick", "identify", "-format", "%w %h", path],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    width, height = map(int, size.split())
+    pixels = subprocess.run(
+        ["magick", path, "-alpha", "off", "-depth", "8", "rgb:-"],
+        check=True,
+        capture_output=True,
+    ).stdout
+    expected = width * height * 3
+    if len(pixels) != expected:
+        raise SystemExit(f"{path.name}: expected {expected} RGB bytes, got {len(pixels)}")
+
+    active = {
+        index // 3
+        for index in range(0, len(pixels), 3)
+        if tuple(pixels[index : index + 3]) == ACTIVE_BORDER
+    }
+    if not active:
+        raise SystemExit(f"{path.name}: no active-border pixels")
+
+    top = bottom = 0
+    for pixel in active:
+        x, y = pixel % width, pixel // width
+        neighbours = (
+            (pixel - 1 if x else -1),
+            (pixel + 1 if x + 1 < width else -1),
+            (pixel - width if y else -1),
+            (pixel + width if y + 1 < height else -1),
+        )
+        if sum(neighbour in active for neighbour in neighbours) <= 1:
+            if y < height // 2:
+                top += 1
+            else:
+                bottom += 1
+    return {"top": top, "bottom": bottom, "total": top + bottom}
+
+
+def assert_titlebar_ring(path: Path) -> None:
+    size = subprocess.run(
+        ["magick", "identify", "-format", "%w %h", path],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    width, height = map(int, size.split())
+    pixels = subprocess.run(
+        ["magick", path, "-alpha", "off", "-depth", "8", "rgb:-"],
+        check=True,
+        capture_output=True,
+    ).stdout
+    x = width // 2
+    rows = [
+        y
+        for y in range(height)
+        if tuple(pixels[(y * width + x) * 3 : (y * width + x + 1) * 3])
+        == TITLEBAR_BORDER
+    ]
+    longest = current = 0
+    previous = -2
+    for y in rows:
+        current = current + 1 if y == previous + 1 else 1
+        longest = max(longest, current)
+        previous = y
+    if longest < TITLEBAR_BORDER_THICKNESS:
+        raise SystemExit(
+            f"{path.name}: expected a {TITLEBAR_BORDER_THICKNESS}px titlebar-border run, got {longest}px"
+        )
+
+
+def regressions(measurements: dict, baseline: dict, *, accept_new: bool = False) -> list[str]:
+    """Scenes whose stray count rose, or that the baseline has never seen.
+
+    A scene missing from the baseline fails a normal check, so a new scene
+    cannot land unmeasured. When updating the baseline, a new scene is
+    accepted only if it has no strays: adding coverage is fine, adding a
+    scene that starts out broken is a regression dressed as a new row.
+    """
+    failures = []
+    for scene, modes in measurements["scenes"].items():
+        for mode, counts in modes.items():
+            try:
+                expected = baseline["scenes"][scene][mode]
+            except KeyError:
+                if not (accept_new and counts["total"] == 0):
+                    failures.append(f"{scene}/{mode}: missing from baseline")
+                continue
+            for half in ("top", "bottom"):
+                if counts[half] > expected[half]:
+                    failures.append(
+                        f"{scene}/{mode}/{half}: {counts[half]} > baseline {expected[half]}"
+                    )
+    return failures
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("root", nargs="?", default=".", type=Path)
+    parser.add_argument("--baseline", default=BASELINE, type=Path)
+    parser.add_argument(
+        "--update-baseline",
+        action="store_true",
+        help="replace the baseline with measurements from this capture",
+    )
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    root = args.root
+    root.mkdir(parents=True, exist_ok=True)
+    shots = root / "shots"
+    rows = []
+    missing = 0
+    measurements = {
+        "active_border": "#ffc87f",
+        "stray_pixel": "at most one same-coloured 4-neighbour",
+        "scenes": {},
+    }
+    for scene, title, look in SCENES:
+        cells = []
+        measurements["scenes"][scene] = {}
+        for mode, _ in MODES:
+            name = f"{mode}-{scene}.png"
+            crop = f"{mode}-{scene}.crop.png"
+            if (shots / name).exists():
+                counts = measure_image(shots / name)
+                measurements["scenes"][scene][mode] = counts
+                cells.append(
+                    f'<td><a href="shots/{name}"><img loading="lazy" '
+                    f'data-full="shots/{name}" data-crop="shots/{crop}" '
+                    f'src="shots/{name}" alt="{html.escape(title)}, {mode} corners"></a>'
+                    f'<div class="measurement">strays: {counts["total"]} '
+                    f'(top {counts["top"]}, bottom {counts["bottom"]})</div></td>'
+                )
+            else:
+                missing += 1
+                cells.append(f'<td><span class="missing">missing {html.escape(name)}</span></td>')
+        rows.append(
+            f'<tr><td class="name"><code>{html.escape(scene)}</code><br>'
+            f"{html.escape(title)}<span class='look'>{html.escape(look)}</span></td>"
+            + "".join(cells)
+            + "</tr>"
+        )
+
+    headers = "".join(f"<th>{html.escape(label)}</th>" for _, label in MODES)
+    page = f"""<!doctype html>
+<meta charset="utf-8">
+<title>swayward decoration matrix</title>
+<style>{CSS}</style>
+<h1>Decoration matrix</h1>
+<p class="lede">Every scene captured with square and rounded window corners. The
+two columns should differ only in corner radius. Anything else that changes, or
+any square decoration sitting over a rounded frame, is a rendering defect.
+Click an image for full size.</p>
+<div class="controls">
+  <button id="zoom" aria-pressed="false">Show corner crops</button>
+  <span class="look">Crops magnify the top-left corner, where a square strip over a rounded frame shows.</span>
+</div>
+<table>
+<thead><tr><th>Scene</th>{headers}</tr></thead>
+<tbody>
+{chr(10).join(rows)}
+</tbody>
+</table>
+<script>{JS}</script>
+"""
+    output = root / "measurements.json"
+    output.write_text(json.dumps(measurements, indent=2) + "\n")
+    (root / "index.html").write_text(page)
+
+    if not args.baseline.exists():
+        raise SystemExit(f"baseline not found: {args.baseline}")
+    assert_titlebar_ring(shots / "square-SA.png")
+    failures = regressions(
+        measurements,
+        json.loads(args.baseline.read_text()),
+        accept_new=args.update_baseline,
+    )
+    if failures:
+        raise SystemExit("stray-pixel regressions:\n  " + "\n  ".join(failures))
+    if args.update_baseline:
+        args.baseline.write_text(json.dumps(measurements, indent=2) + "\n")
+        print(f"updated {args.baseline}")
+
+    print(
+        f"wrote {root / 'index.html'} and {output} "
+        f"({len(SCENES)} scenes, {missing} missing)"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

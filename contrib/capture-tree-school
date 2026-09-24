@@ -1,0 +1,246 @@
+#!/usr/bin/env bash
+# Capture static images for the tree tutorial from a disposable nested swayward.
+#
+# The session starts from resources/default-config.kdl. Presentation overrides
+# enlarge terminal text and the intentional tab strip, set a neutral background,
+# suppress the first-run overlay, and use pixel borders where Foot already draws
+# a titlebar. Layout, gaps, and key bindings remain the shipped defaults.
+#
+# Scene IX raises the hotkey overlay with a real wtype keystroke, so the script
+# needs wtype in the container alongside grim, magick, foot and jq.
+#
+# Run this from the operator's live swayward session. The script identifies the
+# nested compositor by its new private socket and resizes only that exact host
+# container. It never sends a broad criterion command or lets the nested server
+# adopt the ambient SWAYSOCK.
+set -euo pipefail
+
+cd "$(dirname "$(readlink -f "$0")")/.." || exit
+REPO=$PWD
+HOST_SWAYSOCK=${SWAYSOCK:?capture-tree-school must run inside a live swayward session}
+CONTAINER=${CONTAINER:-swayward-dev}
+OUTDIR=${OUTDIR:-$REPO/docs/wiki/_assets/shots}
+TIMEOUT=${TIMEOUT:-180}
+MEMMAX=${MEMMAX:-2G}
+
+mkdir -p "$OUTDIR"
+
+distrobox enter "$CONTAINER" -- env \
+    CAPTURE_REPO="$REPO" \
+    CAPTURE_HOST_SWAYSOCK="$HOST_SWAYSOCK" \
+    CAPTURE_OUTDIR="$OUTDIR" \
+    CAPTURE_TIMEOUT="$TIMEOUT" \
+    CAPTURE_MEMMAX="$MEMMAX" \
+    bash -s <<'INNER'
+set -euo pipefail
+cd "$CAPTURE_REPO"
+
+cargo build -p swayward --bin swayward >/dev/null
+cargo build -p swayward-ipc --bin swaywardmsg >/dev/null
+
+RUNDIR=$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/swayward-tree-school.XXXXXX")
+PIDS=""
+SOCK=""
+cleanup() {
+    for pid in $PIDS; do
+        kill -9 "$pid" 2>/dev/null || true
+    done
+    [ -n "${NESTED_PID:-}" ] && kill -9 "$NESTED_PID" 2>/dev/null || true
+    [ -n "$SOCK" ] && rm -f "$SOCK" 2>/dev/null || true
+    rm -rf "$RUNDIR"
+}
+trap cleanup EXIT
+
+python3 - "$RUNDIR/config.kdl" <<'PY'
+from pathlib import Path
+import sys
+
+source = Path("resources/default-config.kdl").read_text()
+source = "\n".join(
+    line for line in source.splitlines() if "spawn-at-startup" not in line
+) + "\n"
+source = source.replace('font "monospace 10"', 'font "monospace 18"')
+source = source.replace("horizontal-padding 5", "horizontal-padding 10")
+source = source.replace("vertical-padding 4", "vertical-padding 7")
+# The shipped config deliberately shows a first-run help overlay. It is useful
+# in a session and catastrophic in a screenshot: every lesson becomes a photo
+# of the same help card with some rectangles hiding behind it.
+source = source.replace("    // skip-at-startup", "    skip-at-startup", 1)
+source += '\noutput "winit" { background-color "#111318"; }\n'
+Path(sys.argv[1]).write_text(source)
+PY
+
+unset SWAYSOCK I3SOCK
+STAMP=$(mktemp)
+systemd-run --user --scope --quiet \
+    -p MemoryMax="$CAPTURE_MEMMAX" -p MemorySwapMax=0 \
+    timeout "$CAPTURE_TIMEOUT" ./target/debug/swayward -c "$RUNDIR/config.kdl" \
+    >"$RUNDIR/swayward.log" 2>&1 &
+NESTED_PID=$!
+
+for _ in $(seq 1 80); do
+    SOCK=$(find "/run/user/$UID" -maxdepth 1 -name 'swayward-ipc.*.sock' \
+        -newer "$STAMP" -printf '%T@ %p\n' 2>/dev/null |
+        sort -rn | head -1 | cut -d' ' -f2-)
+    [ -n "$SOCK" ] && break
+    sleep .25
+done
+rm -f "$STAMP"
+test -n "$SOCK"
+
+REALPID=$(basename "$SOCK" | cut -d. -f3)
+CON_ID=""
+for _ in $(seq 1 40); do
+    CON_ID=$(./target/debug/swaywardmsg -s "$CAPTURE_HOST_SWAYSOCK" -t get_tree -r |
+        jq -r --argjson pid "$REALPID" \
+            '.. | objects | select(.pid? == $pid) | .id' | head -1)
+    [ -n "$CON_ID" ] && break
+    sleep .25
+done
+test -n "$CON_ID"
+
+# Touch only the exact nested compositor window. The host restores its layout
+# when this process exits.
+./target/debug/swaywardmsg -s "$CAPTURE_HOST_SWAYSOCK" \
+    "[con_id=$CON_ID] floating enable" >/dev/null
+./target/debug/swaywardmsg -s "$CAPTURE_HOST_SWAYSOCK" \
+    "[con_id=$CON_ID] resize set width 1280 px height 800 px" >/dev/null
+./target/debug/swaywardmsg -s "$CAPTURE_HOST_SWAYSOCK" \
+    "[con_id=$CON_ID] move position center" >/dev/null
+sleep 1
+
+DISP=$(basename "$SOCK" | cut -d. -f2)
+export SWAYSOCK="$SOCK" WAYLAND_DISPLAY="$DISP"
+
+window_count() {
+    ./target/debug/swaywardmsg -s "$SOCK" -t get_tree -r |
+        jq '[.. | objects
+             | select(.type? == "con" or .type? == "floating_con")
+             | select(.app_id? | strings | startswith("tree-"))] | length'
+}
+
+wait_windows() {
+    expected=$1
+    for _ in $(seq 1 80); do
+        [ "$(window_count)" = "$expected" ] && return
+        sleep .1
+    done
+    echo "timed out waiting for $expected tutorial windows" >&2
+    exit 1
+}
+
+clear_scene() {
+    ./target/debug/swaywardmsg -s "$SOCK" '[app_id="^tree-"] kill' >/dev/null 2>&1 || true
+    wait_windows 0
+}
+
+open_term() {
+    label=$1
+    foot -T "$label" -a "tree-$label" -f 'monospace:size=28' \
+        -o colors.background=1e1e2e -o colors.foreground=cdd6f4 \
+        -o colors.regular2=a6e3a1 -o colors.regular4=89b4fa \
+        sh -c "printf '\033[2J\033[H\n\n    WINDOW $label\n\n    The tree put me here.\n'; exec sleep 150" \
+        >"$RUNDIR/foot-$label.log" 2>&1 &
+    PIDS="$PIDS $!"
+}
+
+use_client_titlebars() {
+    # Foot already labels each window. A normal sway border would add the same
+    # title again above it; pixel keeps the focus border without the duplicate.
+    ./target/debug/swaywardmsg -s "$SOCK" '[app_id="^tree-"] border pixel 2' >/dev/null
+}
+
+capture() {
+    name=$1
+    sleep .5
+    grim -o winit "$CAPTURE_OUTDIR/$name.png"
+    magick "$CAPTURE_OUTDIR/$name.png" -strip -define png:compression-level=9 \
+        "$CAPTURE_OUTDIR/$name.png"
+    echo "captured $name.png"
+}
+
+# I: the insertion rule, visible without any tree vocabulary yet.
+clear_scene
+open_term A; wait_windows 1
+open_term B; wait_windows 2
+open_term C; wait_windows 3
+use_client_titlebars
+capture tree-01-three-window-row-v3
+
+# II: A beside a vertical branch containing B and C.
+clear_scene
+open_term A; wait_windows 1
+open_term B; wait_windows 2
+./target/debug/swaywardmsg -s "$SOCK" 'split v' >/dev/null
+open_term C; wait_windows 3
+use_client_titlebars
+capture tree-02-nested-split-v3
+
+# III: focus the parent branch. The active border expands around B and C.
+./target/debug/swaywardmsg -s "$SOCK" 'focus parent' >/dev/null
+capture tree-03-parent-focus-v3
+
+# IV: tab the outer row so one tab is the complete B/C splitv branch. Scene III
+# left the branch focused, so move focus to its parent first. Tab strips are
+# compositor titlebars, so this scene alone must use normal borders.
+./target/debug/swaywardmsg -s "$SOCK" 'focus parent' >/dev/null
+./target/debug/swaywardmsg -s "$SOCK" '[app_id="^tree-"] border normal 2' >/dev/null
+./target/debug/swaywardmsg -s "$SOCK" 'layout tabbed' >/dev/null
+capture tree-04-tabbed-branch-v5
+
+# V: a floating window is a separate stage in front of the tree.
+clear_scene
+open_term A; wait_windows 1
+open_term B; wait_windows 2
+./target/debug/swaywardmsg -s "$SOCK" '[app_id="tree-B"] floating enable' >/dev/null
+./target/debug/swaywardmsg -s "$SOCK" '[app_id="tree-B"] move position center' >/dev/null
+use_client_titlebars
+capture tree-05-floating-stage-v3
+
+# VI: the drawer closed.
+./target/debug/swaywardmsg -s "$SOCK" '[app_id="tree-B"] move scratchpad' >/dev/null
+capture tree-06-scratchpad-hidden-v3
+
+# VII: the drawer opened somewhere else. Summoning B back onto the workspace it
+# left produces a frame byte-identical to scene V, because the position really
+# is restored exactly; two identical files cannot tell a correct restore apart
+# from a capture that never ran. Summon onto a second workspace with a
+# different tiled shape instead, which also photographs the page's claim that a
+# scratchpad window has no workspace and lands on whichever one you are on.
+./target/debug/swaywardmsg -s "$SOCK" 'workspace 2' >/dev/null
+open_term C; wait_windows 3
+./target/debug/swaywardmsg -s "$SOCK" 'split v' >/dev/null
+open_term D; wait_windows 4
+use_client_titlebars
+./target/debug/swaywardmsg -s "$SOCK" 'scratchpad show' >/dev/null
+capture tree-07-scratchpad-summoned-v4
+
+# VIII: a tabbed container beside a stacked one. Both layouts draw compositor
+# titlebars, so this scene needs normal borders for the same reason scene IV
+# does. Stacked lists every child's titlebar; tabbed puts them in one strip.
+clear_scene
+open_term A; wait_windows 1
+open_term B; wait_windows 2
+./target/debug/swaywardmsg -s "$SOCK" 'layout tabbed' >/dev/null
+./target/debug/swaywardmsg -s "$SOCK" 'focus parent' >/dev/null
+./target/debug/swaywardmsg -s "$SOCK" 'split h' >/dev/null
+open_term C; wait_windows 3
+./target/debug/swaywardmsg -s "$SOCK" 'split v' >/dev/null
+open_term D; wait_windows 4
+./target/debug/swaywardmsg -s "$SOCK" 'layout stacking' >/dev/null
+./target/debug/swaywardmsg -s "$SOCK" '[app_id="^tree-"] border normal 2' >/dev/null
+capture tree-08-tabbed-and-stacked-v2
+
+# IX: the hotkey overlay the shipped config binds to Mod+Shift+Slash. The
+# nested mod key is Alt (Backend::mod_key), and the overlay has no IPC
+# accessor on the sway socket, so the only way to raise it is a real keystroke.
+clear_scene
+open_term A; wait_windows 1
+open_term B; wait_windows 2
+open_term C; wait_windows 3
+use_client_titlebars
+wtype -M alt -M shift -k slash
+capture tree-09-hotkey-overlay-v2
+
+identify "$CAPTURE_OUTDIR"/tree-*.png
+INNER

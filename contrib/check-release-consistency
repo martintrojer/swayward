@@ -1,0 +1,155 @@
+#!/usr/bin/env python3
+"""Check that release and package versions agree with Cargo.toml."""
+
+import argparse
+import re
+import subprocess
+import sys
+import tomllib
+from pathlib import Path
+
+
+def load_toml(path: Path):
+    with path.open("rb") as file:
+        return tomllib.load(file)
+
+
+def field(pattern: str, path: Path, errors: list[str]) -> str | None:
+    match = re.search(pattern, path.read_text(), re.MULTILINE)
+    if match is None:
+        errors.append(f"{path.name}: expected version field is missing")
+        return None
+    return match.group(1)
+
+
+def check(root: Path, tag: str | None) -> list[str]:
+    errors: list[str] = []
+    version = load_toml(root / "Cargo.toml")["workspace"]["package"]["version"]
+    arch_version = subprocess.check_output(
+        [root / "contrib/package-version", "arch", version], text=True
+    ).strip()
+
+    if tag is not None:
+        expected_tag = f"swayward-v{version}"
+        if tag != expected_tag:
+            errors.append(f"release tag is {tag!r}; expected {expected_tag!r}")
+
+    pkgbuild_path = root / "contrib/PKGBUILD"
+    pkgbuild = field(r"^pkgver=(\S+)$", pkgbuild_path, errors)
+    if pkgbuild is not None and pkgbuild != arch_version:
+        errors.append(
+            f"contrib/PKGBUILD: pkgver is {pkgbuild!r}; expected {arch_version!r}"
+        )
+    tag_version = field(r"^_tagver=(\S+)$", pkgbuild_path, errors)
+    if tag_version is not None and tag_version != version:
+        errors.append(
+            f"contrib/PKGBUILD: _tagver is {tag_version!r}; expected {version!r}"
+        )
+
+    srcinfo_path = root / "contrib/.SRCINFO"
+    srcinfo = field(r"^\s*pkgver = (\S+)$", srcinfo_path, errors)
+    if srcinfo is not None and srcinfo != arch_version:
+        errors.append(
+            f"contrib/.SRCINFO: pkgver is {srcinfo!r}; expected {arch_version!r}"
+        )
+    expected_srcinfo_source = (
+        f"source = swayward-{arch_version}.tar.gz::"
+        f"https://github.com/martintrojer/swayward/archive/refs/tags/"
+        f"swayward-v{version}.tar.gz"
+    )
+    srcinfo_text = srcinfo_path.read_text()
+    if expected_srcinfo_source not in srcinfo_text:
+        errors.append("contrib/.SRCINFO: source URL does not match the release tag")
+
+    pkgbuild_text = pkgbuild_path.read_text()
+    checkdepends_match = re.search(
+        r"^checkdepends=\(\n(?P<body>.*?)^\)$", pkgbuild_text, re.MULTILINE | re.DOTALL
+    )
+    pkgbuild_checkdepends = (
+        re.findall(r"'([^']+)'", checkdepends_match.group("body"))
+        if checkdepends_match is not None
+        else []
+    )
+    srcinfo_checkdepends = re.findall(
+        r"^\s*checkdepends = (\S+)$", srcinfo_text, re.MULTILINE
+    )
+    if srcinfo_checkdepends != pkgbuild_checkdepends:
+        errors.append("contrib/.SRCINFO: checkdepends does not match contrib/PKGBUILD")
+
+    lock = load_toml(root / "Cargo.lock")
+    workspace_packages = {
+        "swayward",
+        "swayward-config",
+        "swayward-ipc",
+        "swayward-visual-tests",
+    }
+    locked = {
+        package["name"]: package["version"]
+        for package in lock["package"]
+        if package["name"] in workspace_packages
+    }
+    for package in sorted(workspace_packages):
+        actual = locked.get(package)
+        if actual != version:
+            errors.append(f"Cargo.lock: {package} is {actual!r}; expected {version!r}")
+
+    for manifest in root.glob("*/Cargo.toml"):
+        text = manifest.read_text()
+        for match in re.finditer(
+            r'^\s*(swayward(?:-[A-Za-z0-9_-]+)?)\s*=\s*\{[^\n]*'
+            r'path\s*=\s*"[^"]+"[^\n]*\}\s*$',
+            text,
+            re.MULTILINE,
+        ):
+            dependency = match.group(1)
+            declaration = match.group(0)
+            pin = re.search(r'version\s*=\s*"([^"]+)"', declaration)
+            if pin is not None and pin.group(1) != version:
+                errors.append(
+                    f"{manifest.relative_to(root)}: {dependency} version is "
+                    f"{pin.group(1)!r}; expected {version!r}"
+                )
+
+    spec = (root / "swayward.spec.rpkg").read_text()
+    if "%global version {{{ git_dir_version }}}" not in spec:
+        errors.append("swayward.spec.rpkg: version is not derived from the source tag")
+
+    expected_source = (
+        'source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/'
+        'swayward-v$_tagver.tar.gz")'
+    )
+    if expected_source not in (root / "contrib/PKGBUILD").read_text():
+        errors.append("contrib/PKGBUILD: source URL is not derived from swayward-v$_tagver")
+
+    return errors
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "tag",
+        nargs="?",
+        help="release tag to verify (swayward-v<workspace version>)",
+    )
+    parser.add_argument(
+        "--root",
+        type=Path,
+        default=Path(__file__).resolve().parent.parent,
+        help=argparse.SUPPRESS,
+    )
+    args = parser.parse_args()
+
+    errors = check(args.root.resolve(), args.tag)
+    for error in errors:
+        print(f"check-release-consistency: {error}", file=sys.stderr)
+    if errors:
+        print(f"{len(errors)} release consistency violation(s)", file=sys.stderr)
+        return 1
+
+    version = load_toml(args.root / "Cargo.toml")["workspace"]["package"]["version"]
+    print(f"release metadata agrees on {version}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
