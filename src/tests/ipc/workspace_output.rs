@@ -531,6 +531,72 @@ fn move_workspace_focuses_the_moved_window_in_the_destination_reply() {
     );
 }
 
+/// Sway evacuates a non-empty workspace intact and records the fallback output
+/// in its priority list (`sway/tree/output.c:205-247`). When the unplugged
+/// output returns, `restore_workspaces` moves the workspace back to its
+/// highest-priority available output (`sway/tree/output.c:31-45,158-159`).
+#[test]
+fn nested_tabbed_and_stacked_splits_survive_output_unplug() {
+    fn output_holding<'a>(node: &'a Value, app_id: &str) -> Option<&'a Value> {
+        if node["type"] == "output" && find_json_node_with_app_id(node, app_id).is_some() {
+            return Some(node);
+        }
+        node["nodes"]
+            .as_array()?
+            .iter()
+            .find_map(|child| output_holding(child, app_id))
+    }
+
+    for layout in ["tabbed", "stacked"] {
+        let (mut f, socket) = ipc_fixture();
+        f.add_output(1, (1280, 720));
+        f.add_output(2, (1920, 1080));
+        let unplugged_name = f.niri_output(1).name();
+        let fallback_name = f.niri_output(2).name();
+        let client = f.add_client();
+
+        map_test_window(&mut f, client, "outside");
+        assert!(crate::command::execute(f.niri_state(), "split horizontal")[0].success);
+        map_test_window(&mut f, client, "nested-1");
+        assert!(crate::command::execute(f.niri_state(), "split vertical")[0].success);
+        map_test_window(&mut f, client, "nested-2");
+        assert!(crate::command::execute(f.niri_state(), &format!("layout {layout}"))[0].success);
+
+        let removed = f.niri_output(1);
+        f.swayward().remove_output(&removed);
+
+        let mut stream = UnixStream::connect(&socket).unwrap();
+        let tree = query_ipc(&mut f, &mut stream, MessageType::GetTree);
+        let output = output_holding(&tree, "outside").unwrap();
+        assert_eq!(output["name"], fallback_name, "{layout}: evacuation");
+        let workspace = find_json_parent_of_app_id(output, "outside").unwrap();
+        assert_eq!(workspace["layout"], "splith", "{layout}: outer split");
+        assert_eq!(workspace["nodes"].as_array().unwrap().len(), 2);
+        assert_eq!(workspace["nodes"][0]["app_id"], "outside");
+        let nested = &workspace["nodes"][1];
+        assert_eq!(nested["layout"], layout, "{layout}: nested split");
+        assert_eq!(nested["nodes"][0]["app_id"], "nested-1");
+        assert_eq!(nested["nodes"][1]["app_id"], "nested-2");
+        assert_eq!(nested["focus"][0], nested["nodes"][1]["id"]);
+        assert_eq!(nested["nodes"][1]["focused"], true, "{layout}: focus");
+
+        f.add_named_output_at(unplugged_name.clone(), (1280, 720), None);
+        let tree = query_ipc(&mut f, &mut stream, MessageType::GetTree);
+        let output = output_holding(&tree, "outside").unwrap();
+        assert_eq!(output["name"], unplugged_name, "{layout}: restoration");
+        let workspace = find_json_parent_of_app_id(output, "outside").unwrap();
+        assert_eq!(workspace["layout"], "splith");
+        assert_eq!(workspace["nodes"][1]["layout"], layout);
+        assert_eq!(workspace["nodes"][1]["nodes"][0]["app_id"], "nested-1");
+        assert_eq!(workspace["nodes"][1]["nodes"][1]["app_id"], "nested-2");
+        assert_eq!(
+            workspace["nodes"][1]["focus"][0],
+            workspace["nodes"][1]["nodes"][1]["id"]
+        );
+        assert_eq!(workspace["nodes"][1]["nodes"][1]["focused"], true);
+    }
+}
+
 #[test]
 fn workspace_output_assignment_moves_the_workspace() {
     let mut f = Fixture::new();

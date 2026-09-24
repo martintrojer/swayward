@@ -1193,8 +1193,11 @@ impl<W: LayoutElement> Layout<W> {
             MonitorSet::Normal {
                 mut monitors,
                 primary_idx,
-                active_monitor_idx,
+                mut active_monitor_idx,
             } => {
+                let focused_workspace = monitors[active_monitor_idx].workspaces
+                    [monitors[active_monitor_idx].active_workspace_idx]
+                    .id();
                 let primary = &mut monitors[primary_idx];
 
                 let mut stopped_primary_ws_switch = false;
@@ -1250,6 +1253,9 @@ impl<W: LayoutElement> Layout<W> {
                 }
 
                 workspaces.reverse();
+                let restores_focused_workspace = workspaces
+                    .iter()
+                    .any(|workspace| workspace.id() == focused_workspace);
 
                 let ws_id_to_activate = self.last_active_workspace_id.remove(&output.name());
 
@@ -1270,6 +1276,9 @@ impl<W: LayoutElement> Layout<W> {
                 // monitor need not end in an empty placeholder.
                 monitor.reap_empty_workspaces();
                 monitors.push(monitor);
+                if restores_focused_workspace {
+                    active_monitor_idx = monitors.len() - 1;
+                }
                 // Reclaiming workspaces mutates the monitor they came from too,
                 // and sorting can leave it ending in an addressable workspace.
                 // Only repair monitors that actually lost one: restoring
@@ -1322,11 +1331,12 @@ impl<W: LayoutElement> Layout<W> {
                     .position(|mon| &mon.output == output)
                     .expect("trying to remove non-existing output");
                 let monitor = monitors.remove(idx);
+                let removed_was_active = active_monitor_idx == idx;
+                let removed_active_workspace =
+                    monitor.workspaces[monitor.active_workspace_idx].id();
 
-                self.last_active_workspace_id.insert(
-                    monitor.output_name().clone(),
-                    monitor.workspaces[monitor.active_workspace_idx].id(),
-                );
+                self.last_active_workspace_id
+                    .insert(monitor.output_name().clone(), removed_active_workspace);
 
                 let mut workspaces = monitor.into_workspaces();
 
@@ -1379,6 +1389,12 @@ impl<W: LayoutElement> Layout<W> {
                         );
                     }
                     primary.append_workspaces(workspaces);
+                    if removed_was_active {
+                        if let Some(idx) = primary.idx_of_ws(removed_active_workspace) {
+                            primary.active_workspace_idx = idx;
+                            active_monitor_idx = primary_idx;
+                        }
+                    }
 
                     MonitorSet::Normal {
                         monitors,

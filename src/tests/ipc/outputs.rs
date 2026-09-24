@@ -223,8 +223,10 @@ fn drain_workspace_window_events(
 /// Sway's session-lock implementation changes seat focus but does not call
 /// `ipc_event_workspace` or `ipc_event_window` (`sway/desktop/session_lock.c`).
 /// Output power and idle wake likewise have no workspace/window event. A real
-/// connector replug moves the affected workspace, and focus commands retain
-/// their ordinary one-event-per-transition behavior while locked.
+/// connector replug moves the affected workspace; restoring the focused
+/// workspace also empties the fallback output, so sway creates its replacement
+/// workspace (`sway/tree/output.c:48-56`). Focus commands retain their ordinary
+/// one-event-per-transition behavior while locked.
 #[test]
 fn lock_power_idle_and_hotplug_have_bounded_workspace_window_events() {
     let (mut fixture, socket) = ipc_fixture();
@@ -348,7 +350,7 @@ fn lock_power_idle_and_hotplug_have_bounded_workspace_window_events() {
             .iter()
             .map(|event| event["change"].as_str().unwrap())
             .collect::<Vec<_>>(),
-        ["move", "focus", "move"]
+        ["move", "empty", "init", "move"]
     );
     remainder = next;
 

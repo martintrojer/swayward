@@ -2056,7 +2056,7 @@ fn window_closed_on_previous_workspace() {
 }
 
 #[test]
-fn removing_output_must_keep_empty_focus_on_primary() {
+fn removing_active_output_focuses_its_evacuated_workspace() {
     let ops = [
         Op::AddOutput(1),
         Op::AddWindow {
@@ -2072,9 +2072,9 @@ fn removing_output_must_keep_empty_focus_on_primary() {
         unreachable!()
     };
 
-    // The workspace from the removed output was inserted at position 0, so the active workspace
-    // must change to 1 to keep the focus on the empty workspace.
-    assert_eq!(monitors[0].active_workspace_idx, 1);
+    // Sway keeps focus on the evacuated non-empty workspace rather than the
+    // surviving output's previously active empty workspace.
+    assert_eq!(monitors[0].active_workspace_idx, 0);
 }
 
 #[test]
