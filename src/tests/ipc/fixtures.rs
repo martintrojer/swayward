@@ -765,32 +765,31 @@ fn two_ipc_fixtures_get_distinct_live_sockets() {
 
 // No test may construct its server through `IpcServer::start`, which adopts
 // the ambient `$SWAYSOCK`. Reviewing a diff does not catch a reintroduced
-// caller, so assert it against every split source file. This remains a helper
-// rather than a separate test to preserve the pre-split test list.
+// caller, so assert it against every Rust source under src/tests. This remains
+// a helper rather than a separate test to preserve the pre-split test list.
 fn no_test_server_adopts_the_ambient_swaysock() {
-    let sources = [
-        include_str!("fixtures.rs"),
-        include_str!("wire.rs"),
-        include_str!("events.rs"),
-        include_str!("outputs.rs"),
-        include_str!("bindings.rs"),
-        include_str!("config_commands.rs"),
-        include_str!("tree_commands.rs"),
-        include_str!("workspace_commands.rs"),
-        include_str!("focus_and_move.rs"),
-        include_str!("workspace_output.rs"),
-        include_str!("floating_commands.rs"),
-        include_str!("misc_commands.rs"),
-    ];
+    let mut pending = vec![std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/tests")];
     let needle = format!("IpcServer::{}(", "start");
-    assert_eq!(
-        sources
-            .iter()
-            .map(|source| source.matches(&needle).count())
-            .sum::<usize>(),
-        0,
+    let mut adopting_callers = Vec::new();
+
+    while let Some(path) = pending.pop() {
+        for entry in std::fs::read_dir(path).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            if path.is_dir() {
+                pending.push(path);
+            } else if path.extension().is_some_and(|extension| extension == "rs")
+                && std::fs::read_to_string(&path).unwrap().contains(&needle)
+            {
+                adopting_callers.push(path);
+            }
+        }
+    }
+
+    assert!(
+        adopting_callers.is_empty(),
         "use IpcServer::start_at with test_socket_path(); `start` reads $SWAYSOCK \
-         and can hijack the operator's live sway session"
+         and can hijack the operator's live sway session; callers: {adopting_callers:?}"
     );
 }
 
