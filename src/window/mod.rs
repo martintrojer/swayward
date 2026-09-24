@@ -1,18 +1,18 @@
 use std::cmp::{max, min};
 
-use niri_config::utils::MergeWith as _;
-use niri_config::window_rule::{Match, OnXdgActivate, WindowRule};
-use niri_config::{
-    BackgroundEffect, BlockOutFrom, BorderRule, CornerRadius, FloatingPosition, PresetSize,
-    ResolvedPopupsRules, ShadowRule, TabIndicatorRule,
-};
-use niri_ipc::ColumnDisplay;
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::utils::{Logical, Size};
 use smithay::wayland::compositor::with_states;
 use smithay::wayland::shell::xdg::{
     SurfaceCachedState, ToplevelSurface, XdgToplevelSurfaceRoleAttributes,
 };
+use swayward_config::utils::MergeWith as _;
+use swayward_config::window_rule::{Match, OnXdgActivate, WindowRule};
+use swayward_config::{
+    BackgroundEffect, BlockOutFrom, BorderRule, CornerRadius, FloatingPosition, PresetSize,
+    ResolvedPopupsRules, ShadowRule, TabIndicatorRule,
+};
+use swayward_ipc::ColumnDisplay;
 
 use crate::utils::with_toplevel_role;
 
@@ -58,6 +58,9 @@ pub struct ResolvedWindowRules {
     /// Workspace to open this window on.
     pub open_on_workspace: Option<String>,
 
+    /// Numbered workspace to open this window on.
+    pub open_on_workspace_number: Option<String>,
+
     /// Whether the window should open full-width.
     pub open_maximized: Option<bool>,
 
@@ -73,8 +76,16 @@ pub struct ResolvedWindowRules {
     /// Whether the window should open focused.
     pub open_focused: Option<bool>,
 
+    pub sway_border: Option<swayward_ipc::command::BorderStyle>,
+    pub sway_border_width: Option<u16>,
+    pub sway_floating_border: Option<swayward_ipc::command::BorderStyle>,
+    pub sway_floating_border_width: Option<u16>,
+
     /// What to do on xdg-activation requests.
     pub on_xdg_activate: Option<OnXdgActivate>,
+
+    /// Sway `for_window` commands to run once when this window maps.
+    pub sway_for_window_commands: Vec<String>,
 
     /// Extra bound on the minimum window width.
     pub min_width: Option<u16>,
@@ -187,6 +198,10 @@ impl ResolvedWindowRules {
         let _span = tracy_client::span!("ResolvedWindowRules::compute");
 
         let mut resolved = ResolvedWindowRules::default();
+        let current = match window {
+            WindowRef::Mapped(mapped) => Some(mapped.resolved_rules().clone()),
+            WindowRef::Unmapped(_) => None,
+        };
 
         with_toplevel_role(window.toplevel(), |role| {
             // Ensure server_pending like in Smithay's with_pending_state().
@@ -196,6 +211,7 @@ impl ResolvedWindowRules {
 
             let mut open_on_output = None;
             let mut open_on_workspace = None;
+            let mut open_on_workspace_number = None;
 
             for rule in rules {
                 let matches = |m: &Match| {
@@ -238,6 +254,12 @@ impl ResolvedWindowRules {
 
                 if let Some(x) = rule.open_on_workspace.as_deref() {
                     open_on_workspace = Some(x);
+                    open_on_workspace_number = None;
+                }
+
+                if let Some(x) = rule.open_on_workspace_number.as_deref() {
+                    open_on_workspace = None;
+                    open_on_workspace_number = Some(x);
                 }
 
                 if let Some(x) = rule.open_maximized {
@@ -259,10 +281,25 @@ impl ResolvedWindowRules {
                 if let Some(x) = rule.open_focused {
                     resolved.open_focused = Some(x);
                 }
+                if let Some(x) = rule.sway_border {
+                    resolved.sway_border = Some(x.into());
+                }
+                if let Some(x) = rule.sway_border_width {
+                    resolved.sway_border_width = Some(x);
+                }
+                if let Some(x) = rule.sway_floating_border {
+                    resolved.sway_floating_border = Some(x.into());
+                }
+                if let Some(x) = rule.sway_floating_border_width {
+                    resolved.sway_floating_border_width = Some(x);
+                }
 
                 if let Some(x) = rule.on_xdg_activate {
                     resolved.on_xdg_activate = Some(x);
                 }
+                resolved
+                    .sway_for_window_commands
+                    .extend(rule.sway_for_window_commands.iter().cloned());
 
                 if let Some(x) = rule.min_width {
                     resolved.min_width = Some(x);
@@ -319,6 +356,13 @@ impl ResolvedWindowRules {
 
             resolved.open_on_output = open_on_output.map(|x| x.to_owned());
             resolved.open_on_workspace = open_on_workspace.map(|x| x.to_owned());
+            resolved.open_on_workspace_number = open_on_workspace_number.map(|x| x.to_owned());
+            if let Some(current) = current {
+                resolved.sway_border = current.sway_border;
+                resolved.sway_border_width = current.sway_border_width;
+                resolved.sway_floating_border = current.sway_floating_border;
+                resolved.sway_floating_border_width = current.sway_floating_border_width;
+            }
         });
 
         resolved

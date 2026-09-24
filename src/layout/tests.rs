@@ -1,19 +1,18 @@
 use std::cell::{Cell, OnceCell, RefCell};
 
-use niri_config::utils::Flag;
-use niri_config::workspace::WorkspaceName;
-use niri_config::{
-    CenterFocusedColumn, FloatOrInt, OutputName, Struts, TabIndicatorLength, TabIndicatorPosition,
-    WorkspaceReference,
-};
 use proptest::prelude::*;
 use proptest_derive::Arbitrary;
 use smithay::output::{Mode, PhysicalProperties, Subpixel};
 use smithay::utils::Rectangle;
+use swayward_config::utils::Flag;
+use swayward_config::workspace::WorkspaceName;
+use swayward_config::{
+    FloatOrInt, OutputName, Struts, TabIndicatorLength, TabIndicatorPosition, WorkspaceReference,
+};
 
+use super::tiling_tree::IpcNode;
 use super::*;
 
-mod animations;
 mod fullscreen;
 
 impl<W: LayoutElement> Default for Layout<W> {
@@ -41,6 +40,7 @@ struct TestWindowInner {
     animate_next_configure: Cell<bool>,
     animation_snapshot: RefCell<Option<LayoutElementRenderSnapshot>>,
     rules: ResolvedWindowRules,
+    focus_timestamp: Cell<Option<Duration>>,
 }
 
 #[derive(Debug, Clone)]
@@ -93,6 +93,7 @@ impl TestWindow {
             animate_next_configure: Cell::new(false),
             animation_snapshot: RefCell::new(None),
             rules: params.rules.unwrap_or_default(),
+            focus_timestamp: Cell::new(None),
         }))
     }
 
@@ -154,6 +155,10 @@ impl LayoutElement for TestWindow {
 
     fn id(&self) -> &Self::Id {
         &self.0.id
+    }
+
+    fn focus_timestamp(&self) -> Option<Duration> {
+        self.0.focus_timestamp.get()
     }
 
     fn size(&self) -> Size<i32, Logical> {
@@ -308,13 +313,19 @@ fn arbitrary_size_change() -> impl Strategy<Value = SizeChange> {
 }
 
 fn arbitrary_position_change() -> impl Strategy<Value = PositionChange> {
+    // Sway parses fixed movement amounts with strtol into an int
+    // (`sway/common/util.c:80-102`), and swayward's command parser narrows them
+    // to i32 before constructing PositionChange. Generating arbitrary f64
+    // fixed positions exercises states no command can create; values near
+    // f64::MAX overflow to infinity when multiplied by output scale. Position
+    // proportions must also be finite because non-finite inputs are no-ops.
+    let proportion =
+        any::<f64>().prop_filter("proportion must be finite", |value| value.is_finite());
     prop_oneof![
-        (-1000f64..1000f64).prop_map(PositionChange::SetFixed),
-        any::<f64>().prop_map(PositionChange::SetProportion),
-        (-1000f64..1000f64).prop_map(PositionChange::AdjustFixed),
-        any::<f64>().prop_map(PositionChange::AdjustProportion),
-        any::<f64>().prop_map(PositionChange::SetFixed),
-        any::<f64>().prop_map(PositionChange::AdjustFixed),
+        any::<i32>().prop_map(|value| PositionChange::SetFixed(f64::from(value))),
+        proportion.clone().prop_map(PositionChange::SetProportion),
+        any::<i32>().prop_map(|value| PositionChange::AdjustFixed(f64::from(value))),
+        proportion.prop_map(PositionChange::AdjustProportion),
     ]
 }
 
@@ -404,6 +415,32 @@ fn arbitrary_column_display() -> impl Strategy<Value = ColumnDisplay> {
     prop_oneof![Just(ColumnDisplay::Normal), Just(ColumnDisplay::Tabbed)]
 }
 
+fn arbitrary_default_orientation() -> impl Strategy<Value = swayward_config::DefaultOrientation> {
+    prop_oneof![
+        Just(swayward_config::DefaultOrientation::Horizontal),
+        Just(swayward_config::DefaultOrientation::Vertical),
+        Just(swayward_config::DefaultOrientation::Auto),
+    ]
+}
+
+fn arbitrary_tree_layout() -> impl Strategy<Value = tiling_tree::Layout> {
+    prop_oneof![
+        Just(tiling_tree::Layout::SplitH),
+        Just(tiling_tree::Layout::SplitV),
+        Just(tiling_tree::Layout::Tabbed),
+        Just(tiling_tree::Layout::Stacked),
+    ]
+}
+
+fn arbitrary_tree_direction() -> impl Strategy<Value = tiling_tree::Direction> {
+    prop_oneof![
+        Just(tiling_tree::Direction::Left),
+        Just(tiling_tree::Direction::Right),
+        Just(tiling_tree::Direction::Up),
+        Just(tiling_tree::Direction::Down),
+    ]
+}
+
 #[derive(Debug, Clone, Arbitrary)]
 enum Op {
     AddOutput(#[proptest(strategy = "1..=5usize")] usize),
@@ -413,7 +450,7 @@ enum Op {
         #[proptest(strategy = "arbitrary_scale()")]
         scale: f64,
         #[proptest(strategy = "prop::option::of(arbitrary_layout_part().prop_map(Box::new))")]
-        layout_config: Option<Box<niri_config::LayoutPart>>,
+        layout_config: Option<Box<swayward_config::LayoutPart>>,
     },
     RemoveOutput(#[proptest(strategy = "1..=5usize")] usize),
     FocusOutput(#[proptest(strategy = "1..=5usize")] usize),
@@ -421,7 +458,7 @@ enum Op {
         #[proptest(strategy = "1..=5usize")]
         id: usize,
         #[proptest(strategy = "prop::option::of(arbitrary_layout_part().prop_map(Box::new))")]
-        layout_config: Option<Box<niri_config::LayoutPart>>,
+        layout_config: Option<Box<swayward_config::LayoutPart>>,
     },
     AddNamedWorkspace {
         #[proptest(strategy = "1..=5usize")]
@@ -429,7 +466,7 @@ enum Op {
         #[proptest(strategy = "prop::option::of(1..=5usize)")]
         output_name: Option<usize>,
         #[proptest(strategy = "prop::option::of(arbitrary_layout_part().prop_map(Box::new))")]
-        layout_config: Option<Box<niri_config::LayoutPart>>,
+        layout_config: Option<Box<swayward_config::LayoutPart>>,
     },
     UnnameWorkspace {
         #[proptest(strategy = "1..=5usize")]
@@ -439,7 +476,7 @@ enum Op {
         #[proptest(strategy = "1..=5usize")]
         ws_name: usize,
         #[proptest(strategy = "prop::option::of(arbitrary_layout_part().prop_map(Box::new))")]
-        layout_config: Option<Box<niri_config::LayoutPart>>,
+        layout_config: Option<Box<swayward_config::LayoutPart>>,
     },
     AddWindow {
         params: TestWindowParams,
@@ -496,6 +533,13 @@ enum Op {
     MoveColumnToIndex(#[proptest(strategy = "1..=5usize")] usize),
     MoveWindowDown,
     MoveWindowUp,
+    MoveWindowInDirection(
+        #[proptest(strategy = "arbitrary_tree_direction()")] tiling_tree::Direction,
+    ),
+    SplitFocused(#[proptest(strategy = "arbitrary_tree_layout()")] tiling_tree::Layout),
+    SetFocusedLayout(#[proptest(strategy = "arbitrary_tree_layout()")] tiling_tree::Layout),
+    FocusParent,
+    FocusChild,
     MoveWindowDownOrToWorkspaceDown,
     MoveWindowUpOrToWorkspaceUp,
     ConsumeOrExpelWindowLeft {
@@ -672,20 +716,6 @@ enum Op {
     ViewOffsetGestureEnd {
         is_touchpad: Option<bool>,
     },
-    WorkspaceSwitchGestureBegin {
-        #[proptest(strategy = "1..=5usize")]
-        output_idx: usize,
-        is_touchpad: bool,
-    },
-    WorkspaceSwitchGestureUpdate {
-        #[proptest(strategy = "-400f64..400f64")]
-        delta: f64,
-        timestamp: Duration,
-        is_touchpad: bool,
-    },
-    WorkspaceSwitchGestureEnd {
-        is_touchpad: Option<bool>,
-    },
     OverviewGestureBegin,
     OverviewGestureUpdate {
         #[proptest(strategy = "-400f64..400f64")]
@@ -751,8 +781,12 @@ enum Op {
     ToggleOverview,
     UpdateConfig {
         #[proptest(strategy = "arbitrary_layout_part().prop_map(Box::new)")]
-        layout_config: Box<niri_config::LayoutPart>,
+        layout_config: Box<swayward_config::LayoutPart>,
     },
+    SetDefaultOrientation(
+        #[proptest(strategy = "arbitrary_default_orientation()")]
+        swayward_config::DefaultOrientation,
+    ),
 }
 
 impl Op {
@@ -859,8 +893,9 @@ impl Op {
             } => {
                 layout.ensure_named_workspace(&WorkspaceConfig {
                     name: WorkspaceName(format!("ws{ws_name}")),
+                    sway_output_assignment: None,
                     open_on_output: output_name.map(|name| format!("output{name}")),
-                    layout: layout_config.map(|x| niri_config::WorkspaceLayoutPart(*x)),
+                    layout: layout_config.map(|x| swayward_config::WorkspaceLayoutPart(*x)),
                 });
             }
             Op::UnnameWorkspace { ws_name } => {
@@ -1082,8 +1117,12 @@ impl Op {
                 }
                 layout.toggle_windowed_fullscreen(&id);
             }
-            Op::FocusColumnLeft => layout.focus_left(),
-            Op::FocusColumnRight => layout.focus_right(),
+            Op::FocusColumnLeft => {
+                layout.focus_left();
+            }
+            Op::FocusColumnRight => {
+                layout.focus_right();
+            }
             Op::FocusColumnFirst => layout.focus_column_first(),
             Op::FocusColumnLast => layout.focus_column_last(),
             Op::FocusColumnRightOrFirst => layout.focus_column_right_or_first(),
@@ -1121,8 +1160,12 @@ impl Op {
 
                 layout.focus_column_right_or_output(&output);
             }
-            Op::FocusWindowDown => layout.focus_down(),
-            Op::FocusWindowUp => layout.focus_up(),
+            Op::FocusWindowDown => {
+                layout.focus_down();
+            }
+            Op::FocusWindowUp => {
+                layout.focus_up();
+            }
             Op::FocusWindowDownOrColumnLeft => layout.focus_down_or_left(),
             Op::FocusWindowDownOrColumnRight => layout.focus_down_or_right(),
             Op::FocusWindowUpOrColumnLeft => layout.focus_up_or_left(),
@@ -1135,8 +1178,12 @@ impl Op {
             Op::FocusWindowBottom => layout.focus_window_bottom(),
             Op::FocusWindowDownOrTop => layout.focus_window_down_or_top(),
             Op::FocusWindowUpOrBottom => layout.focus_window_up_or_bottom(),
-            Op::MoveColumnLeft => layout.move_left(),
-            Op::MoveColumnRight => layout.move_right(),
+            Op::MoveColumnLeft => {
+                layout.move_left();
+            }
+            Op::MoveColumnRight => {
+                layout.move_right();
+            }
             Op::MoveColumnToFirst => layout.move_column_to_first(),
             Op::MoveColumnToLast => layout.move_column_to_last(),
             Op::MoveColumnLeftOrToMonitorLeft(id) => {
@@ -1156,8 +1203,31 @@ impl Op {
                 layout.move_column_right_or_to_output(&output);
             }
             Op::MoveColumnToIndex(index) => layout.move_column_to_index(index),
-            Op::MoveWindowDown => layout.move_down(),
-            Op::MoveWindowUp => layout.move_up(),
+            Op::MoveWindowDown => {
+                layout.move_down();
+            }
+            Op::MoveWindowUp => {
+                layout.move_up();
+            }
+            Op::MoveWindowInDirection(direction) => {
+                if let Some(id) = layout.focus().map(|window| window.id().to_owned()) {
+                    layout.move_window_in_direction(&id, direction, 10.);
+                }
+            }
+            Op::SplitFocused(tree_layout) => layout.split_focused(tree_layout),
+            Op::SetFocusedLayout(tree_layout) => {
+                layout.set_focused_layout(tree_layout);
+            }
+            Op::FocusParent => {
+                if layout.focus().is_some() {
+                    layout.focus_parent();
+                }
+            }
+            Op::FocusChild => {
+                if layout.focus().is_some() {
+                    layout.focus_child();
+                }
+            }
             Op::MoveWindowDownOrToWorkspaceDown => layout.move_down_or_to_workspace_down(),
             Op::MoveWindowUpOrToWorkspaceUp => layout.move_up_or_to_workspace_up(),
             Op::ConsumeOrExpelWindowLeft { id } => {
@@ -1302,7 +1372,9 @@ impl Op {
                     return;
                 };
 
-                layout.move_workspace_to_output_by_id(old_idx, Some(old_output), &output);
+                let workspace_id =
+                    layout.monitor_for_output(&old_output).unwrap().workspaces[old_idx].id();
+                layout.move_workspace_to_output_by_id(workspace_id, Some(old_output), &output);
             }
             Op::SwitchPresetColumnWidth => layout.toggle_width(true),
             Op::SwitchPresetColumnWidthBack => layout.toggle_width(false),
@@ -1531,27 +1603,6 @@ impl Op {
             Op::ViewOffsetGestureEnd { is_touchpad } => {
                 layout.view_offset_gesture_end(is_touchpad);
             }
-            Op::WorkspaceSwitchGestureBegin {
-                output_idx: id,
-                is_touchpad,
-            } => {
-                let name = format!("output{id}");
-                let Some(output) = layout.outputs().find(|o| o.name() == name).cloned() else {
-                    return;
-                };
-
-                layout.workspace_switch_gesture_begin(&output, is_touchpad);
-            }
-            Op::WorkspaceSwitchGestureUpdate {
-                delta,
-                timestamp,
-                is_touchpad,
-            } => {
-                layout.workspace_switch_gesture_update(delta, timestamp, is_touchpad);
-            }
-            Op::WorkspaceSwitchGestureEnd { is_touchpad } => {
-                layout.workspace_switch_gesture_end(is_touchpad);
-            }
             Op::OverviewGestureBegin => {
                 layout.overview_gesture_begin();
             }
@@ -1619,10 +1670,15 @@ impl Op {
             }
             Op::UpdateConfig { layout_config } => {
                 let options = Options {
-                    layout: niri_config::Layout::from_part(&layout_config),
+                    layout: swayward_config::Layout::from_part(&layout_config),
                     ..Default::default()
                 };
 
+                layout.update_options(options);
+            }
+            Op::SetDefaultOrientation(default_orientation) => {
+                let mut options = Options::clone(&layout.options);
+                options.layout.default_orientation = default_orientation;
                 layout.update_options(options);
             }
         }
@@ -1745,6 +1801,16 @@ fn operations_dont_panic() {
         Op::MoveWindowDownOrToWorkspaceDown,
         Op::MoveWindowUp,
         Op::MoveWindowUpOrToWorkspaceUp,
+        Op::MoveWindowInDirection(tiling_tree::Direction::Left),
+        Op::MoveWindowInDirection(tiling_tree::Direction::Right),
+        Op::MoveWindowInDirection(tiling_tree::Direction::Up),
+        Op::MoveWindowInDirection(tiling_tree::Direction::Down),
+        Op::SplitFocused(tiling_tree::Layout::SplitH),
+        Op::SplitFocused(tiling_tree::Layout::SplitV),
+        Op::SetFocusedLayout(tiling_tree::Layout::Tabbed),
+        Op::SetFocusedLayout(tiling_tree::Layout::Stacked),
+        Op::FocusParent,
+        Op::FocusChild,
         Op::ConsumeOrExpelWindowLeft { id: None },
         Op::ConsumeOrExpelWindowRight { id: None },
         Op::MoveWorkspaceToOutput(1),
@@ -1925,6 +1991,16 @@ fn operations_from_starting_state_dont_panic() {
         Op::MoveWindowDownOrToWorkspaceDown,
         Op::MoveWindowUp,
         Op::MoveWindowUpOrToWorkspaceUp,
+        Op::MoveWindowInDirection(tiling_tree::Direction::Left),
+        Op::MoveWindowInDirection(tiling_tree::Direction::Right),
+        Op::MoveWindowInDirection(tiling_tree::Direction::Up),
+        Op::MoveWindowInDirection(tiling_tree::Direction::Down),
+        Op::SplitFocused(tiling_tree::Layout::SplitH),
+        Op::SplitFocused(tiling_tree::Layout::SplitV),
+        Op::SetFocusedLayout(tiling_tree::Layout::Tabbed),
+        Op::SetFocusedLayout(tiling_tree::Layout::Stacked),
+        Op::FocusParent,
+        Op::FocusChild,
         Op::ConsumeOrExpelWindowLeft { id: None },
         Op::ConsumeOrExpelWindowRight { id: None },
         Op::ToggleColumnTabbedDisplay,
@@ -2010,6 +2086,128 @@ fn removing_output_must_keep_empty_focus_on_primary() {
 }
 
 #[test]
+fn move_down_creates_named_destination_before_moving_window() {
+    let mut layout = Layout::default();
+    Op::AddOutput(1).apply(&mut layout);
+    Op::AddWindow {
+        params: TestWindowParams::new(0),
+    }
+    .apply(&mut layout);
+
+    layout.move_to_workspace_down(true);
+
+    let workspace = layout
+        .workspaces()
+        .find(|(_, _, workspace)| workspace.has_window(&0))
+        .map(|(_, _, workspace)| workspace)
+        .unwrap();
+    assert_eq!(workspace.sway_name().as_deref(), Some("2"));
+}
+
+#[test]
+fn move_column_down_creates_named_destination_before_detaching() {
+    let mut layout = Layout::default();
+    Op::AddOutput(1).apply(&mut layout);
+    Op::AddWindow {
+        params: TestWindowParams::new(0),
+    }
+    .apply(&mut layout);
+
+    layout.move_column_to_workspace_down(true);
+
+    let workspace = layout
+        .workspaces()
+        .find(|(_, _, workspace)| workspace.has_window(&0))
+        .map(|(_, _, workspace)| workspace)
+        .unwrap();
+    assert_eq!(workspace.sway_name().as_deref(), Some("2"));
+}
+
+#[test]
+fn move_column_to_output_names_destination_before_detaching() {
+    let mut layout = Layout::default();
+    Op::AddOutput(1).apply(&mut layout);
+    Op::AddWindow {
+        params: TestWindowParams::new(0),
+    }
+    .apply(&mut layout);
+    Op::AddOutput(2).apply(&mut layout);
+    let output = layout
+        .outputs()
+        .find(|output| output.name() == "output2")
+        .unwrap()
+        .clone();
+
+    layout.move_column_to_output(&output, None, true);
+
+    let workspace = layout
+        .monitor_for_output(&output)
+        .unwrap()
+        .workspaces
+        .iter()
+        .find(|workspace| workspace.has_window(&0))
+        .unwrap();
+    assert_eq!(workspace.sway_name().as_deref(), Some("2"));
+}
+
+#[test]
+fn sway_move_sorts_new_destination_before_moving_window() {
+    let mut layout = Layout::default();
+    Op::AddOutput(1).apply(&mut layout);
+    layout
+        .activate_sway_workspace(crate::command::WorkspaceTarget::Name("10".into()))
+        .unwrap();
+    Op::AddWindow {
+        params: TestWindowParams::new(0),
+    }
+    .apply(&mut layout);
+
+    layout
+        .move_window_to_sway_workspace(&0, crate::command::WorkspaceTarget::Name("2".into()), false)
+        .unwrap();
+
+    let monitor = layout.active_monitor_ref().unwrap();
+    let names = monitor
+        .workspaces
+        .iter()
+        .filter_map(Workspace::sway_name)
+        .collect::<Vec<_>>();
+    assert_eq!(names, ["1", "2", "10"]);
+    assert!(monitor
+        .workspaces
+        .iter()
+        .find(|workspace| workspace.has_window(&0))
+        .is_some_and(|workspace| workspace.sway_name().as_deref() == Some("2")));
+}
+
+#[test]
+fn move_to_output_names_destination_before_moving_window() {
+    let mut layout = Layout::default();
+    Op::AddOutput(1).apply(&mut layout);
+    Op::AddWindow {
+        params: TestWindowParams::new(0),
+    }
+    .apply(&mut layout);
+    Op::AddOutput(2).apply(&mut layout);
+    let output = layout
+        .outputs()
+        .find(|output| output.name() == "output2")
+        .unwrap()
+        .clone();
+
+    layout.move_to_output(Some(&0), &output, None, ActivateWindow::No);
+
+    let workspace = layout
+        .monitor_for_output(&output)
+        .unwrap()
+        .workspaces
+        .iter()
+        .find(|workspace| workspace.has_window(&0))
+        .unwrap();
+    assert_eq!(workspace.sway_name().as_deref(), Some("2"));
+}
+
+#[test]
 fn move_to_workspace_by_idx_does_not_leave_empty_workspaces() {
     let ops = [
         Op::AddOutput(1),
@@ -2059,7 +2257,7 @@ fn empty_workspaces_dont_move_back_to_original_output() {
 }
 
 #[test]
-fn named_workspaces_dont_update_original_output_on_adding_window() {
+fn empty_named_workspace_is_destroyed_with_its_output() {
     let ops = [
         Op::AddOutput(1),
         Op::SetWorkspaceName {
@@ -2068,77 +2266,10 @@ fn named_workspaces_dont_update_original_output_on_adding_window() {
         },
         Op::AddOutput(2),
         Op::RemoveOutput(1),
-        Op::FocusWorkspaceUp,
-        // Adding a window updates the original output for unnamed workspaces.
-        Op::AddWindow {
-            params: TestWindowParams::new(1),
-        },
-        // Connecting the previous output should move the named workspace back since its
-        // original output wasn't updated.
-        Op::AddOutput(1),
     ];
 
     let layout = check_ops(ops);
-    let (mon, _, ws) = layout
-        .workspaces()
-        .find(|(_, _, ws)| ws.name().is_some())
-        .unwrap();
-    assert!(ws.name().is_some()); // Sanity check.
-    let mon = mon.unwrap();
-    assert_eq!(mon.output_name(), "output1");
-}
-
-#[test]
-fn workspaces_update_original_output_on_moving_to_same_output() {
-    let ops = [
-        Op::AddOutput(1),
-        Op::SetWorkspaceName {
-            new_ws_name: 1,
-            ws_name: None,
-        },
-        Op::AddOutput(2),
-        Op::RemoveOutput(1),
-        Op::FocusWorkspaceUp,
-        Op::MoveWorkspaceToOutput(2),
-        Op::AddOutput(1),
-    ];
-
-    let layout = check_ops(ops);
-    let (mon, _, ws) = layout
-        .workspaces()
-        .find(|(_, _, ws)| ws.name().is_some())
-        .unwrap();
-    assert!(ws.name().is_some()); // Sanity check.
-    let mon = mon.unwrap();
-    assert_eq!(mon.output_name(), "output2");
-}
-
-#[test]
-fn workspaces_update_original_output_on_moving_to_same_monitor() {
-    let ops = [
-        Op::AddOutput(1),
-        Op::SetWorkspaceName {
-            new_ws_name: 1,
-            ws_name: None,
-        },
-        Op::AddOutput(2),
-        Op::RemoveOutput(1),
-        Op::FocusWorkspaceUp,
-        Op::MoveWorkspaceToMonitor {
-            ws_name: Some(1),
-            output_id: 2,
-        },
-        Op::AddOutput(1),
-    ];
-
-    let layout = check_ops(ops);
-    let (mon, _, ws) = layout
-        .workspaces()
-        .find(|(_, _, ws)| ws.name().is_some())
-        .unwrap();
-    assert!(ws.name().is_some()); // Sanity check.
-    let mon = mon.unwrap();
-    assert_eq!(mon.output_name(), "output2");
+    assert!(layout.workspaces().all(|(_, _, ws)| ws.name().is_none()));
 }
 
 #[test]
@@ -2162,6 +2293,378 @@ fn large_negative_height_change() {
 }
 
 #[test]
+fn floating_normal_border_has_titlebar_above_squared_client() {
+    let radius = swayward_config::CornerRadius {
+        top_left: 11.,
+        top_right: 12.,
+        bottom_right: 13.,
+        bottom_left: 14.,
+    };
+    let config = Config::load_default();
+    let mut layout = check_ops_with_options(
+        Options {
+            layout: config.layout,
+            ..Default::default()
+        },
+        [
+            Op::AddOutput(1),
+            Op::AddWindow {
+                params: TestWindowParams {
+                    is_floating: true,
+                    rules: Some(ResolvedWindowRules {
+                        geometry_corner_radius: Some(radius),
+                        clip_to_geometry: Some(true),
+                        ..Default::default()
+                    }),
+                    ..TestWindowParams::new(1)
+                },
+            },
+        ],
+    );
+    layout.update_render_elements(None);
+
+    let workspace = layout.active_workspace().unwrap();
+    let floating = workspace.floating();
+    let (tile, ipc) = floating.tiles_with_ipc_layouts().next().unwrap();
+    assert!(tile.has_sway_titlebar());
+    assert_eq!(tile.geometry_corner_radius(), radius);
+    let expected_outer = tile.geometry_corner_radius();
+    assert_eq!(
+        tile.decoration_corner_radii(),
+        (
+            Some(expected_outer),
+            swayward_config::CornerRadius {
+                top_left: 0.,
+                top_right: 0.,
+                ..expected_outer
+            }
+        )
+    );
+    let titlebar = floating.ipc_decoration_rect(tile, &ipc).unwrap();
+    let tile_pos: Point<f64, Logical> = ipc.tile_pos_in_workspace_view.unwrap().into();
+    assert_eq!(titlebar.loc.y, tile_pos.y);
+    assert_eq!(titlebar.loc.x, tile_pos.x);
+    assert_eq!(titlebar.size.w, ipc.tile_size.0);
+    let (window, hit) = workspace
+        .window_under(titlebar.loc + titlebar.size.downscale(2.).to_point())
+        .unwrap();
+    assert_eq!(window.id(), &1);
+    assert_eq!(
+        hit,
+        HitType::Activate {
+            is_tab_indicator: true
+        }
+    );
+}
+
+#[test]
+fn outer_gaps_change_tiled_and_floating_workspace_geometry() {
+    let mut options = Options::default();
+    options.layout.border.off = true;
+    options.layout.gaps = 0.;
+    options.layout.outer_gaps = swayward_config::OuterGaps {
+        left: 30.,
+        right: 10.,
+        top: 20.,
+        bottom: 0.,
+    };
+    options.layout.outer_gaps_configured = true;
+    let mut floating = TestWindowParams::new(2);
+    floating.is_floating = true;
+    let layout = check_ops_with_options(
+        options,
+        [
+            Op::AddOutput(1),
+            Op::AddWindow {
+                params: TestWindowParams::new(1),
+            },
+            Op::AddWindow { params: floating },
+        ],
+    );
+
+    let workspace = layout.active_workspace().unwrap();
+    assert_eq!(
+        workspace.working_area(),
+        Rectangle::new((30., 20.).into(), (1240., 700.).into())
+    );
+    let tiled = workspace
+        .tiling()
+        .tiles_with_ipc_layouts()
+        .find(|(tile, _)| tile.window().id() == &1)
+        .unwrap()
+        .1;
+    assert_eq!(tiled.tile_pos_in_workspace_view, Some((30., 20.)));
+    let floating = workspace
+        .floating()
+        .tiles_with_ipc_layouts()
+        .find(|(tile, _)| tile.window().id() == &2)
+        .unwrap()
+        .1;
+    assert_eq!(floating.tile_pos_in_workspace_view, Some((600., 270.)));
+}
+
+#[test]
+fn smart_borders_no_gaps_uses_resolved_workspace_gaps() {
+    for ((inner, outer), expected) in [
+        ((0., 5.), ResizeEdge::all()),
+        ((10., -2.), ResizeEdge::all()),
+        ((10., -10.), ResizeEdge::empty()),
+    ] {
+        let mut options = Options::default();
+        options.layout.border.off = false;
+        options.layout.gaps = inner;
+        options.layout.outer_gaps = swayward_config::OuterGaps::all(outer);
+        options.layout.outer_gaps_configured = true;
+        options.layout.smart_borders = swayward_config::SmartBorders::NoGaps;
+        let layout = check_ops_with_options(
+            options,
+            [
+                Op::AddOutput(1),
+                Op::AddWindow {
+                    params: TestWindowParams::new(1),
+                },
+            ],
+        );
+
+        let node = layout.active_workspace().unwrap().ipc_tiling_tree();
+        let IpcNode::Split { children, .. } = node else {
+            panic!("root must be a split")
+        };
+        let IpcNode::Leaf { border_edges, .. } = children[0] else {
+            panic!("window must be a leaf")
+        };
+        assert_eq!(border_edges, expected, "outer gap {outer}");
+    }
+}
+
+#[test]
+fn negative_outer_gaps_add_to_inner_gaps() {
+    let mut options = Options::default();
+    options.layout.gaps = 10.;
+    options.layout.outer_gaps = swayward_config::OuterGaps::all(-2.);
+    options.layout.outer_gaps_configured = true;
+    let layout = check_ops_with_options(options, [Op::AddOutput(1)]);
+
+    assert_eq!(
+        layout.active_workspace().unwrap().working_area(),
+        Rectangle::new((8., 8.).into(), (1264., 704.).into())
+    );
+}
+
+#[test]
+fn outer_gaps_use_sways_proportional_minimum_size_clamp() {
+    let area = workspace::apply_outer_gaps(
+        Rectangle::from_size(Size::from((150., 100.))),
+        swayward_config::OuterGaps {
+            left: 100.,
+            right: 300.,
+            top: 20.,
+            bottom: 60.,
+        },
+        0.,
+        true,
+    );
+
+    assert_eq!(area, Rectangle::new((12., 10.).into(), (100., 60.).into()));
+}
+
+#[test]
+fn moving_subtree_to_node_cleans_source_after_attachment() {
+    let mut layout = Layout::default();
+    Op::AddOutput(1).apply(&mut layout);
+    layout
+        .activate_sway_workspace(crate::command::WorkspaceTarget::Name("source".into()))
+        .unwrap();
+    Op::AddWindow {
+        params: TestWindowParams::new(0),
+    }
+    .apply(&mut layout);
+    let (source, node) = layout.tiling_target_for_window(&0).unwrap();
+    layout
+        .activate_sway_workspace(crate::command::WorkspaceTarget::Name("target".into()))
+        .unwrap();
+    Op::AddWindow {
+        params: TestWindowParams::new(1),
+    }
+    .apply(&mut layout);
+    let (target, target_node) = layout.tiling_target_for_window(&1).unwrap();
+    layout.active_monitor().unwrap().workspace_switch = None;
+
+    layout
+        .move_tiling_subtree_to_node(source, node, target, target_node)
+        .unwrap();
+
+    assert_eq!(layout.window_workspace_id(&0), Some(target));
+    assert!(layout.find_workspace_by_id(source).is_none());
+}
+
+#[test]
+fn making_window_sticky_moves_before_cleaning_source_workspace() {
+    let mut layout = Layout::default();
+    Op::AddOutput(1).apply(&mut layout);
+    layout
+        .activate_sway_workspace(crate::command::WorkspaceTarget::Name("source".into()))
+        .unwrap();
+    Op::AddWindow {
+        params: TestWindowParams {
+            is_floating: true,
+            ..TestWindowParams::new(0)
+        },
+    }
+    .apply(&mut layout);
+    let source = layout.window_workspace_id(&0).unwrap();
+    layout
+        .activate_sway_workspace(crate::command::WorkspaceTarget::Name("target".into()))
+        .unwrap();
+    layout.active_monitor().unwrap().workspace_switch = None;
+
+    assert!(layout.set_window_sticky(&0, "enable"));
+
+    assert!(layout.window_workspace_id(&0).is_some());
+    assert!(layout.find_workspace_by_id(source).is_none());
+}
+
+#[test]
+fn tiled_window_restores_natural_size_when_first_floated() {
+    let mut options = Options::default();
+    options.layout.border.off = true;
+    let mut layout = check_ops_with_options(
+        options,
+        [
+            Op::AddOutput(1),
+            Op::AddWindow {
+                params: TestWindowParams {
+                    bbox: Rectangle::from_size(Size::from((400, 150))),
+                    ..TestWindowParams::new(1)
+                },
+            },
+        ],
+    );
+
+    layout.toggle_window_floating(Some(&1));
+
+    let window = layout
+        .windows()
+        .find(|(_, window)| window.id() == &1)
+        .unwrap()
+        .1;
+    assert_eq!(window.0.requested_size.get(), Some(Size::from((400, 150))));
+    let (_, ipc) = layout
+        .active_workspace()
+        .unwrap()
+        .floating()
+        .tiles_with_ipc_layouts()
+        .next()
+        .unwrap();
+    assert_eq!(ipc.window_size, (400, 150));
+}
+
+#[test]
+fn tiled_window_gets_sway_default_size_when_first_moved_to_scratchpad() {
+    let mut options = Options::default();
+    options.layout.border.off = true;
+    let mut layout = check_ops_with_options(
+        options,
+        [
+            Op::AddOutput(1),
+            Op::AddWindow {
+                params: TestWindowParams::new(1),
+            },
+        ],
+    );
+
+    layout.move_to_scratchpad(Some(&1));
+    layout.show_scratchpad(Some(&1));
+
+    let window = layout
+        .windows()
+        .find(|(_, window)| window.id() == &1)
+        .unwrap()
+        .1;
+    assert_eq!(window.0.requested_size.get(), Some(Size::from((640, 540))));
+    let workspace = layout.active_workspace().unwrap();
+    let (_, pos) = workspace
+        .floating()
+        .tiles_with_ipc_layouts()
+        .find(|(tile, _)| tile.window().id() == &1)
+        .unwrap();
+    assert_eq!(pos.tile_pos_in_workspace_view, Some((320., 90.)));
+}
+
+#[test]
+fn scratchpad_default_size_honors_client_size_hints() {
+    let mut options = Options::default();
+    options.layout.border.off = true;
+    let mut layout = check_ops_with_options(
+        options,
+        [
+            Op::AddOutput(1),
+            Op::AddWindow {
+                params: TestWindowParams {
+                    min_max_size: (Size::from((700, 100)), Size::from((800, 400))),
+                    ..TestWindowParams::new(1)
+                },
+            },
+        ],
+    );
+
+    layout.move_to_scratchpad(Some(&1));
+    layout.show_scratchpad(Some(&1));
+
+    let window = layout
+        .windows()
+        .find(|(_, window)| window.id() == &1)
+        .unwrap()
+        .1;
+    assert_eq!(window.0.requested_size.get(), Some(Size::from((700, 400))));
+    let workspace = layout.active_workspace().unwrap();
+    let (_, layout) = workspace
+        .floating()
+        .tiles_with_ipc_layouts()
+        .find(|(tile, _)| tile.window().id() == &1)
+        .unwrap();
+    assert_eq!(layout.tile_pos_in_workspace_view, Some((290., 160.)));
+}
+
+#[test]
+fn configured_floating_constraints_clamp_resize_requests() {
+    let mut options = Options::default();
+    options.layout.border.off = true;
+    options.layout.floating_minimum_size = swayward_config::FloatingSize {
+        width: 60,
+        height: 50,
+    };
+    options.layout.floating_maximum_size = swayward_config::FloatingSize {
+        width: 100,
+        height: 90,
+    };
+    let mut params = TestWindowParams::new(1);
+    params.is_floating = true;
+    let layout = check_ops_with_options(
+        options,
+        [
+            Op::AddOutput(1),
+            Op::AddWindow { params },
+            Op::SetWindowWidth {
+                id: None,
+                change: SizeChange::SetFixed(200),
+            },
+            Op::SetWindowHeight {
+                id: None,
+                change: SizeChange::SetFixed(10),
+            },
+        ],
+    );
+
+    let window = layout
+        .windows()
+        .find(|(_, window)| window.id() == &1)
+        .unwrap()
+        .1;
+    assert_eq!(window.0.requested_size.get(), Some(Size::from((100, 50))));
+}
+
+#[test]
 fn large_max_size() {
     let ops = [
         Op::AddOutput(1),
@@ -2178,6 +2681,21 @@ fn large_max_size() {
     options.layout.border.width = 1.;
 
     check_ops_with_options(options, ops);
+}
+
+#[test]
+fn inactive_empty_configured_workspace_is_destroyed_after_focus_changes() {
+    let mut layout = Layout::default();
+    Op::AddOutput(1).apply(&mut layout);
+    layout.set_workspace_name("source".into(), None);
+    let source = layout.active_workspace().unwrap().id();
+
+    layout
+        .activate_sway_workspace(crate::command::WorkspaceTarget::Name("target".into()))
+        .unwrap();
+    Op::CompleteAnimations.apply(&mut layout);
+
+    assert!(layout.find_workspace_by_id(source).is_none());
 }
 
 #[test]
@@ -2249,6 +2767,129 @@ fn workspace_transfer_during_switch_gets_cleaned_up() {
 }
 
 #[test]
+fn moving_the_only_workspace_replaces_it_before_reparenting() {
+    let mut layout = Layout::default();
+    Op::AddOutput(1).apply(&mut layout);
+    Op::AddOutput(2).apply(&mut layout);
+    Op::FocusOutput(2).apply(&mut layout);
+    Op::AddWindow {
+        params: TestWindowParams::new(0),
+    }
+    .apply(&mut layout);
+    Op::FocusOutput(1).apply(&mut layout);
+
+    let MonitorSet::Normal {
+        monitors,
+        active_monitor_idx,
+        ..
+    } = &mut layout.monitor_set
+    else {
+        unreachable!()
+    };
+    *active_monitor_idx = 0;
+    monitors[0].workspaces[0].set_sway_identity(None, Some(2));
+    monitors[0].add_workspace_at(1);
+    monitors[1].workspaces[0].set_sway_identity(None, Some(3));
+    let source = monitors[0].workspaces[0].id();
+    let destination = monitors[1].output.clone();
+
+    assert!(layout.move_workspace_to_output_by_id(source, None, &destination));
+
+    let MonitorSet::Normal {
+        monitors,
+        active_monitor_idx,
+        ..
+    } = &layout.monitor_set
+    else {
+        unreachable!()
+    };
+    assert_eq!(*active_monitor_idx, 1);
+    assert_eq!(
+        monitors[0]
+            .workspaces
+            .iter()
+            .filter_map(Workspace::sway_name)
+            .collect::<Vec<_>>(),
+        ["1"]
+    );
+    assert_eq!(
+        monitors[1]
+            .workspaces
+            .iter()
+            .filter_map(Workspace::sway_name)
+            .collect::<Vec<_>>(),
+        ["2", "3"]
+    );
+    assert_eq!(
+        monitors[1].workspaces[monitors[1].active_workspace_idx].id(),
+        source
+    );
+}
+
+#[test]
+fn move_to_named_target_index_preserves_addressable_workspace() {
+    // Fuzzer seed: a numbered-but-unnamed workspace is addressable and must
+    // survive a targeted move even though it has no windows.
+    check_ops([
+        Op::AddNamedWorkspace {
+            ws_name: 1,
+            output_name: None,
+            layout_config: None,
+        },
+        Op::AddOutput(4),
+        Op::MoveWindowToOutput {
+            window_id: None,
+            output_id: 4,
+            target_ws_idx: Some(1),
+        },
+    ]);
+}
+
+#[test]
+fn unname_then_implicit_rename_preserves_workspace_invariants() {
+    // CI shrank `random_operations_dont_panic` to this six-op sequence. Both
+    // the move and rename use the implicit target (`None`), and the same output
+    // is added twice.
+    check_ops([
+        Op::UnnameWorkspace { ws_name: 1 },
+        Op::AddOutput(1),
+        Op::AddOutput(1),
+        Op::AddWindow {
+            params: TestWindowParams::new(1),
+        },
+        Op::MoveWindowDownOrToWorkspaceDown,
+        Op::MoveWindowToWorkspace {
+            window_id: None,
+            workspace_idx: 0,
+        },
+        Op::SetWorkspaceName {
+            new_ws_name: 1,
+            ws_name: None,
+        },
+    ]);
+}
+
+#[test]
+fn mapping_a_window_does_not_create_a_ghost_workspace() {
+    // sway creates a workspace on demand and destroys it when it empties
+    // (`sway/tree/workspace.c:313-330`). Mapping a window onto the only
+    // workspace must not append niri's trailing scrolling-strip placeholder,
+    // which a bar and `workspace next` would both show as a ghost.
+    let layout = check_ops([
+        Op::AddOutput(1),
+        Op::AddWindow {
+            params: TestWindowParams::new(0),
+        },
+    ]);
+
+    let MonitorSet::Normal { monitors, .. } = layout.monitor_set else {
+        unreachable!()
+    };
+    assert_eq!(monitors[0].workspaces.len(), 1);
+    assert!(monitors[0].workspaces[0].has_windows());
+}
+
+#[test]
 fn move_workspace_to_output() {
     let ops = [
         Op::AddOutput(1),
@@ -2275,86 +2916,11 @@ fn move_workspace_to_output() {
     assert_eq!(monitors[0].workspaces.len(), 1);
     assert!(!monitors[0].workspaces[0].has_windows());
     assert_eq!(monitors[1].active_workspace_idx, 0);
-    assert_eq!(monitors[1].workspaces.len(), 2);
+    // Just the moved workspace. There is no trailing placeholder: that was
+    // niri's scrolling-strip affordance, and sway creates workspaces on
+    // demand instead.
+    assert_eq!(monitors[1].workspaces.len(), 1);
     assert!(monitors[1].workspaces[0].has_windows());
-}
-
-#[test]
-fn open_right_of_on_different_workspace() {
-    let ops = [
-        Op::AddOutput(1),
-        Op::AddWindow {
-            params: TestWindowParams::new(1),
-        },
-        Op::FocusWorkspaceDown,
-        Op::AddWindow {
-            params: TestWindowParams::new(2),
-        },
-        Op::AddWindowNextTo {
-            params: TestWindowParams::new(3),
-            next_to_id: 1,
-        },
-    ];
-
-    let layout = check_ops(ops);
-
-    let MonitorSet::Normal { monitors, .. } = layout.monitor_set else {
-        unreachable!()
-    };
-
-    let mon = monitors.into_iter().next().unwrap();
-    assert_eq!(
-        mon.active_workspace_idx, 1,
-        "the second workspace must remain active"
-    );
-    assert_eq!(
-        mon.workspaces[0].scrolling().active_column_idx(),
-        1,
-        "the new window must become active"
-    );
-}
-
-#[test]
-// empty_workspace_above_first = true
-fn open_right_of_on_different_workspace_ewaf() {
-    let ops = [
-        Op::AddOutput(1),
-        Op::AddWindow {
-            params: TestWindowParams::new(1),
-        },
-        Op::FocusWorkspaceDown,
-        Op::AddWindow {
-            params: TestWindowParams::new(2),
-        },
-        Op::AddWindowNextTo {
-            params: TestWindowParams::new(3),
-            next_to_id: 1,
-        },
-    ];
-
-    let options = Options {
-        layout: niri_config::Layout {
-            empty_workspace_above_first: true,
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-    let layout = check_ops_with_options(options, ops);
-
-    let MonitorSet::Normal { monitors, .. } = layout.monitor_set else {
-        unreachable!()
-    };
-
-    let mon = monitors.into_iter().next().unwrap();
-    assert_eq!(
-        mon.active_workspace_idx, 2,
-        "the second workspace must remain active"
-    );
-    assert_eq!(
-        mon.workspaces[1].scrolling().active_column_idx(),
-        1,
-        "the new window must become active"
-    );
 }
 
 #[test]
@@ -2381,6 +2947,72 @@ fn removing_all_outputs_preserves_empty_named_workspaces() {
     };
 
     assert_eq!(workspaces.len(), 2);
+}
+
+#[test]
+fn non_finite_floating_proportions_are_noops() {
+    let mut layout = check_ops([
+        Op::AddOutput(1),
+        Op::AddWindow {
+            params: TestWindowParams {
+                is_floating: true,
+                ..TestWindowParams::new(1)
+            },
+        },
+    ]);
+
+    let before = layout
+        .active_workspace()
+        .unwrap()
+        .active_window_visual_rectangle();
+    for change in [
+        PositionChange::SetProportion(f64::NAN),
+        PositionChange::AdjustProportion(f64::NAN),
+        PositionChange::SetProportion(f64::INFINITY),
+        PositionChange::AdjustProportion(f64::NEG_INFINITY),
+    ] {
+        layout.move_floating_window(Some(&1), change, PositionChange::AdjustFixed(0.), false);
+        assert_eq!(
+            layout
+                .active_workspace()
+                .unwrap()
+                .active_window_visual_rectangle(),
+            before
+        );
+        layout.verify_invariants();
+    }
+
+    let stored_position = |invalid_change| {
+        let mut layout = check_ops([
+            Op::AddOutput(1),
+            Op::AddWindow {
+                params: TestWindowParams::new(1),
+            },
+        ]);
+        layout.move_floating_window(
+            Some(&1),
+            PositionChange::SetFixed(100.),
+            PositionChange::SetFixed(200.),
+            false,
+        );
+        if let Some((x, y)) = invalid_change {
+            layout.move_floating_window(Some(&1), x, y, false);
+        }
+        layout.toggle_window_floating(Some(&1));
+        layout.verify_invariants();
+        layout
+            .active_workspace()
+            .unwrap()
+            .active_window_visual_rectangle()
+    };
+    let control = stored_position(None);
+    assert_eq!(
+        stored_position(Some((
+            PositionChange::SetProportion(f64::NAN),
+            PositionChange::AdjustProportion(f64::NAN),
+        ))),
+        control
+    );
 }
 
 #[test]
@@ -2517,8 +3149,8 @@ fn fixed_height_takes_max_non_auto_into_account() {
     ];
 
     let options = Options {
-        layout: niri_config::Layout {
-            border: niri_config::Border {
+        layout: swayward_config::Layout {
+            border: swayward_config::Border {
                 off: false,
                 width: 4.,
                 ..Default::default()
@@ -2548,6 +3180,100 @@ fn start_interactive_move_then_remove_window() {
     ];
 
     check_ops(ops);
+}
+
+#[test]
+fn interactive_move_keeps_source_until_drop_is_attached() {
+    let mut layout = Layout::default();
+    Op::AddOutput(1).apply(&mut layout);
+    Op::AddWindow {
+        params: TestWindowParams::new(0),
+    }
+    .apply(&mut layout);
+    let source = layout.window_workspace_id(&0).unwrap();
+    Op::FocusWorkspaceDown.apply(&mut layout);
+    Op::AddWindow {
+        params: TestWindowParams::new(1),
+    }
+    .apply(&mut layout);
+    let output = layout.outputs().next().unwrap().clone();
+
+    assert!(layout.interactive_move_begin(0, &output, Point::default()));
+    assert!(layout.interactive_move_update(&0, Point::from((1000., 0.)), output, Point::default(),));
+
+    assert!(layout.find_workspace_by_id(source).is_some());
+    layout.interactive_move_end(&0);
+    assert!(layout.window_workspace_id(&0).is_some());
+}
+
+#[test]
+fn interactive_drop_creates_named_destination_before_inserting_window() {
+    let mut layout = Layout::default();
+    Op::AddOutput(1).apply(&mut layout);
+    Op::AddWindow {
+        params: TestWindowParams::new(0),
+    }
+    .apply(&mut layout);
+    let output = layout.outputs().next().unwrap().clone();
+
+    assert!(layout.interactive_move_begin(0, &output, Point::default()));
+    assert!(layout.interactive_move_update(
+        &0,
+        Point::from((1000., 0.)),
+        output,
+        Point::from((0., 10000.)),
+    ));
+    layout.interactive_move_end(&0);
+
+    let workspace = layout
+        .workspaces()
+        .find(|(_, _, workspace)| workspace.has_window(&0))
+        .map(|(_, _, workspace)| workspace)
+        .unwrap();
+    assert_eq!(workspace.sway_name().as_deref(), Some("2"));
+}
+
+#[test]
+fn drag_over_creation_slot_uses_preview_then_materializes_workspace() {
+    let mut layout = Layout::default();
+    Op::AddOutput(1).apply(&mut layout);
+    Op::AddWindow {
+        params: TestWindowParams::new(0),
+    }
+    .apply(&mut layout);
+    let output = layout.outputs().next().unwrap().clone();
+    let monitor = layout.monitor_for_output(&output).unwrap();
+    let last = monitor.workspaces.last().unwrap().id();
+    let last_geo = monitor.workspaces_render_geo().last().unwrap();
+    // The creation slot is the empty region below the last workspace. There is
+    // no trailing placeholder workspace to drop onto.
+    let pointer = last_geo.loc + Point::from((last_geo.size.w / 2., last_geo.size.h * 2.));
+    let workspace_count = monitor.workspaces.len();
+    let (target, preview_geo) = monitor.insert_position(pointer);
+    let InsertWorkspace::Preview(preview) = target else {
+        panic!("creation slot must be represented by preview state");
+    };
+    assert_eq!(preview.insertion_index, workspace_count);
+    assert_eq!(preview_geo, preview.geometry);
+
+    assert!(layout.interactive_move_begin(0, &output, Point::default()));
+    assert!(layout.interactive_move_update(&0, Point::from((1000., 0.)), output, pointer,));
+    layout.update_insert_hint(None);
+
+    let monitor = layout.active_monitor_ref().unwrap();
+    assert_eq!(monitor.workspaces.len(), workspace_count);
+    assert!(matches!(
+        monitor.insert_hint.as_ref().map(|hint| hint.workspace),
+        Some(InsertWorkspace::Preview(_))
+    ));
+
+    layout.interactive_move_end(&0);
+    let (_, _, destination) = layout
+        .workspaces()
+        .find(|(_, _, workspace)| workspace.has_window(&0))
+        .unwrap();
+    assert_ne!(destination.id(), last);
+    assert!(destination.has_sway_identity());
 }
 
 #[test]
@@ -2604,8 +3330,7 @@ fn interactive_move_onto_empty_output_ewaf() {
     ];
 
     let options = Options {
-        layout: niri_config::Layout {
-            empty_workspace_above_first: true,
+        layout: swayward_config::Layout {
             ..Default::default()
         },
         ..Default::default()
@@ -2668,8 +3393,7 @@ fn interactive_move_onto_first_empty_workspace() {
         Op::InteractiveMoveEnd { window: 1 },
     ];
     let options = Options {
-        layout: niri_config::Layout {
-            empty_workspace_above_first: true,
+        layout: swayward_config::Layout {
             ..Default::default()
         },
         ..Default::default()
@@ -2679,8 +3403,21 @@ fn interactive_move_onto_first_empty_workspace() {
 
 #[test]
 fn output_active_workspace_is_preserved() {
+    // Two workspaces need two names now: without niri's trailing placeholder,
+    // `workspace next` on a single workspace has nowhere to go.
     let ops = [
         Op::AddOutput(1),
+        Op::AddNamedWorkspace {
+            ws_name: 1,
+            output_name: Some(1),
+            layout_config: None,
+        },
+        Op::AddNamedWorkspace {
+            ws_name: 2,
+            output_name: Some(1),
+            layout_config: None,
+        },
+        Op::FocusWorkspace(0),
         Op::AddWindow {
             params: TestWindowParams::new(1),
         },
@@ -2706,6 +3443,17 @@ fn output_active_workspace_is_preserved_with_other_outputs() {
     let ops = [
         Op::AddOutput(1),
         Op::AddOutput(2),
+        Op::AddNamedWorkspace {
+            ws_name: 1,
+            output_name: Some(1),
+            layout_config: None,
+        },
+        Op::AddNamedWorkspace {
+            ws_name: 2,
+            output_name: Some(1),
+            layout_config: None,
+        },
+        Op::FocusWorkspace(0),
         Op::AddWindow {
             params: TestWindowParams::new(1),
         },
@@ -2742,47 +3490,23 @@ fn named_workspace_to_output() {
 }
 
 #[test]
-// empty_workspace_above_first = true
-fn named_workspace_to_output_ewaf() {
-    let ops = [
-        Op::AddNamedWorkspace {
-            ws_name: 1,
-            output_name: Some(2),
-            layout_config: None,
-        },
-        Op::AddOutput(1),
-        Op::AddOutput(2),
-    ];
-    let options = Options {
-        layout: niri_config::Layout {
-            empty_workspace_above_first: true,
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-    check_ops_with_options(options, ops);
-}
+fn named_workspace_uses_first_available_sway_output_assignment() {
+    let mut layout = Layout::default();
+    Op::AddOutput(1).apply(&mut layout);
+    Op::AddOutput(2).apply(&mut layout);
 
-#[test]
-fn move_window_to_empty_workspace_above_first() {
-    let ops = [
-        Op::AddOutput(1),
-        Op::AddWindow {
-            params: TestWindowParams::new(1),
-        },
-        Op::MoveWorkspaceUp,
-        Op::MoveWorkspaceDown,
-        Op::FocusWorkspaceUp,
-        Op::MoveWorkspaceDown,
-    ];
-    let options = Options {
-        layout: niri_config::Layout {
-            empty_workspace_above_first: true,
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-    check_ops_with_options(options, ops);
+    layout.ensure_named_workspace(&WorkspaceConfig {
+        name: WorkspaceName("assigned".into()),
+        sway_output_assignment: Some(vec!["missing".into(), "output2".into(), "output1".into()]),
+        open_on_output: None,
+        layout: None,
+    });
+
+    let (monitor, _, _) = layout
+        .workspaces()
+        .find(|(_, _, workspace)| workspace.name().is_some_and(|name| name == "assigned"))
+        .unwrap();
+    assert_eq!(monitor.unwrap().output_name(), "output2");
 }
 
 #[test]
@@ -2796,13 +3520,72 @@ fn move_window_to_different_output() {
         Op::MoveWorkspaceToOutput(2),
     ];
     let options = Options {
-        layout: niri_config::Layout {
-            empty_workspace_above_first: true,
+        layout: swayward_config::Layout {
             ..Default::default()
         },
         ..Default::default()
     };
     check_ops_with_options(options, ops);
+}
+
+#[test]
+fn mixed_layer_selection_filters_one_global_focus_order() {
+    let output = Output::new(
+        "output".into(),
+        PhysicalProperties {
+            size: Size::from((1280, 720)),
+            subpixel: Subpixel::Unknown,
+            make: String::new(),
+            model: String::new(),
+            serial_number: String::new(),
+        },
+    );
+    output.change_current_state(
+        Some(Mode {
+            size: Size::from((1280, 720)),
+            refresh: 60000,
+        }),
+        None,
+        None,
+        None,
+    );
+    output.user_data().insert_if_missing(|| OutputName {
+        connector: "output".into(),
+        make: None,
+        model: None,
+        serial: None,
+    });
+    let mut workspace = Workspace::new(
+        output,
+        Clock::with_time(Duration::ZERO),
+        Rc::new(Options::default()),
+    );
+    for (id, timestamp) in [(1, 4), (2, 3), (3, 2), (4, 1)] {
+        let window = TestWindow::new(TestWindowParams::new(id));
+        window
+            .0
+            .focus_timestamp
+            .set(Some(Duration::from_secs(timestamp)));
+        let tile = workspace.make_tile(window);
+        workspace.add_tile(
+            tile,
+            WorkspaceAddWindowTarget::Auto,
+            ActivateWindow::Yes,
+            ColumnWidth::Proportion(0.5),
+            false,
+            false,
+            None,
+        );
+        if id >= 3 {
+            workspace.toggle_window_floating(Some(&id));
+        }
+    }
+
+    workspace.activate_window(&1);
+    for expected in [1, 2, 3, 4] {
+        assert_eq!(workspace.active_window().unwrap().id(), &expected);
+        workspace.remove_tile(&expected, Transaction::new());
+    }
 }
 
 #[test]
@@ -2815,8 +3598,7 @@ fn close_window_empty_ws_above_first() {
         Op::CloseWindow(1),
     ];
     let options = Options {
-        layout: niri_config::Layout {
-            empty_workspace_above_first: true,
+        layout: swayward_config::Layout {
             ..Default::default()
         },
         ..Default::default()
@@ -2835,8 +3617,7 @@ fn add_and_remove_output() {
         Op::RemoveOutput(2),
     ];
     let options = Options {
-        layout: niri_config::Layout {
-            empty_workspace_above_first: true,
+        layout: swayward_config::Layout {
             ..Default::default()
         },
         ..Default::default()
@@ -2855,8 +3636,7 @@ fn switch_ewaf_on() {
 
     let mut layout = check_ops(ops);
     layout.update_options(Options {
-        layout: niri_config::Layout {
-            empty_workspace_above_first: true,
+        layout: swayward_config::Layout {
             ..Default::default()
         },
         ..Default::default()
@@ -2874,8 +3654,7 @@ fn switch_ewaf_off() {
     ];
 
     let options = Options {
-        layout: niri_config::Layout {
-            empty_workspace_above_first: true,
+        layout: swayward_config::Layout {
             ..Default::default()
         },
         ..Default::default()
@@ -2982,8 +3761,8 @@ fn interactive_move_from_workspace_with_layout_config() {
         Op::AddNamedWorkspace {
             ws_name: 1,
             output_name: Some(2),
-            layout_config: Some(Box::new(niri_config::LayoutPart {
-                border: Some(niri_config::BorderRule {
+            layout_config: Some(Box::new(swayward_config::LayoutPart {
+                border: Some(swayward_config::BorderRule {
                     on: true,
                     ..Default::default()
                 }),
@@ -3255,8 +4034,7 @@ fn set_first_workspace_name_ewaf() {
     ];
 
     let options = Options {
-        layout: niri_config::Layout {
-            empty_workspace_above_first: true,
+        layout: swayward_config::Layout {
             ..Default::default()
         },
         ..Default::default()
@@ -3289,6 +4067,12 @@ fn move_workspace_to_same_monitor_doesnt_reorder() {
             new_ws_name: 0,
             ws_name: None,
         },
+        Op::AddNamedWorkspace {
+            ws_name: 1,
+            output_name: Some(0),
+            layout_config: None,
+        },
+        Op::FocusWorkspace(0),
         Op::AddWindow {
             params: TestWindowParams::new(0),
         },
@@ -3310,7 +4094,7 @@ fn move_workspace_to_same_monitor_doesnt_reorder() {
         .workspaces()
         .map(|(_, _, ws)| ws.windows().count())
         .collect();
-    assert_eq!(counts, &[1, 2, 0]);
+    assert_eq!(counts, &[1, 2]);
 }
 
 #[test]
@@ -3339,80 +4123,6 @@ fn removing_window_above_preserves_focused_window() {
 }
 
 #[test]
-fn preset_column_width_fixed_correct_with_border() {
-    let ops = [
-        Op::AddOutput(0),
-        Op::AddWindow {
-            params: TestWindowParams::new(0),
-        },
-        Op::SwitchPresetColumnWidth,
-    ];
-
-    let options = Options {
-        layout: niri_config::Layout {
-            preset_column_widths: vec![PresetSize::Fixed(500)],
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-    let mut layout = check_ops_with_options(options, ops);
-
-    let win = layout.windows().next().unwrap().1;
-    assert_eq!(win.requested_size().unwrap().w, 500);
-
-    // Add border.
-    let options = Options {
-        layout: niri_config::Layout {
-            preset_column_widths: vec![PresetSize::Fixed(500)],
-            border: niri_config::Border {
-                off: false,
-                width: 5.,
-                ..Default::default()
-            },
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-    layout.update_options(options);
-
-    // With border, the window gets less size.
-    let win = layout.windows().next().unwrap().1;
-    assert_eq!(win.requested_size().unwrap().w, 490);
-
-    // However, preset fixed width will still work correctly.
-    layout.toggle_width(true);
-    let win = layout.windows().next().unwrap().1;
-    assert_eq!(win.requested_size().unwrap().w, 500);
-}
-
-#[test]
-fn preset_column_width_reset_after_set_width() {
-    let ops = [
-        Op::AddOutput(0),
-        Op::AddWindow {
-            params: TestWindowParams::new(0),
-        },
-        Op::SwitchPresetColumnWidth,
-        Op::SetWindowWidth {
-            id: None,
-            change: SizeChange::AdjustFixed(-10),
-        },
-        Op::SwitchPresetColumnWidth,
-    ];
-
-    let options = Options {
-        layout: niri_config::Layout {
-            preset_column_widths: vec![PresetSize::Fixed(500), PresetSize::Fixed(1000)],
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-    let layout = check_ops_with_options(options, ops);
-    let win = layout.windows().next().unwrap().1;
-    assert_eq!(win.requested_size().unwrap().w, 500);
-}
-
-#[test]
 fn move_column_to_workspace_unfocused_with_multiple_monitors() {
     let ops = [
         Op::AddOutput(1),
@@ -3423,11 +4133,12 @@ fn move_column_to_workspace_unfocused_with_multiple_monitors() {
         Op::AddWindow {
             params: TestWindowParams::new(1),
         },
-        Op::FocusWorkspaceDown,
-        Op::SetWorkspaceName {
-            new_ws_name: 102,
-            ws_name: None,
+        Op::AddNamedWorkspace {
+            ws_name: 102,
+            output_name: Some(1),
+            layout_config: None,
         },
+        Op::FocusWorkspace(1),
         Op::AddWindow {
             params: TestWindowParams::new(2),
         },
@@ -3495,7 +4206,7 @@ fn move_column_to_workspace_down_focus_false_on_floating_window() {
         unreachable!()
     };
 
-    assert_eq!(monitors[0].active_workspace_idx, 0);
+    assert!(monitors[0].active_workspace_ref().has_window(&1));
 }
 
 #[test]
@@ -3518,7 +4229,7 @@ fn move_column_to_workspace_focus_false_on_floating_window() {
         unreachable!()
     };
 
-    assert_eq!(monitors[0].active_workspace_idx, 0);
+    assert!(monitors[0].active_workspace_ref().has_window(&1));
 }
 
 #[test]
@@ -3539,7 +4250,7 @@ fn restore_to_floating_persists_across_fullscreen_maximize() {
     let mut layout = check_ops(ops);
 
     // Unfullscreening should return the window to the maximized state.
-    let scrolling = layout.active_workspace().unwrap().scrolling();
+    let scrolling = layout.active_workspace().unwrap().tiling();
     assert!(scrolling.tiles().next().is_some());
 
     let ops = [
@@ -3549,7 +4260,7 @@ fn restore_to_floating_persists_across_fullscreen_maximize() {
     check_ops_on_layout(&mut layout, ops);
 
     // Unmaximize should return the window back to floating.
-    let scrolling = layout.active_workspace().unwrap().scrolling();
+    let scrolling = layout.active_workspace().unwrap().tiling();
     assert!(scrolling.tiles().next().is_none());
 }
 
@@ -3571,7 +4282,7 @@ fn unmaximize_during_fullscreen_does_not_float() {
     let mut layout = check_ops(ops);
 
     // Unmaximize shouldn't have changed the window state since it's fullscreen.
-    let scrolling = layout.active_workspace().unwrap().scrolling();
+    let scrolling = layout.active_workspace().unwrap().tiling();
     assert!(scrolling.tiles().next().is_some());
 
     let ops = [
@@ -3581,53 +4292,8 @@ fn unmaximize_during_fullscreen_does_not_float() {
     check_ops_on_layout(&mut layout, ops);
 
     // Unfullscreen should return the window back to floating.
-    let scrolling = layout.active_workspace().unwrap().scrolling();
+    let scrolling = layout.active_workspace().unwrap().tiling();
     assert!(scrolling.tiles().next().is_none());
-}
-
-#[test]
-fn move_column_to_workspace_maximize_and_fullscreen() {
-    let ops = [
-        Op::AddOutput(1),
-        Op::AddWindow {
-            params: TestWindowParams::new(1),
-        },
-        Op::MaximizeWindowToEdges { id: None },
-        Op::FullscreenWindow(1),
-        Op::MoveColumnToWorkspaceDown(true),
-        Op::FullscreenWindow(1),
-    ];
-
-    let layout = check_ops(ops);
-    let (_, win) = layout.windows().next().unwrap();
-
-    // Unfullscreening should return to maximized because the window was maximized before.
-    assert_eq!(win.pending_sizing_mode(), SizingMode::Maximized);
-}
-
-#[test]
-fn move_window_to_workspace_maximize_and_fullscreen() {
-    let ops = [
-        Op::AddOutput(1),
-        Op::AddWindow {
-            params: TestWindowParams::new(1),
-        },
-        Op::MaximizeWindowToEdges { id: None },
-        Op::FullscreenWindow(1),
-        Op::MoveWindowToWorkspaceDown(true),
-        Op::FullscreenWindow(1),
-    ];
-
-    let layout = check_ops(ops);
-    let (_, win) = layout.windows().next().unwrap();
-
-    // Unfullscreening should return to maximized because the window was maximized before.
-    //
-    // FIXME: it currently doesn't because windows themselves can only be either fullscreen or
-    // maximized. So when a window is fullscreen, whether it is also maximized or not is stored in
-    // the column. MoveWindowToWorkspace removes the window from the column and this information is
-    // forgotten.
-    assert_eq!(win.pending_sizing_mode(), SizingMode::Normal);
 }
 
 #[test]
@@ -3637,7 +4303,7 @@ fn tabs_with_different_border() {
         Op::AddWindow {
             params: TestWindowParams {
                 rules: Some(ResolvedWindowRules {
-                    border: niri_config::BorderRule {
+                    border: swayward_config::BorderRule {
                         on: true,
                         ..Default::default()
                     },
@@ -3655,7 +4321,7 @@ fn tabs_with_different_border() {
     ];
 
     let options = Options {
-        layout: niri_config::Layout {
+        layout: swayward_config::Layout {
             struts: Struts {
                 left: FloatOrInt(0.),
                 right: FloatOrInt(0.),
@@ -3695,6 +4361,20 @@ fn expel_pending_left_from_fullscreen_tabbed_column() {
     ];
 
     check_ops(ops);
+}
+
+#[test]
+fn render_geometry_has_no_workspace_creation_slot() {
+    let layout = check_ops([Op::AddOutput(1)]);
+    let MonitorSet::Normal { monitors, .. } = layout.monitor_set else {
+        unreachable!()
+    };
+    let monitor = &monitors[0];
+
+    assert_eq!(
+        monitor.workspaces_render_geo().count(),
+        monitor.workspaces.len()
+    );
 }
 
 #[test]
@@ -3793,14 +4473,6 @@ fn arbitrary_struts() -> impl Strategy<Value = Struts> {
         })
 }
 
-fn arbitrary_center_focused_column() -> impl Strategy<Value = CenterFocusedColumn> {
-    prop_oneof![
-        Just(CenterFocusedColumn::Never),
-        Just(CenterFocusedColumn::OnOverflow),
-        Just(CenterFocusedColumn::Always),
-    ]
-}
-
 fn arbitrary_tab_indicator_position() -> impl Strategy<Value = TabIndicatorPosition> {
     prop_oneof![
         Just(TabIndicatorPosition::Left),
@@ -3814,8 +4486,8 @@ prop_compose! {
     fn arbitrary_focus_ring()(
         off in any::<bool>(),
         width in prop::option::of(arbitrary_spacing().prop_map(FloatOrInt)),
-    ) -> niri_config::BorderRule {
-        niri_config::BorderRule {
+    ) -> swayward_config::BorderRule {
+        swayward_config::BorderRule {
             off,
             on: !off,
             width,
@@ -3828,8 +4500,8 @@ prop_compose! {
     fn arbitrary_border()(
         off in any::<bool>(),
         width in prop::option::of(arbitrary_spacing().prop_map(FloatOrInt)),
-    ) -> niri_config::BorderRule {
-        niri_config::BorderRule {
+    ) -> swayward_config::BorderRule {
+        swayward_config::BorderRule {
             off,
             on: !off,
             width,
@@ -3842,8 +4514,8 @@ prop_compose! {
     fn arbitrary_shadow()(
         off in any::<bool>(),
         softness in prop::option::of(arbitrary_spacing().prop_map(FloatOrInt)),
-    ) -> niri_config::ShadowRule {
-        niri_config::ShadowRule {
+    ) -> swayward_config::ShadowRule {
+        swayward_config::ShadowRule {
             off,
             on: !off,
             softness,
@@ -3862,8 +4534,8 @@ prop_compose! {
         length in prop::option::of((0f64..2f64)
             .prop_map(|x| TabIndicatorLength { total_proportion: Some(x) })),
         position in prop::option::of(arbitrary_tab_indicator_position()),
-    ) -> niri_config::TabIndicatorPart {
-        niri_config::TabIndicatorPart {
+    ) -> swayward_config::TabIndicatorPart {
+        swayward_config::TabIndicatorPart {
             off,
             on: !off,
             hide_when_single_tab,
@@ -3885,16 +4557,12 @@ prop_compose! {
         border in prop::option::of(arbitrary_border()),
         shadow in prop::option::of(arbitrary_shadow()),
         tab_indicator in prop::option::of(arbitrary_tab_indicator()),
-        center_focused_column in prop::option::of(arbitrary_center_focused_column()),
-        always_center_single_column in prop::option::of(any::<bool>().prop_map(Flag)),
-        empty_workspace_above_first in prop::option::of(any::<bool>().prop_map(Flag)),
-    ) -> niri_config::LayoutPart {
-        niri_config::LayoutPart {
+        default_orientation in prop::option::of(arbitrary_default_orientation()),
+    ) -> swayward_config::LayoutPart {
+        swayward_config::LayoutPart {
             gaps,
             struts,
-            center_focused_column,
-            always_center_single_column,
-            empty_workspace_above_first,
+            default_orientation,
             focus_ring,
             border,
             shadow,
@@ -3922,10 +4590,151 @@ proptest! {
     ) {
         // eprintln!("{ops:?}");
         let options = Options {
-            layout: niri_config::Layout::from_part(&layout_config),
+            layout: swayward_config::Layout::from_part(&layout_config),
             ..Default::default()
         };
 
         check_ops_with_options(options, ops);
     }
+}
+
+#[test]
+fn focus_parent_with_only_a_floating_window_preserves_tree_invariants() {
+    check_ops([
+        Op::AddOutput(1),
+        Op::AddWindow {
+            params: TestWindowParams {
+                is_floating: true,
+                ..TestWindowParams::new(1)
+            },
+        },
+        Op::FocusParent,
+    ]);
+}
+
+#[test]
+fn first_interactive_move_update_focuses_the_destination_output() {
+    let mut layout = Layout::default();
+    Op::AddOutput(1).apply(&mut layout);
+    Op::AddWindow {
+        params: TestWindowParams::new(0),
+    }
+    .apply(&mut layout);
+    Op::AddOutput(2).apply(&mut layout);
+    let outputs = layout.outputs().cloned().collect::<Vec<_>>();
+    layout.focus_output(&outputs[0]);
+
+    assert!(layout.interactive_move_begin(0, &outputs[0], Point::default()));
+    assert!(layout.interactive_move_update(
+        &0,
+        Point::from((1000., 0.)),
+        outputs[1].clone(),
+        Point::default(),
+    ));
+
+    assert_eq!(layout.active_output(), Some(&outputs[1]));
+}
+
+#[test]
+fn drop_on_a_tile_centre_across_outputs_exchanges_windows() {
+    let mut layout = Layout::default();
+    Op::AddOutput(1).apply(&mut layout);
+    Op::AddWindow {
+        params: TestWindowParams::new(0),
+    }
+    .apply(&mut layout);
+    Op::AddOutput(2).apply(&mut layout);
+    let outputs = layout.outputs().cloned().collect::<Vec<_>>();
+    layout.focus_output(&outputs[1]);
+    Op::AddWindow {
+        params: TestWindowParams::new(1),
+    }
+    .apply(&mut layout);
+    layout.focus_output(&outputs[0]);
+
+    let source_workspace = layout
+        .monitor_for_output(&outputs[0])
+        .unwrap()
+        .active_workspace_ref()
+        .id();
+    let target_workspace = layout
+        .monitor_for_output(&outputs[1])
+        .unwrap()
+        .active_workspace_ref()
+        .id();
+    let target_workspace_ref = layout
+        .monitor_for_output(&outputs[1])
+        .unwrap()
+        .active_workspace_ref();
+    let target_node = target_workspace_ref.tiling_node_for_window(&1).unwrap();
+    let target_rect = target_workspace_ref
+        .tiling()
+        .node_geometry(target_node)
+        .unwrap();
+    let (target_pos, target_size) = (target_rect.loc, target_rect.size);
+    let target_centre = target_pos + target_size.to_point().downscale(2.);
+
+    assert!(layout.interactive_move_begin(0, &outputs[0], Point::default()));
+    assert!(layout.interactive_move_update(
+        &0,
+        Point::from((1000., 0.)),
+        outputs[1].clone(),
+        target_centre,
+    ));
+    layout.interactive_move_end(&0);
+
+    let source = layout
+        .workspaces()
+        .find(|(_, _, ws)| ws.id() == source_workspace)
+        .unwrap()
+        .2;
+    let target = layout
+        .workspaces()
+        .find(|(_, _, ws)| ws.id() == target_workspace)
+        .unwrap()
+        .2;
+    assert!(source.has_window(&1));
+    assert!(target.has_window(&0));
+}
+
+#[test]
+fn drop_on_a_tile_centre_swaps_instead_of_inserting() {
+    // Sway decides a tiling drop by edge: a centre hit on a container swaps the
+    // two windows rather than inserting beside one
+    // (sway/sway/input/seatop_move_tiling.c:365-388).
+    let mut layout = Layout::default();
+    Op::AddOutput(1).apply(&mut layout);
+    for id in [0, 1] {
+        Op::AddWindow {
+            params: TestWindowParams::new(id),
+        }
+        .apply(&mut layout);
+    }
+
+    let output = layout.outputs().next().unwrap().clone();
+    let monitor = layout.monitor_for_output(&output).unwrap();
+    let workspace = monitor.active_workspace_ref();
+    let target = workspace.tiling_node_for_window(&0).unwrap();
+    let target_rect = workspace.tiling().node_geometry(target).unwrap();
+    let geo = (target_rect.loc, target_rect.size);
+
+    // The middle of the first tile must be a swap, and its outer quarter an
+    // insertion, so the two regions are distinguishable.
+    let centre = geo.0 + geo.1.to_point().downscale(2.);
+    let left_edge = geo.0 + Size::from((geo.1.w / 8., geo.1.h / 2.)).to_point();
+    let centre_position = workspace.scrolling_insert_position(centre);
+    assert!(
+        matches!(
+            centre_position,
+            crate::layout::monitor::InsertPosition::SwapWith(_)
+        ),
+        "a centre drop must swap: {centre:?} {geo:?} {centre_position:?}"
+    );
+    assert!(
+        matches!(
+            workspace.scrolling_insert_position(left_edge),
+            crate::layout::monitor::InsertPosition::InsertAt(_, _)
+        ),
+        "an edge drop must insert"
+    );
 }

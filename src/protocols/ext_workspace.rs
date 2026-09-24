@@ -31,8 +31,8 @@ use wayland_backend::server::ClientId;
 
 use crate::layout::monitor::Monitor;
 use crate::layout::workspace::{Workspace, WorkspaceId};
-use crate::niri::State;
 use crate::protocols::EmptyData;
+use crate::swayward::State;
 use crate::window::Mapped;
 
 const VERSION: u32 = 1;
@@ -46,6 +46,12 @@ pub trait ExtWorkspaceHandler {
 enum Action {
     Assign(WorkspaceId, WeakOutput),
     Activate(WorkspaceId),
+}
+
+#[derive(Clone)]
+struct WorkspaceGroupData {
+    manager: WrappedManager,
+    output: WeakOutput,
 }
 
 impl Action {
@@ -70,7 +76,7 @@ struct ExtWorkspaceGroupData {
 }
 
 // Wrapper struct for trait coherence.
-#[derive(PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 struct WrappedManager(ExtWorkspaceManagerV1);
 
 struct ExtWorkspaceData {
@@ -90,16 +96,25 @@ pub struct ExtWorkspaceGlobalData {
 pub fn refresh(state: &mut State) {
     let _span = tracy_client::span!("ext_workspace::refresh");
 
-    let protocol_state = &mut state.niri.ext_workspace_state;
+    let protocol_state = &mut state.swayward.ext_workspace_state;
 
     let mut changed = false;
 
     // Remove workspaces that no longer exist (sending workspace_leave to workspace groups).
-    let mut seen_workspaces = HashMap::new();
-    for (mon, _, ws) in state.niri.layout.workspaces() {
-        let output = mon.map(|mon| mon.output());
-        seen_workspaces.insert(ws.id(), output);
-    }
+    let visible_workspaces = state
+        .swayward
+        .layout
+        .workspaces()
+        .filter_map(|(mon, ws_idx, ws)| {
+            let mon = mon?;
+            (ws.must_be_kept() || ws.has_sway_identity() || mon.active_workspace_idx() == ws_idx)
+                .then_some((mon, ws_idx, ws))
+        })
+        .collect::<Vec<_>>();
+    let seen_workspaces = visible_workspaces
+        .iter()
+        .map(|(mon, _, ws)| (ws.id(), Some(mon.output())))
+        .collect::<HashMap<_, _>>();
 
     protocol_state.workspaces.retain(|id, workspace| {
         if seen_workspaces.contains_key(id) {
@@ -113,13 +128,13 @@ pub fn refresh(state: &mut State) {
 
     // Remove workspace groups for outputs that no longer exist.
     protocol_state.workspace_groups.retain(|output, data| {
-        if state.niri.sorted_outputs.contains(output) {
+        if state.swayward.sorted_outputs.contains(output) {
             return true;
         }
 
         for group in &data.instances {
             // Send workspace_leave for all workspaces in this group with matching manager.
-            let manager: &WrappedManager = group.data().unwrap();
+            let manager = &group.data::<WorkspaceGroupData>().unwrap().manager;
             for ws in protocol_state.workspaces.values() {
                 if ws.output.as_ref() == Some(output) {
                     for workspace in &ws.instances {
@@ -138,12 +153,12 @@ pub fn refresh(state: &mut State) {
     });
 
     // Update existing workspaces and create new ones.
-    for (mon, ws_idx, ws) in state.niri.layout.workspaces() {
-        changed |= refresh_workspace(protocol_state, mon, ws_idx, ws);
+    for (mon, ws_idx, ws) in visible_workspaces {
+        changed |= refresh_workspace(protocol_state, Some(mon), ws_idx, ws);
     }
 
     // Update workspace groups and create new ones, sending workspace_enter events as needed.
-    for output in &state.niri.sorted_outputs {
+    for output in &state.swayward.sorted_outputs {
         changed |= refresh_workspace_group(protocol_state, output);
     }
 
@@ -161,7 +176,7 @@ pub fn on_output_bound(state: &mut State, output: &Output, wl_output: &WlOutput)
 
     let mut sent = false;
 
-    let protocol_state = &mut state.niri.ext_workspace_state;
+    let protocol_state = &mut state.swayward.ext_workspace_state;
     if let Some(data) = protocol_state.workspace_groups.get_mut(output) {
         for group in &mut data.instances {
             if group.client().as_ref() != Some(&client) {
@@ -205,7 +220,7 @@ fn refresh_workspace_group(protocol_state: &mut ExtWorkspaceManagerState, output
 
     // Send workspace_enter for all existing workspaces on this output.
     for group in &data.instances {
-        let manager: &WrappedManager = group.data().unwrap();
+        let manager = &group.data::<WorkspaceGroupData>().unwrap().manager;
         for ws in protocol_state.workspaces.values() {
             if ws.output.as_ref() != Some(output) {
                 continue;
@@ -230,7 +245,7 @@ fn send_workspace_enter_leave(
     if let Some(output) = &data.output {
         if let Some(group_data) = workspace_groups.get(output) {
             for group in &group_data.instances {
-                let manager: &WrappedManager = group.data().unwrap();
+                let manager = &group.data::<WorkspaceGroupData>().unwrap().manager;
                 for workspace in &data.instances {
                     if workspace.data() == Some(manager) {
                         if enter {
@@ -254,13 +269,6 @@ fn remove_workspace_instances(
     for workspace in &data.instances {
         workspace.removed();
     }
-}
-
-fn build_name(ws: &Workspace<Mapped>, ws_idx: usize) -> String {
-    ws.name().cloned().unwrap_or_else(|| {
-        // Add 1 since this is a human-readable name, and our action indexing is 1-based.
-        (ws_idx + 1).to_string()
-    })
 }
 
 fn refresh_workspace(
@@ -319,7 +327,7 @@ fn refresh_workspace(
                 };
             let mut name_changed = false;
             if check {
-                let new_name = build_name(ws, ws_idx);
+                let new_name = ws.sway_display_name(ws_idx);
                 // This will likely be true, except if the workspace got named its index.
                 if data.name != new_name {
                     data.name = new_name;
@@ -384,7 +392,7 @@ fn refresh_workspace(
             // New workspace, start tracking it.
             let mut data = ExtWorkspaceData {
                 id: ws.name().cloned(),
-                name: build_name(ws, ws_idx),
+                name: ws.sway_display_name(ws_idx),
                 coordinates: ArrayVec::from([0, ws_idx as u32]),
                 state,
                 instances: Vec::new(),
@@ -413,14 +421,17 @@ impl ExtWorkspaceGroupData {
         output: &Output,
     ) -> &ExtWorkspaceGroupHandleV1
     where
-        D: Dispatch<ExtWorkspaceGroupHandleV1, WrappedManager>,
+        D: Dispatch<ExtWorkspaceGroupHandleV1, WorkspaceGroupData>,
         D: 'static,
     {
         let group = client
             .create_resource::<ExtWorkspaceGroupHandleV1, _, D>(
                 handle,
                 manager.version(),
-                WrappedManager(manager.clone()),
+                WorkspaceGroupData {
+                    manager: WrappedManager(manager.clone()),
+                    output: output.downgrade(),
+                },
             )
             .unwrap();
         manager.workspace_group(&group);
@@ -636,14 +647,9 @@ where
             }
             ext_workspace_handle_v1::Request::Deactivate => (),
             ext_workspace_handle_v1::Request::Assign { workspace_group } => {
-                if let Some(output) = protocol_state
-                    .workspace_groups
-                    .iter()
-                    .find(|(_, data)| data.instances.contains(&workspace_group))
-                    .map(|(output, _)| output.clone())
-                {
+                if let Some(group) = workspace_group.data::<WorkspaceGroupData>() {
                     let actions = protocol_state.instances.get_mut(&self.0).unwrap();
-                    actions.push(Action::Assign(workspace, output.downgrade()));
+                    actions.push(Action::Assign(workspace, group.output.clone()));
                 }
             }
             ext_workspace_handle_v1::Request::Remove => (),
@@ -660,7 +666,7 @@ where
     }
 }
 
-impl<D> Dispatch2<ExtWorkspaceGroupHandleV1, D> for WrappedManager
+impl<D> Dispatch2<ExtWorkspaceGroupHandleV1, D> for WorkspaceGroupData
 where
     D: ExtWorkspaceHandler,
 {

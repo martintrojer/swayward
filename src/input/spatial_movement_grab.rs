@@ -12,7 +12,7 @@ use smithay::output::Output;
 use smithay::utils::{Logical, Point, SERIAL_COUNTER};
 
 use crate::layout::workspace::WorkspaceId;
-use crate::niri::State;
+use crate::swayward::State;
 
 pub struct SpatialMovementGrab {
     start_data: PointerGrabStartData<State>,
@@ -31,7 +31,6 @@ pub struct SpatialMovementGrab {
 enum GestureState {
     Recognizing,
     ViewOffset,
-    WorkspaceSwitch,
 }
 
 impl SpatialMovementGrab {
@@ -64,10 +63,6 @@ impl SpatialMovementGrab {
         (self.gesture == GestureState::ViewOffset).then_some(&self.output)
     }
 
-    pub fn workspace_switch_output(&self) -> Option<&Output> {
-        (self.gesture == GestureState::WorkspaceSwitch).then_some(&self.output)
-    }
-
     fn on_frame(&mut self, data: &mut State) -> bool {
         let Some(timestamp) = self.event_timestamp.take() else {
             return true;
@@ -79,7 +74,7 @@ impl SpatialMovementGrab {
             .unwrap_or(self.new_location - self.last_location);
         self.last_location = self.new_location;
 
-        let layout = &mut data.niri.layout;
+        let layout = &mut data.swayward.layout;
         let res = match self.gesture {
             GestureState::Recognizing => {
                 let c = self.new_location - self.start_data.location;
@@ -99,9 +94,7 @@ impl SpatialMovementGrab {
                             None
                         }
                     } else {
-                        self.gesture = GestureState::WorkspaceSwitch;
-                        layout.workspace_switch_gesture_begin(&self.output, false);
-                        layout.workspace_switch_gesture_update(-c.y, timestamp, false)
+                        return false;
                     }
                 } else {
                     Some(None)
@@ -110,14 +103,11 @@ impl SpatialMovementGrab {
             GestureState::ViewOffset => {
                 layout.view_offset_gesture_update(-delta.x, timestamp, false)
             }
-            GestureState::WorkspaceSwitch => {
-                layout.workspace_switch_gesture_update(-delta.y, timestamp, false)
-            }
         };
 
         if let Some(output) = res {
             if let Some(output) = output {
-                data.niri.queue_redraw(&output);
+                data.swayward.queue_redraw(&output);
             }
             true
         } else {
@@ -126,19 +116,18 @@ impl SpatialMovementGrab {
     }
 
     fn on_ungrab(&mut self, state: &mut State) {
-        let layout = &mut state.niri.layout;
+        let layout = &mut state.swayward.layout;
         let res = match self.gesture {
             GestureState::Recognizing => None,
             GestureState::ViewOffset => layout.view_offset_gesture_end(Some(false)),
-            GestureState::WorkspaceSwitch => layout.workspace_switch_gesture_end(Some(false)),
         };
 
         if let Some(output) = res {
-            state.niri.queue_redraw(&output);
+            state.swayward.queue_redraw(&output);
         }
 
         state
-            .niri
+            .swayward
             .cursor_manager
             .set_cursor_image(CursorImageStatus::default_named());
     }

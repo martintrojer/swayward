@@ -1,7 +1,6 @@
 use std::ptr;
 
 use anyhow::{ensure, Context as _};
-use niri_config::BlockOutFrom;
 use smithay::backend::allocator::dmabuf::Dmabuf;
 use smithay::backend::allocator::{Buffer, Fourcc};
 use smithay::backend::renderer::damage::OutputDamageTracker;
@@ -20,6 +19,7 @@ use smithay::utils::user_data::UserDataMap;
 use smithay::utils::{Logical, Physical, Point, Rectangle, Scale, Size, Transform};
 use smithay::wayland::shm;
 use solid_color::{SolidColorBuffer, SolidColorRenderElement};
+use swayward_config::BlockOutFrom;
 
 use self::primary_gpu_texture::PrimaryGpuTextureRenderElement;
 use self::texture::{TextureBuffer, TextureRenderElement};

@@ -1,12 +1,13 @@
 use core::f64;
 use std::rc::Rc;
 
-use niri_config::utils::MergeWith as _;
-use niri_config::{Color, CornerRadius, GradientInterpolation};
-use niri_ipc::WindowLayout;
 use smithay::backend::renderer::element::{Element, Kind};
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::utils::{Logical, Point, Rectangle, Scale, Size};
+use swayward_config::utils::MergeWith as _;
+use swayward_config::{Color, CornerRadius, GradientInterpolation};
+use swayward_ipc::command::BorderStyle;
+use swayward_ipc::WindowLayout;
 
 use super::focus_ring::{FocusRing, FocusRingRenderElement};
 use super::opening_window::{OpenAnimation, OpeningWindowRenderElement};
@@ -17,7 +18,6 @@ use super::{
 };
 use crate::animation::{Animation, Clock};
 use crate::layout::SizingMode;
-use crate::niri_render_elements;
 use crate::render_helpers::background_effect::BackgroundEffectElement;
 use crate::render_helpers::border::BorderRenderElement;
 use crate::render_helpers::clipped_surface::{ClippedSurfaceRenderElement, RoundedCornerDamage};
@@ -30,10 +30,34 @@ use crate::render_helpers::snapshot::RenderSnapshot;
 use crate::render_helpers::solid_color::{SolidColorBuffer, SolidColorRenderElement};
 use crate::render_helpers::xray::{Xray, XrayPos};
 use crate::render_helpers::{RenderCtx, RenderTarget};
+use crate::swayward_render_elements;
 use crate::utils::transaction::Transaction;
 use crate::utils::{
-    baba_is_float_offset, round_logical_in_physical, round_logical_in_physical_max1,
+    baba_is_float_offset, round_logical_in_physical, round_logical_in_physical_max1, ResizeEdge,
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct DecoratedCorners {
+    pub top_left: bool,
+    pub top_right: bool,
+    pub bottom_right: bool,
+    pub bottom_left: bool,
+}
+
+impl DecoratedCorners {
+    pub const ALL: Self = Self {
+        top_left: true,
+        top_right: true,
+        bottom_right: true,
+        bottom_left: true,
+    };
+    pub const NONE: Self = Self {
+        top_left: false,
+        top_right: false,
+        bottom_right: false,
+        bottom_left: false,
+    };
+}
 
 /// Toplevel window with decorations.
 #[derive(Debug)]
@@ -43,6 +67,13 @@ pub struct Tile<W: LayoutElement> {
 
     /// The border around the window.
     border: FocusRing,
+    sway_border: Option<(BorderStyle, u16)>,
+    sway_uses_csd: bool,
+    border_edges: ResizeEdge,
+    border_visible: bool,
+    titlebar_attached: bool,
+    titlebar_owned_by_parent: bool,
+    decorated_corners: DecoratedCorners,
 
     /// The focus ring around the window.
     focus_ring: FocusRing,
@@ -61,6 +92,13 @@ pub struct Tile<W: LayoutElement> {
 
     /// Whether the tile should float upon unfullscreening.
     pub(super) restore_to_floating: bool,
+
+    /// Position in the tiling focus history before this tile became floating.
+    pub(super) tiling_focus_rank: Option<usize>,
+
+    /// Parent container before this tile became floating.
+    pub(super) tiling_parent: Option<super::tiling_tree::NodeId>,
+    pub(super) is_sticky: bool,
 
     /// The size that the window should assume when going floating.
     ///
@@ -120,7 +158,7 @@ pub struct Tile<W: LayoutElement> {
     pub(super) options: Rc<Options>,
 }
 
-niri_render_elements! {
+swayward_render_elements! {
     TileRenderElement<R> => {
         LayoutElement = LayoutElementRenderElement<R>,
         FocusRing = FocusRingRenderElement,
@@ -191,15 +229,28 @@ impl<W: LayoutElement> Tile<W> {
         let focus_ring_config = options.layout.focus_ring.merged_with(&rules.focus_ring);
         let shadow_config = options.layout.shadow.merged_with(&rules.shadow);
         let sizing_mode = window.sizing_mode();
+        let sway_border = rules
+            .sway_border
+            .map(|style| (style, rules.sway_border_width));
 
-        Self {
+        let mut tile = Self {
             window,
             border: FocusRing::new(border_config.into()),
+            sway_border: None,
+            sway_uses_csd: false,
+            border_edges: ResizeEdge::all(),
+            border_visible: true,
+            titlebar_attached: false,
+            titlebar_owned_by_parent: false,
+            decorated_corners: DecoratedCorners::ALL,
             focus_ring: FocusRing::new(focus_ring_config),
             shadow: Shadow::new(shadow_config),
             sizing_mode,
             fullscreen_backdrop: SolidColorBuffer::new((0., 0.), [0., 0., 0., 1.]),
             restore_to_floating: false,
+            tiling_focus_rank: None,
+            tiling_parent: None,
+            is_sticky: false,
             floating_window_size: None,
             floating_pos: None,
             floating_preset_width_idx: None,
@@ -216,7 +267,14 @@ impl<W: LayoutElement> Tile<W> {
             scale,
             clock,
             options,
+        };
+        if let Some((style, width)) = sway_border {
+            // Use the command path so command-only styles are resolved instead
+            // of becoming invalid persistent state. Config rejects `toggle`,
+            // but resolved rules are an internal boundary that must stay total.
+            let _ = tile.set_sway_border(style, width, false);
         }
+        tile
     }
 
     pub fn update_config(
@@ -225,6 +283,15 @@ impl<W: LayoutElement> Tile<W> {
         scale: f64,
         options: Rc<Options>,
     ) {
+        if self.sway_border.is_none()
+            && self.options.layout.default_border != options.layout.default_border
+        {
+            // Sway copies the current default into a container when it is
+            // created. Preserve that effective value before replacing the
+            // shared options, so a later default change affects only future
+            // windows.
+            self.sway_border = Some(self.default_sway_border());
+        }
         // If preset widths or heights changed, clear our stored preset index.
         if self.options.layout.preset_column_widths != options.layout.preset_column_widths {
             self.floating_preset_width_idx = None;
@@ -237,13 +304,12 @@ impl<W: LayoutElement> Tile<W> {
         self.scale = scale;
         self.options = options;
 
-        let round_max1 = |logical| round_logical_in_physical_max1(self.scale, logical);
+        let scale = self.scale;
+        let round_max1 = |logical| round_logical_in_physical_max1(scale, logical);
+
+        self.update_border_config();
 
         let rules = self.window.rules();
-
-        let mut border_config = self.options.layout.border.merged_with(&rules.border);
-        border_config.width = round_max1(border_config.width);
-        self.border.update_config(border_config.into());
 
         let mut focus_ring_config = self
             .options
@@ -388,12 +454,12 @@ impl<W: LayoutElement> Tile<W> {
             }
         }
 
-        let round_max1 = |logical| round_logical_in_physical_max1(self.scale, logical);
+        let scale = self.scale;
+        let round_max1 = |logical| round_logical_in_physical_max1(scale, logical);
+
+        self.update_border_config();
 
         let rules = self.window.rules();
-        let mut border_config = self.options.layout.border.merged_with(&rules.border);
-        border_config.width = round_max1(border_config.width);
-        self.border.update_config(border_config.into());
 
         let mut focus_ring_config = self
             .options
@@ -408,8 +474,7 @@ impl<W: LayoutElement> Tile<W> {
 
         let window_size = self.window_size();
         let radius = self
-            .window
-            .geometry_corner_radius()
+            .content_corner_radius()
             .fit_to(window_size.w as f32, window_size.h as f32);
         self.rounded_corner_damage.set_corner_radius(radius);
     }
@@ -479,13 +544,22 @@ impl<W: LayoutElement> Tile<W> {
             .draw_border_with_background
             .unwrap_or_else(|| !self.window.has_ssd());
         let border_width = self.visual_border_width().unwrap_or(0.);
+        let mut border_edges = self.border_edges;
+        if self.titlebar_attached {
+            border_edges.remove(ResizeEdge::TOP);
+        }
+        self.border.set_edges(border_edges);
 
         // Do the inverse of tile_size() in order to handle the unfullscreen animation for windows
         // that were smaller than the fullscreen size, and therefore their animated_window_size() is
         // currently much smaller than the tile size.
         let mut border_window_size = animated_tile_size;
-        border_window_size.w -= border_width * 2.;
-        border_window_size.h -= border_width * 2.;
+        if self.sizing_mode.is_normal() && self.resize_animation.is_none() {
+            border_window_size = self.window_size();
+        } else {
+            border_window_size.w -= border_width * 2.;
+            border_window_size.h -= border_width * 2.;
+        }
 
         // FIXME: this takes into account the animation from normal sizing mode to
         // maximized/fullscreen, but it doesn't take into account the corner radius animation from
@@ -499,21 +573,22 @@ impl<W: LayoutElement> Tile<W> {
         //
         // Later, when windows get the surface shape protocol with radii, this issue will happen
         // when that changes between animated commits.
-        let radius = self
-            .window
+        let outer_radius = self
             .geometry_corner_radius()
-            .expanded_by(border_width as f32)
+            .scaled_by(1. - expanded_progress as f32);
+        let radius = self
+            .content_corner_radius()
             .scaled_by(1. - expanded_progress as f32);
         self.border.update_render_elements(
             border_window_size,
             is_active,
-            !draw_border_with_background,
+            !draw_border_with_background || self.border_edges != ResizeEdge::all(),
             self.window.is_urgent(),
             Rectangle::new(
                 view_rect.loc - Point::from((border_width, border_width)),
                 view_rect.size,
             ),
-            radius,
+            outer_radius,
             self.scale,
             1. - expanded_progress as f32,
         );
@@ -521,9 +596,7 @@ impl<W: LayoutElement> Tile<W> {
         let radius = if self.visual_border_width().is_some() {
             radius
         } else {
-            self.window
-                .geometry_corner_radius()
-                .scaled_by(1. - expanded_progress as f32)
+            outer_radius
         };
         self.shadow.update_render_elements(
             animated_tile_size,
@@ -593,7 +666,7 @@ impl<W: LayoutElement> Tile<W> {
     pub fn animate_move_from_with_config(
         &mut self,
         from: Point<f64, Logical>,
-        config: niri_config::Animation,
+        config: swayward_config::Animation,
     ) {
         self.animate_move_x_from_with_config(from.x, config);
         self.animate_move_y_from_with_config(from.y, config);
@@ -603,7 +676,11 @@ impl<W: LayoutElement> Tile<W> {
         self.animate_move_x_from_with_config(from, self.options.animations.window_movement.0);
     }
 
-    pub fn animate_move_x_from_with_config(&mut self, from: f64, config: niri_config::Animation) {
+    pub fn animate_move_x_from_with_config(
+        &mut self,
+        from: f64,
+        config: swayward_config::Animation,
+    ) {
         let current_offset = self.render_offset().x;
 
         // Preserve the previous config if ongoing.
@@ -627,7 +704,11 @@ impl<W: LayoutElement> Tile<W> {
         self.animate_move_y_from_with_config(from, self.options.animations.window_movement.0);
     }
 
-    pub fn animate_move_y_from_with_config(&mut self, from: f64, config: niri_config::Animation) {
+    pub fn animate_move_y_from_with_config(
+        &mut self,
+        from: f64,
+        config: swayward_config::Animation,
+    ) {
         let current_offset = self.render_offset().y;
 
         // Preserve the previous config if ongoing.
@@ -669,7 +750,7 @@ impl<W: LayoutElement> Tile<W> {
         }
     }
 
-    pub fn animate_alpha(&mut self, from: f64, to: f64, config: niri_config::Animation) {
+    pub fn animate_alpha(&mut self, from: f64, to: f64, config: swayward_config::Animation) {
         let from = from.clamp(0., 1.);
         let to = to.clamp(0., 1.);
 
@@ -755,8 +836,85 @@ impl<W: LayoutElement> Tile<W> {
         Some(self.border.width())
     }
 
-    fn visual_border_width(&self) -> Option<f64> {
+    pub(crate) fn configured_border_width(&self) -> f64 {
         if self.border.is_off() {
+            0.
+        } else {
+            self.border.width()
+        }
+    }
+
+    pub fn set_border_edges(&mut self, edges: ResizeEdge) {
+        self.border_edges = edges;
+    }
+
+    pub fn set_border_visible(&mut self, visible: bool) {
+        self.border_visible = visible;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn border_is_visible(&self) -> bool {
+        self.visual_border_width().is_some()
+    }
+
+    pub(crate) fn set_decorated_box(
+        &mut self,
+        corners: DecoratedCorners,
+        attached: bool,
+        owned_by_parent: bool,
+    ) {
+        self.decorated_corners = corners;
+        self.titlebar_attached = attached;
+        self.titlebar_owned_by_parent = owned_by_parent;
+        let radius = self
+            .content_corner_radius()
+            .fit_to(self.window_size().w as f32, self.window_size().h as f32);
+        self.rounded_corner_damage.set_corner_radius(radius);
+    }
+
+    pub(crate) fn geometry_corner_radius(&self) -> CornerRadius {
+        self.geometry_corner_radius_for(self.decorated_corners)
+    }
+
+    pub(crate) fn geometry_corner_radius_for(&self, corners: DecoratedCorners) -> CornerRadius {
+        let mut radius = self.window.geometry_corner_radius();
+        radius.top_left *= f32::from(corners.top_left);
+        radius.top_right *= f32::from(corners.top_right);
+        radius.bottom_right *= f32::from(corners.bottom_right);
+        radius.bottom_left *= f32::from(corners.bottom_left);
+        radius
+    }
+
+    fn content_corner_radius(&self) -> CornerRadius {
+        let mut radius = self.geometry_corner_radius();
+        if self.titlebar_attached {
+            radius.top_left = 0.;
+            radius.top_right = 0.;
+        }
+        radius
+    }
+
+    fn decoration_insets(&self) -> (f64, f64, f64, f64) {
+        // This is also used while requesting a return from fullscreen, when the current sizing
+        // mode still hides the border but the normal-state configure must reserve it.
+        let width = self.configured_border_width();
+        let top = if self.titlebar_owned_by_parent {
+            0.
+        } else if self.has_sway_titlebar() {
+            super::titlebar::height(self.scale, &self.options.layout.titlebar)
+        } else {
+            width * f64::from(self.border_edges.contains(ResizeEdge::TOP))
+        };
+        (
+            width * f64::from(self.border_edges.contains(ResizeEdge::LEFT)),
+            width * f64::from(self.border_edges.contains(ResizeEdge::RIGHT)),
+            top,
+            width * f64::from(self.border_edges.contains(ResizeEdge::BOTTOM)),
+        )
+    }
+
+    fn visual_border_width(&self) -> Option<f64> {
+        if self.border.is_off() || !self.border_visible {
             return None;
         }
 
@@ -781,16 +939,15 @@ impl<W: LayoutElement> Tile<W> {
         let window_size = self.animated_window_size();
         let target_size = self.animated_tile_size();
 
-        // Center the window within its tile.
-        //
-        // - Without borders, the sizes match, so this difference is zero.
-        // - Borders always match from all sides, so this difference is pre-rounded to physical.
-        // - In fullscreen, if the window is smaller than the tile, then it gets centered, otherwise
-        //   the tile size matches the window.
-        // - During animations, the window remains centered within the tile; this is important for
-        //   the to/from fullscreen animation.
-        loc.x += (target_size.w - window_size.w) / 2.;
-        loc.y += (target_size.h - window_size.h) / 2.;
+        if self.sizing_mode.is_normal() && self.resize_animation.is_none() {
+            let (left, _, top, _) = self.decoration_insets();
+            loc.x += left;
+            loc.y += top;
+        } else {
+            // Keep expanded windows and resize animations centered in their tiles.
+            loc.x += (target_size.w - window_size.w) / 2.;
+            loc.y += (target_size.h - window_size.h) / 2.;
+        }
 
         // Round to physical pixels.
         loc = loc
@@ -811,10 +968,9 @@ impl<W: LayoutElement> Tile<W> {
             return size;
         }
 
-        if let Some(width) = self.effective_border_width() {
-            size.w += width * 2.;
-            size.h += width * 2.;
-        }
+        let (left, right, top, bottom) = self.decoration_insets();
+        size.w += left + right;
+        size.h += top + bottom;
 
         size
     }
@@ -830,10 +986,9 @@ impl<W: LayoutElement> Tile<W> {
             return size;
         }
 
-        if let Some(width) = self.effective_border_width() {
-            size.w += width * 2.;
-            size.h += width * 2.;
-        }
+        let (left, right, top, bottom) = self.decoration_insets();
+        size.w += left + right;
+        size.h += top + bottom;
 
         size
     }
@@ -915,8 +1070,9 @@ impl<W: LayoutElement> Tile<W> {
     }
 
     fn is_in_activation_region(&self, point: Point<f64, Logical>) -> bool {
-        let activation_region = Rectangle::from_size(self.tile_size());
-        activation_region.contains(point)
+        let tile = Rectangle::from_size(self.tile_size());
+        let window = Rectangle::new(self.window_loc(), self.window_size());
+        tile.contains(point) && !window.contains(point)
     }
 
     pub fn hit(&self, point: Point<f64, Logical>) -> Option<HitType> {
@@ -941,12 +1097,9 @@ impl<W: LayoutElement> Tile<W> {
         animate: bool,
         transaction: Option<Transaction>,
     ) {
-        // Can't go through effective_border_width() because we might be fullscreen.
-        if !self.border.is_off() {
-            let width = self.border.width();
-            size.w = f64::max(1., size.w - width * 2.);
-            size.h = f64::max(1., size.h - width * 2.);
-        }
+        let (left, right, top, bottom) = self.decoration_insets();
+        size.w = f64::max(1., size.w - left - right);
+        size.h = f64::max(1., size.h - top - bottom);
 
         // The size request has to be i32 unfortunately, due to Wayland. We floor here instead of
         // round to avoid situations where proportionally-sized columns don't fit on the screen
@@ -960,35 +1113,23 @@ impl<W: LayoutElement> Tile<W> {
     }
 
     pub fn tile_width_for_window_width(&self, size: f64) -> f64 {
-        if self.border.is_off() {
-            size
-        } else {
-            size + self.border.width() * 2.
-        }
+        let (left, right, _, _) = self.decoration_insets();
+        size + left + right
     }
 
     pub fn tile_height_for_window_height(&self, size: f64) -> f64 {
-        if self.border.is_off() {
-            size
-        } else {
-            size + self.border.width() * 2.
-        }
+        let (_, _, top, bottom) = self.decoration_insets();
+        size + top + bottom
     }
 
     pub fn window_width_for_tile_width(&self, size: f64) -> f64 {
-        if self.border.is_off() {
-            size
-        } else {
-            size - self.border.width() * 2.
-        }
+        let (left, right, _, _) = self.decoration_insets();
+        size - left - right
     }
 
     pub fn window_height_for_tile_height(&self, size: f64) -> f64 {
-        if self.border.is_off() {
-            size
-        } else {
-            size - self.border.width() * 2.
-        }
+        let (_, _, top, bottom) = self.decoration_insets();
+        size - top - bottom
     }
 
     pub fn request_maximized(
@@ -1017,15 +1158,13 @@ impl<W: LayoutElement> Tile<W> {
     pub fn min_size_nonfullscreen(&self) -> Size<f64, Logical> {
         let mut size = self.window.min_size().to_f64();
 
-        // Can't go through effective_border_width() because we might be fullscreen.
-        if !self.border.is_off() {
-            let width = self.border.width();
-
+        let (left, right, top, bottom) = self.decoration_insets();
+        if left + right + top + bottom > 0. {
             size.w = f64::max(1., size.w);
             size.h = f64::max(1., size.h);
 
-            size.w += width * 2.;
-            size.h += width * 2.;
+            size.w += left + right;
+            size.h += top + bottom;
         }
 
         size
@@ -1034,16 +1173,12 @@ impl<W: LayoutElement> Tile<W> {
     pub fn max_size_nonfullscreen(&self) -> Size<f64, Logical> {
         let mut size = self.window.max_size().to_f64();
 
-        // Can't go through effective_border_width() because we might be fullscreen.
-        if !self.border.is_off() {
-            let width = self.border.width();
-
-            if size.w > 0. {
-                size.w += width * 2.;
-            }
-            if size.h > 0. {
-                size.h += width * 2.;
-            }
+        let (left, right, top, bottom) = self.decoration_insets();
+        if size.w > 0. {
+            size.w += left + right;
+        }
+        if size.h > 0. {
+            size.h += top + bottom;
         }
 
         size
@@ -1108,8 +1243,7 @@ impl<W: LayoutElement> Tile<W> {
         // that submit a full-sized buffer before acking the fullscreen state (Firefox).
         let clip_to_geometry = fullscreen_progress < 1. && rules.clip_to_geometry == Some(true);
         let radius = self
-            .window
-            .geometry_corner_radius()
+            .content_corner_radius()
             .scaled_by(1. - expanded_progress as f32);
 
         // Popups go on top, whether it's resize or not.
@@ -1284,7 +1418,6 @@ impl<W: LayoutElement> Tile<W> {
             if fullscreen_progress < 1. && has_border_shader {
                 let border_width = self.visual_border_width().unwrap_or(0.);
                 let radius = self
-                    .window
                     .geometry_corner_radius()
                     .expanded_by(border_width as f32)
                     .scaled_by(1. - expanded_progress as f32);
@@ -1317,12 +1450,11 @@ impl<W: LayoutElement> Tile<W> {
             }
         }
 
-        if let Some(width) = self.visual_border_width() {
-            self.border.render(
-                ctx.renderer,
-                location + Point::from((width, width)),
-                &mut |elem| push(elem.into()),
-            );
+        if self.visual_border_width().is_some() {
+            self.border
+                .render(ctx.renderer, location + self.window_loc(), &mut |elem| {
+                    push(elem.into())
+                });
         }
 
         // Hide the focus ring when maximized/fullscreened. It's not normally visible anyway due to
@@ -1568,6 +1700,104 @@ impl<W: LayoutElement> Tile<W> {
         &self.border
     }
 
+    pub fn sway_border(&self) -> (BorderStyle, u16) {
+        let (style, width) = self
+            .sway_border
+            .unwrap_or_else(|| self.default_sway_border());
+        (style, if style == BorderStyle::None { 0 } else { width })
+    }
+
+    /// The border a window gets when no rule or command has set one.
+    ///
+    /// sway's `default_border` (`sway/sway/commands/default_border.c`).
+    /// Before this was configurable the style was hardcoded to `Normal`,
+    /// which is still the shipped default.
+    ///
+    /// A tile does not record whether it is floating; that is passed in at
+    /// the call sites that need it, and floating windows take their default
+    /// from the resolved window rules rather than here. So this reads
+    /// `default_border` only, and `default_floating_border` is applied where
+    /// rules are resolved.
+    fn default_sway_border(&self) -> (BorderStyle, u16) {
+        let default = self.options.layout.default_border;
+        let style = match default.style {
+            swayward_config::layout::SwayBorderStyle::None => BorderStyle::None,
+            swayward_config::layout::SwayBorderStyle::Normal => BorderStyle::Normal,
+            swayward_config::layout::SwayBorderStyle::Pixel => BorderStyle::Pixel,
+        };
+        let width = default
+            .width
+            .unwrap_or_else(|| self.border.width().round() as u16);
+        (style, width)
+    }
+
+    pub fn has_sway_titlebar(&self) -> bool {
+        // Only `normal` draws a titlebar. When no rule or command has set a
+        // border this follows `default_border`, so the answer stays
+        // consistent with sway_border() above; they were allowed to disagree
+        // once and the i3 centering test caught it.
+        !self.sway_uses_csd
+            && match self.sway_border {
+                Some((style, _)) => style == BorderStyle::Normal,
+                None => {
+                    self.default_sway_border().0 == BorderStyle::Normal
+                        && self.effective_border_width().is_some()
+                }
+            }
+    }
+
+    pub fn set_sway_border(
+        &mut self,
+        style: BorderStyle,
+        width: Option<u16>,
+        floating: bool,
+    ) -> Result<f64, &'static str> {
+        let old_width = self.effective_border_width().unwrap_or(0.);
+        let (current_style, current_width) = self.sway_border.unwrap_or((BorderStyle::Normal, 2));
+        let style = match style {
+            BorderStyle::Toggle if self.sway_uses_csd => BorderStyle::None,
+            BorderStyle::Toggle => match current_style {
+                BorderStyle::None => BorderStyle::Pixel,
+                BorderStyle::Pixel => BorderStyle::Normal,
+                BorderStyle::Normal if self.window.has_xdg_decoration() => BorderStyle::Csd,
+                BorderStyle::Normal | BorderStyle::Csd | BorderStyle::Toggle => BorderStyle::None,
+            },
+            style => style,
+        };
+        if style == BorderStyle::Csd && !self.window.has_xdg_decoration() {
+            return Err("This window doesn't support client side decorations");
+        }
+        self.window
+            .request_server_decoration(style != BorderStyle::Csd);
+        self.sway_uses_csd = style == BorderStyle::Csd;
+        let style = if style == BorderStyle::Csd && !floating {
+            current_style
+        } else {
+            style
+        };
+        let width = width.unwrap_or(match style {
+            BorderStyle::Normal => 2,
+            BorderStyle::Pixel => 1,
+            BorderStyle::None | BorderStyle::Csd | BorderStyle::Toggle => current_width,
+        });
+        self.sway_border = Some((style, width));
+        self.update_border_config();
+        Ok(self.effective_border_width().unwrap_or(0.) - old_width)
+    }
+
+    fn update_border_config(&mut self) {
+        let rules = self.window.rules();
+        let mut config = self.options.layout.border.merged_with(&rules.border);
+        if let Some((style, width)) = self.sway_border {
+            config.off = self.sway_uses_csd || style == BorderStyle::None;
+            if matches!(style, BorderStyle::Pixel | BorderStyle::Normal) {
+                config.width = f64::from(width);
+            }
+        }
+        config.width = round_logical_in_physical_max1(self.scale, config.width);
+        self.border.update_config(config.into());
+    }
+
     pub fn focus_ring(&self) -> &FocusRing {
         &self.focus_ring
     }
@@ -1579,6 +1809,14 @@ impl<W: LayoutElement> Tile<W> {
     #[cfg(test)]
     pub fn view_size(&self) -> Size<f64, Logical> {
         self.view_size
+    }
+
+    #[cfg(test)]
+    pub fn decoration_corner_radii(&self) -> (Option<CornerRadius>, CornerRadius) {
+        let border = self
+            .visual_border_width()
+            .map(|_| self.border.corner_radius());
+        (border, self.shadow.window_corner_radius())
     }
 
     #[cfg(test)]
