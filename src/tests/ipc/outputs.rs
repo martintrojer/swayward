@@ -251,8 +251,9 @@ fn drain_workspace_window_events(
 /// Output power and idle wake likewise have no workspace/window event. A real
 /// connector replug moves the affected workspace; restoring the focused
 /// workspace also empties the fallback output, so sway creates its replacement
-/// workspace (`sway/tree/output.c:48-56`). Focus commands retain their ordinary
-/// one-event-per-transition behavior while locked.
+/// workspace (`sway/tree/output.c:48-56`). After replug, selecting a new
+/// workspace initializes it and destroys the empty unaddressable workspace that
+/// loses focus (`sway/tree/workspace.c:313-330`).
 #[test]
 fn lock_power_idle_and_hotplug_have_bounded_workspace_window_events() {
     let (mut fixture, socket) = ipc_fixture();
@@ -390,7 +391,7 @@ fn lock_power_idle_and_hotplug_have_bounded_workspace_window_events() {
             .iter()
             .map(|event| event["change"].as_str().unwrap())
             .collect::<Vec<_>>(),
-        ["focus", "focus"]
+        ["init", "focus", "focus", "empty"]
     );
 }
 

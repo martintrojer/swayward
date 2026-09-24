@@ -1393,6 +1393,7 @@ impl<W: LayoutElement> Layout<W> {
                         if let Some(idx) = primary.idx_of_ws(removed_active_workspace) {
                             primary.active_workspace_idx = idx;
                             active_monitor_idx = primary_idx;
+                            primary.reap_empty_workspaces();
                         }
                     }
 

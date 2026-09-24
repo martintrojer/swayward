@@ -1227,9 +1227,9 @@ why = ""
 
 [[edit]]
 migrated = false
-paths = ["src/layout/mod.rs", "src/tests/ipc/workspace_output.rs"]
-what = "preserve the active workspace and focused nested tab or stack when an active output is evacuated, and restore the intact workspace to its preferred output when that output returns."
-why = "Match sway's output evacuation and workspace-priority restoration (`sway/tree/output.c:31-45,158-159,205-247`)."
+paths = ["src/layout/mod.rs", "src/layout/tests.rs", "src/tests/ipc/outputs.rs", "src/tests/ipc/workspace_output.rs"]
+what = "preserve the active workspace and focused nested tab or stack when an active output is evacuated, reap the empty unaddressable workspace that loses focus, and restore the intact workspace to its preferred output when that output returns."
+why = "Match sway's output evacuation, workspace destruction, and workspace-priority restoration (`sway/tree/output.c:31-45,158-159,205-247`; `sway/tree/workspace.c:313-330`)."
 
 [[edit]]
 migrated = false

@@ -2078,6 +2078,28 @@ fn removing_active_output_focuses_its_evacuated_workspace() {
 }
 
 #[test]
+fn removing_active_output_reaps_the_empty_workspace_that_loses_focus() {
+    let layout = check_ops([
+        Op::AddOutput(1),
+        Op::AddWindow {
+            params: TestWindowParams::new(1),
+        },
+        Op::AddOutput(4),
+        Op::MoveWorkspaceToMonitor {
+            ws_name: None,
+            output_id: 4,
+        },
+        Op::RemoveOutput(4),
+    ]);
+
+    let MonitorSet::Normal { monitors, .. } = layout.monitor_set else {
+        unreachable!()
+    };
+    assert_eq!(monitors[0].workspaces.len(), 1);
+    assert!(monitors[0].active_workspace_ref().has_window(&1));
+}
+
+#[test]
 fn move_down_creates_named_destination_before_moving_window() {
     let mut layout = Layout::default();
     Op::AddOutput(1).apply(&mut layout);
