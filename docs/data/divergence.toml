@@ -1270,3 +1270,9 @@ migrated = false
 paths = ["src/ipc/tree.rs", "src/tests/ipc/tree_commands.rs"]
 what = "report inactive workspace-root tabs as invisible and report every tabbed or stacked child with a full-parent percent of 1.0."
 why = "Sway hides views outside the active child of every tabbed or stacked ancestor (`sway/tree/view.c:1180-1193`) and computes container percent from arranged dimensions, where each tab occupies the full parent (`sway/ipc-json.c:746-755`)."
+
+[[edit]]
+migrated = false
+paths = ["src/backend/headless.rs", "src/backend/mod.rs", "src/tests/ipc/outputs.rs"]
+what = "apply configured and runtime custom modes to headless outputs and keep their output-management mode records current."
+why = "The headless backend is used by sway-compatible IPC clients and the oracle, so a successful output mode command must change the advertised compositor geometry rather than only mutating configuration."

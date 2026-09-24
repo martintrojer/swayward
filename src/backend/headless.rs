@@ -166,6 +166,7 @@ impl Headless {
                 });
         }
         swayward.add_output(output, None, false);
+        self.on_output_config_changed(swayward);
     }
 
     pub fn retain_ipc_outputs(&mut self, names: &[String]) {
@@ -173,6 +174,48 @@ impl Headless {
             .lock()
             .unwrap()
             .retain(|_, output| names.contains(&output.name));
+    }
+
+    pub fn on_output_config_changed(&mut self, swayward: &mut Swayward) {
+        let outputs = swayward.global_space.outputs().cloned().collect::<Vec<_>>();
+        for output in outputs {
+            let name = output.user_data().get::<OutputName>().unwrap();
+            let mode = swayward
+                .config
+                .borrow()
+                .outputs
+                .find(name)
+                .and_then(|config| config.mode)
+                .map(|mode| Mode {
+                    size: Size::from((i32::from(mode.mode.width), i32::from(mode.mode.height))),
+                    refresh: mode
+                        .mode
+                        .refresh
+                        .map_or(60_000, |refresh| (refresh * 1000.).round() as i32),
+                });
+            let Some(mode) = mode.filter(|mode| output.current_mode() != Some(*mode)) else {
+                continue;
+            };
+            output.change_current_state(Some(mode), None, None, None);
+            output.set_preferred(mode);
+            if let Some(ipc_output) = self
+                .ipc_outputs
+                .lock()
+                .unwrap()
+                .values_mut()
+                .find(|ipc_output| ipc_output.name == output.name())
+            {
+                ipc_output.modes = vec![swayward_ipc::Mode {
+                    width: mode.size.w as u16,
+                    height: mode.size.h as u16,
+                    refresh_rate: mode.refresh.max(0) as u32,
+                    is_preferred: true,
+                }];
+                ipc_output.current_mode = Some(0);
+                ipc_output.logical = Some(logical_output(&output));
+            }
+            swayward.output_resized(&output);
+        }
     }
 
     pub fn seat_name(&self) -> String {

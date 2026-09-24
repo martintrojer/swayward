@@ -1,9 +1,24 @@
 #[test]
+fn headless_output_uses_configured_mode_when_added() {
+    let config = swayward_config::Config::parse_mem(
+        r#"output "headless-1" { mode custom=true "1270x1408@60"; }"#,
+    )
+    .unwrap();
+    let mut fixture = Fixture::with_config(config);
+    fixture.add_output(1, (1280, 720));
+
+    assert_eq!(
+        fixture.niri_output(1).current_mode().unwrap().size,
+        (1270, 1408).into()
+    );
+}
+
+#[test]
 fn output_runtime_commands_apply_named_state_and_wildcard_fanout() {
     let (mut fixture, socket) = ipc_fixture();
     fixture.add_named_output_at("left".into(), (800, 600), Some((0, 0)));
     fixture.add_named_output_at("right".into(), (1024, 768), Some((800, 0)));
-    let mut subscriber = UnixStream::connect(socket).unwrap();
+    let mut subscriber = UnixStream::connect(&socket).unwrap();
     subscriber
         .write_all(&swayward_ipc::wire::encode(
             MessageType::Subscribe,
@@ -46,6 +61,17 @@ fn output_runtime_commands_apply_named_state_and_wildcard_fanout() {
         assert_eq!((mode.mode.width, mode.mode.height), (1280, 720));
         assert_eq!(mode.mode.refresh, Some(60.));
     }
+    assert_eq!(left.current_mode().unwrap().size, (1280, 720).into());
+    let mut stream = UnixStream::connect(&socket).unwrap();
+    let outputs = query_ipc(&mut fixture, &mut stream, MessageType::GetOutputs);
+    let left = outputs
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|output| output["name"] == "left")
+        .unwrap();
+    assert_eq!(left["current_mode"]["width"], 1280);
+    assert_eq!(left["current_mode"]["height"], 720);
 
     assert!(crate::command::execute(fixture.niri_state(), "output * scale 2")[0].success);
     assert_eq!(
