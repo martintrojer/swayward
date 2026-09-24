@@ -14,7 +14,11 @@ LEDGER = ROOT / "docs" / "data" / "divergence.toml"
 
 def git(*args: str) -> str:
     return subprocess.check_output(
-        ["git", "-C", ROOT, *args], text=True, stderr=subprocess.DEVNULL
+        # quotepath off: report non-ASCII paths verbatim so they match the ledger
+        # whatever the caller's git config says (CI's default quotes them).
+        ["git", "-c", "core.quotepath=false", "-C", ROOT, *args],
+        text=True,
+        stderr=subprocess.DEVNULL,
     )
 
 
