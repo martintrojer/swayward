@@ -183,6 +183,9 @@ fn execute_one(
             let Some(workspace) = state.swayward.layout.active_workspace() else {
                 return failure("Cannot move workspaces in a direction");
             };
+            if focused_target(state).is_none() {
+                return command_failure("Cannot move workspaces in a direction");
+            };
             let fullscreen_floating = workspace.active_floating_is_fullscreen();
             if workspace.floating_is_active() || fullscreen_floating {
                 if fullscreen_floating {
@@ -241,7 +244,7 @@ fn execute_one(
                 return failure("Can't move fullscreen global container");
             }
             let Some(focused) = focused_target(state) else {
-                return success();
+                return command_failure("Can't move an empty workspace");
             };
             let auto_back_and_forth = auto_back_and_forth
                 && state
@@ -306,7 +309,13 @@ fn execute_one(
             None
         }
         Command::MoveScratchpad => {
-            if matches!(focused_target(state), Some(CommandTarget::Container(_, _))) {
+            let target = focused_target(state);
+            if target.is_none() {
+                return swayward_ipc::command::parse_error(
+                    "Can't move an empty workspace to the scratchpad",
+                );
+            }
+            if matches!(target, Some(CommandTarget::Container(_, _))) {
                 return failure("floating container groups are not supported");
             }
             scratchpad::move_focused(state);
@@ -409,7 +418,7 @@ fn execute_one(
                 .focus()
                 .map(|mapped| mapped.window.clone())
             else {
-                return success();
+                return swayward_ipc::command::parse_error("Can't float an empty workspace");
             };
             match mode {
                 Toggle::Enable => state
@@ -2330,6 +2339,14 @@ fn failure(error: impl Into<String>) -> CommandOutcome {
         success: false,
         error: Some(error.into()),
         parse_error: None,
+    }
+}
+
+fn command_failure(error: impl Into<String>) -> CommandOutcome {
+    CommandOutcome {
+        success: false,
+        error: Some(error.into()),
+        parse_error: Some(false),
     }
 }
 

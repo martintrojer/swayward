@@ -76,6 +76,40 @@ fn empty_workspace_commands_return_sway_failures() {
 }
 
 #[test]
+fn empty_workspace_move_and_floating_commands_match_sway_errors() {
+    let mut fixture = Fixture::new();
+    fixture.add_output(1, (1920, 1080));
+
+    for (command, parse_error, error) in [
+        (
+            "move scratchpad",
+            true,
+            "Can't move an empty workspace to the scratchpad",
+        ),
+        ("floating toggle", true, "Can't float an empty workspace"),
+        ("move left", false, "Cannot move workspaces in a direction"),
+        ("move right", false, "Cannot move workspaces in a direction"),
+        ("move up", false, "Cannot move workspaces in a direction"),
+        ("move down", false, "Cannot move workspaces in a direction"),
+        (
+            "move container to workspace 2",
+            false,
+            "Can't move an empty workspace",
+        ),
+    ] {
+        assert_eq!(
+            crate::command::execute(fixture.niri_state(), command),
+            [swayward_ipc::CommandOutcome {
+                success: false,
+                error: Some(error.into()),
+                parse_error: Some(parse_error),
+            }],
+            "{command}"
+        );
+    }
+}
+
+#[test]
 fn focus_floating_succeeds_when_a_floating_window_exists() {
     let mut fixture = Fixture::new();
     fixture.add_output(1, (1920, 1080));
