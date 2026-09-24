@@ -577,7 +577,7 @@ retry, sleep, or catch-and-continue path.
 | `540-sigterm-cleanup.t` | 2 | file-level skip; 0 reached | The runner skips the whole file because it cannot send SIGTERM to its in-process compositor without destroying the test. The unchanged file emits `1..0 # SKIP`, so neither source assertion runs. Native lifecycle coverage verifies that dropping the real `IpcServer` removes its socket and that a second server can bind the same path after both stale and clean shutdown. The product event loop handles SIGTERM by stopping, which drops the server (`src/utils/signals.rs:46-56`; `src/ipc/server.rs:158-163`); sway registers SIGTERM with `term_signal` and removes its IPC socket when the display is destroyed (`sway/sway/server.c:158`; `sway/sway/ipc-server.c:99-116`). The previous row incorrectly credited one pass. |
 ## Current classification
 
-The suite records 2,305 passes and 780 documented assertion skips. Each skip
+The suite records 2,220 passes and 865 documented assertion skips. Each skip
 carries an assertion number, a reason, and a `sway` or `i3` citation. Nine files
 instead emit a cited file-level `1..0 # SKIP` plan; their 56 static source
 assertions are not counted as executed assertions. The fresh real-TAP measurement
@@ -603,7 +603,7 @@ it cannot claim a file we have already vendored or omit one we have not. The
 prose audit this replaced had no such check and had drifted by five files
 before anyone noticed.
 
-The **current green ceiling is 116 files**: the 108 green in `coverage.toml` plus
+The **current green ceiling is 110 files**: the 102 green in `coverage.toml` plus
 8 vendored files whose only obstacles are implementation or adapter gaps.
 A file carrying a documented skip can never join them, because a documented
 skip records that the assertion is wrong about sway and is permanent; a file

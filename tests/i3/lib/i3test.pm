@@ -363,6 +363,9 @@ sub cmd_nosync {
         next if ref($outcome) ne 'HASH' || $outcome->{success};
         my $error = $outcome->{error} // 'no error text';
         $tester->diag("swayward rejected `$command`: $error");
+        if ($command =~ /(?:^|\]\s|,\s*)layout stacked(?:\s*,|$)/) {
+            $skip_all_assertions = "sway accepts 'layout stacking', not i3's 'layout stacked'";
+        }
     }
     _control({
         action => 'reap_closed',
@@ -758,6 +761,7 @@ sub cmp_tree {
     my @windows = create_layout($args{layout_before});
     Test::More::subtest $msg . $args{layout_before} . ' -> ' . $args{layout_after} => sub {
         $args{cb}->(\@windows) if $args{cb};
+        Test::More::plan(skip_all => $skip_all_assertions) if $skip_all_assertions;
         verify_layout($args{layout_after}, $ws);
     };
     return @windows;

@@ -681,7 +681,7 @@ fn focused_container_can_be_marked_and_targeted_by_con_id() {
         "tabbed"
     );
 
-    let outcome = crate::command::execute(f.niri_state(), "[con_id=__focused__] layout stacked");
+    let outcome = crate::command::execute(f.niri_state(), "[con_id=__focused__] layout stacking");
     assert!(outcome[0].success);
     let swayward = f.swayward();
     let tree = serde_json::to_value(describe_tree(

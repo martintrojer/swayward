@@ -2062,7 +2062,7 @@ fn parse_layout(args: &[&str]) -> Result<Command, String> {
         "splith" => Some(Layout::SplitH),
         "splitv" => Some(Layout::SplitV),
         "tabbed" => Some(Layout::Tabbed),
-        "stacked" | "stacking" => Some(Layout::Stacked),
+        "stacking" => Some(Layout::Stacked),
         _ => None,
     };
     if let [layout] = args {

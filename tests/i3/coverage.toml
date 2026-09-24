@@ -1197,8 +1197,65 @@ note = "A floating window becomes invisible after its workspace loses visibility
 [files."138-floating-attach.t"]
 assertions = 11
 tap_plan = 11
-pass = 11
-note = "Opening a tiled window when only a float exists creates a tiled root, and opening after a float over a stacked layout preserves that stacked container. No setup command is rejected."
+pass = 0
+reason = "i3_only_semantics"
+reason_verified = true
+note = "The file depends on i3's `layout stacked` spelling. Sway accepts only `layout stacking`, so assertions after that rejected setup command do not apply (`sway/sway/commands/layout.c:18-27`)."
+[[files."138-floating-attach.t".skip]]
+n = 1
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/138-floating-attach.t; sway/sway/commands/layout.c:18-27"
+[[files."138-floating-attach.t".skip]]
+n = 2
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/138-floating-attach.t; sway/sway/commands/layout.c:18-27"
+[[files."138-floating-attach.t".skip]]
+n = 3
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/138-floating-attach.t; sway/sway/commands/layout.c:18-27"
+[[files."138-floating-attach.t".skip]]
+n = 4
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/138-floating-attach.t; sway/sway/commands/layout.c:18-27"
+[[files."138-floating-attach.t".skip]]
+n = 5
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/138-floating-attach.t; sway/sway/commands/layout.c:18-27"
+[[files."138-floating-attach.t".skip]]
+n = 6
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/138-floating-attach.t; sway/sway/commands/layout.c:18-27"
+[[files."138-floating-attach.t".skip]]
+n = 7
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/138-floating-attach.t; sway/sway/commands/layout.c:18-27"
+[[files."138-floating-attach.t".skip]]
+n = 8
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/138-floating-attach.t; sway/sway/commands/layout.c:18-27"
+[[files."138-floating-attach.t".skip]]
+n = 9
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/138-floating-attach.t; sway/sway/commands/layout.c:18-27"
+[[files."138-floating-attach.t".skip]]
+n = 10
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/138-floating-attach.t; sway/sway/commands/layout.c:18-27"
+[[files."138-floating-attach.t".skip]]
+n = 11
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/138-floating-attach.t; sway/sway/commands/layout.c:18-27"
 
 [files."139-ws-numbers.t"]
 assertions = 8
@@ -1209,8 +1266,25 @@ note = "FULLY GREEN at 8 of 8. Workspace identity is stored before insertion, an
 [files."140-focus-lost.t"]
 assertions = 3
 tap_plan = 3
-pass = 3
-note = "Focus survives a layout change."
+pass = 0
+reason = "i3_only_semantics"
+reason_verified = true
+note = "The file depends on i3's `layout stacked` spelling. Sway accepts only `layout stacking`, so assertions after that rejected setup command do not apply (`sway/sway/commands/layout.c:18-27`)."
+[[files."140-focus-lost.t".skip]]
+n = 1
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/140-focus-lost.t; sway/sway/commands/layout.c:18-27"
+[[files."140-focus-lost.t".skip]]
+n = 2
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/140-focus-lost.t; sway/sway/commands/layout.c:18-27"
+[[files."140-focus-lost.t".skip]]
+n = 3
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/140-focus-lost.t; sway/sway/commands/layout.c:18-27"
 
 [files."141-resize.t"]
 assertions = 84
@@ -2225,8 +2299,180 @@ note = "Container split preserves the selected branch, so directional resize ski
 [files."192-layout.t"]
 assertions = 34
 tap_plan = 34
-pass = 34
-note = "Supports default, `all`, and custom layout-toggle cycles; list forms skip unknown entries as sway does (`sway/commands/layout.c:47-95`). Sway rejects the i3 no-op `layout toggle stacked` (`layout.c:57-71`); see `docs/KNOWN_DEVIATIONS.md`."
+pass = 0
+reason = "i3_only_semantics"
+reason_verified = true
+note = "The file depends on i3's `layout stacked` spelling. Sway accepts only `layout stacking`, so assertions after that rejected setup command do not apply (`sway/sway/commands/layout.c:18-27`)."
+[[files."192-layout.t".skip]]
+n = 1
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 2
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 3
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 4
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 5
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 6
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 7
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 8
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 9
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 10
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 11
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 12
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 13
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 14
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 15
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 16
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 17
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 18
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 19
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 20
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 21
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 22
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 23
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 24
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 25
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 26
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 27
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 28
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 29
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 30
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 31
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 32
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 33
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
+[[files."192-layout.t".skip]]
+n = 34
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/192-layout.t; sway/sway/commands/layout.c:18-27"
 
 [files."193-ipc-version.t"]
 assertions = 4
@@ -2531,10 +2777,20 @@ note = "The unchanged run emits four expected `append_layout` rejections and no 
 [files."218-regress-floating-split.t"]
 assertions = 2
 tap_plan = 2
-pass = 2
+pass = 0
 reason = "i3_only_semantics"
 reason_verified = true
-note = "Fresh measurement after removing assertion interception: 2 pass. Raw TAP runs the real comparisons; each retained skip has an assertion-level sway citation below."
+note = "The file depends on i3's `layout stacked` spelling. Sway accepts only `layout stacking`, so assertions after that rejected setup command do not apply (`sway/sway/commands/layout.c:18-27`)."
+[[files."218-regress-floating-split.t".skip]]
+n = 1
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/218-regress-floating-split.t; sway/sway/commands/layout.c:18-27"
+[[files."218-regress-floating-split.t".skip]]
+n = 2
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/218-regress-floating-split.t; sway/sway/commands/layout.c:18-27"
 
 [files."219-ipc-window-focus.t"]
 assertions = 30
@@ -2938,8 +3194,25 @@ citation = "sway/sway/commands/move.c:755-775"
 [files."246-window-decoration-focus.t"]
 assertions = 3
 tap_plan = 3
-pass = 3
-note = "All three assertions exercise real pointer motion and rendered-geometry hit testing with sway's default focus-follows-mouse behavior. Ordinary decoration entry focuses its leaf. Tabbed and stacked titlebars resolve to the represented branch's focused descendant before activation, matching sway's visible-view focus rule (`sway/input/seatop_default.c:538-605`)."
+pass = 0
+reason = "i3_only_semantics"
+reason_verified = true
+note = "The file depends on i3's `layout stacked` spelling. Sway accepts only `layout stacking`, so assertions after that rejected setup command do not apply (`sway/sway/commands/layout.c:18-27`)."
+[[files."246-window-decoration-focus.t".skip]]
+n = 1
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/246-window-decoration-focus.t; sway/sway/commands/layout.c:18-27"
+[[files."246-window-decoration-focus.t".skip]]
+n = 2
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/246-window-decoration-focus.t; sway/sway/commands/layout.c:18-27"
+[[files."246-window-decoration-focus.t".skip]]
+n = 3
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/246-window-decoration-focus.t; sway/sway/commands/layout.c:18-27"
 
 [files."247-config-line-continuation.t"]
 plan_unknown = true
@@ -3787,8 +4060,170 @@ citation = "i3/src/commands.c:1327-1358; sway/sway/commands/focus.c:17-49"
 [files."308-focus_wrapping.t"]
 assertions = 32
 tap_plan = 32
-pass = 32
-note = "FULLY GREEN at 32 of 32. The three remaining failures were the configured per-output startup workspace behaviour recorded under 297-assign-workspace-to-output.t, and came green with it: workspace_next_name now takes assignments before binding names, initialize_workspaces_from_bindings loads workspace_configs so those assignments are visible while startup names are resolved, and the numeric fallback skips a number another output's resolving assignment reserves."
+pass = 0
+reason = "i3_only_semantics"
+reason_verified = true
+note = "The file depends on i3's `layout stacked` spelling. Sway accepts only `layout stacking`, so assertions after that rejected setup command do not apply (`sway/sway/commands/layout.c:18-27`)."
+[[files."308-focus_wrapping.t".skip]]
+n = 1
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
+[[files."308-focus_wrapping.t".skip]]
+n = 2
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
+[[files."308-focus_wrapping.t".skip]]
+n = 3
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
+[[files."308-focus_wrapping.t".skip]]
+n = 4
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
+[[files."308-focus_wrapping.t".skip]]
+n = 5
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
+[[files."308-focus_wrapping.t".skip]]
+n = 6
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
+[[files."308-focus_wrapping.t".skip]]
+n = 7
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
+[[files."308-focus_wrapping.t".skip]]
+n = 8
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
+[[files."308-focus_wrapping.t".skip]]
+n = 9
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
+[[files."308-focus_wrapping.t".skip]]
+n = 10
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
+[[files."308-focus_wrapping.t".skip]]
+n = 11
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
+[[files."308-focus_wrapping.t".skip]]
+n = 12
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
+[[files."308-focus_wrapping.t".skip]]
+n = 13
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
+[[files."308-focus_wrapping.t".skip]]
+n = 14
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
+[[files."308-focus_wrapping.t".skip]]
+n = 15
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
+[[files."308-focus_wrapping.t".skip]]
+n = 16
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
+[[files."308-focus_wrapping.t".skip]]
+n = 17
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
+[[files."308-focus_wrapping.t".skip]]
+n = 18
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
+[[files."308-focus_wrapping.t".skip]]
+n = 19
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
+[[files."308-focus_wrapping.t".skip]]
+n = 20
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
+[[files."308-focus_wrapping.t".skip]]
+n = 21
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
+[[files."308-focus_wrapping.t".skip]]
+n = 22
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
+[[files."308-focus_wrapping.t".skip]]
+n = 23
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
+[[files."308-focus_wrapping.t".skip]]
+n = 24
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
+[[files."308-focus_wrapping.t".skip]]
+n = 25
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
+[[files."308-focus_wrapping.t".skip]]
+n = 26
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
+[[files."308-focus_wrapping.t".skip]]
+n = 27
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
+[[files."308-focus_wrapping.t".skip]]
+n = 28
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
+[[files."308-focus_wrapping.t".skip]]
+n = 29
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
+[[files."308-focus_wrapping.t".skip]]
+n = 30
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
+[[files."308-focus_wrapping.t".skip]]
+n = 31
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
+[[files."308-focus_wrapping.t".skip]]
+n = 32
+desc = "assertion depends on i3's rejected `layout stacked` setup"
+reason = "Sway accepts `layout stacking`, not i3's `layout stacked`; the required stacked tree was not created."
+citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
 
 [files."309-crash-move-parent.t"]
 assertions = 2

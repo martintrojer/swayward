@@ -2704,7 +2704,11 @@ mod tests {
                 "{input}"
             );
         }
-        assert_eq!(command("layout stacked"), Command::Layout(Layout::Stacked));
+        let stacked = parse("layout stacked");
+        assert_eq!(
+            stacked[0].as_ref().unwrap_err().error.as_deref(),
+            Some("Expected 'layout <splith|splitv|tabbed|stacking|toggle>'")
+        );
         assert_eq!(command("layout default"), Command::LayoutDefault);
         assert_eq!(
             command("layout toggle split"),

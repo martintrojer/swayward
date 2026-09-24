@@ -1392,7 +1392,7 @@ fn directional_focus_prefers_an_adjacent_output_over_local_wrapping() {
         ),
         (
             (0, 600),
-            "layout stacked",
+            "layout stacking",
             "focus down",
             swayward_config::FocusWrapping::Yes,
             "target",

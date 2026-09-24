@@ -547,7 +547,7 @@ fn nested_tabbed_and_stacked_splits_survive_output_unplug() {
             .find_map(|child| output_holding(child, app_id))
     }
 
-    for layout in ["tabbed", "stacked"] {
+    for (command_layout, ipc_layout) in [("tabbed", "tabbed"), ("stacking", "stacked")] {
         let (mut f, socket) = ipc_fixture();
         f.add_output(1, (1280, 720));
         f.add_output(2, (1920, 1080));
@@ -560,7 +560,7 @@ fn nested_tabbed_and_stacked_splits_survive_output_unplug() {
         map_test_window(&mut f, client, "nested-1");
         assert!(crate::command::execute(f.niri_state(), "split vertical")[0].success);
         map_test_window(&mut f, client, "nested-2");
-        assert!(crate::command::execute(f.niri_state(), &format!("layout {layout}"))[0].success);
+        assert!(crate::command::execute(f.niri_state(), &format!("layout {command_layout}"))[0].success);
 
         let removed = f.niri_output(1);
         f.swayward().remove_output(&removed);
@@ -568,25 +568,25 @@ fn nested_tabbed_and_stacked_splits_survive_output_unplug() {
         let mut stream = UnixStream::connect(&socket).unwrap();
         let tree = query_ipc(&mut f, &mut stream, MessageType::GetTree);
         let output = output_holding(&tree, "outside").unwrap();
-        assert_eq!(output["name"], fallback_name, "{layout}: evacuation");
+        assert_eq!(output["name"], fallback_name, "{command_layout}: evacuation");
         let workspace = find_json_parent_of_app_id(output, "outside").unwrap();
-        assert_eq!(workspace["layout"], "splith", "{layout}: outer split");
+        assert_eq!(workspace["layout"], "splith", "{command_layout}: outer split");
         assert_eq!(workspace["nodes"].as_array().unwrap().len(), 2);
         assert_eq!(workspace["nodes"][0]["app_id"], "outside");
         let nested = &workspace["nodes"][1];
-        assert_eq!(nested["layout"], layout, "{layout}: nested split");
+        assert_eq!(nested["layout"], ipc_layout, "{command_layout}: nested split");
         assert_eq!(nested["nodes"][0]["app_id"], "nested-1");
         assert_eq!(nested["nodes"][1]["app_id"], "nested-2");
         assert_eq!(nested["focus"][0], nested["nodes"][1]["id"]);
-        assert_eq!(nested["nodes"][1]["focused"], true, "{layout}: focus");
+        assert_eq!(nested["nodes"][1]["focused"], true, "{command_layout}: focus");
 
         f.add_named_output_at(unplugged_name.clone(), (1280, 720), None);
         let tree = query_ipc(&mut f, &mut stream, MessageType::GetTree);
         let output = output_holding(&tree, "outside").unwrap();
-        assert_eq!(output["name"], unplugged_name, "{layout}: restoration");
+        assert_eq!(output["name"], unplugged_name, "{command_layout}: restoration");
         let workspace = find_json_parent_of_app_id(output, "outside").unwrap();
         assert_eq!(workspace["layout"], "splith");
-        assert_eq!(workspace["nodes"][1]["layout"], layout);
+        assert_eq!(workspace["nodes"][1]["layout"], ipc_layout);
         assert_eq!(workspace["nodes"][1]["nodes"][0]["app_id"], "nested-1");
         assert_eq!(workspace["nodes"][1]["nodes"][1]["app_id"], "nested-2");
         assert_eq!(

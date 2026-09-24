@@ -55,7 +55,10 @@ impl AllowedRejection {
                     && command.starts_with("[id=")
                     && command.contains("] swap container with id "))
                 || (self.command == "[app_id=b] swap with id *"
-                    && command.starts_with("[app_id=b] swap with id ")))
+                    && command.starts_with("[app_id=b] swap with id "))
+                || (self.command == "[con_id=*] layout stacked"
+                    && command.starts_with("[con_id=")
+                    && command.ends_with("] layout stacked")))
     }
 }
 
@@ -63,13 +66,96 @@ impl AllowedRejection {
 // exact command prevents a new rejected setup command from hiding behind an unrelated exception.
 const ALLOWED_REJECTIONS: &[AllowedRejection] = &[
     AllowedRejection {
+        test: "113-urgent.t",
+        command: "layout stacked",
+        repeatable: false,
+        reason: "i3 accepts `layout stacked`; sway accepts only `layout stacking` (sway/sway/commands/layout.c:18-27)",
+    },
+    AllowedRejection {
+        test: "122-split.t",
+        command: "layout stacked",
+        repeatable: false,
+        reason: "i3 accepts `layout stacked`; sway accepts only `layout stacking` (sway/sway/commands/layout.c:18-27)",
+    },
+    AllowedRejection {
+        test: "135-floating-focus.t",
+        command: "layout stacked",
+        repeatable: false,
+        reason: "i3 accepts `layout stacked`; sway accepts only `layout stacking` (sway/sway/commands/layout.c:18-27)",
+    },
+    AllowedRejection {
+        test: "138-floating-attach.t",
+        command: "layout stacked",
+        repeatable: false,
+        reason: "i3 accepts `layout stacked`; sway accepts only `layout stacking` (sway/sway/commands/layout.c:18-27)",
+    },
+    AllowedRejection {
+        test: "140-focus-lost.t",
+        command: "layout stacked",
+        repeatable: false,
+        reason: "i3 accepts `layout stacked`; sway accepts only `layout stacking` (sway/sway/commands/layout.c:18-27)",
+    },
+    AllowedRejection {
+        test: "141-resize.t",
+        command: "layout stacked",
+        repeatable: false,
+        reason: "i3 accepts `layout stacked`; sway accepts only `layout stacking` (sway/sway/commands/layout.c:18-27)",
+    },
+    AllowedRejection {
+        test: "167-workspace_layout.t",
+        command: "layout stacked",
+        repeatable: false,
+        reason: "i3 accepts `layout stacked`; sway accepts only `layout stacking` (sway/sway/commands/layout.c:18-27)",
+    },
+    AllowedRejection {
+        test: "192-layout.t",
+        command: "layout stacked",
+        repeatable: false,
+        reason: "i3 accepts `layout stacked`; sway accepts only `layout stacking` (sway/sway/commands/layout.c:18-27)",
+    },
+    AllowedRejection {
+        test: "200-urgency-timer.t",
+        command: "layout stacked",
+        repeatable: false,
+        reason: "i3 accepts `layout stacked`; sway accepts only `layout stacking` (sway/sway/commands/layout.c:18-27)",
+    },
+    AllowedRejection {
+        test: "246-window-decoration-focus.t",
+        command: "layout stacked",
+        repeatable: false,
+        reason: "i3 accepts `layout stacked`; sway accepts only `layout stacking` (sway/sway/commands/layout.c:18-27)",
+    },
+
+    AllowedRejection {
+        test: "319-gaps.t",
+        command: "layout stacked",
+        repeatable: false,
+        reason: "i3 accepts `layout stacked`; sway accepts only `layout stacking` (sway/sway/commands/layout.c:18-27)",
+    },
+    AllowedRejection {
+        test: "510-focus-across-outputs.t",
+        command: "layout stacked",
+        repeatable: false,
+        reason: "i3 accepts `layout stacked`; sway accepts only `layout stacking` (sway/sway/commands/layout.c:18-27)",
+    },
+    AllowedRejection {
+        test: "541-resize-set-tiling.t",
+        command: "layout stacked",
+        repeatable: false,
+        reason: "i3 accepts `layout stacked`; sway accepts only `layout stacking` (sway/sway/commands/layout.c:18-27)",
+    },
+
+    AllowedRejection {
         test: "308-focus_wrapping.t",
-        command: "focus top",
-        repeatable: true,
-        reason: "`top` is not a focus direction in sway: cmd_focus accepts no such \
-                 argument (sway/sway/commands/focus.c), so rejecting it is correct. \
-                 The file's own random subtest emits it, and every assertion that \
-                 does not depend on it passes",
+        command: "[con_id=*] layout stacked",
+        repeatable: false,
+        reason: "i3 accepts `layout stacked`; sway accepts only `layout stacking` (sway/sway/commands/layout.c:18-27)",
+    },
+    AllowedRejection {
+        test: "550-split-redundant-containers.t",
+        command: "layout tabbed, layout stacked",
+        repeatable: false,
+        reason: "i3 accepts `layout stacked`; sway accepts only `layout stacking` (sway/sway/commands/layout.c:18-27)",
     },
     AllowedRejection {
         test: "176-workspace-baf.t",
@@ -87,7 +173,7 @@ const ALLOWED_REJECTIONS: &[AllowedRejection] = &[
         test: "218-regress-floating-split.t",
         command: "layout stacked",
         repeatable: false,
-        reason: "sway rejects layout changes on floating windows",
+        reason: "i3 accepts `layout stacked`; sway accepts only `layout stacking` (sway/sway/commands/layout.c:18-27)",
     },
     AllowedRejection {
         test: "202-scratchpad-criteria.t",
@@ -369,7 +455,17 @@ fn expected_rejections(test: &str) -> Vec<&'static AllowedRejection> {
     allowed_rejections(test)
         .into_iter()
         .flat_map(|allowed| {
-            let count = if test == "120-multiple-cmds.t" && allowed.command == "move gibberish" {
+            let count = if allowed.command == "layout stacked" {
+                match test {
+                    "113-urgent.t" => 2,
+                    "167-workspace_layout.t" => 4,
+                    _ => 1,
+                }
+            } else if test == "308-focus_wrapping.t"
+                && allowed.command == "[con_id=*] layout stacked"
+            {
+                32
+            } else if test == "120-multiple-cmds.t" && allowed.command == "move gibberish" {
                 11
             } else if matches!(
                 test,
