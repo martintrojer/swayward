@@ -178,6 +178,7 @@ pub enum IpcNode<I> {
         deco_rect: Option<Rectangle<f64, Logical>>,
         border: (swayward_ipc::command::BorderStyle, u16),
         border_edges: ResizeEdge,
+        sticky: bool,
         mapped_under_fullscreen: bool,
     },
 }

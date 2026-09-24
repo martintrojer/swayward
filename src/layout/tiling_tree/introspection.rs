@@ -245,6 +245,7 @@ impl<W: LayoutElement> TilingTree<W> {
                         .get(&id)
                         .copied()
                         .unwrap_or_else(ResizeEdge::all),
+                    sticky: tile.is_sticky,
                     mapped_under_fullscreen: tree.mapped_under_fullscreen.contains(&id),
                 },
             }

@@ -975,6 +975,18 @@ fn sticky_accepts_sway_boolean_words_and_reports_tree_state() {
     window.attach_new_buffer();
     window.ack_last_and_commit();
     f.double_roundtrip(client);
+
+    assert!(crate::command::execute(f.niri_state(), "sticky enable")[0].success);
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &Default::default(),
+        &Default::default(),
+    ))
+    .unwrap();
+    assert_eq!(find_json_node(&tree, "con", false).unwrap()["sticky"], true);
+
     assert!(crate::command::execute(f.niri_state(), "floating enable")[0].success);
 
     for (value, expected) in [

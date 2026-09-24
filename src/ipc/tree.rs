@@ -739,6 +739,7 @@ pub(crate) fn describe_tiling<'a, I>(
             deco_rect,
             border,
             border_edges,
+            sticky,
             mapped_under_fullscreen,
             ..
         } => {
@@ -767,6 +768,7 @@ pub(crate) fn describe_tiling<'a, I>(
             }
             node.focused = focused;
             node.fullscreen_mode = fullscreen_mode;
+            node.sticky = sticky;
             let has_titlebar = deco_rect.is_some() && fullscreen_mode == 0;
             node.deco_rect = if fullscreen_mode != 0 {
                 Rect::default()

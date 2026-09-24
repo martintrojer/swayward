@@ -803,6 +803,7 @@ fn stale_tree_leaf_is_omitted_without_panicking() {
         deco_rect: None,
         border: (swayward_ipc::command::BorderStyle::Normal, 2),
         border_edges: crate::utils::ResizeEdge::all(),
+        sticky: false,
         mapped_under_fullscreen: false,
     };
     assert!(crate::ipc::tree::describe_tiling(
@@ -834,6 +835,7 @@ fn stale_tree_leaf_is_omitted_without_panicking() {
             deco_rect: None,
             border: (swayward_ipc::command::BorderStyle::Normal, 2),
             border_edges: crate::utils::ResizeEdge::all(),
+            sticky: false,
             mapped_under_fullscreen: false,
         }],
     };
