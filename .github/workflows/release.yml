@@ -175,7 +175,7 @@ jobs:
         run: ./contrib/build-deb '${{ github.event.inputs.version }}'
 
       - name: Upload Ubuntu artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ubuntu-artifacts
           path: |
@@ -258,7 +258,7 @@ jobs:
           test -n "$rpm"
           cp "$rpm" \
             "$GITHUB_WORKSPACE/swayward-$RELEASE_VERSION-fedora$FEDORA_RELEASE-x86_64.rpm"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: rpm-artifact-fedora${{ matrix.fedora }}
           path: swayward-${{ github.event.inputs.version }}-fedora${{ matrix.fedora }}-x86_64.rpm
@@ -338,7 +338,7 @@ jobs:
           printf '%s\n' "$namcap_output"
           ! grep -q ' E:' <<<"$namcap_output"
           cp "$package" "swayward-$RELEASE_VERSION-arch-x86_64.pkg.tar.zst"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: arch-artifact
           path: swayward-${{ github.event.inputs.version }}-arch-x86_64.pkg.tar.zst
