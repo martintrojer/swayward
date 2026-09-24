@@ -6,8 +6,6 @@ There's a section for each device type: `keyboard`, `touchpad`, `mouse`, `trackp
 Settings in those sections will apply to every device of that type.
 Currently, there's no way to configure specific devices individually (but that is planned).
 
-All settings at a glance:
-
 ```kdl
 input {
     keyboard {
@@ -105,6 +103,7 @@ input {
     // warp-mouse-to-focus
     // focus-follows-mouse max-scroll-amount="0%"
     // workspace-auto-back-and-forth
+    // floating-modifier "Super" inverse=false
 
     // mod-key "Super"
     // mod-key-nested "Alt"
@@ -152,8 +151,8 @@ input {
 >
 > <sup>Since: 25.08</sup>
 >
-> If the `xkb` section is empty (like it is by default), niri will fetch xkb settings from systemd-localed at `org.freedesktop.locale1` over D-Bus.
-> This way, for example, system installers can dynamically set the niri keyboard layout.
+> If the `xkb` section is empty (like it is by default), swayward will fetch xkb settings from systemd-localed at `org.freedesktop.locale1` over D-Bus.
+> This way, for example, system installers can dynamically set the swayward keyboard layout.
 > You can see this layout in `localectl` and change it with `localectl set-x11-keymap`, for example:
 >
 > ```sh
@@ -176,7 +175,7 @@ input {
 >
 > These settings are picked up by some other programs too, like GDM.
 
-When using multiple layouts, niri can remember the current layout globally (the default) or per-window.
+When using multiple layouts, swayward can remember the current layout globally (the default) or per-window.
 You can control this with the `track-layout` option.
 
 - `global`: layout change is global for all windows.
@@ -287,8 +286,8 @@ Settings specific to `tablet`:
 
 - `map-to-focused-output`: <sup>Since: 26.04</sup> will map the tablet to the focused output, takes precedence over `map-to-output`.
 
-- `map-to-focused-window`: <sup>Since: next release</sup> will map the tablet to the focused window's geometry, takes precedence over `map-to-focused-output` and `map-to-output`.
-Falls back to those when no window is focused (for example, in the overview).
+- `map-to-focused-window`: <sup>Since: unreleased niri</sup> will map the tablet to the focused window's geometry, takes precedence over `map-to-focused-output` and `map-to-output`.
+Falls back to those when no window is focused.
 
     When the tablet is also mapped to a specific output via `map-to-output`, the `map-to-focused-window` flag will map the tablet to the active window on that output.
     If the tablet isn't mapped to any specific output, it will map the tablet to the current focused window regardless of where it is.
@@ -299,7 +298,7 @@ These settings are not specific to a particular input device.
 
 #### `disable-power-key-handling`
 
-By default, niri will take over the power button to make it sleep instead of power off.
+By default, swayward will take over the power button to make it sleep instead of power off.
 Set this if you would like to configure the power button elsewhere (i.e. `logind.conf`).
 
 ```kdl
@@ -345,34 +344,31 @@ input {
 }
 ```
 
-<sup>Since: 0.1.8</sup> You can optionally set `max-scroll-amount`.
-Then, focus-follows-mouse won't focus a window if it will result in the view scrolling more than the set amount.
-The value is a percentage of the working area width.
-
-```kdl
-input {
-    // Allow focus-follows-mouse when it results in scrolling at most 10% of the screen.
-    focus-follows-mouse max-scroll-amount="10%"
-}
-```
-
-```kdl
-input {
-    // Allow focus-follows-mouse only when it will not scroll the view.
-    focus-follows-mouse max-scroll-amount="0%"
-}
-```
+The inherited `max-scroll-amount` property is accepted for config compatibility. It has no effect because the container tree does not scroll.
 
 #### `workspace-auto-back-and-forth`
 
 Normally, switching to the same workspace by index twice will do nothing (since you're already on that workspace).
 If this flag is enabled, switching to the same workspace by index twice will switch back to the previous workspace.
 
-Niri will correctly switch to the workspace you came from, even if workspaces were reordered in the meantime.
+swayward will correctly switch to the workspace you came from, even if workspaces were reordered in the meantime.
 
 ```kdl
 input {
     workspace-auto-back-and-forth
+}
+```
+
+#### `floating-modifier`
+
+`floating-modifier` sets the modifier for mouse-driven floating moves and
+resizes independently of binding `Mod`. The left button moves and the right
+button resizes. Set `inverse=true` to swap those buttons, or use `"None"` to
+disable modifier drags.
+
+```kdl
+input {
+    floating-modifier "Super" inverse=true
 }
 ```
 
@@ -381,9 +377,10 @@ input {
 <sup>Since: 25.05</sup>
 
 Customize the `Mod` key for [key bindings](./Configuration:-Key-Bindings.md).
-Only valid modifiers are allowed, e.g. `Super`, `Alt`, `Mod3`, `Mod5`, `Ctrl`, `Shift`.
+Valid modifiers include `Super`, `Alt`, `Mod3`, `Mod5`, `Ctrl`, and `Shift`.
+Use `None` to disable modifier-based window gestures.
 
-By default, `Mod` is equal to `Super` when running niri on a TTY, and to `Alt` when running niri as a nested winit window.
+By default, `Mod` is equal to `Super` when running swayward on a TTY, and to `Alt` when running swayward as a nested winit window.
 
 > [!NOTE]
 > There are a lot of default bindings with Mod, none of them "make it through" to the underlying window.
@@ -396,3 +393,7 @@ input {
     mod-key-nested "Super"
 }
 ```
+
+---
+
+*This page is adapted from the niri documentation.*

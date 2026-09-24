@@ -1,15 +1,22 @@
-Welcome to the niri documentation!
+# swayward documentation
 
-Feel free to look through usage and [Getting started](./Getting-Started.md).
-If you're looking for ways to configure niri, check out the [introduction to configuration](./Configuration:-Introduction.md).
+Start with [Getting started](./Getting-Started.md). To learn the container
+tree itself, join [Cult of the Tree](./Sway-School.md). The [configuration
+introduction](./Configuration:-Introduction.md) links to the reference pages for
+KDL configuration.
 
-If you'd like to help with niri, there are plenty of both coding- and non-coding-related ways to do so.
-See [CONTRIBUTING.md](https://github.com/niri-wm/niri/blob/main/CONTRIBUTING.md) for an overview.
+The documentation lives in `docs/wiki/` and builds with MkDocs:
 
-If you're not already here, check out our new wiki website! https://niri-wm.github.io/niri/
+```sh
+cd docs
+uv sync
+uv run mkdocs serve
+```
+
+For user-facing boundaries, read [Differences from
+sway](Differences-from-Sway.md) and [Sway compatibility](Sway-Compatibility.md).
+The source-cited ledgers remain available from those pages.
 
 ---
 
-The documentation is open to contribution, see [Documenting niri](./Development:-Documenting-niri.md).
-Please discuss bigger changes in [our Matrix room](https://matrix.to/#/#niri:matrix.org) first!
-The wiki is generated from files in the `docs/wiki/` folder of the repository, so you can open a pull request modifying it there.
+*This documentation set is adapted from the niri documentation.*
