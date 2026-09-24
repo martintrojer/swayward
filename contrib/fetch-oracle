@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+
+root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+cache="$root/.cache/sway-ipc-oracle"
+repo=$(awk -F '"' '$1 ~ /^repo = / { print $2 }' "$root/tests/oracle.toml")
+commit=$(awk -F '"' '$1 ~ /^commit = / { print $2 }' "$root/tests/oracle.toml")
+
+if [ ! -d "$cache/.git" ]; then
+    rm -rf "$cache"
+    git init -q "$cache"
+    git -C "$cache" remote add origin "$repo"
+fi
+
+git -C "$cache" fetch --depth 1 origin "$commit"
+git -C "$cache" checkout -q --detach FETCH_HEAD

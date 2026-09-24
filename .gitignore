@@ -15,3 +15,5 @@ __pycache__/
 
 # editor reflow scratch files
 .m-reflow-*.md
+
+/.cache/sway-ipc-oracle/
