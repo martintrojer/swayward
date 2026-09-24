@@ -43,7 +43,7 @@ pub fn execute(state: &mut State, input: &str) -> Vec<CommandOutcome> {
             .is_some_and(|name| name.eq_ignore_ascii_case("resize"))
         && parsed.first().is_some_and(Result::is_err)
     {
-        parsed[0] = Err(failure("Cannot resize nothing"));
+        parsed[0] = Err(swayward_ipc::command::parse_error("Cannot resize nothing"));
     }
     let mut retained_targets = None;
     parsed
@@ -323,7 +323,7 @@ fn execute_one(
         }
         Command::ScratchpadShow => {
             if state.swayward.layout.scratchpad_is_empty() {
-                return failure("Scratchpad is empty");
+                return swayward_ipc::command::parse_error("Scratchpad is empty");
             }
             scratchpad::show(state);
             None
@@ -384,7 +384,7 @@ fn execute_one(
                 .focus()
                 .map(|mapped| mapped.window.clone())
             else {
-                return failure("No current container");
+                return command_failure("No current container");
             };
             if state.swayward.layout.is_scratchpad_hidden(&window) {
                 return success();
@@ -522,7 +522,7 @@ fn execute_one(
         }
         Command::ResizeSet { width, height } => {
             let Some(target) = focused_target(state) else {
-                return failure("Cannot resize nothing");
+                return swayward_ipc::command::parse_error("Cannot resize nothing");
             };
             if let Err(error) = window::resize_set(state, target, width, height) {
                 return error;
@@ -536,7 +536,7 @@ fn execute_one(
             second,
         } => {
             let Some(target) = focused_target(state) else {
-                return failure("Cannot resize nothing");
+                return swayward_ipc::command::parse_error("Cannot resize nothing");
             };
             if let Err(error) = window::resize(state, target, grow, axis, first, second) {
                 return error;
@@ -931,7 +931,7 @@ fn execute_one(
             identifier,
         } => {
             let Some(target) = focused_target(state) else {
-                return failure("Only containers can have marks");
+                return swayward_ipc::command::parse_error("Only containers can have marks");
             };
             mark_target(state, target, &identifier, add, toggle);
             None

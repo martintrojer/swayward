@@ -130,6 +130,29 @@ fn focus_floating_succeeds_when_a_floating_window_exists() {
 }
 
 #[test]
+fn empty_workspace_command_parse_errors_match_sway() {
+    let mut fixture = Fixture::new();
+    fixture.add_output(1, (1920, 1080));
+
+    for (command, parse_error, error) in [
+        ("resize grow width 10 px", true, "Cannot resize nothing"),
+        ("scratchpad show", true, "Scratchpad is empty"),
+        ("sticky toggle", false, "No current container"),
+        ("mark oracle", true, "Only containers can have marks"),
+    ] {
+        assert_eq!(
+            crate::command::execute(fixture.niri_state(), command),
+            [swayward_ipc::CommandOutcome {
+                success: false,
+                error: Some(error.into()),
+                parse_error: Some(parse_error),
+            }],
+            "{command}"
+        );
+    }
+}
+
+#[test]
 fn criteria_with_no_matches_returns_sway_failure() {
     let mut fixture = Fixture::new();
     fixture.add_output(1, (1920, 1080));
