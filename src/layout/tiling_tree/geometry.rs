@@ -39,6 +39,7 @@ pub(crate) fn compute<W: LayoutElement>(
     gaps_to_edge: bool,
     titlebar_height: f64,
     fullscreen: &HashSet<NodeId>,
+    mapped_under_fullscreen: &HashSet<NodeId>,
     hide_edge_borders: HideEdgeBorders,
     smart_borders: SmartBorders,
     visible_leaves: &HashSet<NodeId>,
@@ -83,6 +84,7 @@ pub(crate) fn compute<W: LayoutElement>(
         gaps,
         titlebar_height,
         fullscreen,
+        mapped_under_fullscreen,
         None,
         false,
         DecoratedCorners::ALL,
@@ -105,6 +107,7 @@ pub(crate) fn compute<W: LayoutElement>(
             gaps,
             titlebar_height,
             fullscreen,
+            mapped_under_fullscreen,
             None,
             false,
             DecoratedCorners::NONE,
@@ -216,6 +219,7 @@ fn assign<W: LayoutElement>(
     gaps: f64,
     titlebar_height: f64,
     fullscreen: &HashSet<NodeId>,
+    mapped_under_fullscreen: &HashSet<NodeId>,
     covering_titlebar: Option<Rectangle<f64, Logical>>,
     decorated_by_parent: bool,
     decorated_corners: DecoratedCorners,
@@ -374,7 +378,20 @@ fn assign<W: LayoutElement>(
                     Layout::SplitV => rect.loc.y,
                     _ => unreachable!(),
                 };
+                let visible_total = children
+                    .iter()
+                    .zip(percents)
+                    .filter(|(child, _)| !mapped_under_fullscreen.contains(child))
+                    .map(|(_, percent)| percent)
+                    .sum::<f64>();
                 for (index, (child, percent)) in children.iter().zip(percents).enumerate() {
+                    let percent = if mapped_under_fullscreen.contains(child) {
+                        0.
+                    } else if fullscreen.is_empty() {
+                        *percent
+                    } else {
+                        *percent / visible_total
+                    };
                     let extent = available.max(0.) * percent;
                     let child_rect = match layout {
                         Layout::SplitH => Rectangle::new(
@@ -411,6 +428,7 @@ fn assign<W: LayoutElement>(
                         gaps,
                         titlebar_height,
                         fullscreen,
+                        mapped_under_fullscreen,
                         None,
                         false,
                         child_corners,
@@ -503,6 +521,7 @@ fn assign<W: LayoutElement>(
                         gaps,
                         titlebar_height,
                         fullscreen,
+                        mapped_under_fullscreen,
                         result.titlebars.get(child).map(|titlebar| titlebar.rect),
                         true,
                         DecoratedCorners {

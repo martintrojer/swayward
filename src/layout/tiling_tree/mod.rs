@@ -576,12 +576,16 @@ impl<W: LayoutElement> TilingTree<W> {
                 self.wrap_node(id, layout);
             }
         }
-        if activate {
+        if activate && !mapped_under_fullscreen {
             self.set_focus_id(Some(id));
         } else if let Some(previous_focus) = previous_focus {
             self.focus_history.retain(|candidate| *candidate != id);
-            self.focus_history
-                .insert(1.min(self.focus_history.len()), id);
+            if mapped_under_fullscreen {
+                self.focus_history.push(id);
+            } else {
+                self.focus_history
+                    .insert(1.min(self.focus_history.len()), id);
+            }
             self.focus = Some(previous_focus);
         } else {
             self.set_focus_id(Some(id));
@@ -1051,6 +1055,7 @@ impl<W: LayoutElement> TilingTree<W> {
             self.gaps_to_edge,
             self.titlebar_height,
             &fullscreen,
+            &self.mapped_under_fullscreen,
             self.options.layout.hide_edge_borders,
             self.options.layout.smart_borders,
             &visible_leaves,

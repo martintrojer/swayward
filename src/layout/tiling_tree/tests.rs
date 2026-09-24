@@ -2614,6 +2614,36 @@ fn resizing_adjacent_siblings_changes_only_that_boundary() {
 }
 
 #[test]
+fn mapping_under_fullscreen_preserves_focus_and_sibling_percents() {
+    let mut t = tree((1920., 1080.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let fullscreen = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    assert!(t.set_node_fullscreen(fullscreen, Some(FullscreenMode::Workspace)));
+
+    let mapped = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+
+    assert_eq!(t.focus(), Some(fullscreen));
+    let TreeNode::Split { percents, .. } = &t.nodes[&t.root].value else {
+        panic!("root must be a split");
+    };
+    assert_eq!(percents.len(), 3);
+    assert_eq!(t.nodes[&first].parent, Some(t.root));
+    assert_eq!(t.nodes[&mapped].parent, Some(t.root));
+    let IpcNode::Split { children, .. } = t.ipc_tree() else {
+        panic!("IPC root must be a split");
+    };
+    assert!(matches!(
+        &children[..],
+        [
+            IpcNode::Leaf { percent: Some(first), .. },
+            IpcNode::Leaf { percent: Some(second), .. },
+            IpcNode::Leaf { percent: Some(mapped), .. },
+        ] if *first == 0.5 && *second == 0.5 && *mapped == 0.
+    ));
+    t.check_invariants();
+}
+
+#[test]
 fn mapping_fullscreen_window_replaces_existing_fullscreen() {
     let mut t = tree((1920., 1080.), 0.);
     let first_window = TestWindow::new(1);

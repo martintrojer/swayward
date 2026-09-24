@@ -763,6 +763,7 @@ pub(crate) fn describe_tiling<'a, I>(
                 node.border = NodeBorder::None;
                 node.current_border_width = 0;
                 node.percent = Some(0.);
+                node.rect = Rect::default();
             } else {
                 node.percent = percent;
             }

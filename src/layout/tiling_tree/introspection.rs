@@ -147,7 +147,19 @@ impl<W: LayoutElement> TilingTree<W> {
                                 Layout::SplitH | Layout::SplitV
                                     if tree.fullscreen_node().is_some() =>
                                 {
-                                    *stored_percent
+                                    if tree.mapped_under_fullscreen.contains(child) {
+                                        0.
+                                    } else {
+                                        let visible_total = children
+                                            .iter()
+                                            .zip(percents)
+                                            .filter(|(child, _)| {
+                                                !tree.mapped_under_fullscreen.contains(child)
+                                            })
+                                            .map(|(_, percent)| percent)
+                                            .sum::<f64>();
+                                        *stored_percent / visible_total
+                                    }
                                 }
                                 Layout::SplitH | Layout::SplitV => {
                                     let rounded_extent =
