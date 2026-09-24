@@ -526,7 +526,9 @@ fn describe_workspace_node(
         .tiling_has_had_window()
         .then(|| tree_representation(layout, &nodes));
     let mut nodes = nodes;
-    set_child_windows_visible(layout, &focus, &mut nodes, workspace_visible);
+    if !apply_fullscreen_state(&mut nodes, workspace_visible) {
+        set_child_windows_visible(layout, &focus, &mut nodes, workspace_visible);
+    }
     for node in &mut floating_nodes {
         set_windows_visible(node, workspace_visible);
     }
@@ -583,6 +585,29 @@ fn set_windows_visible(node: &mut Node, visible: bool) {
     for child in &mut node.floating_nodes {
         set_windows_visible(child, visible);
     }
+}
+
+fn apply_fullscreen_state(nodes: &mut [Node], workspace_visible: bool) -> bool {
+    let Some(fullscreen) = nodes.iter().position(contains_fullscreen) else {
+        return false;
+    };
+    for (index, node) in nodes.iter_mut().enumerate() {
+        if index == fullscreen {
+            node.percent = Some(1.);
+            if node.fullscreen_mode == 0 {
+                apply_fullscreen_state(&mut node.nodes, workspace_visible);
+            } else {
+                set_windows_visible(node, workspace_visible);
+            }
+        } else {
+            set_windows_visible(node, false);
+        }
+    }
+    true
+}
+
+fn contains_fullscreen(node: &Node) -> bool {
+    node.fullscreen_mode != 0 || node.nodes.iter().any(contains_fullscreen)
 }
 
 fn set_child_windows_visible(
@@ -692,6 +717,7 @@ pub(crate) fn describe_tiling<'a, I>(
             deco_rect,
             border,
             border_edges,
+            mapped_under_fullscreen,
             ..
         } => {
             let Some(mapped) = find_window(&window) else {
@@ -710,13 +736,23 @@ pub(crate) fn describe_tiling<'a, I>(
             );
             node.border = ipc_border(border.0);
             node.current_border_width = ipc_border_width(border);
-            node.percent = percent;
+            if mapped_under_fullscreen {
+                node.border = NodeBorder::None;
+                node.current_border_width = 0;
+                node.percent = Some(0.);
+            } else {
+                node.percent = percent;
+            }
             node.focused = focused;
             node.fullscreen_mode = fullscreen_mode;
-            let has_titlebar = deco_rect.is_some();
-            node.deco_rect = deco_rect.map_or_else(Rect::default, |rect| {
-                rect_from(rect.loc.x, rect.loc.y, rect.size.w, rect.size.h)
-            });
+            let has_titlebar = deco_rect.is_some() && fullscreen_mode == 0;
+            node.deco_rect = if fullscreen_mode != 0 {
+                Rect::default()
+            } else {
+                deco_rect.map_or_else(Rect::default, |rect| {
+                    rect_from(rect.loc.x, rect.loc.y, rect.size.w, rect.size.h)
+                })
+            };
             let border_width = match (node.border, has_titlebar) {
                 (NodeBorder::Normal | NodeBorder::Pixel, true) | (NodeBorder::Pixel, false) => {
                     node.current_border_width

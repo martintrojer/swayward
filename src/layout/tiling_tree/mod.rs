@@ -88,6 +88,7 @@ enum DetachedNode<W: LayoutElement> {
         old_id: NodeId,
         tile: Box<Tile<W>>,
         pending_mode: Option<PendingMode>,
+        mapped_under_fullscreen: bool,
     },
 }
 
@@ -177,6 +178,7 @@ pub enum IpcNode<I> {
         deco_rect: Option<Rectangle<f64, Logical>>,
         border: (swayward_ipc::command::BorderStyle, u16),
         border_edges: ResizeEdge,
+        mapped_under_fullscreen: bool,
     },
 }
 
@@ -262,6 +264,7 @@ pub struct TilingTree<W: LayoutElement> {
     previous_split_layouts: HashMap<NodeId, Layout>,
     title_formats: HashMap<NodeId, String>,
     pending_modes: HashMap<NodeId, PendingMode>,
+    mapped_under_fullscreen: HashSet<NodeId>,
     interactive_resize: Option<InteractiveResize<W::Id>>,
     tab_indicators: HashMap<NodeId, TabIndicator>,
     titlebars: super::titlebar::TitlebarRenderer,
@@ -315,6 +318,7 @@ impl<W: LayoutElement> TilingTree<W> {
             previous_split_layouts: HashMap::new(),
             title_formats: HashMap::new(),
             pending_modes: HashMap::new(),
+            mapped_under_fullscreen: HashSet::new(),
             interactive_resize: None,
             tab_indicators: HashMap::new(),
             titlebars: Default::default(),
@@ -543,6 +547,7 @@ impl<W: LayoutElement> TilingTree<W> {
         self.has_had_tile = true;
         tile.update_config(self.view_size, self.scale, self.options.clone());
         let pending_mode = tile.window().pending_sizing_mode();
+        let mapped_under_fullscreen = self.fullscreen_node().is_some();
         let previous_focus = self.focus;
         let old_geometries = self.compute_geometry();
         let id = self.alloc(Node {
@@ -579,6 +584,9 @@ impl<W: LayoutElement> TilingTree<W> {
             self.focus = Some(previous_focus);
         } else {
             self.set_focus_id(Some(id));
+        }
+        if mapped_under_fullscreen && !pending_mode.is_fullscreen() {
+            self.mapped_under_fullscreen.insert(id);
         }
         if pending_mode.is_maximized() {
             self.pending_modes.insert(
@@ -804,6 +812,7 @@ impl<W: LayoutElement> TilingTree<W> {
         let previous_layout = self.previous_split_layouts.get(&id).copied();
         let title_format = self.title_formats.get(&id).cloned();
         let pending_mode = self.pending_modes.get(&id).copied();
+        let mapped_under_fullscreen = self.mapped_under_fullscreen.contains(&id);
         let node = self.remove_node(id)?;
         match node.value {
             TreeNode::Split {
@@ -826,6 +835,7 @@ impl<W: LayoutElement> TilingTree<W> {
                 old_id: id,
                 tile,
                 pending_mode,
+                mapped_under_fullscreen,
             }),
         }
     }
@@ -883,6 +893,7 @@ impl<W: LayoutElement> TilingTree<W> {
                 old_id,
                 mut tile,
                 pending_mode,
+                mapped_under_fullscreen,
             } => {
                 tile.update_config(self.view_size, self.scale, self.options.clone());
                 let id = self.alloc(Node {
@@ -892,6 +903,9 @@ impl<W: LayoutElement> TilingTree<W> {
                 remapped.push((old_id, id));
                 if let Some(mode) = pending_mode {
                     self.pending_modes.insert(id, mode);
+                }
+                if mapped_under_fullscreen {
+                    self.mapped_under_fullscreen.insert(id);
                 }
                 id
             }
@@ -947,6 +961,7 @@ impl<W: LayoutElement> TilingTree<W> {
         self.previous_split_layouts.remove(&id);
         self.title_formats.remove(&id);
         self.pending_modes.remove(&id);
+        self.mapped_under_fullscreen.remove(&id);
         self.tab_indicators.remove(&id);
         self.tab_active.remove(&id);
         self.tab_active.retain(|_, active| *active != id);

@@ -197,13 +197,33 @@ impl<W: LayoutElement> TilingTree<W> {
                         .titlebars
                         .get(&id)
                         .filter(|bar| bar.visible)
-                        .map(|bar| bar.ipc_rect),
+                        .map(|bar| bar.ipc_rect)
+                        .or_else(|| {
+                            (tree.fullscreen_node().is_some()
+                                && tree.fullscreen_mode(id).is_none()
+                                && !tree.mapped_under_fullscreen.contains(&id)
+                                && tile.has_sway_titlebar())
+                            .then(|| {
+                                Rectangle::new(
+                                    Point::default(),
+                                    (
+                                        geometries
+                                            .leaf_ipc_rects
+                                            .get(&id)
+                                            .map_or(0., |rect| rect.size.w),
+                                        tree.titlebar_height,
+                                    )
+                                        .into(),
+                                )
+                            })
+                        }),
                     border: tile.sway_border(),
                     border_edges: geometries
                         .border_edges
                         .get(&id)
                         .copied()
                         .unwrap_or_else(ResizeEdge::all),
+                    mapped_under_fullscreen: tree.mapped_under_fullscreen.contains(&id),
                 },
             }
         }

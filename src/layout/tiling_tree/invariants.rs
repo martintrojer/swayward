@@ -43,6 +43,11 @@ impl<W: LayoutElement> TilingTree<W> {
             )
             .chain(self.title_formats.keys().map(|id| ("title_formats", id)))
             .chain(self.pending_modes.keys().map(|id| ("pending_modes", id)))
+            .chain(
+                self.mapped_under_fullscreen
+                    .iter()
+                    .map(|id| ("mapped_under_fullscreen", id)),
+            )
             .chain(self.tab_indicators.keys().map(|id| ("tab_indicators", id)))
             .chain(self.tab_active.keys().map(|id| ("tab_active", id)))
         {

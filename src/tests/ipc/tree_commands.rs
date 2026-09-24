@@ -258,6 +258,91 @@ fn tabbed_children_report_visibility_and_full_parent_percent() {
 }
 
 #[test]
+fn workspace_fullscreen_controls_focus_visibility_and_percent() {
+    let mut config = swayward_config::Config::default();
+    config.animations.off = true;
+    let mut f = Fixture::with_config(config);
+    f.add_output(1, (1280, 800));
+    let client = f.add_client();
+
+    let map = |f: &mut Fixture, app_id: &str| {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    };
+
+    map(&mut f, "first");
+    assert!(crate::command::execute(f.niri_state(), "fullscreen toggle")[0].success);
+    map(&mut f, "second");
+
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &swayward.marks_by_window,
+        &swayward.marks_by_container,
+    ))
+    .unwrap();
+    let first = find_json_node_with_app_id(&tree, "first").unwrap();
+    let second = find_json_node_with_app_id(&tree, "second").unwrap();
+    assert_eq!(first["focused"], true);
+    assert_eq!(first["visible"], true);
+    assert_eq!(first["percent"], 1.0);
+    assert_eq!(second["focused"], false);
+    assert_eq!(second["visible"], false);
+    assert_eq!(second["percent"], 0.0);
+    assert_eq!(second["border"], "none");
+    assert_eq!(second["current_border_width"], 0);
+
+}
+
+#[test]
+fn toggling_fullscreen_updates_sibling_visibility_and_percent() {
+    let mut config = swayward_config::Config::default();
+    config.animations.off = true;
+    let mut f = Fixture::with_config(config);
+    f.add_output(1, (1280, 800));
+    let client = f.add_client();
+
+    for app_id in ["first", "second"] {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+    assert!(crate::command::execute(f.niri_state(), "fullscreen toggle")[0].success);
+
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &swayward.marks_by_window,
+        &swayward.marks_by_container,
+    ))
+    .unwrap();
+    let first = find_json_node_with_app_id(&tree, "first").unwrap();
+    let second = find_json_node_with_app_id(&tree, "second").unwrap();
+    assert_eq!(first["focused"], false);
+    assert_eq!(first["visible"], false);
+    assert_eq!(first["percent"], 0.5);
+    assert_eq!(second["focused"], true);
+    assert_eq!(second["visible"], true);
+    assert_eq!(second["percent"], 1.0);
+    assert_eq!(second["deco_rect"]["height"], 0);
+}
+
+#[test]
 fn split_containers_report_sway_container_state_fields() {
     let tree = nested_representation_live_tree();
     let split = find_json_parent_of_app_id(&tree, "fixture-3").unwrap();
