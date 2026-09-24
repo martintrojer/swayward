@@ -1,7 +1,6 @@
 use std::cell::{Cell, Ref, RefCell};
 use std::time::Duration;
 
-use niri_config::{Color, Config, CornerRadius, GradientInterpolation, WindowRule};
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::gles::GlesRenderer;
@@ -19,6 +18,7 @@ use smithay::wayland::shell::xdg::{
     SurfaceCachedState, ToplevelCachedState, ToplevelConfigure, ToplevelSurface,
     XdgToplevelSurfaceData,
 };
+use swayward_config::{Color, Config, CornerRadius, GradientInterpolation, WindowRule};
 use wayland_backend::server::Credentials;
 
 use super::{ResolvedWindowRules, WindowRef};
@@ -27,7 +27,6 @@ use crate::layout::{
     ConfigureIntent, InteractiveResizeData, LayoutElement, LayoutElementRenderElement,
     LayoutElementRenderSnapshot, SizingMode,
 };
-use crate::niri_render_elements;
 use crate::render_helpers::background_effect::BackgroundEffectElement;
 use crate::render_helpers::border::BorderRenderElement;
 use crate::render_helpers::offscreen::OffscreenData;
@@ -39,13 +38,23 @@ use crate::render_helpers::surface::{
 };
 use crate::render_helpers::xray::XrayPos;
 use crate::render_helpers::{background_effect, BakedBuffer, RenderCtx, RenderTarget};
+use crate::swayward::{ClientState, SecurityContextMetadata};
+use crate::swayward_render_elements;
 use crate::utils::id::IdCounter;
 use crate::utils::transaction::Transaction;
 use crate::utils::{
-    get_credentials_for_surface, send_scale_transform, update_tiled_state,
+    get_credentials_for_surface, get_monotonic_time, send_scale_transform, update_tiled_state,
     with_toplevel_last_uncommitted_configure, with_toplevel_role, with_toplevel_role_and_current,
     ResizeEdge,
 };
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum ShortcutsInhibitPolicy {
+    #[default]
+    Default,
+    Enable,
+    Disable,
+}
 
 #[derive(Debug)]
 pub struct Mapped {
@@ -85,8 +94,11 @@ pub struct Mapped {
     /// If `None`, then the window is not offscreened.
     offscreen_data: RefCell<Option<OffscreenData>>,
 
-    /// Whether this has an urgent indicator.
-    is_urgent: bool,
+    /// When this window became urgent.
+    urgent_since: Option<Duration>,
+
+    /// Marks displayed beside this window's title.
+    titlebar_marks: Vec<String>,
 
     /// Whether this window has the keyboard focus.
     is_focused: bool,
@@ -97,8 +109,17 @@ pub struct Mapped {
     /// Whether this window is floating.
     is_floating: bool,
 
+    /// Client geometry captured when the window first mapped.
+    natural_size: Size<i32, Logical>,
+
+    /// Whether the client created an xdg-decoration object for this toplevel.
+    has_xdg_decoration: bool,
+
     /// Whether this window is a target of a window cast.
     is_window_cast_target: bool,
+
+    /// Policy for future keyboard-shortcuts inhibitor requests from this window.
+    shortcuts_inhibit_policy: ShortcutsInhibitPolicy,
 
     /// Whether this window should ignore opacity set through window rules.
     ignore_opacity_window_rule: bool,
@@ -107,7 +128,7 @@ pub struct Mapped {
     block_out_buffer: RefCell<SolidColorBuffer>,
 
     /// The blur config, passed for background effect rendering.
-    blur_config: niri_config::Blur,
+    blur_config: swayward_config::Blur,
 
     /// Whether the next configure should be animated, if the configured state changed.
     animate_next_configure: bool,
@@ -191,11 +212,16 @@ pub struct Mapped {
     /// in response yet.
     uncommitted_maximized: Vec<(Serial, bool)>,
 
+    /// Sway title format applied to the client metadata.
+    title_format: Option<String>,
+
+    security_context: Option<SecurityContextMetadata>,
+
     /// Most recent monotonic time when the window had the focus.
     focus_timestamp: Option<Duration>,
 }
 
-niri_render_elements! {
+swayward_render_elements! {
     WindowCastRenderElements<R> => {
         Layout = LayoutElementRenderElement<R>,
         // Blocked-out window with rounded corners.
@@ -227,8 +253,8 @@ impl MappedId {
     /// That way, clients can associate a foreign toplevel handle with an IPC window ID.
     ///
     /// We use the decimal representation of the ID, which is up to 20 characters long for u64::MAX.
-    /// This is within the 32-character limit, and is nice because it matches up with how `niri msg`
-    /// prints the IDs to the console.
+    /// This is within the 32-character limit, and is nice because it matches up with how `swayward
+    /// msg` prints the IDs to the console.
     ///
     /// This namespace can be extended in the future, with any non-numeric prefix to disambiguate.
     pub fn to_protocol_identifier(self) -> String {
@@ -260,6 +286,76 @@ impl InteractiveResize {
     }
 }
 
+fn format_title(
+    format: &str,
+    title: &str,
+    app_id: &str,
+    shell: &str,
+    sandbox_engine: Option<&str>,
+    sandbox_app_id: Option<&str>,
+    sandbox_instance_id: Option<&str>,
+) -> String {
+    const PLACEHOLDERS: [(&str, usize); 8] = [
+        ("%sandbox_instance_id", 7),
+        ("%sandbox_engine", 5),
+        ("%sandbox_app_id", 6),
+        ("%instance", 3),
+        ("%app_id", 1),
+        ("%title", 0),
+        ("%class", 2),
+        ("%shell", 4),
+    ];
+    let values = [
+        title,
+        app_id,
+        "",
+        "",
+        shell,
+        sandbox_engine.unwrap_or_default(),
+        sandbox_app_id.unwrap_or_default(),
+        sandbox_instance_id.unwrap_or_default(),
+    ];
+    let mut output = String::with_capacity(format.len());
+    let mut rest = format;
+    while let Some(index) = rest.find('%') {
+        output.push_str(&rest[..index]);
+        rest = &rest[index..];
+        if let Some((placeholder, value)) = PLACEHOLDERS
+            .iter()
+            .find(|(placeholder, _)| rest.starts_with(placeholder))
+        {
+            output.push_str(values[*value]);
+            rest = &rest[placeholder.len()..];
+        } else {
+            output.push('%');
+            rest = &rest[1..];
+        }
+    }
+    output.push_str(rest);
+    output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_title;
+
+    #[test]
+    fn title_format_scans_only_the_format_and_expands_all_sway_placeholders() {
+        assert_eq!(
+            format_title(
+                "%title|%app_id|%class|%instance|%shell|%sandbox_app_id|%sandbox_engine|%sandbox_instance_id|%unknown",
+                "%app_id",
+                "org.example.App",
+                "xdg_shell",
+                Some("flatpak"),
+                Some("org.example.Sandbox"),
+                Some("instance-1"),
+            ),
+            "%app_id|org.example.App|||xdg_shell|org.example.Sandbox|flatpak|instance-1|%unknown"
+        );
+    }
+}
+
 /// Request-size-once logic state.
 #[derive(Debug, Clone, Copy)]
 enum RequestSizeOnce {
@@ -275,6 +371,17 @@ impl Mapped {
     pub fn new(window: Window, rules: ResolvedWindowRules, hook: HookId, config: &Config) -> Self {
         let surface = window.wl_surface().expect("no X11 support");
         let credentials = get_credentials_for_surface(&surface);
+        let security_context = surface.client().and_then(|client| {
+            client
+                .get_data::<ClientState>()
+                .and_then(|data| data.security_context.clone())
+        });
+        let has_xdg_decoration = window.toplevel().is_some_and(|toplevel| {
+            toplevel.with_pending_state(|state| {
+                state.decoration_mode == Some(zxdg_toplevel_decoration_v1::Mode::ClientSide)
+            })
+        });
+        let natural_size = window.geometry().size;
         let mut rv = Self {
             window,
             id: MappedId::next(),
@@ -285,11 +392,15 @@ impl Mapped {
             needs_configure: false,
             needs_frame_callback: false,
             offscreen_data: RefCell::new(None),
-            is_urgent: false,
+            urgent_since: None,
+            titlebar_marks: Vec::new(),
             is_focused: false,
             is_active_in_column: true,
             is_floating: false,
+            natural_size,
+            has_xdg_decoration,
             is_window_cast_target: false,
+            shortcuts_inhibit_policy: ShortcutsInhibitPolicy::Default,
             ignore_opacity_window_rule: false,
             block_out_buffer: RefCell::new(SolidColorBuffer::new((0., 0.), [0., 0., 0., 1.])),
             blur_config: config.blur,
@@ -307,6 +418,8 @@ impl Mapped {
             is_maximized: false,
             is_pending_maximized: false,
             uncommitted_maximized: Vec::new(),
+            title_format: None,
+            security_context,
             focus_timestamp: None,
         };
 
@@ -363,8 +476,53 @@ impl Mapped {
         self.credentials.as_ref()
     }
 
+    pub fn security_context(&self) -> Option<&SecurityContextMetadata> {
+        self.security_context.as_ref()
+    }
+
+    pub fn tag(&self) -> Option<std::sync::Arc<str>> {
+        use smithay::wayland::xdg_toplevel_tag::XdgToplevelTagSurfaceData;
+
+        with_states(self.toplevel().wl_surface(), |states| {
+            states
+                .data_map
+                .get::<XdgToplevelTagSurfaceData>()
+                .and_then(|data| data.tag())
+        })
+    }
+
+    pub fn set_title_format(&mut self, format: String) {
+        self.title_format = (format != "%title").then_some(format);
+    }
+
+    pub fn formatted_title(&self) -> String {
+        let (title, app_id) = with_toplevel_role(self.toplevel(), |role| {
+            (
+                role.title.clone().unwrap_or_default(),
+                role.app_id.clone().unwrap_or_default(),
+            )
+        });
+        let Some(format) = &self.title_format else {
+            return title;
+        };
+        let security_context = self.security_context.as_ref();
+        format_title(
+            format,
+            &title,
+            &app_id,
+            "xdg_shell",
+            security_context.and_then(|context| context.sandbox_engine.as_deref()),
+            security_context.and_then(|context| context.app_id.as_deref()),
+            security_context.and_then(|context| context.instance_id.as_deref()),
+        )
+    }
+
     pub fn offscreen_data(&self) -> Ref<'_, Option<OffscreenData>> {
         self.offscreen_data.borrow()
+    }
+
+    pub fn resolved_rules(&self) -> &ResolvedWindowRules {
+        &self.rules
     }
 
     pub fn is_focused(&self) -> bool {
@@ -379,12 +537,32 @@ impl Mapped {
         self.is_floating
     }
 
+    /// Publish the float decision made at map time, before the layout's own
+    /// update sets it, so `for_window` criteria can see it.
+    pub fn set_floating_for_rules(&mut self, floating: bool) {
+        let changed = self.is_floating != floating;
+        self.is_floating = floating;
+        self.need_to_recompute_rules |= changed;
+    }
+
     pub fn is_window_cast_target(&self) -> bool {
         self.is_window_cast_target
     }
 
+    pub fn shortcuts_inhibit_policy(&self) -> ShortcutsInhibitPolicy {
+        self.shortcuts_inhibit_policy
+    }
+
+    pub fn set_shortcuts_inhibit_policy(&mut self, policy: ShortcutsInhibitPolicy) {
+        self.shortcuts_inhibit_policy = policy;
+    }
+
     pub fn toggle_ignore_opacity_window_rule(&mut self) {
         self.ignore_opacity_window_rule = !self.ignore_opacity_window_rule;
+    }
+
+    pub fn set_titlebar_marks(&mut self, marks: Vec<String>) {
+        self.titlebar_marks = marks;
     }
 
     pub fn set_is_focused(&mut self, is_focused: bool) {
@@ -393,7 +571,6 @@ impl Mapped {
         }
 
         self.is_focused = is_focused;
-        self.is_urgent = false;
         self.need_to_recompute_rules = true;
     }
 
@@ -599,17 +776,30 @@ impl Mapped {
     }
 
     pub fn set_urgent(&mut self, urgent: bool) {
+        self.set_urgent_at(urgent, get_monotonic_time());
+    }
+
+    fn set_urgent_at(&mut self, urgent: bool, now: Duration) {
         if self.is_focused && urgent {
             return;
         }
 
-        let changed = self.is_urgent != urgent;
-        self.is_urgent = urgent;
-        self.need_to_recompute_rules |= changed;
+        let was_urgent = self.urgent_since.is_some();
+        self.urgent_since = urgent.then_some(now);
+        self.need_to_recompute_rules |= was_urgent != urgent;
+    }
+
+    #[cfg(test)]
+    pub fn set_urgent_for_test(&mut self, urgent: bool, now: Duration) {
+        self.set_urgent_at(urgent, now);
     }
 
     pub fn is_urgent(&self) -> bool {
-        self.is_urgent
+        self.urgent_since.is_some()
+    }
+
+    pub fn urgent_since(&self) -> Option<Duration> {
+        self.urgent_since
     }
 }
 
@@ -626,8 +816,20 @@ impl LayoutElement for Mapped {
         &self.window
     }
 
-    fn update_config(&mut self, blur_config: niri_config::Blur) {
+    fn focus_timestamp(&self) -> Option<Duration> {
+        self.focus_timestamp
+    }
+
+    fn update_config(&mut self, blur_config: swayward_config::Blur) {
         self.blur_config = blur_config;
+    }
+
+    fn title(&self) -> String {
+        self.formatted_title()
+    }
+
+    fn marks(&self) -> Vec<String> {
+        self.titlebar_marks.clone()
     }
 
     fn size(&self) -> Size<i32, Logical> {
@@ -691,7 +893,7 @@ impl LayoutElement for Mapped {
             let popup_rules = match popup {
                 PopupKind::Xdg(_) => self.rules.popups,
                 // IME popups aren't affected by rules for regular popups.
-                PopupKind::InputMethod(_) => niri_config::ResolvedPopupsRules::default(),
+                PopupKind::InputMethod(_) => swayward_config::ResolvedPopupsRules::default(),
             };
             let alpha = alpha * popup_rules.opacity.unwrap_or(1.).clamp(0., 1.);
 
@@ -975,7 +1177,7 @@ impl LayoutElement for Mapped {
     }
 
     fn is_urgent(&self) -> bool {
-        self.is_urgent
+        self.is_urgent()
     }
 
     fn set_activated(&mut self, active: bool) {
@@ -999,6 +1201,21 @@ impl LayoutElement for Mapped {
         let changed = self.is_floating != floating;
         self.is_floating = floating;
         self.need_to_recompute_rules |= changed;
+    }
+
+    fn has_xdg_decoration(&self) -> bool {
+        self.has_xdg_decoration
+    }
+
+    fn request_server_decoration(&mut self, server_side: bool) {
+        self.toplevel().with_pending_state(|state| {
+            state.decoration_mode = Some(if server_side {
+                zxdg_toplevel_decoration_v1::Mode::ServerSide
+            } else {
+                zxdg_toplevel_decoration_v1::Mode::ClientSide
+            });
+        });
+        self.set_needs_configure();
     }
 
     fn set_bounds(&self, bounds: Size<i32, Logical>) {
@@ -1220,6 +1437,18 @@ impl LayoutElement for Mapped {
 
     fn requested_size(&self) -> Option<Size<i32, Logical>> {
         self.toplevel().with_pending_state(|state| state.size)
+    }
+
+    fn natural_size(&self) -> Size<i32, Logical> {
+        self.natural_size
+    }
+
+    fn ipc_size(&self) -> Size<i32, Logical> {
+        if self.request_size_once.is_some() {
+            self.requested_size().unwrap_or_else(|| self.size())
+        } else {
+            self.size()
+        }
     }
 
     fn expected_size(&self) -> Option<Size<i32, Logical>> {

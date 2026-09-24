@@ -1,4 +1,6 @@
-use smithay::desktop::{layer_map_for_output, LayerSurface, PopupKind, WindowSurfaceType};
+use smithay::desktop::{
+    layer_map_for_output, LayerMap, LayerSurface, PopupKind, WindowSurfaceType,
+};
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::wayland::compositor::{add_pre_commit_hook, get_parent, with_states, HookId};
@@ -9,12 +11,12 @@ use smithay::wayland::shell::wlr_layer::{
 use smithay::wayland::shell::xdg::PopupSurface;
 
 use crate::layer::{MappedLayer, ResolvedLayerRules};
-use crate::niri::State;
+use crate::swayward::State;
 use crate::utils::{is_mapped, output_size, send_scale_transform};
 
 impl WlrLayerShellHandler for State {
     fn shell_state(&mut self) -> &mut WlrLayerShellState {
-        &mut self.niri.layer_shell_state
+        &mut self.swayward.layer_shell_state
     }
 
     fn new_layer_surface(
@@ -25,9 +27,9 @@ impl WlrLayerShellHandler for State {
         namespace: String,
     ) {
         let output = if let Some(wl_output) = &wl_output {
-            self.niri.output_from_resource(wl_output)
+            self.swayward.output_from_resource(wl_output)
         } else {
-            self.niri.layout.active_output().cloned()
+            self.swayward.layout.active_output().cloned()
         };
         let Some(output) = output else {
             warn!("no output for new layer surface, closing");
@@ -36,20 +38,19 @@ impl WlrLayerShellHandler for State {
         };
 
         let wl_surface = surface.wl_surface().clone();
-        let is_new = self.niri.unmapped_layer_surfaces.insert(wl_surface);
+        let is_new = self.swayward.unmapped_layer_surfaces.insert(wl_surface);
         assert!(is_new);
 
         let mut map = layer_map_for_output(&output);
-        map.map_layer(&LayerSurface::new(surface, namespace))
-            .unwrap();
+        map_layer_in_sway_order(&mut map, LayerSurface::new(surface, namespace));
     }
 
     fn layer_destroyed(&mut self, surface: WlrLayerSurface) {
         let wl_surface = surface.wl_surface();
-        self.niri.unmapped_layer_surfaces.remove(wl_surface);
+        self.swayward.unmapped_layer_surfaces.remove(wl_surface);
 
         let output = if let Some((output, mut map, layer)) =
-            self.niri.layout.outputs().find_map(|o| {
+            self.swayward.layout.outputs().find_map(|o| {
                 let map = layer_map_for_output(o);
                 let layer = map
                     .layers()
@@ -58,13 +59,13 @@ impl WlrLayerShellHandler for State {
                 layer.map(|layer| (o.clone(), map, layer))
             }) {
             map.unmap_layer(&layer);
-            self.niri.mapped_layer_surfaces.remove(&layer);
+            self.swayward.mapped_layer_surfaces.remove(&layer);
             Some(output)
         } else {
             None
         };
         if let Some(output) = output {
-            self.niri.output_resized(&output);
+            self.swayward.output_resized(&output);
         }
     }
 
@@ -81,7 +82,7 @@ impl State {
         }
 
         let output = self
-            .niri
+            .swayward
             .layout
             .outputs()
             .find(|o| {
@@ -96,7 +97,7 @@ impl State {
 
         if surface != &root_surface {
             // This is an unsync layer-shell subsurface.
-            self.niri.queue_redraw(&output);
+            self.swayward.queue_redraw(&output);
             return true;
         }
 
@@ -104,21 +105,21 @@ impl State {
 
         // Arrange the layers before sending the initial configure to respect any size the
         // client may have sent.
-        map.arrange();
+        arrange_layers_in_sway_order(&mut map);
 
         let layer = map
             .layer_for_surface(surface, WindowSurfaceType::TOPLEVEL)
             .unwrap();
 
         if is_mapped(surface) {
-            let was_unmapped = self.niri.unmapped_layer_surfaces.remove(surface);
+            let was_unmapped = self.swayward.unmapped_layer_surfaces.remove(surface);
 
             // Resolve rules for newly mapped layer surfaces.
             if was_unmapped {
-                let config = self.niri.config.borrow();
+                let config = self.swayward.config.borrow();
 
                 let rules = &config.layer_rules;
-                let rules = ResolvedLayerRules::compute(rules, layer, self.niri.is_at_startup);
+                let rules = ResolvedLayerRules::compute(rules, layer, self.swayward.is_at_startup);
 
                 let output_size = output_size(&output);
                 let scale = output.current_scale().fractional_scale();
@@ -130,12 +131,12 @@ impl State {
                     rules,
                     output_size,
                     scale,
-                    self.niri.clock.clone(),
+                    self.swayward.clock.clone(),
                     &config,
                 );
 
                 let prev = self
-                    .niri
+                    .swayward
                     .mapped_layer_surfaces
                     .insert(layer.clone(), mapped);
                 if prev.is_some() {
@@ -143,12 +144,12 @@ impl State {
                 }
             } else {
                 // The surface remains mapped.
-                if let Some(mapped) = self.niri.mapped_layer_surfaces.get_mut(layer) {
+                if let Some(mapped) = self.swayward.mapped_layer_surfaces.get_mut(layer) {
                     // Check if the layer changed.
                     if mapped.take_recompute_rules_on_commit() {
-                        let config = self.niri.config.borrow();
+                        let config = self.swayward.config.borrow();
                         if mapped
-                            .recompute_layer_rules(&config.layer_rules, self.niri.is_at_startup)
+                            .recompute_layer_rules(&config.layer_rules, self.swayward.is_at_startup)
                         {
                             mapped.update_config(&config);
                         }
@@ -176,14 +177,16 @@ impl State {
                 // I guess it'd make sense to check that no higher-layer on-demand surface
                 // has focus, but Smithay's Layer doesn't implement Ord so this would be a
                 // little annoying.
-                self.niri.layer_shell_on_demand_focus = Some(layer.clone());
+                self.swayward.layer_shell_on_demand_focus = Some(layer.clone());
             }
         } else {
             // The surface is unmapped.
-            if self.niri.mapped_layer_surfaces.remove(layer).is_some() {
+            if self.swayward.mapped_layer_surfaces.remove(layer).is_some() {
                 // A mapped surface got unmapped via a null commit. Now it needs to do a new
                 // initial commit again.
-                self.niri.unmapped_layer_surfaces.insert(surface.clone());
+                self.swayward
+                    .unmapped_layer_surfaces
+                    .insert(surface.clone());
             } else {
                 // An unmapped surface remains unmapped. If we haven't sent an initial configure
                 // yet, we should do so.
@@ -205,7 +208,7 @@ impl State {
 
                     layer.layer_surface().send_configure();
                 }
-                // If we already sent an initial configure, then map.arrange() above had just sent
+                // If we already sent an initial configure, the arrangement above had just sent
                 // it a new configure, if needed.
             }
         }
@@ -213,9 +216,47 @@ impl State {
         drop(map);
 
         // This will call queue_redraw() inside.
-        self.niri.output_resized(&output);
+        self.swayward.output_resized(&output);
 
         true
+    }
+}
+
+fn layer_order(layer: Layer) -> u8 {
+    match layer {
+        Layer::Overlay => 0,
+        Layer::Top => 1,
+        Layer::Bottom => 2,
+        Layer::Background => 3,
+    }
+}
+
+fn map_layer_in_sway_order(map: &mut LayerMap, layer: LayerSurface) {
+    let mut layers = map.layers().cloned().collect::<Vec<_>>();
+    layers.push(layer);
+    layers.sort_by_key(|layer| layer_order(layer.layer()));
+    remap_layers(map, layers);
+}
+
+fn arrange_layers_in_sway_order(map: &mut LayerMap) {
+    let layers = map.layers().cloned().collect::<Vec<_>>();
+    let mut ordered = layers.clone();
+    ordered.sort_by_key(|layer| layer_order(layer.layer()));
+    if layers == ordered {
+        map.arrange();
+    } else {
+        remap_layers(map, ordered);
+    }
+}
+
+fn remap_layers(map: &mut LayerMap, layers: Vec<LayerSurface>) {
+    for layer in map.layers().cloned().collect::<Vec<_>>() {
+        map.unmap_layer(&layer);
+    }
+    for layer in layers {
+        if let Err(error) = map.map_layer(&layer) {
+            warn!("could not restore layer surface while arranging: {error}");
+        }
     }
 }
 
@@ -229,7 +270,7 @@ fn add_mapped_layer_pre_commit_hook(layer: &LayerSurface) -> HookId {
         });
 
         if layer_changed {
-            for mapped in state.niri.mapped_layer_surfaces.values_mut() {
+            for mapped in state.swayward.mapped_layer_surfaces.values_mut() {
                 if mapped.surface().wl_surface() == surface {
                     mapped.set_recompute_rules_on_commit();
                     break;

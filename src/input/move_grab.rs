@@ -19,7 +19,7 @@ use smithay::output::Output;
 use smithay::utils::{IsAlive, Logical, Point, SERIAL_COUNTER};
 
 use crate::input::AnyStartData;
-use crate::niri::State;
+use crate::swayward::State;
 
 pub struct MoveGrab {
     start_data: AnyStartData<State>,
@@ -30,6 +30,7 @@ pub struct MoveGrab {
     gesture: GestureState,
     enable_view_offset: bool,
     move_icon: CursorIcon,
+    recognition_threshold: f64,
 
     // Accumulated and applied in frame().
     new_location: Point<f64, Logical>,
@@ -52,8 +53,38 @@ impl MoveGrab {
         enable_view_offset: bool,
         move_icon: Option<CursorIcon>,
     ) -> Option<Self> {
+        Self::with_threshold(state, start_data, window, enable_view_offset, move_icon, 8.)
+    }
+
+    /// Creates a tiled move that stays pending until `recognition_threshold` is exceeded,
+    /// matching sway's strict squared-distance check (`sway/input/seatop_move_tiling.c:38-59`).
+    pub fn new_tiling(
+        state: &mut State,
+        start_data: AnyStartData<State>,
+        window: Window,
+        move_icon: Option<CursorIcon>,
+        recognition_threshold: f64,
+    ) -> Option<Self> {
+        Self::with_threshold(
+            state,
+            start_data,
+            window,
+            false,
+            move_icon,
+            recognition_threshold,
+        )
+    }
+
+    fn with_threshold(
+        state: &mut State,
+        start_data: AnyStartData<State>,
+        window: Window,
+        enable_view_offset: bool,
+        move_icon: Option<CursorIcon>,
+        recognition_threshold: f64,
+    ) -> Option<Self> {
         let location = start_data.location();
-        let (output, pos_within_output) = state.niri.output_under(location)?;
+        let (output, pos_within_output) = state.swayward.output_under(location)?;
 
         Some(Self {
             last_location: location,
@@ -65,6 +96,7 @@ impl MoveGrab {
             enable_view_offset,
             // Moving windows by their titlebars uses the default cursor by default.
             move_icon: move_icon.unwrap_or(CursorIcon::Default),
+            recognition_threshold,
             new_location: location,
             event_timestamp: None,
             relative_delta: None,
@@ -80,7 +112,7 @@ impl MoveGrab {
     }
 
     fn on_ungrab(&mut self, data: &mut State) {
-        let layout = &mut data.niri.layout;
+        let layout = &mut data.swayward.layout;
         match self.gesture {
             GestureState::Recognizing => {
                 // Activate the window on release. This is most prominent in the overview where
@@ -107,17 +139,17 @@ impl MoveGrab {
         }
 
         if !self.start_data.is_touch() {
-            data.niri
+            data.swayward
                 .cursor_manager
                 .set_cursor_image(CursorImageStatus::default_named());
         }
 
         // FIXME: only redraw the window output.
-        data.niri.queue_redraw_all();
+        data.swayward.queue_redraw_all();
     }
 
     fn begin_move(&mut self, data: &mut State) -> bool {
-        if !data.niri.layout.interactive_move_begin(
+        if !data.swayward.layout.interactive_move_begin(
             self.window.clone(),
             &self.start_output,
             self.start_pos_within_output,
@@ -129,7 +161,7 @@ impl MoveGrab {
         self.gesture = GestureState::Move;
 
         if !self.start_data.is_touch() {
-            data.niri
+            data.swayward
                 .cursor_manager
                 .set_cursor_image(CursorImageStatus::Named(self.move_icon));
         }
@@ -138,7 +170,7 @@ impl MoveGrab {
     }
 
     fn begin_view_offset(&mut self, data: &mut State) -> bool {
-        let layout = &mut data.niri.layout;
+        let layout = &mut data.swayward.layout;
         let Some(ws_idx) = layout.workspaces().find_map(|(mon, ws_idx, ws)| {
             let ws_idx = ws
                 .windows()
@@ -162,7 +194,7 @@ impl MoveGrab {
         self.gesture = GestureState::ViewOffset;
 
         if !self.start_data.is_touch() {
-            data.niri
+            data.swayward
                 .cursor_manager
                 .set_cursor_image(CursorImageStatus::Named(CursorIcon::AllScroll));
         }
@@ -188,9 +220,9 @@ impl MoveGrab {
 
             // Check if the gesture moved far enough to decide.
             let c = self.new_location - self.start_data.location();
-            if c.x * c.x + c.y * c.y >= 8. * 8. {
+            if c.x * c.x + c.y * c.y > self.recognition_threshold * self.recognition_threshold {
                 let is_floating = data
-                    .niri
+                    .swayward
                     .layout
                     .workspaces()
                     .find_map(|(_, _, ws)| {
@@ -221,7 +253,8 @@ impl MoveGrab {
         match self.gesture {
             GestureState::Recognizing => return true,
             GestureState::Move => {
-                let Some((output, pos_within_output)) = data.niri.output_under(self.last_location)
+                let Some((output, pos_within_output)) =
+                    data.swayward.output_under(self.last_location)
                 else {
                     return true;
                 };
@@ -229,7 +262,7 @@ impl MoveGrab {
 
                 // Interactive move always uses absolute delta since the window must remain pinned
                 // to the cursor even when it's clamped to monitor bounds.
-                let ongoing = data.niri.layout.interactive_move_update(
+                let ongoing = data.swayward.layout.interactive_move_update(
                     &self.window,
                     delta,
                     output,
@@ -237,19 +270,19 @@ impl MoveGrab {
                 );
                 if ongoing {
                     // FIXME: only redraw the previous and the new output.
-                    data.niri.queue_redraw_all();
+                    data.swayward.queue_redraw_all();
                     return true;
                 }
             }
             GestureState::ViewOffset => {
-                let res = data.niri.layout.view_offset_gesture_update(
+                let res = data.swayward.layout.view_offset_gesture_update(
                     -relative_delta.x,
                     timestamp,
                     false,
                 );
                 if let Some(output) = res {
                     if let Some(output) = output {
-                        data.niri.queue_redraw(&output);
+                        data.swayward.queue_redraw(&output);
                     }
                     return true;
                 }
@@ -266,7 +299,7 @@ impl MoveGrab {
 
         // Start move if still recognizing.
         if self.gesture == GestureState::Recognizing {
-            let Some((output, pos_within_output)) = data.niri.output_under(self.last_location)
+            let Some((output, pos_within_output)) = data.swayward.output_under(self.last_location)
             else {
                 return false;
             };
@@ -277,7 +310,7 @@ impl MoveGrab {
             }
 
             // Apply the delta accumulated during recognizing.
-            let ongoing = data.niri.layout.interactive_move_update(
+            let ongoing = data.swayward.layout.interactive_move_update(
                 &self.window,
                 self.last_location - self.start_data.location(),
                 output,
@@ -288,8 +321,10 @@ impl MoveGrab {
             }
         }
 
-        data.niri.layout.toggle_window_floating(Some(&self.window));
-        data.niri.queue_redraw_all();
+        data.swayward
+            .layout
+            .toggle_window_floating(Some(&self.window));
+        data.swayward.queue_redraw_all();
 
         true
     }

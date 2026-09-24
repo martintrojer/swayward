@@ -8,8 +8,8 @@ use std::{io, thread};
 
 use atomic::Atomic;
 use libc::{getrlimit, rlim_t, rlimit, setrlimit, RLIMIT_NOFILE};
-use niri_config::Environment;
 use smithay::wayland::xdg_activation::XdgActivationToken;
+use swayward_config::Environment;
 
 use crate::utils::expand_home;
 
@@ -64,23 +64,7 @@ pub fn restore_nofile_rlimit() {
 
 /// Spawns the command to run independently of the compositor.
 pub fn spawn<T: AsRef<OsStr> + Send + 'static>(command: Vec<T>, token: Option<XdgActivationToken>) {
-    let _span = tracy_client::span!();
-
-    if command.is_empty() {
-        return;
-    }
-
-    // Spawning and waiting takes some milliseconds, so do it in a thread.
-    let res = thread::Builder::new()
-        .name("Command Spawner".to_owned())
-        .spawn(move || {
-            let (command, args) = command.split_first().unwrap();
-            spawn_sync(command, args, token);
-        });
-
-    if let Err(err) = res {
-        warn!("error spawning a thread to spawn the command: {err:?}");
-    }
+    spawn_with_startup_id(command, token, true);
 }
 
 /// Spawns the command through the shell.
@@ -90,13 +74,49 @@ pub fn spawn<T: AsRef<OsStr> + Send + 'static>(command: Vec<T>, token: Option<Xd
 /// - https://github.com/swaywm/sway/blob/b3dcde8d69c3f1304b076968a7a64f54d0c958be/sway/commands/exec_always.c#L64
 /// - https://github.com/hyprwm/Hyprland/blob/1ac1ff457ab8ef1ae6a8f2ab17ee7965adfa729f/src/managers/KeybindManager.cpp#L987
 pub fn spawn_sh(command: String, token: Option<XdgActivationToken>) {
-    spawn(vec![String::from("sh"), String::from("-c"), command], token);
+    spawn_with_startup_id(
+        vec![String::from("sh"), String::from("-c"), command],
+        token,
+        true,
+    );
+}
+
+pub fn spawn_sh_without_startup_id(command: String, token: Option<XdgActivationToken>) {
+    spawn_with_startup_id(
+        vec![String::from("sh"), String::from("-c"), command],
+        token,
+        false,
+    );
+}
+
+fn spawn_with_startup_id<T: AsRef<OsStr> + Send + 'static>(
+    command: Vec<T>,
+    token: Option<XdgActivationToken>,
+    set_startup_id: bool,
+) {
+    let _span = tracy_client::span!();
+
+    if command.is_empty() {
+        return;
+    }
+
+    let res = thread::Builder::new()
+        .name("Command Spawner".to_owned())
+        .spawn(move || {
+            let (command, args) = command.split_first().unwrap();
+            spawn_sync(command, args, token, set_startup_id);
+        });
+
+    if let Err(err) = res {
+        warn!("error spawning a thread to spawn the command: {err:?}");
+    }
 }
 
 fn spawn_sync(
     command: impl AsRef<OsStr>,
     args: impl IntoIterator<Item = impl AsRef<OsStr>>,
     token: Option<XdgActivationToken>,
+    set_startup_id: bool,
 ) {
     let _span = tracy_client::span!();
 
@@ -151,7 +171,11 @@ fn spawn_sync(
 
     if let Some(token) = token.as_ref() {
         process.env("XDG_ACTIVATION_TOKEN", token.as_str());
-        process.env("DESKTOP_STARTUP_ID", token.as_str());
+        if set_startup_id {
+            process.env("DESKTOP_STARTUP_ID", token.as_str());
+        } else {
+            process.env_remove("DESKTOP_STARTUP_ID");
+        }
     }
 
     unsafe { process.pre_exec(crate::utils::signals::unblock_all) };
@@ -424,7 +448,7 @@ mod systemd {
         // Extract the basename.
         let name = Path::new(name).file_name().unwrap_or(name);
 
-        let mut scope_name = String::from("app-niri-");
+        let mut scope_name = String::from("app-swayward-");
 
         // Escape for systemd similarly to libgnome-desktop, which says it had adapted this from
         // systemd source.

@@ -2,25 +2,27 @@ use std::cmp::max;
 use std::iter::zip;
 use std::rc::Rc;
 
-use niri_config::utils::MergeWith as _;
-use niri_config::{PresetSize, RelativeTo};
-use niri_ipc::{PositionChange, SizeChange, WindowLayout};
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::utils::{Logical, Point, Rectangle, Scale, Serial, Size};
+use swayward_config::utils::MergeWith as _;
+use swayward_config::{PresetSize, RelativeTo};
+use swayward_ipc::{PositionChange, SizeChange, WindowLayout};
 
 use super::closing_window::{ClosingWindow, ClosingWindowRenderElement};
 use super::scrolling::ColumnWidth;
 use super::tile::{Tile, TileRenderElement, TileRenderSnapshot};
+use super::tiling_tree::NodeId;
+use super::titlebar::{self, Titlebar, TitlebarRenderer, TitlebarState};
 use super::workspace::{InteractiveResize, ResolvedSize};
 use super::{
     ConfigureIntent, InteractiveResizeData, LayoutElement, Options, RemovedTile, SizeFrac,
 };
 use crate::animation::{Animation, Clock};
 use crate::layout::RenderLayer;
-use crate::niri_render_elements;
 use crate::render_helpers::renderer::NiriRenderer;
 use crate::render_helpers::xray::XrayPos;
 use crate::render_helpers::RenderCtx;
+use crate::swayward_render_elements;
 use crate::utils::transaction::TransactionBlocker;
 use crate::utils::{
     center_preferring_top_left_in_area, clamp_preferring_top_left_in_area, ensure_min_max_size,
@@ -30,6 +32,28 @@ use crate::window::ResolvedWindowRules;
 
 /// By how many logical pixels the directional move commands move floating windows.
 pub const DIRECTIONAL_MOVE_PX: f64 = 50.;
+
+pub(super) fn apply_position_change(
+    current: f64,
+    change: PositionChange,
+    available: f64,
+    origin: f64,
+) -> f64 {
+    const MAX_PROPORTION: f64 = 10000.;
+
+    match change {
+        PositionChange::SetFixed(value) => value + origin,
+        PositionChange::AdjustFixed(delta) => current + delta,
+        PositionChange::SetProportion(proportion) if proportion.is_finite() => {
+            available * (proportion / 100.).clamp(0., MAX_PROPORTION) + origin
+        }
+        PositionChange::AdjustProportion(delta) if delta.is_finite() => {
+            let current_proportion = (current - origin) / available.max(1.);
+            available * (current_proportion + delta / 100.).clamp(0., MAX_PROPORTION) + origin
+        }
+        PositionChange::SetProportion(_) | PositionChange::AdjustProportion(_) => current,
+    }
+}
 
 /// Space for floating windows.
 #[derive(Debug)]
@@ -68,12 +92,15 @@ pub struct FloatingSpace<W: LayoutElement> {
 
     /// Configurable properties of the layout.
     options: Rc<Options>,
+
+    titlebars: TitlebarRenderer,
 }
 
-niri_render_elements! {
+swayward_render_elements! {
     FloatingSpaceRenderElement<R> => {
         Tile = TileRenderElement<R>,
         ClosingWindow = ClosingWindowRenderElement,
+        Titlebar = crate::render_helpers::primary_gpu_texture::PrimaryGpuTextureRenderElement,
     }
 }
 
@@ -91,12 +118,16 @@ struct Data {
     /// Cached actual size of the tile.
     size: Size<f64, Logical>,
 
+    /// Output size used for off-screen allowances.
+    view_size: Size<f64, Logical>,
+
     /// Working area used for conversions.
     working_area: Rectangle<f64, Logical>,
 }
 
 impl Data {
     pub fn new<W: LayoutElement>(
+        view_size: Size<f64, Logical>,
         working_area: Rectangle<f64, Logical>,
         tile: &Tile<W>,
         logical_pos: Point<f64, Logical>,
@@ -105,6 +136,7 @@ impl Data {
             pos: Point::default(),
             logical_pos: Point::default(),
             size: Size::default(),
+            view_size,
             working_area,
         };
         rv.update(tile);
@@ -135,35 +167,29 @@ impl Data {
     }
 
     fn recompute_logical_pos(&mut self) {
-        let mut logical_pos = Self::scale_by_working_area(self.working_area, self.pos);
-
-        // Make sure the window doesn't go too much off-screen. Numbers taken from Mutter.
-        let min_on_screen_hor = f64::clamp(self.size.w / 4., 10., 75.);
-        let min_on_screen_ver = f64::clamp(self.size.h / 4., 10., 75.);
-        let max_off_screen_hor = f64::max(0., self.size.w - min_on_screen_hor);
-        let max_off_screen_ver = f64::max(0., self.size.h - min_on_screen_ver);
-
-        logical_pos -= self.working_area.loc;
-        logical_pos.x = f64::max(logical_pos.x, -max_off_screen_hor);
-        logical_pos.y = f64::max(logical_pos.y, -max_off_screen_ver);
-        logical_pos.x = f64::min(
-            logical_pos.x,
-            self.working_area.size.w - self.size.w + max_off_screen_hor,
-        );
-        logical_pos.y = f64::min(
-            logical_pos.y,
-            self.working_area.size.h - self.size.h + max_off_screen_ver,
-        );
-        logical_pos += self.working_area.loc;
-
-        self.logical_pos = logical_pos;
+        // Sway never clamps a floating window's position. container_floating_move_to
+        // translates to the requested coordinates with no bounds check
+        // (`sway/sway/tree/container.c:1127-1159`), and the drag seatop feeds it raw
+        // cursor coordinates (`sway/sway/input/seatop_move_floating.c:40`), so a window
+        // dragged off the screen edge stays there. The only bounds-aware path centers
+        // rather than clamps (`container_floating_resize_and_center`, :864-908).
+        //
+        // niri clamped here instead, keeping a Mutter-derived slice of every window
+        // on screen. That is the opposite rule, and it silently moved windows a sway
+        // client had positioned deliberately.
+        self.logical_pos = Self::scale_by_working_area(self.working_area, self.pos);
     }
 
-    pub fn update_config(&mut self, working_area: Rectangle<f64, Logical>) {
-        if self.working_area == working_area {
+    pub fn update_config(
+        &mut self,
+        view_size: Size<f64, Logical>,
+        working_area: Rectangle<f64, Logical>,
+    ) {
+        if self.view_size == view_size && self.working_area == working_area {
             return;
         }
 
+        self.view_size = view_size;
         self.working_area = working_area;
         self.recompute_logical_pos();
     }
@@ -200,6 +226,53 @@ impl Data {
     }
 }
 
+fn constrain_floating_size(
+    mut size: Size<i32, Logical>,
+    minimum: swayward_config::FloatingSize,
+    maximum: swayward_config::FloatingSize,
+    automatic_maximum: Size<f64, Logical>,
+    client_minimum: Size<i32, Logical>,
+    client_maximum: Size<i32, Logical>,
+) -> Size<i32, Logical> {
+    let minimum: Size<i32, Logical> = Size::from((
+        if minimum.width == -1 {
+            0
+        } else if minimum.width == 0 {
+            75
+        } else {
+            minimum.width
+        },
+        if minimum.height == -1 {
+            0
+        } else if minimum.height == 0 {
+            50
+        } else {
+            minimum.height
+        },
+    ));
+    let maximum: Size<i32, Logical> = Size::from((
+        if maximum.width == -1 {
+            0
+        } else if maximum.width == 0 {
+            automatic_maximum.w.round() as i32
+        } else {
+            maximum.width
+        },
+        if maximum.height == -1 {
+            0
+        } else if maximum.height == 0 {
+            automatic_maximum.h.round() as i32
+        } else {
+            maximum.height
+        },
+    ));
+    size.w = ensure_min_max_size(size.w, minimum.w, maximum.w);
+    size.h = ensure_min_max_size(size.h, minimum.h, maximum.h);
+    size.w = ensure_min_max_size(size.w, client_minimum.w, client_maximum.w);
+    size.h = ensure_min_max_size(size.h, client_minimum.h, client_maximum.h);
+    size
+}
+
 impl<W: LayoutElement> FloatingSpace<W> {
     pub fn new(
         view_size: Size<f64, Logical>,
@@ -219,6 +292,7 @@ impl<W: LayoutElement> FloatingSpace<W> {
             scale,
             clock,
             options,
+            titlebars: Default::default(),
         }
     }
 
@@ -232,7 +306,7 @@ impl<W: LayoutElement> FloatingSpace<W> {
         for (tile, data) in zip(&mut self.tiles, &mut self.data) {
             tile.update_config(view_size, scale, options.clone());
             data.update(tile);
-            data.update_config(working_area);
+            data.update_config(view_size, working_area);
         }
 
         self.view_size = view_size;
@@ -279,6 +353,13 @@ impl<W: LayoutElement> FloatingSpace<W> {
                 continue;
             }
 
+            tile.set_border_edges(ResizeEdge::all());
+            tile.set_border_visible(true);
+            tile.set_decorated_box(
+                super::tile::DecoratedCorners::ALL,
+                tile.has_sway_titlebar(),
+                false,
+            );
             let id = tile.window().id();
             let is_active = is_active && Some(id) == active.as_ref();
 
@@ -335,6 +416,31 @@ impl<W: LayoutElement> FloatingSpace<W> {
         })
     }
 
+    pub fn ipc_decoration_rect(
+        &self,
+        tile: &Tile<W>,
+        layout: &WindowLayout,
+    ) -> Option<Rectangle<f64, Logical>> {
+        let pos = layout.tile_pos_in_workspace_view?.into();
+        self.titlebar_rect(tile, pos, layout.tile_size.0)
+    }
+
+    fn titlebar_rect(
+        &self,
+        tile: &Tile<W>,
+        tile_pos: Point<f64, Logical>,
+        width: f64,
+    ) -> Option<Rectangle<f64, Logical>> {
+        if !tile.has_sway_titlebar() {
+            return None;
+        }
+        let height = titlebar::height(self.scale, &self.options.layout.titlebar);
+        Some(Rectangle::new(
+            Point::from((tile_pos.x, tile_pos.y)),
+            Size::from((width, height)),
+        ))
+    }
+
     pub fn tiles_with_ipc_layouts(&self) -> impl Iterator<Item = (&Tile<W>, WindowLayout)> {
         let scale = self.scale;
         self.tiles_with_offsets().map(move |(tile, offset)| {
@@ -344,6 +450,8 @@ impl<W: LayoutElement> FloatingSpace<W> {
             let pos = pos.to_physical_precise_round(scale).to_logical(scale);
 
             let layout = WindowLayout {
+                tile_size: tile.tile_expected_or_current_size().into(),
+                window_size: tile.window().ipc_size().into(),
                 tile_pos_in_workspace_view: Some(pos.into()),
                 ..tile.ipc_layout_template()
             };
@@ -370,6 +478,26 @@ impl<W: LayoutElement> FloatingSpace<W> {
         let window_rect = Rectangle::new(window_pos, window_size);
 
         self.working_area.intersection(window_rect)
+    }
+
+    pub fn window_under(&self, pos: Point<f64, Logical>) -> Option<(&W, super::HitType)> {
+        for (tile, tile_pos) in self.tiles_with_render_positions() {
+            if self
+                .titlebar_rect(tile, tile_pos, tile.animated_tile_size().w)
+                .is_some_and(|rect| rect.contains(pos))
+            {
+                return Some((
+                    tile.window(),
+                    super::HitType::Activate {
+                        is_tab_indicator: true,
+                    },
+                ));
+            }
+            if let Some(hit) = super::HitType::hit_tile(tile, tile_pos, pos) {
+                return Some(hit);
+            }
+        }
+        None
     }
 
     pub fn popup_target_rect(&self, id: &W::Id) -> Option<Rectangle<f64, Logical>> {
@@ -424,6 +552,7 @@ impl<W: LayoutElement> FloatingSpace<W> {
 
     fn add_tile_at(&mut self, mut idx: usize, mut tile: Tile<W>, activate: bool) {
         tile.update_config(self.view_size, self.scale, self.options.clone());
+        tile.set_border_edges(ResizeEdge::all());
 
         // Restore the previous floating window size, and in case the tile is fullscreen,
         // unfullscreen it.
@@ -439,12 +568,21 @@ impl<W: LayoutElement> FloatingSpace<W> {
             floating_size.unwrap_or_else(|| win.expected_size().unwrap_or_default())
         };
 
-        // Apply min/max size window rules. If requesting a concrete size, apply completely; if
-        // requesting (0, 0), apply only when min/max results in a fixed size.
-        let min_size = win.min_size();
-        let max_size = win.max_size();
-        size.w = ensure_min_max_size_maybe_zero(size.w, min_size.w, max_size.w);
-        size.h = ensure_min_max_size_maybe_zero(size.h, min_size.h, max_size.h);
+        if win.pending_sizing_mode().is_normal() && size.w > 1 && size.h > 1 {
+            size = constrain_floating_size(
+                size,
+                self.options.layout.floating_minimum_size,
+                self.options.layout.floating_maximum_size,
+                self.view_size,
+                win.min_size(),
+                win.max_size(),
+            );
+        } else {
+            let min_size = win.min_size();
+            let max_size = win.max_size();
+            size.w = ensure_min_max_size_maybe_zero(size.w, min_size.w, max_size.w);
+            size.h = ensure_min_max_size_maybe_zero(size.h, min_size.h, max_size.h);
+        }
 
         win.request_size_once(size, true);
 
@@ -460,11 +598,14 @@ impl<W: LayoutElement> FloatingSpace<W> {
             }
         }
 
-        let pos = self.stored_or_default_tile_pos(&tile).unwrap_or_else(|| {
-            center_preferring_top_left_in_area(self.working_area, tile.tile_size())
-        });
+        let pos = if tile.floating_pos.is_some() {
+            self.stored_or_default_tile_pos(&tile).unwrap()
+        } else {
+            let tile_size = size.to_f64() + tile.tile_size() - tile.window_size();
+            center_preferring_top_left_in_area(self.working_area, tile_size)
+        };
 
-        let data = Data::new(self.working_area, &tile, pos);
+        let data = Data::new(self.view_size, self.working_area, &tile, pos);
         self.data.insert(idx, data);
         self.tiles.insert(idx, tile);
 
@@ -548,6 +689,7 @@ impl<W: LayoutElement> FloatingSpace<W> {
             width,
             is_full_width: false,
             is_floating: true,
+            floating_working_area: Some(self.working_area),
         }
     }
 
@@ -682,7 +824,12 @@ impl<W: LayoutElement> FloatingSpace<W> {
         };
 
         let preset = self.options.layout.preset_column_widths[preset_idx];
-        self.set_window_width(Some(&id), SizeChange::from(preset), true);
+        self.set_window_width(
+            Some(&id),
+            SizeChange::from(preset),
+            true,
+            self.view_size.to_i32_round(),
+        );
 
         self.tiles[idx].floating_preset_width_idx = Some(preset_idx);
 
@@ -743,7 +890,12 @@ impl<W: LayoutElement> FloatingSpace<W> {
         };
 
         let preset = self.options.layout.preset_window_heights[preset_idx];
-        self.set_window_height(Some(&id), SizeChange::from(preset), true);
+        self.set_window_height(
+            Some(&id),
+            SizeChange::from(preset),
+            true,
+            self.view_size.to_i32_round(),
+        );
 
         let tile = &mut self.tiles[idx];
         tile.floating_preset_height_idx = Some(preset_idx);
@@ -751,7 +903,30 @@ impl<W: LayoutElement> FloatingSpace<W> {
         self.interactive_resize_end(Some(&id));
     }
 
-    pub fn set_window_width(&mut self, id: Option<&W::Id>, change: SizeChange, animate: bool) {
+    pub fn set_window_border(
+        &mut self,
+        id: &W::Id,
+        style: swayward_ipc::command::BorderStyle,
+        width: Option<u16>,
+    ) -> bool {
+        let Some(index) = self.idx_of(id) else {
+            return false;
+        };
+        let tile = &mut self.tiles[index];
+        let changed = tile.set_sway_border(style, width, true).is_ok();
+        if changed {
+            self.data[index].update(tile);
+        }
+        changed
+    }
+
+    pub fn set_window_width(
+        &mut self,
+        id: Option<&W::Id>,
+        change: SizeChange,
+        animate: bool,
+        automatic_maximum: Size<i32, Logical>,
+    ) {
         let Some(id) = id.or(self.active_window_id.as_ref()) else {
             return;
         };
@@ -789,16 +964,105 @@ impl<W: LayoutElement> FloatingSpace<W> {
         let min_size = win.min_size();
         let max_size = win.max_size();
 
-        let win_width = ensure_min_max_size(win_width, min_size.w, max_size.w);
-
         let win_height = win.expected_size().unwrap_or_default().h;
-        let win_height = ensure_min_max_size(win_height, min_size.h, max_size.h);
-
-        let win_size = Size::from((win_width, win_height));
+        let win_size = constrain_floating_size(
+            Size::from((win_width, win_height)),
+            self.options.layout.floating_minimum_size,
+            self.options.layout.floating_maximum_size,
+            automatic_maximum.to_f64(),
+            min_size,
+            max_size,
+        );
         win.request_size_once(win_size, animate);
     }
 
-    pub fn set_window_height(&mut self, id: Option<&W::Id>, change: SizeChange, animate: bool) {
+    pub fn set_window_outer_width(
+        &mut self,
+        id: &W::Id,
+        change: SizeChange,
+        automatic_maximum: Size<i32, Logical>,
+    ) {
+        let Some(idx) = self.idx_of(id) else { return };
+        let change = match change {
+            SizeChange::SetFixed(value) => SizeChange::SetFixed(
+                self.tiles[idx]
+                    .window_width_for_tile_width(f64::from(value))
+                    .round() as i32,
+            ),
+            SizeChange::SetProportion(value) => SizeChange::SetFixed(
+                self.tiles[idx]
+                    .window_width_for_tile_width((self.working_area.size.w * value / 100.).trunc())
+                    .round() as i32,
+            ),
+            change => change,
+        };
+        self.set_window_width(Some(id), change, true, automatic_maximum);
+    }
+
+    pub fn set_window_outer_height(
+        &mut self,
+        id: &W::Id,
+        change: SizeChange,
+        automatic_maximum: Size<i32, Logical>,
+    ) {
+        let Some(idx) = self.idx_of(id) else { return };
+        let change = match change {
+            SizeChange::SetFixed(value) => SizeChange::SetFixed(
+                self.tiles[idx]
+                    .window_height_for_tile_height(f64::from(value))
+                    .round() as i32,
+            ),
+            SizeChange::SetProportion(value) => SizeChange::SetFixed(
+                self.tiles[idx]
+                    .window_height_for_tile_height(
+                        (self.working_area.size.h * value / 100.).trunc(),
+                    )
+                    .round() as i32,
+            ),
+            change => change,
+        };
+        self.set_window_height(Some(id), change, true, automatic_maximum);
+    }
+
+    pub fn resize_window_edge(
+        &mut self,
+        id: Option<&W::Id>,
+        edge: ResizeEdge,
+        change: SizeChange,
+    ) -> bool {
+        let Some(id) = id.or(self.active_window_id.as_ref()).cloned() else {
+            return false;
+        };
+        let idx = self.idx_of(&id).unwrap();
+        let old_size = self.tiles[idx].tile_expected_or_current_size();
+        if edge.intersects(ResizeEdge::LEFT_RIGHT) {
+            self.set_window_width(Some(&id), change, true, self.view_size.to_i32_round());
+        } else {
+            self.set_window_height(Some(&id), change, true, self.view_size.to_i32_round());
+        }
+        let new_size = self.tiles[idx].tile_expected_or_current_size();
+        if old_size == new_size {
+            return false;
+        }
+        let mut offset = Point::from((0., 0.));
+        if edge.contains(ResizeEdge::LEFT) {
+            offset.x = old_size.w - new_size.w;
+        }
+        if edge.contains(ResizeEdge::TOP) {
+            offset.y = old_size.h - new_size.h;
+        }
+        let pos = self.data[idx].logical_pos + offset;
+        self.data[idx].set_logical_pos(pos);
+        true
+    }
+
+    pub fn set_window_height(
+        &mut self,
+        id: Option<&W::Id>,
+        change: SizeChange,
+        animate: bool,
+        automatic_maximum: Size<i32, Logical>,
+    ) {
         let Some(id) = id.or(self.active_window_id.as_ref()) else {
             return;
         };
@@ -836,12 +1100,15 @@ impl<W: LayoutElement> FloatingSpace<W> {
         let min_size = win.min_size();
         let max_size = win.max_size();
 
-        let win_height = ensure_min_max_size(win_height, min_size.h, max_size.h);
-
         let win_width = win.expected_size().unwrap_or_default().w;
-        let win_width = ensure_min_max_size(win_width, min_size.w, max_size.w);
-
-        let win_size = Size::from((win_width, win_height));
+        let win_size = constrain_floating_size(
+            Size::from((win_width, win_height)),
+            self.options.layout.floating_minimum_size,
+            self.options.layout.floating_maximum_size,
+            automatic_maximum.to_f64(),
+            min_size,
+            max_size,
+        );
         win.request_size_once(win_size, animate);
     }
 
@@ -855,11 +1122,19 @@ impl<W: LayoutElement> FloatingSpace<W> {
         let active_idx = self.idx_of(active_id).unwrap();
         let center = self.data[active_idx].center();
 
-        let result = zip(&self.tiles, &self.data)
-            .filter(|(tile, _)| tile.window().id() != active_id)
-            .map(|(tile, data)| (tile, distance(center, data.center())))
+        let candidates = || {
+            zip(&self.tiles, &self.data)
+                .filter(|(tile, _)| tile.window().id() != active_id)
+                .map(|(tile, data)| (tile, distance(center, data.center())))
+        };
+        let result = candidates()
             .filter(|(_, dist)| *dist > 0.)
-            .min_by(|(_, dist_a), (_, dist_b)| f64::total_cmp(dist_a, dist_b));
+            .min_by(|(_, dist_a), (_, dist_b)| f64::total_cmp(dist_a, dist_b))
+            .or_else(|| {
+                candidates()
+                    .filter(|(_, dist)| *dist <= 0.)
+                    .min_by(|(_, dist_a), (_, dist_b)| f64::total_cmp(dist_a, dist_b))
+            });
         if let Some((tile, _)) = result {
             let id = tile.window().id().clone();
             self.activate_window(&id);
@@ -979,34 +1254,8 @@ impl<W: LayoutElement> FloatingSpace<W> {
         let available_height = self.working_area.size.h;
         let working_area_loc = self.working_area.loc;
 
-        const MAX_F: f64 = 10000.;
-
-        match x {
-            PositionChange::SetFixed(x) => pos.x = x + working_area_loc.x,
-            PositionChange::SetProportion(prop) => {
-                let prop = (prop / 100.).clamp(0., MAX_F);
-                pos.x = available_width * prop + working_area_loc.x;
-            }
-            PositionChange::AdjustFixed(x) => pos.x += x,
-            PositionChange::AdjustProportion(prop) => {
-                let current_prop = (pos.x - working_area_loc.x) / available_width.max(1.);
-                let prop = (current_prop + prop / 100.).clamp(0., MAX_F);
-                pos.x = available_width * prop + working_area_loc.x;
-            }
-        }
-        match y {
-            PositionChange::SetFixed(y) => pos.y = y + working_area_loc.y,
-            PositionChange::SetProportion(prop) => {
-                let prop = (prop / 100.).clamp(0., MAX_F);
-                pos.y = available_height * prop + working_area_loc.y;
-            }
-            PositionChange::AdjustFixed(y) => pos.y += y,
-            PositionChange::AdjustProportion(prop) => {
-                let current_prop = (pos.y - working_area_loc.y) / available_height.max(1.);
-                let prop = (current_prop + prop / 100.).clamp(0., MAX_F);
-                pos.y = available_height * prop + working_area_loc.y;
-            }
-        }
+        pos.x = apply_position_change(pos.x, x, available_width, working_area_loc.x);
+        pos.y = apply_position_change(pos.y, y, available_height, working_area_loc.y);
 
         self.move_to(idx, pos, animate);
     }
@@ -1087,14 +1336,49 @@ impl<W: LayoutElement> FloatingSpace<W> {
         }
 
         let active = self.active_window_id.clone();
-        for (tile, tile_pos) in self.tiles_with_render_positions() {
+        let workspace_focused = focus_ring;
+        self.titlebars
+            .retain((0..self.tiles.len()).map(|index| NodeId(index as u64)));
+        for (index, (tile, tile_pos)) in self.tiles_with_render_positions().enumerate() {
             // Skip tiles belonging to a different render layer.
             if layer.is_normal() == tile.is_moving_between_workspaces() {
                 continue;
             }
 
             // For the active tile, draw the focus ring.
-            let focus_ring = focus_ring && Some(tile.window().id()) == active.as_ref();
+            let focused = Some(tile.window().id()) == active.as_ref();
+            let focus_ring = focus_ring && focused;
+
+            if let Some(rect) = self.titlebar_rect(tile, tile_pos, tile.animated_tile_size().w) {
+                let titlebar = Titlebar {
+                    target: tile.window().id().clone(),
+                    rect,
+                    ipc_rect: Rectangle::default(),
+                    title: tile.window().title(),
+                    marks: tile.window().marks(),
+                    state: if tile.window().is_urgent() {
+                        TitlebarState::Urgent
+                    } else if focused && workspace_focused {
+                        TitlebarState::Focused
+                    } else if focused {
+                        TitlebarState::FocusedInactive
+                    } else {
+                        TitlebarState::Unfocused
+                    },
+                    visible: true,
+                };
+                let radius = tile.window().geometry_corner_radius();
+                if let Some(element) = self.titlebars.render(
+                    ctx.renderer,
+                    NodeId(index as u64),
+                    &titlebar,
+                    self.scale,
+                    &self.options.layout.titlebar,
+                    (f64::from(radius.top_left), f64::from(radius.top_right)),
+                ) {
+                    push(element.into());
+                }
+            }
 
             let xray_pos = xray_pos.offset(tile_pos);
             tile.render(ctx.r(), tile_pos, xray_pos, focus_ring, &mut |elem| {
@@ -1149,7 +1433,12 @@ impl<W: LayoutElement> FloatingSpace<W> {
             };
 
             let window_width = (original_window_size.w + dx).round() as i32;
-            self.set_window_width(Some(window), SizeChange::SetFixed(window_width), false);
+            self.set_window_width(
+                Some(window),
+                SizeChange::SetFixed(window_width),
+                false,
+                self.view_size.to_i32_round(),
+            );
         }
 
         if edges.intersects(ResizeEdge::TOP_BOTTOM) {
@@ -1159,7 +1448,12 @@ impl<W: LayoutElement> FloatingSpace<W> {
             };
 
             let window_height = (original_window_size.h + dy).round() as i32;
-            self.set_window_height(Some(window), SizeChange::SetFixed(window_height), false);
+            self.set_window_height(
+                Some(window),
+                SizeChange::SetFixed(window_height),
+                false,
+                self.view_size.to_i32_round(),
+            );
         }
 
         true
@@ -1290,6 +1584,31 @@ impl<W: LayoutElement> FloatingSpace<W> {
         Size::from((width, height))
     }
 
+    pub fn remap_stored_tile_pos(
+        &self,
+        tile: &mut Tile<W>,
+        old_area: Option<Rectangle<f64, Logical>>,
+    ) {
+        let Some(old_area) = old_area.filter(|area| area.size.w > 0. && area.size.h > 0.) else {
+            tile.floating_pos = None;
+            return;
+        };
+        let Some(pos) = tile.floating_pos else {
+            return;
+        };
+        let old_pos = Data::scale_by_working_area(old_area, pos);
+        let size = tile.tile_size();
+        let old_center = old_pos + size.downscale(2.);
+        let relative_center = old_center - old_area.loc;
+        let new_center = Point::from((
+            self.working_area.loc.x
+                + relative_center.x * self.working_area.size.w / old_area.size.w,
+            self.working_area.loc.y
+                + relative_center.y * self.working_area.size.h / old_area.size.h,
+        ));
+        tile.floating_pos = Some(self.logical_to_size_frac(new_center - size.downscale(2.)));
+    }
+
     pub fn stored_or_default_tile_pos(&self, tile: &Tile<W>) -> Option<Point<f64, Logical>> {
         let pos = tile.floating_pos.map(|pos| self.scale_by_working_area(pos));
         pos.or_else(|| {
@@ -1379,7 +1698,7 @@ impl<W: LayoutElement> FloatingSpace<W> {
 
             let mut data2 = *data;
             data2.update(tile);
-            data2.update_config(self.working_area);
+            data2.update_config(self.view_size, self.working_area);
             assert_eq!(data, &data2, "tile data must be up to date");
 
             for tile_below in &self.tiles[i + 1..] {
@@ -1407,7 +1726,7 @@ impl<W: LayoutElement> FloatingSpace<W> {
 }
 
 fn compute_toplevel_bounds(
-    border_config: niri_config::Border,
+    border_config: swayward_config::Border,
     working_area_size: Size<f64, Logical>,
 ) -> Size<i32, Logical> {
     let mut border = 0.;

@@ -1,11 +1,11 @@
 // We need to implement RenderElement manually due to AsGlesFrame requirement.
 // This macro does it for us.
 #[macro_export]
-macro_rules! niri_render_elements {
+macro_rules! swayward_render_elements {
     // The two callable variants: with <R> and without <R>. They include From impls because nested
     // repetitions ($type and $variant with + and $R with ?) don't work properly.
     ($name:ident<R> => { $($variant:ident = $type:ty),+ $(,)? }) => {
-        $crate::niri_render_elements!(@impl $name () ($name<R>) => { $($variant = $type),+ });
+        $crate::swayward_render_elements!(@impl $name () ($name<R>) => { $($variant = $type),+ });
 
         $(impl<R: $crate::render_helpers::renderer::NiriRenderer> From<$type> for $name<R> {
             fn from(x: $type) -> Self {
@@ -15,7 +15,7 @@ macro_rules! niri_render_elements {
     };
 
     ($name:ident => { $($variant:ident = $type:ty),+ $(,)? }) => {
-        $crate::niri_render_elements!(@impl $name ($name) () => { $($variant = $type),+ });
+        $crate::swayward_render_elements!(@impl $name ($name) () => { $($variant = $type),+ });
 
         $(impl From<$type> for $name {
             fn from(x: $type) -> Self {
