@@ -1202,6 +1202,7 @@ fn run_i3_test(test: &str) {
     let oracle = oracle_i3_dir();
     let mut child = Command::new("perl")
         .arg(format!("-I{}", root.join("tests/i3/lib").display()))
+        .arg(format!("-I{}", oracle.join("lib").display()))
         .arg(oracle.join("t").join(test))
         .env("I3SOCK", &ipc_socket)
         .env("SWAYWARD_TEST_CONTROL", &control_path)
@@ -1297,6 +1298,7 @@ fn harness_xcb_xkb_guard_does_not_depend_on_the_host() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let output = Command::new("perl")
         .arg(format!("-I{}", root.join("tests/i3/lib").display()))
+        .arg(format!("-I{}", oracle_i3_dir().join("lib").display()))
         .arg("-MExtUtils::PkgConfig")
         .arg("-e")
         .arg("exit !ExtUtils::PkgConfig->atleast_version('xcb-xkb', '1.11')")
@@ -1315,6 +1317,7 @@ fn harness_does_not_convert_wrong_named_assertions_into_skips() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let output = Command::new("perl")
         .arg(format!("-I{}", root.join("tests/i3/lib").display()))
+        .arg(format!("-I{}", oracle_i3_dir().join("lib").display()))
         .arg("-e")
         .arg(
             "use i3test; is('splith', 'tabbed', \
@@ -1343,6 +1346,7 @@ fn harness_skips_only_i3_invalid_criteria_wording() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let output = Command::new("perl")
         .arg(format!("-I{}", root.join("tests/i3/lib").display()))
+        .arg(format!("-I{}", oracle_i3_dir().join("lib").display()))
         .arg("-e")
         .arg(
             "use i3test; ok(1, 'command was unsuccessful'); \
