@@ -152,6 +152,41 @@ fn live_ipc_descriptions_match_sway_schema_and_values() {
 }
 
 #[test]
+fn tabbed_children_report_visibility_and_full_parent_percent() {
+    let mut f = Fixture::new();
+    let handle = f.swayward().event_loop.clone();
+    let ipc_server =
+        crate::ipc::server::IpcServer::start_at(&handle, Some(test_socket_path())).unwrap();
+    let socket = ipc_server.socket_path.clone().unwrap();
+    f.swayward().ipc_server = Some(ipc_server);
+    f.niri_state().ipc_keyboard_layouts_changed();
+    f.add_output(1, (1270, 1408));
+    let client = f.add_client();
+
+    assert!(crate::command::execute(f.niri_state(), "layout tabbed")[0].success);
+    for app_id in ["fixture-1", "fixture-2"] {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        let surface = window.surface.clone();
+        window.commit();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+
+    let mut stream = UnixStream::connect(socket).unwrap();
+    let tree = query_ipc(&mut f, &mut stream, MessageType::GetTree);
+    let first = find_json_node_with_app_id(&tree, "fixture-1").unwrap();
+    let second = find_json_node_with_app_id(&tree, "fixture-2").unwrap();
+    assert_eq!(first["visible"], false);
+    assert_eq!(second["visible"], true);
+    assert_eq!(first["percent"], 1.0);
+    assert_eq!(second["percent"], 1.0);
+}
+
+#[test]
 fn split_containers_report_sway_container_state_fields() {
     let tree = nested_representation_live_tree();
     let split = find_json_parent_of_app_id(&tree, "fixture-3").unwrap();

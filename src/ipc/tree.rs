@@ -524,7 +524,8 @@ fn describe_workspace_node(
     }
     let representation = (!nodes.is_empty()).then(|| tree_representation(layout, &nodes));
     let mut nodes = nodes;
-    for node in nodes.iter_mut().chain(&mut floating_nodes) {
+    set_child_windows_visible(layout, &focus, &mut nodes, workspace_visible);
+    for node in &mut floating_nodes {
         set_windows_visible(node, workspace_visible);
     }
     let mut node = common_node(
@@ -576,26 +577,30 @@ fn set_windows_visible(node: &mut Node, visible: bool) {
     if let swayward_ipc::NodeProperties::View(properties) = &mut node.properties {
         properties.visible = visible;
     }
-    let active_tab = matches!(
-        node.layout,
-        swayward_ipc::NodeLayout::Tabbed | swayward_ipc::NodeLayout::Stacked
-    )
-    .then(|| {
-        let tiling: std::collections::HashSet<i64> =
-            node.nodes.iter().map(|child| child.id).collect();
-        node.focus
-            .iter()
-            .copied()
-            .find(|id| tiling.contains(id))
-            .or_else(|| node.nodes.first().map(|child| child.id))
-    })
-    .flatten();
-    for child in &mut node.nodes {
-        let shown = active_tab.is_none_or(|active| active == child.id);
-        set_windows_visible(child, visible && shown);
-    }
+    set_child_windows_visible(node.layout, &node.focus, &mut node.nodes, visible);
     for child in &mut node.floating_nodes {
         set_windows_visible(child, visible);
+    }
+}
+
+fn set_child_windows_visible(
+    layout: NodeLayout,
+    focus: &[i64],
+    children: &mut [Node],
+    visible: bool,
+) {
+    let active_tab = matches!(layout, NodeLayout::Tabbed | NodeLayout::Stacked)
+        .then(|| {
+            focus
+                .iter()
+                .copied()
+                .find(|id| children.iter().any(|child| child.id == *id))
+                .or_else(|| children.first().map(|child| child.id))
+        })
+        .flatten();
+    for child in children {
+        let shown = active_tab.is_none_or(|active| active == child.id);
+        set_windows_visible(child, visible && shown);
     }
 }
 
@@ -644,7 +649,15 @@ pub(crate) fn describe_tiling<'a, I>(
                         .find_map(|(child_id, node)| (child_id == id).then_some(node.id))
                 })
                 .collect();
-            let children = children.into_iter().map(|(_, node)| node).collect();
+            let mut children = children
+                .into_iter()
+                .map(|(_, node)| node)
+                .collect::<Vec<_>>();
+            if matches!(layout, TreeLayout::Tabbed | TreeLayout::Stacked) {
+                for child in &mut children {
+                    child.percent = Some(1.);
+                }
+            }
             let mut node = common_node(
                 container_id(id),
                 NodeType::Con,

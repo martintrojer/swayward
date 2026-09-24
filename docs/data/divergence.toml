@@ -1264,3 +1264,9 @@ migrated = false
 paths = ["src/ipc/tree.rs", "src/tests/ipc/tree_commands.rs"]
 what = "serialize `floating = auto_off` and `scratchpad_state = none` on internal split containers."
 why = "Sway's shared container serializer emits these fields for every container, including non-leaf splits (`sway/ipc-json.c:710-744`)."
+
+[[edit]]
+migrated = false
+paths = ["src/ipc/tree.rs", "src/tests/ipc/tree_commands.rs"]
+what = "report inactive workspace-root tabs as invisible and report every tabbed or stacked child with a full-parent percent of 1.0."
+why = "Sway hides views outside the active child of every tabbed or stacked ancestor (`sway/tree/view.c:1180-1193`) and computes container percent from arranged dimensions, where each tab occupies the full parent (`sway/ipc-json.c:746-755`)."
