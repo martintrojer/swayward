@@ -1,0 +1,12 @@
+// Minimal nested configuration for contrib/probe-dms-sway.
+input {
+    keyboard {
+        xkb {
+            layout "us,ru"
+        }
+    }
+}
+
+hotkey-overlay {
+    skip-at-startup
+}

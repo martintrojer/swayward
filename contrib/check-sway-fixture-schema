@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+"""Compare sway IPC fixture fields with a pinned sway source checkout."""
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+POLICY = ROOT / "tests/fixtures/sway/schema-version.json"
+
+
+def git(sway: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", "-C", sway, *args], check=True, text=True, stdout=subprocess.PIPE
+    ).stdout.strip()
+
+
+def function(source: str, name: str) -> str:
+    start = source.index(name)
+    brace = source.index("{", start)
+    depth = 0
+    for index in range(brace, len(source)):
+        if source[index] == "{":
+            depth += 1
+        elif source[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return source[brace : index + 1]
+    raise ValueError(f"unterminated function {name}")
+
+
+def fields(source: str, name: str, object_name: str = "object") -> set[str]:
+    body = function(source, name)
+    pattern = rf'json_object_object_add\({object_name}, "([^"]+)"'
+    return set(re.findall(pattern, body))
+
+
+def json_value(path: Path, query: str):
+    value = json.loads(path.read_text())
+    for part in query.split("."):
+        value = value[int(part)] if part.isdigit() else value[part]
+    return value
+
+
+def compare(label: str, expected: set[str], actual: set[str], errors: list[str]) -> None:
+    if expected != actual:
+        errors.append(
+            f"{label}: missing={sorted(expected - actual)!r}, extra={sorted(actual - expected)!r}"
+        )
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("sway", type=Path, help="path to the pinned sway Git checkout")
+    args = parser.parse_args()
+    policy = json.loads(POLICY.read_text())
+    target = policy["version"]
+    compatibility = (ROOT / "tests/sway/compatibility.toml").read_text()
+    target_commit = policy["commit"]
+    errors: list[str] = []
+    if f'sway_version = "{target}"' not in compatibility:
+        errors.append("tests/sway/compatibility.toml targets a different sway version")
+
+    try:
+        head = git(args.sway, "rev-parse", "HEAD")
+        tag = git(args.sway, "rev-parse", f"{target}^{{}}")
+        ipc_json = (args.sway / "sway/ipc-json.c").read_text()
+        ipc_server = (args.sway / "sway/ipc-server.c").read_text()
+    except (OSError, ValueError, subprocess.CalledProcessError) as error:
+        print(f"check-sway-fixture-schema: {error}", file=sys.stderr)
+        return 2
+
+    if tag != target_commit:
+        errors.append(f"tag {target} is {tag}, expected {target_commit}")
+    if head != target_commit:
+        errors.append(f"checkout HEAD is {head}, expected sway {target} ({target_commit})")
+
+    common = fields(ipc_json, "ipc_json_create_node")
+    output = common | fields(ipc_json, "ipc_json_describe_wlr_output") | fields(
+        ipc_json, "ipc_json_describe_enabled_output"
+    )
+    output.add("subpixel_hinting")  # Added by GET_OUTPUTS in ipc-server.c.
+    view = common | fields(ipc_json, "ipc_json_describe_container") | fields(
+        ipc_json, "ipc_json_describe_view"
+    )
+    # These keys are conditional and absent from the captured native xdg-shell view.
+    view -= {"content_type", "window_properties"}
+    output_fixture = ROOT / "tests/fixtures/sway/one_window.outputs.json"
+    tree_fixture = ROOT / "tests/fixtures/sway/one_window.tree.json"
+    compare("GET_OUTPUTS output fields", output, set(json_value(output_fixture, "0")), errors)
+    compare("GET_TREE output fields", output - {"subpixel_hinting"}, set(json_value(tree_fixture, "nodes.1")), errors)
+    compare("GET_TREE view fields", view, set(json_value(tree_fixture, "nodes.1.nodes.0.nodes.0")), errors)
+    compare(
+        "GET_OUTPUTS feature fields",
+        fields(ipc_json, "ipc_json_describe_wlr_output", "features_object"),
+        set(json_value(output_fixture, "0.features")),
+        errors,
+    )
+    if 'json_object_object_add(output_json, "subpixel_hinting"' not in ipc_server:
+        errors.append("sway/ipc-server.c no longer emits GET_OUTPUTS subpixel_hinting")
+
+    for error in errors:
+        print(f"check-sway-fixture-schema: {error}", file=sys.stderr)
+    if errors:
+        return 1
+    print(f"sway {target} serializer fields match the captured fixtures")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

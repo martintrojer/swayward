@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+"""Check the inherited-file divergence ledger against the recorded niri base."""
+
+import re
+import subprocess
+import sys
+import tomllib
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+BASE_DOC = ROOT / "docs" / "FORK-BASE.md"
+LEDGER = ROOT / "docs" / "data" / "divergence.toml"
+
+
+def git(*args: str) -> str:
+    return subprocess.check_output(
+        ["git", "-C", ROOT, *args], text=True, stderr=subprocess.DEVNULL
+    )
+
+
+def main() -> int:
+    base_match = re.search(r"commit ([0-9a-f]{40})", BASE_DOC.read_text())
+    if not base_match:
+        print(f"check-divergence: no full base commit in {BASE_DOC.relative_to(ROOT)}", file=sys.stderr)
+        return 2
+    base = base_match.group(1)
+
+    try:
+        git("cat-file", "-e", f"{base}^{{commit}}")
+    except subprocess.CalledProcessError:
+        print(f"check-divergence: niri base {base} is not available", file=sys.stderr)
+        return 2
+
+    with LEDGER.open("rb") as file:
+        data = tomllib.load(file)
+    edits = data.get("edit", [])
+    migrated = sum(edit.get("migrated") is True for edit in edits)
+    expected = data.get("migrated_entries")
+    if expected != migrated:
+        print(
+            f"check-divergence: migrated_entries is {expected}, but found {migrated} migrated entries",
+            file=sys.stderr,
+        )
+        return 1
+
+    covered = {path for edit in edits for path in edit.get("paths", []) if path != "*"}
+    base_files = set(git("ls-tree", "-r", "--name-only", base).splitlines())
+    changed = set(
+        git("diff", "--no-renames", "--diff-filter=M", "--name-only", base, "--").splitlines()
+    )
+    uncovered = sorted(changed & base_files - covered)
+    if uncovered:
+        print("check-divergence: inherited files missing from the ledger:", file=sys.stderr)
+        for path in uncovered:
+            print(f"  {path}", file=sys.stderr)
+        return 1
+
+    print(
+        f"check-divergence: {migrated} migrated and {len(edits) - migrated} added entries "
+        f"cover {len(changed & base_files)} inherited files"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,303 @@
+#!/usr/bin/env python3
+"""Check and report the sway compatibility census.
+
+    contrib/command-census          print the current counts
+    contrib/command-census --check  validate the data, parser, tables, and prose figures
+    contrib/command-census --json   print machine-readable counts
+"""
+
+import argparse
+import json
+import pathlib
+import subprocess
+import sys
+import tomllib
+from collections import Counter
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+AUDIT = ROOT / "docs" / "RUN_COMMAND_AUDIT.md"
+COMPATIBILITY = ROOT / "docs" / "SWAY_COMPATIBILITY.md"
+ORACLE = ROOT / "docs" / "IPC_ORACLE_COVERAGE.md"
+DATA = ROOT / "tests" / "sway" / "compatibility.toml"
+
+def load():
+    with DATA.open("rb") as handle:
+        return tomllib.load(handle)
+
+
+def table_rows(text, heading):
+    section = text.split(heading, 1)[1].split("\n## ", 1)[0]
+    lines = section.splitlines()
+    header = next(index for index, line in enumerate(lines) if line.startswith("| "))
+    rows = []
+    for line in lines[header + 2 :]:
+        if line.startswith("| "):
+            cells = [cell.strip() for cell in line.split("|")[1:-1]]
+            rows.append((cells[0].strip("`"), cells[1]))
+    return rows
+
+
+def census(data):
+    commands = data["command"]
+    categories = Counter(command["category"] for command in commands)
+    gaps = Counter(
+        command["gap_group"] for command in commands if command["category"] == "gap"
+    )
+    requests = data["requests"]
+    events = data["events"]
+    event_families = [family for event in events for family in event["families"]]
+    emitted = [
+        family
+        for event in events
+        if event["status"] == "Emitted"
+        for family in event["families"]
+    ]
+    return {
+        "commands_total": len(commands),
+        "previous_probe_total": data["previous_probe_total"],
+        "tree_scenarios": len(data["fixtures"]["tree_scenarios"]),
+        "get_inputs_fields": len(data["get_inputs_fields"]),
+        "get_inputs_xkb_fields": sum(
+            field.startswith("xkb_") for field in data["get_inputs_fields"]
+        ),
+        "get_version_fields": len(data["get_version_fields"]),
+        "commands_accepted": categories["accepted"],
+        "commands_complete": sum(
+            command.get("execution") == "complete"
+            for command in commands
+            if command["category"] == "accepted"
+        ),
+        "commands_partial": sum(
+            command.get("execution") == "partial"
+            for command in commands
+            if command["category"] == "accepted"
+        ),
+        "commands_rejected": len(commands) - categories["accepted"],
+        "commands_fail_loud": categories["fail_loud"],
+        "commands_noops": categories["noop"],
+        "commands_deliberate": categories["deliberate"],
+        "commands_gaps": categories["gap"],
+        "binding_gaps": gaps["binding"],
+        "criteria_or_variable_gaps": gaps["criteria_or_variable"],
+        "subsystem_gaps": gaps["subsystem"],
+        "titlebar_color_gaps": gaps["titlebar_color"],
+        "setting_or_behavior_gaps": gaps["setting_or_behavior"],
+        "requests_total": len(requests),
+        "requests_implemented": sum(
+            request["status"] == "Implemented" for request in requests
+        ),
+        "requests_exceptional": sum(
+            request["status"] != "Implemented" for request in requests
+        ),
+        "events_total": len(event_families),
+        "events_emitted": len(emitted),
+        "events_unemitted": len(event_families) - len(emitted),
+    }
+
+
+def validate_prose_figures(data, counts):
+    figures = {
+        COMPATIBILITY: [
+            f"All {counts['requests_total']} of sway's IPC requests are answered, and {counts['requests_implemented']} of them behave as sway's",
+            f"All {counts['events_emitted']} event families swayward can emit are compared against sway; the other {counts['events_unemitted']}",
+            f"The {counts['requests_exceptional']} that are not plain \"implemented\"",
+            f"{counts['commands_accepted']} of sway's {counts['commands_total']} unique runtime command names",
+            f"{counts['commands_complete']} families as complete and {counts['commands_partial']} as partial",
+            f"{counts['commands_fail_loud']} command names return a structured failure",
+            f"Sway's {counts['commands_noops']} ignored client commands",
+            f"other {counts['commands_gaps']} rejected names",
+            f"Accepts {counts['commands_accepted']} of sway {data['sway_version']}'s {counts['commands_total']} unique runtime command names.",
+            f"Accepts {counts['events_emitted']} of sway's {counts['events_total']} families",
+            f"{counts['tree_scenarios']} sway {data['sway_version']} fixtures",
+            f"all {counts['get_version_fields']} fields sway returns",
+            f"All {counts['get_inputs_fields']} fields sway emits",
+            f"the {counts['get_inputs_xkb_fields']} `xkb_*` fields",
+        ],
+        AUDIT: [
+            f"{counts['commands_total']} unique command names",
+            f"accepts {counts['commands_accepted']} of sway's {counts['commands_total']} unique runtime command names and rejects {counts['commands_rejected']}",
+            f"{counts['commands_complete']} implement the full audited command family and {counts['commands_partial']} are partial",
+            f"prior {counts['previous_probe_total']}-probe count",
+        ],
+        ORACLE: [
+            f"The {counts['tree_scenarios']} fixture scenarios cover `GET_TREE`, `GET_WORKSPACES`, and `GET_OUTPUTS`."
+        ],
+    }
+    violations = []
+    for path, expected in figures.items():
+        text = path.read_text()
+        normalized = " ".join(text.split())
+        if "<!-- compatibility-census:" in text:
+            violations.append(f"{path.relative_to(ROOT)}: generated census marker remains")
+        for figure in expected:
+            if " ".join(figure.split()) not in normalized:
+                violations.append(
+                    f"{path.relative_to(ROOT)}: missing census figure {figure!r}"
+                )
+    return violations
+
+
+def duplicates(values):
+    counts = Counter(values)
+    return sorted(value for value, count in counts.items() if count > 1)
+
+
+def validate(data, counts):
+    violations = []
+    commands = data["command"]
+    names = [command["name"] for command in commands]
+    if repeated := duplicates(names):
+        violations.append(f"duplicate commands: {repeated}")
+    valid_tables = {"shared", "runtime_only", "both"}
+    invalid_tables = sorted(
+        {command["table"] for command in commands} - valid_tables
+    )
+    if invalid_tables:
+        violations.append(f"invalid sway command tables: {invalid_tables}")
+    if [command["name"] for command in commands] != sorted(names):
+        violations.append("commands are not sorted by name")
+    if sum(command["table"] == "both" for command in commands) != 1 or not any(
+        command["name"] == "fullscreen" and command["table"] == "both"
+        for command in commands
+    ):
+        violations.append("shared/runtime command overlap must be exactly fullscreen")
+    source_prefix = {
+        "shared": "shared;",
+        "runtime_only": "command;",
+        "both": "shared and command;",
+    }
+    for command in commands:
+        if command["table"] in source_prefix and not command["source"].startswith(
+            source_prefix[command["table"]]
+        ):
+            violations.append(
+                f"{command['name']}: source does not match table {command['table']}"
+            )
+
+    valid_categories = {"accepted", "noop", "deliberate", "fail_loud", "gap"}
+    invalid_categories = sorted(
+        {command["category"] for command in commands} - valid_categories
+    )
+    if invalid_categories:
+        violations.append(f"invalid command categories: {invalid_categories}")
+    for command in commands:
+        if (command["category"] == "gap") != ("gap_group" in command):
+            violations.append(f"{command['name']}: gap_group must appear exactly for gaps")
+        if command["category"] == "accepted":
+            if command.get("execution") not in {"complete", "partial"}:
+                violations.append(
+                    f"{command['name']}: accepted commands need complete/partial execution status"
+                )
+            partial = command["classification"].startswith("partial:")
+            if (command.get("execution") == "partial") != partial:
+                violations.append(
+                    f"{command['name']}: execution status and classification disagree"
+                )
+            if partial and command["cost"] == "done":
+                violations.append(f"{command['name']}: partial execution cannot have done cost")
+        elif "execution" in command:
+            violations.append(f"{command['name']}: rejected commands cannot claim execution")
+
+    result = subprocess.run(
+        ["cargo", "run", "--quiet", "-p", "swayward-ipc", "--example", "command-census"],
+        cwd=ROOT,
+        input="".join(f"{command['name']}\t{command['probe']}\n" for command in commands),
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode:
+        violations.append(f"parser probe failed: {result.stderr.strip()}")
+        actual = {}
+    else:
+        actual = dict(line.split("\t", 1) for line in result.stdout.splitlines())
+    for command in commands:
+        recorded = command["parser"]
+        if actual.get(command["name"]) != recorded:
+            violations.append(
+                f"{command['name']}: documented {recorded}, parser reports "
+                f"{actual.get(command['name'], 'missing')} ({command['probe']})"
+            )
+        accepted = command["category"] == "accepted"
+        if (recorded == "accept") != accepted:
+            violations.append(
+                f"{command['name']}: parser result {recorded} disagrees with "
+                f"category {command['category']}"
+            )
+
+    for key in ("get_inputs_fields", "get_version_fields"):
+        if repeated := duplicates(data[key]):
+            violations.append(f"duplicate entries in {key}: {repeated}")
+    if "sway_commit" not in data:
+        violations.append("missing pinned sway commit for command semantics audit")
+    else:
+        with (ROOT / "tests/fixtures/sway/schema-version.json").open() as handle:
+            fixture_version = json.load(handle)
+        if data["sway_version"] != fixture_version["version"]:
+            violations.append("command audit and fixture sway versions disagree")
+        if data["sway_commit"] != fixture_version["commit"]:
+            violations.append("command audit and fixture sway commits disagree")
+
+    tree_scenarios = data["fixtures"]["tree_scenarios"]
+    if repeated := duplicates(tree_scenarios):
+        violations.append(f"duplicate tree fixture scenarios: {repeated}")
+    with (ROOT / "tests/fixtures/sway/inputs-libinput.json").open() as handle:
+        input_fields = {key for device in json.load(handle) for key in device}
+    if set(data["get_inputs_fields"]) != input_fields:
+        violations.append("GET_INPUTS fields disagree with inputs-libinput.json")
+
+    request_names = [entry["name"] for entry in data["requests"]]
+    if repeated := duplicates(request_names):
+        violations.append(f"duplicate IPC requests: {repeated}")
+    event_families = [family for entry in data["events"] for family in entry["families"]]
+    if repeated := duplicates(event_families):
+        violations.append(f"duplicate event families: {repeated}")
+
+    compatibility = COMPATIBILITY.read_text()
+    request_rows = table_rows(compatibility, "## IPC requests")
+    event_rows = table_rows(compatibility, "## Events")
+    recorded_requests = [(entry["name"], entry["status"]) for entry in data["requests"]]
+    recorded_events = [(entry["row"], entry["status"]) for entry in data["events"]]
+    if request_rows != recorded_requests:
+        violations.append("IPC request table names or statuses disagree with compatibility.toml")
+    if event_rows != recorded_events:
+        violations.append("event table names or statuses disagree with compatibility.toml")
+
+    violations.extend(validate_prose_figures(data, counts))
+    return violations
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--check", action="store_true", help="validate only")
+    parser.add_argument("--json", action="store_true", help="print machine-readable counts")
+    args = parser.parse_args()
+
+    try:
+        data = load()
+        counts = census(data)
+        violations = validate(data, counts)
+    except (IndexError, KeyError, OSError, ValueError) as error:
+        sys.exit(str(error))
+
+    if violations:
+        for violation in violations:
+            print(f"compatibility census: {violation}", file=sys.stderr)
+        print(f"{len(violations)} violation(s)", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(counts, sort_keys=True))
+    elif args.check:
+        print("0 violation(s)")
+    else:
+        print(f"requests  {counts['requests_implemented']}/{counts['requests_total']} implemented")
+        print(f"events    {counts['events_emitted']}/{counts['events_total']} emitted")
+        print(
+            f"commands  {counts['commands_accepted']}/{counts['commands_total']} accepted "
+            f"({counts['commands_complete']} complete, {counts['commands_partial']} partial)"
+        )
+        print("0 violation(s)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

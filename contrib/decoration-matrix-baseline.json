@@ -1,0 +1,342 @@
+{
+  "active_border": "#ffc87f",
+  "stray_pixel": "at most one same-coloured 4-neighbour",
+  "scenes": {
+    "SA": {
+      "square": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      },
+      "rounded": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      }
+    },
+    "SB": {
+      "square": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      },
+      "rounded": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      }
+    },
+    "HA": {
+      "square": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      },
+      "rounded": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      }
+    },
+    "HB": {
+      "square": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      },
+      "rounded": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      }
+    },
+    "VA": {
+      "square": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      },
+      "rounded": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      }
+    },
+    "VB": {
+      "square": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      },
+      "rounded": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      }
+    },
+    "TA": {
+      "square": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      },
+      "rounded": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      }
+    },
+    "TB": {
+      "square": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      },
+      "rounded": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      }
+    },
+    "StA": {
+      "square": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      },
+      "rounded": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      }
+    },
+    "StB": {
+      "square": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      },
+      "rounded": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      }
+    },
+    "T2A": {
+      "square": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      },
+      "rounded": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      }
+    },
+    "T2B": {
+      "square": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      },
+      "rounded": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      }
+    },
+    "St2A": {
+      "square": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      },
+      "rounded": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      }
+    },
+    "St2B": {
+      "square": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      },
+      "rounded": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      }
+    },
+    "THA": {
+      "square": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      },
+      "rounded": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      }
+    },
+    "THB": {
+      "square": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      },
+      "rounded": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      }
+    },
+    "StHA": {
+      "square": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      },
+      "rounded": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      }
+    },
+    "StHB": {
+      "square": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      },
+      "rounded": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      }
+    },
+    "HTA": {
+      "square": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      },
+      "rounded": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      }
+    },
+    "HTB": {
+      "square": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      },
+      "rounded": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      }
+    },
+    "HStA": {
+      "square": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      },
+      "rounded": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      }
+    },
+    "HStB": {
+      "square": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      },
+      "rounded": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      }
+    },
+    "TStA": {
+      "square": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      },
+      "rounded": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      }
+    },
+    "TStB": {
+      "square": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      },
+      "rounded": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      }
+    },
+    "StTA": {
+      "square": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      },
+      "rounded": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      }
+    },
+    "StTB": {
+      "square": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      },
+      "rounded": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      }
+    },
+    "TTTA": {
+      "square": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      },
+      "rounded": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      }
+    },
+    "TTTB": {
+      "square": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      },
+      "rounded": {
+        "top": 0,
+        "bottom": 0,
+        "total": 0
+      }
+    }
+  }
+}

@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""Generate the family-tree diagram on the "Who planted the tree" wiki page.
+
+Every name and year comes from that page's own text. Run it after editing the
+page's history so the picture and the prose agree:
+
+    ./contrib/generate-lineage-diagram
+"""
+
+from pathlib import Path
+from xml.sax.saxutils import escape
+
+OUT = Path(__file__).resolve().parent.parent / "docs/wiki/_assets/shots/lineage-v1.svg"
+
+# Same palette as contrib/generate-tree-school-diagrams, so the wiki looks like one thing.
+BG = "#111318"
+PANEL = "#1e1e2e"
+LINE = "#6c7086"
+TEXT = "#cdd6f4"
+DIM = "#9399b2"
+BLUE = "#89b4fa"
+GOLD = "#ffc87f"
+GREEN = "#a6e3a1"
+
+W, H = 760, 700
+SPINE_X = 250
+BOX_W, BOX_H = 200, 52
+
+
+def text(x, y, value, *, size=18, fill=TEXT, anchor="middle", weight="normal"):
+    return (
+        f'<text x="{x}" y="{y}" text-anchor="{anchor}" fill="{fill}" '
+        f'font-family="monospace" font-size="{size}" font-weight="{weight}">{escape(value)}</text>'
+    )
+
+
+def node(cx, cy, name, year, *, stroke=LINE, width=3, fill=PANEL):
+    x, y = cx - BOX_W / 2, cy - BOX_H / 2
+    return "\n".join(
+        [
+            f'<rect x="{x}" y="{y}" width="{BOX_W}" height="{BOX_H}" rx="10" fill="{fill}" stroke="{stroke}" stroke-width="{width}"/>',
+            text(cx, cy + 6, name, size=20, weight="bold"),
+            text(x - 14, cy + 6, year, size=15, fill=DIM, anchor="end") if year else "",
+        ]
+    )
+
+
+def side(x, cy, name, note, *, stroke=LINE):
+    w, h = 170, 40
+    return "\n".join(
+        [
+            f'<rect x="{x}" y="{cy - h / 2}" width="{w}" height="{h}" rx="8" fill="none" stroke="{stroke}" stroke-width="2" stroke-dasharray="6 4"/>',
+            text(x + w / 2, cy + 6, name, size=17),
+            text(x + w + 12, cy + 6, note, size=14, fill=DIM, anchor="start") if note else "",
+        ]
+    )
+
+
+def arrow(x1, y1, x2, y2, *, stroke=LINE, dash=None):
+    extra = f' stroke-dasharray="{dash}"' if dash else ""
+    return (
+        f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{stroke}" stroke-width="2.5"'
+        f'{extra} marker-end="url(#head)"/>'
+    )
+
+
+def build():
+    # The ancestor line, top to bottom: (name, year, y, emphasis).
+    spine = [
+        ("Plan 9", "~1989", 70, None),
+        ("wmi", "2003", 170, None),
+        ("wmii", "2005", 260, None),
+        ("i3", "2009", 360, GOLD),
+        ("sway", "2015", 460, BLUE),
+        ("swayward", "2026", 610, GREEN),
+    ]
+    parts = [
+        f'<rect width="{W}" height="{H}" rx="16" fill="{BG}"/>',
+        '<defs><marker id="head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">'
+        f'<path d="M0,0 L10,5 L0,10 z" fill="{LINE}"/></marker></defs>',
+    ]
+    for (_, _, y1, _), (_, _, y2, _) in zip(spine, spine[1:]):
+        parts.append(arrow(SPINE_X, y1 + BOX_H / 2, SPINE_X, y2 - BOX_H / 2 - 2))
+    for name, year, y, colour in spine:
+        parts.append(node(SPINE_X, y, name, year, stroke=colour or LINE, width=4 if colour else 3))
+
+    parts.append(text(SPINE_X, 70 + 42, "8½ · rio · acme", size=14, fill=DIM))
+    parts.append(text(SPINE_X + BOX_W / 2 + 16, 366, "← the tree is invented here", size=15, fill=GOLD, anchor="start"))
+    parts.append(text(SPINE_X + BOX_W / 2 + 16, 466, "← the tree moves to Wayland", size=15, fill=BLUE, anchor="start"))
+
+    # wmi's influences feed in from the side.
+    parts.append(side(440, 150, "Ion · larswm", "and ratpoison, evilwm"))
+    parts.append(arrow(440, 150, SPINE_X + BOX_W / 2 + 4, 166, dash="5 4"))
+    # dwm is wmii's sibling from the same community.
+    parts.append(side(440, 250, "dwm", "a sibling, same community"))
+    parts.append(arrow(SPINE_X + BOX_W / 2 + 2, 258, 438, 252, dash="5 4"))
+    # Forks that leave the line.
+    parts.append(side(440, 410, "i3-gaps", "fork of i3"))
+    parts.append(arrow(SPINE_X + BOX_W / 2 + 2, 372, 438, 406, dash="5 4"))
+    parts.append(side(440, 520, "SwayFX", "fork of sway"))
+    parts.append(arrow(SPINE_X + BOX_W / 2 + 2, 472, 438, 516, dash="5 4"))
+    # niri is the second parent, arriving from a different direction.
+    parts.append(node(580, 610, "niri", "", stroke=GREEN, width=3))
+    parts.append(arrow(580 - BOX_W / 2 - 2, 610, SPINE_X + BOX_W / 2 + 4, 610, stroke=GREEN))
+    parts.append(text(580, 610 + BOX_H / 2 + 22, "2024 · scrolling, not a tree", size=14, fill=DIM))
+
+    parts.append(
+        text(W / 2, H - 16, "cousins, not ancestors: xmonad · awesome · Hyprland (+ hy3)", size=14, fill=DIM)
+    )
+
+    title = (
+        "The family tree of the nested container tree: Plan 9, wmi, wmii, i3, sway and swayward, "
+        "with niri joining swayward as a second parent"
+    )
+    body = "\n".join(p for p in parts if p)
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" '
+        f'role="img" aria-labelledby="title">\n<title id="title">{escape(title)}</title>\n{body}\n</svg>\n'
+    )
+
+
+if __name__ == "__main__":
+    OUT.write_text(build())
+    print(OUT)

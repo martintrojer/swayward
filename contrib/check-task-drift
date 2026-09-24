@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Report mu tasks whose state disagrees with the git tree.
+#
+# Two ways the ledger drifts from reality, both seen in practice:
+#   1. a task is CLOSED but the commit it produced never reached main, so the
+#      work looks done and is not shipped
+#   2. a worker workspace holds commits that are not on main and not attached
+#      to any open task, so the work is invisible
+#
+# Matching a task to a commit by grepping its notes is unreliable, because
+# notes cite base commits, mutation shas and unrelated hashes. This walks the
+# workspaces instead and asks git what is unmerged, which cannot lie.
+set -euo pipefail
+
+WORKSTREAM=${1:-swayward}
+STATE=${MU_STATE:-$HOME/.local/state/mu/workspaces/$WORKSTREAM}
+cd "$(dirname "$(readlink -f "$0")")/.." || exit
+
+main_sha=$(git rev-parse HEAD)
+violations=0
+
+echo "main is $(git log --oneline -1)"
+echo
+
+for ws in "$STATE"/*/; do
+    [ -d "$ws/.git" ] || [ -f "$ws/.git" ] || continue
+    name=$(basename "$ws")
+    head=$(git -C "$ws" rev-parse HEAD 2>/dev/null) || continue
+
+    # Commits reachable from the workspace but not from main.
+    unmerged=$(git -C "$ws" rev-list --count "$main_sha..$head" 2>/dev/null || echo 0)
+    if [ "$unmerged" -gt 0 ]; then
+        violations=$((violations + unmerged))
+        echo "UNMERGED  $name has $unmerged commit(s) not on main:"
+        git -C "$ws" log --oneline "$main_sha..$head" 2>/dev/null | sed 's/^/            /'
+    fi
+done
+
+echo
+if [ "$violations" -eq 0 ]; then
+    echo "0 violation(s): every worker commit is on main"
+else
+    echo "$violations unmerged commit(s). Each is either work to integrate or a"
+    echo "deliberate hold. A deliberate hold needs a mu note saying so, and its"
+    echo "task must not be CLOSED."
+fi
+exit $((violations > 0))

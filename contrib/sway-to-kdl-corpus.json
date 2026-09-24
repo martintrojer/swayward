@@ -1,0 +1,125 @@
+{
+  "baseline_normalized_sha256": "6ffa0e42f0ffe973c3bf846df67b2dd4c5288d3480eda0a6b06c6c207e5c662e",
+  "entries": [
+    {
+      "name": "alebastr-main",
+      "repository": "https://github.com/alebastr/dotfiles.git",
+      "revision": "8b493d6480fd3238b5f707441c030217a5692e54",
+      "path": "config/sway/config",
+      "license": "none",
+      "tags": ["vanilla", "monolithic", "continuation", "include", "variables"],
+      "sha256": "fcb4dd0547a04ce0c71d15491906adc3489b2b75c9146ed1f748a686924cdf6a",
+      "normalized_sha256": "f470a5ed015d163097366934b1928e2df37de6a251623aea8918eafb7d04b149"
+    },
+    {
+      "name": "alebastr-bindings-module",
+      "repository": "https://github.com/alebastr/dotfiles.git",
+      "revision": "8b493d6480fd3238b5f707441c030217a5692e54",
+      "path": "config/sway/config.d/60-bindings-movement.conf",
+      "license": "none",
+      "tags": ["vanilla", "modular", "bindings"],
+      "sha256": "44071628fb196e032ed27c06ce547a45375a8b7aec9c22491b73fb2560a4b0ed",
+      "normalized_sha256": "1ed4abc8bcfbb09aa510fd76e1a42305dfa048c66370ed1138f13b74d134fde8"
+    },
+    {
+      "name": "ammgws-main",
+      "repository": "https://github.com/ammgws/dotfiles.git",
+      "revision": "2c8102ca2e59f2d5319c58b738fb82f1b5cc9758",
+      "path": "sway/.config/sway/config",
+      "license": "MIT",
+      "tags": ["vanilla", "monolithic", "grouped-blocks", "old"],
+      "sha256": "435a94e917e1a401581cccbccbf45ee36d289d65539949efcf1d46da2f099655",
+      "normalized_sha256": "eaff50af5bd1eaf06f20882bfb73dad4026fffee33e26632b9aca7dc59ca9e82"
+    },
+    {
+      "name": "ammgws-rules-module",
+      "repository": "https://github.com/ammgws/dotfiles.git",
+      "revision": "2c8102ca2e59f2d5319c58b738fb82f1b5cc9758",
+      "path": "sway/.config/sway/config.d/rules",
+      "license": "MIT",
+      "tags": ["vanilla", "modular", "criteria"],
+      "sha256": "58929a2045aaa7ca925ed13a354e8e5bc07b45c07c61f9c8229cadeb8cd0d320",
+      "normalized_sha256": "30263a4ff4330bb7a5566be71b51a6bc931676399f0957e3fcec3de9e66ce4af"
+    },
+    {
+      "name": "codebam",
+      "repository": "https://github.com/codebam/dotfiles.git",
+      "revision": "4b6ea37a75924d1afdfcabc7d4c057413cafdcd5",
+      "path": "config/sway/config",
+      "license": "GPL-3.0-only",
+      "tags": ["vanilla", "monolithic", "input", "bar", "criteria"],
+      "sha256": "f5887622da61ca3c2edd13405c7ace6604d3ae6451c00b3c44c44e53818d8cea",
+      "normalized_sha256": "2d48940c7a892ad0fffd7a98f09dcf57b17c0009f94a8ba9a1072af52a031f82"
+    },
+    {
+      "name": "aruyu-swayfx",
+      "repository": "https://github.com/aruyu/sway-dotfiles.git",
+      "revision": "090df82ba4c083b2abc6269727c39628d5609db7",
+      "path": ".config/sway/config",
+      "license": "MIT",
+      "tags": ["swayfx", "monolithic", "effects", "criteria"],
+      "sha256": "0eafc605eb820aa0e0c13d05d71c6cbb4a0e4869f97c236ec7ec9c615f90dc90",
+      "normalized_sha256": "199bb2a7ebf6df3ed8b90073e05907ab0faedc98a26d3c6c573213949b73b2a5"
+    },
+    {
+      "name": "owpk-main",
+      "repository": "https://github.com/owpk/dotfiles-swayfx.git",
+      "revision": "556187a289f42471b024d50d47a977d2595a292f",
+      "path": ".config/sway/config",
+      "license": "none",
+      "tags": ["swayfx", "modular", "include-glob"],
+      "sha256": "cbb6cb06c7dbabcaca1e71266317b9e0e8b020ed7473e291a84a35791d2688ad",
+      "normalized_sha256": "69ba659cb3c63702b9d55b6b89e6f654db7e9cb1d059e1d2da236ce2d1c84eaf"
+    },
+    {
+      "name": "owpk-effects-module",
+      "repository": "https://github.com/owpk/dotfiles-swayfx.git",
+      "revision": "556187a289f42471b024d50d47a977d2595a292f",
+      "path": ".config/sway/config.d/swayfx",
+      "license": "none",
+      "tags": ["swayfx", "modular", "effects"],
+      "sha256": "eae4c7e936cb038b29d1ea4411b71f81bba778d4814abfbe80618cada61811b1",
+      "normalized_sha256": "019ae0fc690d366ff3aa958a858586d5a84d6fd9866b96abbf98a4f9bb669cf3"
+    },
+    {
+      "name": "owpk-rules-module",
+      "repository": "https://github.com/owpk/dotfiles-swayfx.git",
+      "revision": "556187a289f42471b024d50d47a977d2595a292f",
+      "path": ".config/sway/config.d/application_defaults",
+      "license": "none",
+      "tags": ["swayfx", "modular", "criteria"],
+      "sha256": "09ef88e4a479424425b83e9de6361d32338a742d59b3dea3135b216f3eadb71c",
+      "normalized_sha256": "310f8240119d5f334250149a6ea2ee5216d96f9eb0128181b036355149d3e915"
+    },
+    {
+      "name": "alicin-old",
+      "repository": "https://github.com/alicin/dotfiles-1.git",
+      "revision": "49a65cc1e0a155182d324fde9e9f62ca35a61302",
+      "path": ".config/sway/config",
+      "license": "none",
+      "tags": ["vanilla", "monolithic", "old", "continuation", "includes"],
+      "sha256": "856a83296325e3e3690d323856e3d7e9453478bfce81f5854ff7c8a2c136fcfd",
+      "normalized_sha256": "957a46acc576d508230c9ffa4ecb33dab89078ec7c81905cd4bea3509a364120"
+    },
+    {
+      "name": "luispabon-control",
+      "repository": "https://github.com/luispabon/sway-dotfiles.git",
+      "revision": "567fbe65af0f7d748458e540f4e33cd69fc627b9",
+      "path": "configs/sway/config",
+      "license": "none",
+      "tags": ["vanilla", "monolithic", "near-default", "control"],
+      "sha256": "494f121bbcd20c6bb7cc149a92b8969eb37de4bd7d9dd551e0ffb9ded6acbbb8",
+      "normalized_sha256": "05bbcd27557aa016520b6c50d7bbb8c79b1de8d8fa5da1035bc64a22aa0d29b7"
+    },
+    {
+      "name": "vaelixd-swayfx",
+      "repository": "https://github.com/vaelixd/SwayFX-Dotfiles.git",
+      "revision": "6ce40764e19cee8f0b05ca52252ad341ed691eac",
+      "path": "config/sway/config",
+      "license": "MIT",
+      "tags": ["swayfx", "monolithic", "effects", "includes"],
+      "sha256": "75cc03bf45a11ba6f6a88561095f156ec2b4f2eca783353bd93ca9f52aacc8db",
+      "normalized_sha256": "e040c8ca095ef7f23db1fc287fbde5ce379654ad13fd7ac45b7153ef9b6b8faa"
+    }
+  ]
+}
