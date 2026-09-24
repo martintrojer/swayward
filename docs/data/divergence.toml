@@ -1252,3 +1252,9 @@ why = "Keep ignored artifacts and the IPC module graph aligned with the renamed 
 paths = ["src/input/mod.rs", "src/layout/floating.rs", "src/layout/mod.rs", "src/layout/monitor.rs", "src/layout/scrolling.rs", "src/layout/tests.rs", "src/layout/tests/fullscreen.rs", "src/layout/tiling_tree/focus.rs", "src/layout/tiling_tree/mod.rs", "src/layout/tiling_tree/movement.rs", "src/layout/tiling_tree/resize.rs", "src/layout/tiling_tree/tree_layout.rs", "src/layout/workspace.rs", "src/tests/floating.rs", "src/tests/ipc.rs", "src/tests/xdg_shell.rs"]
 what = "remove the obsolete scrolling compatibility module and rename internal column-oriented layout methods and property-test operations for their nested-tree semantics; retain the typed KDL action spellings as a configuration compatibility boundary."
 why = "The active layout is an i3-style nested tree, so carrying niri's column vocabulary through its internal API increases future upstream merge cost and obscures the operations' actual targets."
+
+[[edit]]
+migrated = false
+paths = ["src/layout/tiling_tree/mod.rs", "src/layout/workspace.rs", "src/tests/ipc/tree_commands.rs"]
+what = "reset an emptied tiling tree to the configured default orientation and cover recreation of an emptied workspace with the default layout."
+why = "Sway destroys an empty workspace and its container tree (`sway/tree/workspace.c:274-332`), so later selecting its name creates a fresh default-layout tree rather than retaining the previous stacking mode."

@@ -152,6 +152,61 @@ fn live_ipc_descriptions_match_sway_schema_and_values() {
 }
 
 #[test]
+fn emptied_workspace_is_recreated_with_default_layout() {
+    let mut config = swayward_config::Config::default();
+    config.animations.off = true;
+    let mut f = Fixture::with_config(config);
+    let handle = f.swayward().event_loop.clone();
+    let ipc_server =
+        crate::ipc::server::IpcServer::start_at(&handle, Some(test_socket_path())).unwrap();
+    let socket = ipc_server.socket_path.clone().unwrap();
+    f.swayward().ipc_server = Some(ipc_server);
+    f.niri_state().ipc_keyboard_layouts_changed();
+    f.add_output(1, (1270, 1408));
+    let client = f.add_client();
+
+    assert!(crate::command::execute(f.niri_state(), "layout stacking")[0].success);
+    let mut surfaces = Vec::new();
+    for app_id in ["fixture-1", "fixture-2"] {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        let surface = window.surface.clone();
+        window.commit();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+        surfaces.push(surface);
+    }
+    for surface in &surfaces {
+        let window = f.client(client).window(surface);
+        window.attach_null();
+        window.commit();
+        f.double_roundtrip(client);
+    }
+
+    assert!(crate::command::execute(f.niri_state(), "workspace __fixture_reset")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "workspace 1")[0].success);
+    let window = f.client(client).create_window();
+    window.xdg_toplevel.set_app_id("recreated".into());
+    let surface = window.surface.clone();
+    window.commit();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    let mut stream = UnixStream::connect(socket).unwrap();
+    let tree = query_ipc(&mut f, &mut stream, MessageType::GetTree);
+    let workspace = find_json_parent_of_app_id(&tree, "recreated").unwrap();
+    assert_eq!(workspace["type"], "workspace");
+    assert_eq!(workspace["name"], "1");
+    assert_eq!(workspace["layout"], "splitv");
+}
+
+#[test]
 fn focus_parent_then_layout_targets_the_parent_of_the_focused_container() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));

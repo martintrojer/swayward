@@ -1118,6 +1118,9 @@ impl<W: LayoutElement> Workspace<W> {
         }
 
         self.update_focus_floating_tiling_after_removing(from_floating);
+        if self.tiling.is_empty() {
+            self.tiling.reset_empty_layout();
+        }
 
         removed
     }
