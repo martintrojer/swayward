@@ -133,7 +133,53 @@ impl<W: LayoutElement> TilingTree<W> {
                     children: children
                         .iter()
                         .zip(percents)
-                        .map(|(child, percent)| snapshot(tree, *child, Some(*percent), geometries))
+                        .enumerate()
+                        .map(|(index, (child, stored_percent))| {
+                            let percent = match layout {
+                                Layout::Tabbed | Layout::Stacked => 1.,
+                                Layout::SplitH | Layout::SplitV => {
+                                    let rounded_extent =
+                                        |rect: Rectangle<f64, Logical>| match layout {
+                                            Layout::SplitH => rect.size.w.round(),
+                                            Layout::SplitV => rect.size.h.round(),
+                                            _ => unreachable!(),
+                                        };
+                                    let parent_extent = geometries
+                                        .ipc_nodes
+                                        .get(&id)
+                                        .copied()
+                                        .map(rounded_extent)
+                                        .unwrap_or_default();
+                                    let raw_extent = |rect: Rectangle<f64, Logical>| match layout {
+                                        Layout::SplitH => rect.size.w,
+                                        Layout::SplitV => rect.size.h,
+                                        _ => unreachable!(),
+                                    };
+                                    let available = children
+                                        .iter()
+                                        .filter_map(|child| {
+                                            geometries.ipc_nodes.get(child).copied()
+                                        })
+                                        .map(raw_extent)
+                                        .sum::<f64>();
+                                    let allocated = if index + 1 == children.len() {
+                                        available.round()
+                                            - percents[..index]
+                                                .iter()
+                                                .map(|percent| (available * percent).round())
+                                                .sum::<f64>()
+                                    } else {
+                                        (available * stored_percent).round()
+                                    };
+                                    if parent_extent > 0. {
+                                        allocated / parent_extent
+                                    } else {
+                                        *stored_percent
+                                    }
+                                }
+                            };
+                            snapshot(tree, *child, Some(percent), geometries)
+                        })
                         .collect(),
                 },
                 TreeNode::Leaf { tile } => IpcNode::Leaf {

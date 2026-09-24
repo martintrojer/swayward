@@ -1300,3 +1300,9 @@ migrated = false
 paths = ["src/layout/tiling_tree/tree_layout.rs", "src/tests/ipc/tree_commands.rs"]
 what = "wrap the workspace's children when tabbed or stacking layout is applied to a focused split whose command target is the workspace root."
 why = "Sway changes the workspace layout in place only when the workspace itself is focused; a focused child split at the root gains a nested layout container instead (`sway/commands/layout.c`; `sway/tree/container.c`)."
+
+[[edit]]
+migrated = false
+paths = ["src/layout/tiling_tree/introspection.rs", "src/tests/ipc/tree_commands.rs"]
+what = "report split-child IPC percentages from their rounded arranged extents while retaining 1.0 for tabbed and stacked children."
+why = "Sway derives `percent` from arranged container dimensions, including gap space in the parent extent, rather than returning the stored split fraction (`sway/ipc-json.c:746-755`)."

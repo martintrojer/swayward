@@ -179,6 +179,50 @@ fn workspace_with_only_floating_windows_reports_empty_tiling_representation() {
 }
 
 #[test]
+fn split_children_report_their_arranged_share_including_gaps() {
+    let mut f = Fixture::new();
+    let handle = f.swayward().event_loop.clone();
+    let ipc_server =
+        crate::ipc::server::IpcServer::start_at(&handle, Some(test_socket_path())).unwrap();
+    let socket = ipc_server.socket_path.clone().unwrap();
+    f.swayward().ipc_server = Some(ipc_server);
+    f.niri_state().ipc_keyboard_layouts_changed();
+    f.add_output(1, (1270, 1408));
+    assert!(crate::command::execute(f.niri_state(), "gaps inner all set 17")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "gaps outer all set 23")[0].success);
+    let client = f.add_client();
+
+    for app_id in ["fixture-1", "fixture-2", "fixture-3"] {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        let surface = window.surface.clone();
+        window.commit();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+
+    let mut stream = UnixStream::connect(socket).unwrap();
+    let tree = query_ipc(&mut f, &mut stream, MessageType::GetTree);
+    let children = tree["nodes"][1]["nodes"][0]["nodes"]
+        .as_array()
+        .unwrap();
+    for (child, expected) in children.iter().zip([
+        0.3245481927710843,
+        0.3245481927710843,
+        0.3253012048192771,
+    ]) {
+        let actual = child["percent"].as_f64().unwrap();
+        assert!(
+            (actual - expected).abs() < 1e-9,
+            "expected {expected}, got {actual}"
+        );
+    }
+}
+
+#[test]
 fn tabbed_children_report_visibility_and_full_parent_percent() {
     let mut f = Fixture::new();
     let handle = f.swayward().event_loop.clone();
