@@ -1,0 +1,46 @@
+[
+  {
+    "identifier": "1133:16518:Logitech_G703_LS",
+    "name": "Logitech G703 LS",
+    "type": "pointer",
+    "scroll_factor": 1.0,
+    "libinput": {
+      "send_events": "enabled",
+      "accel_speed": 0.0,
+      "accel_profile": "adaptive",
+      "natural_scroll": "disabled",
+      "left_handed": "disabled",
+      "middle_emulation": "disabled",
+      "scroll_method": "none",
+      "scroll_button": 274,
+      "scroll_button_lock": "disabled"
+    },
+    "vendor": 1133,
+    "product": 16518
+  },
+  {
+    "identifier": "1133:16518:Logitech_G703_LS",
+    "name": "Logitech G703 LS",
+    "type": "keyboard",
+    "repeat_delay": 600,
+    "repeat_rate": 25,
+    "xkb_layout_names": [
+      "English (US)"
+    ],
+    "xkb_active_layout_index": 0,
+    "xkb_active_layout_name": "English (US)",
+    "libinput": {
+      "send_events": "enabled",
+      "accel_speed": 0.0,
+      "accel_profile": "adaptive",
+      "natural_scroll": "disabled",
+      "left_handed": "disabled",
+      "middle_emulation": "disabled",
+      "scroll_method": "none",
+      "scroll_button": 274,
+      "scroll_button_lock": "disabled"
+    },
+    "vendor": 1133,
+    "product": 16518
+  }
+]

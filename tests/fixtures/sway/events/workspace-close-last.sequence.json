@@ -1,0 +1,118 @@
+[
+  {
+    "change": "close",
+    "container": {
+      "id": 11,
+      "type": "con",
+      "orientation": "none",
+      "percent": 1.0,
+      "urgent": false,
+      "marks": [],
+      "focused": false,
+      "layout": "none",
+      "border": "normal",
+      "current_border_width": 2,
+      "rect": {
+        "x": 0,
+        "y": 27,
+        "width": 1270,
+        "height": 1381
+      },
+      "deco_rect": {
+        "x": 0,
+        "y": 0,
+        "width": 1270,
+        "height": 27
+      },
+      "window_rect": {
+        "x": 2,
+        "y": 0,
+        "width": 1266,
+        "height": 1379
+      },
+      "geometry": {
+        "x": 0,
+        "y": 0,
+        "width": 696,
+        "height": 491
+      },
+      "name": "fixture-close",
+      "window": null,
+      "nodes": [],
+      "floating_nodes": [],
+      "focus": [],
+      "fullscreen_mode": 0,
+      "sticky": false,
+      "floating": "auto_off",
+      "scratchpad_state": "none",
+      "pid": 446765,
+      "app_id": "fixture-close",
+      "foreign_toplevel_identifier": null,
+      "visible": false,
+      "max_render_time": 0,
+      "allow_tearing": false,
+      "shell": "xdg_shell",
+      "inhibit_idle": false,
+      "sandbox_engine": null,
+      "sandbox_app_id": null,
+      "sandbox_instance_id": null,
+      "tag": null,
+      "idle_inhibitors": {
+        "user": "none",
+        "application": "none"
+      }
+    }
+  },
+  {
+    "change": "empty",
+    "old": null,
+    "current": {
+      "id": 10,
+      "type": "workspace",
+      "orientation": "vertical",
+      "percent": null,
+      "urgent": false,
+      "marks": [],
+      "focused": false,
+      "layout": "splitv",
+      "border": "none",
+      "current_border_width": 0,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 1270,
+        "height": 1408
+      },
+      "deco_rect": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "window_rect": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "geometry": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "name": "1",
+      "window": null,
+      "nodes": [],
+      "floating_nodes": [],
+      "focus": [],
+      "fullscreen_mode": 1,
+      "sticky": false,
+      "floating": null,
+      "scratchpad_state": null,
+      "num": 1,
+      "output": "WL-1",
+      "representation": "V[]"
+    }
+  }
+]

@@ -1,0 +1,1127 @@
+# Source data for the compatibility counts in docs/SWAY_COMPATIBILITY.md.
+# contrib/command-census checks these entries against the document tables and
+# derives every request, event-family, and runtime-command census count. The
+# fixture scenario list matches the cases loaded by live_ipc_descriptions_
+# match_sway_schema_and_values; other tree fixtures support separate tests.
+# Keep this aligned with tests/fixtures/sway/schema-version.json.
+sway_version = "1.12"
+sway_commit = "88869399f421d9180dd8b6ed0b5a1f4a3585d252"
+previous_probe_total = 81
+get_inputs_fields = [
+    "identifier",
+    "name",
+    "vendor",
+    "product",
+    "type",
+    "libinput",
+    "repeat_delay",
+    "repeat_rate",
+    "xkb_layout_names",
+    "xkb_active_layout_index",
+    "xkb_active_layout_name",
+    "scroll_factor",
+]
+get_version_fields = [
+    "human_readable",
+    "variant",
+    "major",
+    "minor",
+    "patch",
+    "loaded_config_file_name",
+]
+
+[fixtures]
+tree_scenarios = [
+    "empty",
+    "empty_named",
+    "fullscreen",
+    "marked",
+    "named_workspace",
+    "nested_h_in_v",
+    "numbered_sparse",
+    "one_floating",
+    "one_window",
+    "stacked",
+    "tabbed",
+    "two_split_h",
+    "two_split_v",
+    "two_workspaces",
+]
+
+[[requests]]
+name = "RUN_COMMAND"
+status = "Partial"
+
+[[requests]]
+name = "GET_WORKSPACES"
+status = "Implemented"
+
+[[requests]]
+name = "SUBSCRIBE"
+status = "Partial"
+
+[[requests]]
+name = "GET_OUTPUTS"
+status = "Partial"
+
+[[requests]]
+name = "GET_TREE"
+status = "Implemented"
+
+[[requests]]
+name = "GET_MARKS"
+status = "Implemented"
+
+[[requests]]
+name = "GET_BAR_CONFIG"
+status = "Implemented"
+
+[[requests]]
+name = "GET_VERSION"
+status = "Implemented"
+
+[[requests]]
+name = "GET_BINDING_MODES"
+status = "Implemented"
+
+[[requests]]
+name = "GET_CONFIG"
+status = "Not implemented"
+
+[[requests]]
+name = "SEND_TICK"
+status = "Implemented"
+
+[[requests]]
+name = "SYNC"
+status = "Implemented"
+
+[[requests]]
+name = "GET_BINDING_STATE"
+status = "Implemented"
+
+[[requests]]
+name = "GET_INPUTS"
+status = "Implemented"
+
+[[requests]]
+name = "GET_SEATS"
+status = "Implemented"
+
+[[events]]
+row = "Workspace"
+status = "Emitted"
+families = ["workspace"]
+
+[[events]]
+row = "Window"
+status = "Emitted"
+families = ["window"]
+
+[[events]]
+row = "Mode"
+status = "Emitted"
+families = ["mode"]
+
+[[events]]
+row = "Binding"
+status = "Emitted"
+families = ["binding"]
+
+[[events]]
+row = "Tick"
+status = "Emitted"
+families = ["tick"]
+
+[[events]]
+row = "Output"
+status = "Emitted"
+families = ["output"]
+
+[[events]]
+row = "Shutdown"
+status = "Emitted"
+families = ["shutdown"]
+
+[[events]]
+row = "Input"
+status = "Emitted"
+families = ["input"]
+
+[[events]]
+row = "Bar configuration and state"
+status = "Deliberate deviation"
+families = ["barconfig_update", "bar_state_update"]
+
+[[command]]
+name = "allow_tearing"
+table = "runtime_only"
+category = "fail_loud"
+source = "command; `commands/allow_tearing.c`"
+probe = "allow_tearing yes"
+parser = "reject"
+state = "no asynchronous page-flip path"
+classification = "fail-loud: required capability is absent"
+cost = "subsystem"
+
+[[command]]
+name = "assign"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/assign.c`"
+probe = "assign [app_id=\"probe\"] workspace 2"
+parser = "accept"
+execution = "partial"
+state = "live native-Wayland assignment criteria; applied to future windows at map time"
+classification = "partial: X11-only criteria fields are rejected"
+cost = "medium"
+
+[[command]]
+name = "bar"
+table = "shared"
+category = "deliberate"
+source = "shared; `commands/bar.c`"
+probe = "bar mode hide"
+parser = "reject"
+state = "no managed bar or `bar {}` state"
+classification = "deliberate subsystem deviation"
+cost = "subsystem"
+
+[[command]]
+name = "bindcode"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/bindcode.c`"
+probe = "bindcode 38 nop"
+parser = "accept"
+execution = "partial"
+state = "live `Config.binds` or the named or active mode binds; keyboard dispatch reads the vector directly"
+classification = "partial: keyboard forms work; mouse-region, XKB group, --to-code, and criteria forms are rejected"
+cost = "medium"
+
+[[command]]
+name = "bindgesture"
+table = "shared"
+category = "gap"
+gap_group = "binding"
+source = "shared; `commands/bindgesture.c`"
+probe = "bindgesture swipe:3:left nop"
+parser = "reject"
+state = "no command-binding model for gesture events"
+classification = "unimplemented gesture binding"
+cost = "large"
+
+[[command]]
+name = "bindswitch"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/bindswitch.c`"
+probe = "bindswitch lid:on nop"
+parser = "accept"
+execution = "partial"
+state = "runtime mode-keyed switch-command overlay; switch dispatch reads it before KDL spawn events"
+classification = "partial: runtime commands, named and active modes, toggle, and --locked work; --reload and KDL-binding replacement are rejected"
+cost = "medium"
+
+[[command]]
+name = "bindsym"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/bindsym.c`"
+probe = "bindsym Mod4+Return nop"
+parser = "accept"
+execution = "partial"
+state = "live `Config.binds` or the named or active mode binds; keyboard dispatch reads the vector directly"
+classification = "partial: keyboard forms work; mouse-region, XKB group, --to-code, and criteria forms are rejected"
+cost = "medium"
+
+[[command]]
+name = "border"
+table = "runtime_only"
+category = "accepted"
+source = "command; `commands/border.c`"
+probe = "border pixel 2"
+parser = "accept"
+execution = "partial"
+state = "per-window border state; command applies directly"
+classification = "partial: extra arguments and sway-style integer widths differ"
+cost = "medium"
+
+[[command]]
+name = "client.background"
+table = "shared"
+category = "noop"
+source = "shared; `commands/client.c`"
+probe = "client.background #000000"
+parser = "reject"
+state = "sway deliberately ignores this i3 command"
+classification = "missing compatible no-op"
+cost = "small"
+
+[[command]]
+name = "client.focused"
+table = "shared"
+category = "fail_loud"
+source = "shared; `commands/client.c`"
+probe = "client.focused #4c7899 #285577 #ffffff #2e9ef4 #285577"
+parser = "reject"
+state = "titlebar border, indicator, and child-border rendering is incomplete"
+classification = "fail-loud: accepted fields would otherwise be silently discarded"
+cost = "medium"
+
+[[command]]
+name = "client.focused_inactive"
+table = "shared"
+category = "fail_loud"
+source = "shared; `commands/client.c`"
+probe = "client.focused_inactive #333333 #5f676a #ffffff #484e50 #5f676a"
+parser = "reject"
+state = "titlebar border, indicator, and child-border rendering is incomplete"
+classification = "fail-loud: accepted fields would otherwise be silently discarded"
+cost = "medium"
+
+[[command]]
+name = "client.focused_tab_title"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/client.c`"
+probe = "client.focused_tab_title #333333 #5f676a #ffffff"
+parser = "accept"
+execution = "complete"
+state = "`Config.layout.titlebar.focused_tab_title`; titlebar renderer consumes border, background, and text"
+classification = "complete; sway deliberately ignores this class's optional indicator and child-border colours"
+cost = "done"
+
+[[command]]
+name = "client.placeholder"
+table = "shared"
+category = "noop"
+source = "shared; `commands/client.c`"
+probe = "client.placeholder #000000 #0c0c0c #ffffff"
+parser = "reject"
+state = "sway deliberately ignores this i3 command"
+classification = "missing compatible no-op"
+cost = "small"
+
+[[command]]
+name = "client.unfocused"
+table = "shared"
+category = "fail_loud"
+source = "shared; `commands/client.c`"
+probe = "client.unfocused #333333 #222222 #888888 #292d2e #222222"
+parser = "reject"
+state = "titlebar border, indicator, and child-border rendering is incomplete"
+classification = "fail-loud: accepted fields would otherwise be silently discarded"
+cost = "medium"
+
+[[command]]
+name = "client.urgent"
+table = "shared"
+category = "fail_loud"
+source = "shared; `commands/client.c`"
+probe = "client.urgent #2f343a #900000 #ffffff #900000 #900000"
+parser = "reject"
+state = "titlebar border, indicator, and child-border rendering is incomplete"
+classification = "fail-loud: accepted fields would otherwise be silently discarded"
+cost = "medium"
+
+[[command]]
+name = "create_output"
+table = "runtime_only"
+category = "accepted"
+source = "command; `commands/create_output.c`"
+probe = "create_output"
+parser = "accept"
+execution = "partial"
+state = "headless creates a 1920x1080 output; tty and winit return sway's unsupported-backend failure without changing output state"
+classification = "partial: only the headless backend is supported, and criteria targets are rejected"
+cost = "subsystem"
+
+[[command]]
+name = "default_border"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/default_border.c`"
+probe = "default_border pixel 2"
+parser = "accept"
+execution = "partial"
+state = "new tiles snapshot `Config.layout.default_border`; existing windows keep their border"
+classification = "partial: malformed widths and extra arguments fail loud instead of following sway's unchecked `atoi`, and criteria targets are rejected"
+cost = "medium"
+
+[[command]]
+name = "default_floating_border"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/default_floating_border.c`"
+probe = "default_floating_border pixel 2"
+parser = "accept"
+execution = "partial"
+state = "new floating windows snapshot `Config.layout.default_floating_border`; existing windows keep their border"
+classification = "partial: malformed widths and extra arguments fail loud instead of following sway's unchecked `atoi`, and criteria targets are rejected"
+cost = "medium"
+
+[[command]]
+name = "exec"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/exec.c`"
+probe = "exec true"
+parser = "accept"
+execution = "partial"
+state = "command launches the process directly"
+classification = "partial: criteria-targeted execution is rejected"
+cost = "small"
+
+[[command]]
+name = "exec_always"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/exec_always.c`"
+probe = "exec_always true"
+parser = "accept"
+execution = "partial"
+state = "command launches the process directly"
+classification = "partial: criteria-targeted execution is rejected"
+cost = "small"
+
+[[command]]
+name = "exit"
+table = "runtime_only"
+category = "accepted"
+source = "command; `commands/exit.c`"
+probe = "exit"
+parser = "accept"
+execution = "partial"
+state = "bare command stops the compositor; matched criteria fail before lifecycle state changes"
+classification = "partial: criteria-prefixed execution is deliberately rejected because sway repeats the global handler per matched container"
+cost = "small"
+
+[[command]]
+name = "floating"
+table = "runtime_only"
+category = "accepted"
+source = "command; `commands/floating.c`"
+probe = "floating toggle"
+parser = "accept"
+execution = "partial"
+state = "per-window floating state; split-container targets fail before mutation"
+classification = "partial: sway can float a whole split container, but swayward has no floating-group representation"
+cost = "large"
+
+[[command]]
+name = "floating_maximum_size"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/floating_minmax_size.c`"
+probe = "floating_maximum_size 0 x 0"
+parser = "accept"
+execution = "partial"
+state = "`Config.layout.floating_maximum_size`; `layout.update_config`"
+classification = "partial: Rust integer parsing differs from `strtol` and malformed or out-of-range values fail loud instead of relying on unchecked C casts; criteria execution matches sway's once-per-match behavior"
+cost = "medium"
+
+[[command]]
+name = "floating_minimum_size"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/floating_minmax_size.c`"
+probe = "floating_minimum_size 75 x 50"
+parser = "accept"
+execution = "partial"
+state = "`Config.layout.floating_minimum_size`; `layout.update_config`"
+classification = "partial: Rust integer parsing differs from `strtol` and malformed or out-of-range values fail loud instead of relying on unchecked C casts; criteria execution matches sway's once-per-match behavior"
+cost = "medium"
+
+[[command]]
+name = "floating_modifier"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/floating_modifier.c`"
+probe = "floating_modifier Mod4"
+parser = "accept"
+execution = "partial"
+state = "`Config.input.floating_modifier`, an independent modifier plus inverse bit; config command path reapplies it"
+classification = "partial: Lock and Mod2 are refused because swayward has no lock-modifier mod key, and criteria targets are rejected"
+cost = "medium"
+
+[[command]]
+name = "focus"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/focus.c`"
+probe = "focus left"
+parser = "accept"
+execution = "partial"
+state = "layout focus state; command applies directly"
+classification = "partial: named-output failures match sway; some container/output traversal differs"
+cost = "large"
+
+[[command]]
+name = "focus_follows_mouse"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/focus_follows_mouse.c`"
+probe = "focus_follows_mouse yes"
+parser = "accept"
+execution = "partial"
+state = "`Config.input.focus_follows_mouse`, storing sway's no/yes/always; config command path reapplies it"
+classification = "partial: the KDL config file can only spell `yes`, so a reload cannot restore `always`, and criteria targets are rejected"
+cost = "medium"
+
+[[command]]
+name = "focus_on_window_activation"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/focus_on_window_activation.c`"
+probe = "focus_on_window_activation smart"
+parser = "accept"
+execution = "complete"
+state = "`Config.focus_on_window_activation`; XDG activation fallback policy"
+classification = "implemented, with window-rule overrides taking precedence"
+cost = "done"
+
+[[command]]
+name = "focus_wrapping"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/focus_wrapping.c`"
+probe = "focus_wrapping yes"
+parser = "accept"
+execution = "complete"
+state = "`Config.layout.focus_wrapping`; `layout.update_config`"
+classification = "implemented, including criteria execution once per match"
+cost = "done"
+
+[[command]]
+name = "font"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/font.c`"
+probe = "font monospace 10"
+parser = "accept"
+execution = "partial"
+state = "`Config.layout.titlebar.font` and markup mode; Pango validation; `layout.update_config`"
+classification = "partial: criteria-targeted execution is rejected"
+cost = "small"
+
+[[command]]
+name = "for_window"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/for_window.c`"
+probe = "for_window [app_id=\"probe\"] nop"
+parser = "accept"
+execution = "partial"
+state = "live window-rule list; applied to matching commands"
+classification = "partial: portable criteria, including xdg-toplevel tags, match sway; X11-only identity fails loud, and nested command coverage remains a subset"
+cost = "large"
+
+[[command]]
+name = "force_display_urgency_hint"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/force_display_urgency_hint.c`"
+probe = "force_display_urgency_hint 500 ms"
+parser = "accept"
+execution = "complete"
+state = "`Config.urgent_timeout_ms`; urgency timers read it"
+classification = "implemented, including criteria execution once per match"
+cost = "done"
+
+[[command]]
+name = "force_focus_wrapping"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/force_focus_wrapping.c`"
+probe = "force_focus_wrapping yes"
+parser = "accept"
+execution = "complete"
+state = "alias for `Config.layout.focus_wrapping`; `layout.update_config`"
+classification = "implemented, including criteria execution once per match"
+cost = "done"
+
+[[command]]
+name = "fullscreen"
+table = "both"
+category = "accepted"
+source = "shared and command; `commands/fullscreen.c`"
+probe = "fullscreen toggle"
+parser = "accept"
+execution = "complete"
+state = "per-window or workspace state; command applies directly"
+classification = "complete"
+cost = "done"
+
+[[command]]
+name = "gaps"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/gaps.c`"
+probe = "gaps inner current set 10"
+parser = "accept"
+execution = "partial"
+state = "global gap defaults and per-workspace gap state; command applies directly"
+classification = "partial: criteria-targeted execution is rejected"
+cost = "medium"
+
+[[command]]
+name = "hide_edge_borders"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/hide_edge_borders.c`"
+probe = "hide_edge_borders none"
+parser = "accept"
+execution = "partial"
+state = "`Config.layout.hide_edge_borders`; `layout.update_config`"
+classification = "partial: `--i3` loses hide-lone-tab behavior and criteria targets are rejected"
+cost = "medium"
+
+[[command]]
+name = "inhibit_idle"
+table = "runtime_only"
+category = "fail_loud"
+source = "command; `commands/inhibit_idle.c`"
+probe = "inhibit_idle focus"
+parser = "reject"
+state = "no user-inhibitor object or sway policy modes"
+classification = "fail-loud: required state is absent"
+cost = "subsystem"
+
+[[command]]
+name = "input"
+table = "shared"
+category = "accepted"
+execution = "partial"
+source = "shared; `commands/input.c`; `commands/input/xkb_switch_layout.c`"
+probe = "input type:keyboard xkb_switch_layout next"
+parser = "accept"
+state = "live seat XKB state; command applies directly"
+classification = "partial: `xkb_switch_layout next|prev|N` works for `*`, `type:keyboard`, and exact identifiers; all persistent input settings remain fail-loud"
+cost = "subsystem"
+
+[[command]]
+name = "kill"
+table = "runtime_only"
+category = "accepted"
+source = "command; `commands/kill.c`"
+probe = "kill"
+parser = "accept"
+execution = "complete"
+state = "command closes the selected window"
+classification = "complete"
+cost = "done"
+
+[[command]]
+name = "layout"
+table = "runtime_only"
+category = "accepted"
+source = "command; `commands/layout.c`"
+probe = "layout tabbed"
+parser = "accept"
+execution = "partial"
+state = "container layout state; command applies directly"
+classification = "partial: direct, default, and toggle criteria targets work; deeply nested singleton layout cases remain under-tested"
+cost = "medium"
+
+[[command]]
+name = "mark"
+table = "runtime_only"
+category = "accepted"
+source = "command; `commands/mark.c`"
+probe = "mark probe"
+parser = "accept"
+execution = "complete"
+state = "per-container mark state; command applies directly and re-evaluates new `for_window` matches once per view"
+classification = "implemented"
+cost = "done"
+
+[[command]]
+name = "max_render_time"
+table = "runtime_only"
+category = "fail_loud"
+source = "command; `commands/max_render_time.c`"
+probe = "max_render_time 1"
+parser = "reject"
+state = "no per-view render deadline"
+classification = "fail-loud: required state is absent"
+cost = "subsystem"
+
+[[command]]
+name = "mode"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/mode.c`"
+probe = "mode default"
+parser = "accept"
+execution = "partial"
+state = "runtime mode table and binding mode state; nested `set` and bind/unbind subcommands apply directly to the named mode"
+classification = "partial: nested key and switch binds work; nested gesture binds and criteria targets are rejected"
+cost = "medium"
+
+[[command]]
+name = "mouse_warping"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/mouse_warping.c`"
+probe = "mouse_warping output"
+parser = "accept"
+execution = "partial"
+state = "`Config.input.mouse_warping`, storing sway's no/output/container; config command path reapplies it"
+classification = "partial: the KDL config file has no spelling for the policy, so a reload cannot restore it, and criteria targets are rejected"
+cost = "medium"
+
+[[command]]
+name = "move"
+table = "runtime_only"
+category = "accepted"
+source = "command; `commands/move.c`"
+probe = "move left"
+parser = "accept"
+execution = "partial"
+state = "tree and floating geometry; command applies directly"
+classification = "partial: accepted forms cover windows and tiling-tree containers; forms requiring a floating group fail before mutation"
+cost = "large"
+
+[[command]]
+name = "new_float"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/new_float.c`"
+probe = "new_float pixel 2"
+parser = "accept"
+execution = "partial"
+state = "alias changes the default only for future floating windows"
+classification = "partial: aliases strict default-border parsing rather than sway's unchecked `atoi`, and criteria targets are rejected"
+cost = "medium"
+
+[[command]]
+name = "new_window"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/new_window.c`"
+probe = "new_window pixel 2"
+parser = "accept"
+execution = "partial"
+state = "alias changes the default only for future tiled windows"
+classification = "partial: aliases strict default-border parsing rather than sway's unchecked `atoi`, and criteria targets are rejected"
+cost = "medium"
+
+[[command]]
+name = "no_focus"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/no_focus.c`"
+probe = "no_focus [app_id=\"probe\"]"
+parser = "accept"
+execution = "partial"
+state = "live native-Wayland no-focus criteria; applied to future windows at map time"
+classification = "partial: X11-only criteria fields are rejected"
+cost = "medium"
+
+[[command]]
+name = "nop"
+table = "runtime_only"
+category = "accepted"
+source = "command; `commands/nop.c`"
+probe = "nop probe"
+parser = "accept"
+execution = "complete"
+state = "no state by definition"
+classification = "implemented no-op"
+cost = "done"
+
+[[command]]
+name = "opacity"
+table = "runtime_only"
+category = "fail_loud"
+source = "command; `commands/opacity.c`"
+probe = "opacity set 0.5"
+parser = "reject"
+state = "rule-derived opacity exists, but no mutable container opacity"
+classification = "fail-loud: required state is absent"
+cost = "medium"
+
+[[command]]
+name = "output"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/output.c`"
+probe = "output * scale 1"
+parser = "accept"
+execution = "partial"
+state = "runtime output config mutates `Config.outputs` and reapplies it; wildcard fans out over connected outputs"
+classification = "partial: enable/disable/mode require DRM to take effect; power/dpms and other output subcommands remain fail-loud"
+cost = "subsystem"
+
+[[command]]
+name = "popup_during_fullscreen"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/popup_during_fullscreen.c`"
+probe = "popup_during_fullscreen smart"
+parser = "accept"
+execution = "complete"
+state = "`Config.popup_during_fullscreen`; config command path reapplies it"
+classification = "implemented, including criteria execution once per match"
+cost = "done"
+
+[[command]]
+name = "reload"
+table = "runtime_only"
+category = "accepted"
+source = "command; `commands/reload.c`"
+probe = "reload"
+parser = "accept"
+execution = "partial"
+state = "bare command reloads KDL; matched criteria fail before lifecycle state changes"
+classification = "partial: criteria-prefixed execution is deliberately rejected because sway parses and schedules reload once per matched container"
+cost = "small"
+
+[[command]]
+name = "rename"
+table = "runtime_only"
+category = "accepted"
+source = "command; `commands/rename.c`"
+probe = "rename workspace to probe"
+parser = "accept"
+execution = "complete"
+state = "workspace identity; command applies directly"
+classification = "implemented"
+cost = "small"
+
+[[command]]
+name = "resize"
+table = "runtime_only"
+category = "accepted"
+source = "command; `commands/resize.c`"
+probe = "resize grow width 10 px"
+parser = "accept"
+execution = "partial"
+state = "tree or floating geometry; command applies directly"
+classification = "partial: directional resize requires a window target; sway also resizes containers"
+cost = "medium"
+
+[[command]]
+name = "scratchpad"
+table = "runtime_only"
+category = "accepted"
+source = "command; `commands/scratchpad.c`"
+probe = "scratchpad show"
+parser = "accept"
+execution = "partial"
+state = "scratchpad state; command applies directly"
+classification = "partial: split-container targets fail before mutation because swayward has no floating-group representation"
+cost = "large"
+
+[[command]]
+name = "seat"
+table = "shared"
+category = "gap"
+gap_group = "subsystem"
+source = "shared; `commands/seat.c`"
+probe = "seat seat0 hide_cursor 1000"
+parser = "reject"
+state = "single-seat runtime state and KDL input model"
+classification = "unimplemented subsystem mutation"
+cost = "subsystem"
+
+[[command]]
+name = "set"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/set.c`"
+probe = "set $probe value"
+parser = "accept"
+execution = "partial"
+state = "runtime sway-variable table; command dispatch expands later arguments"
+classification = "partial: runtime substitution works, but KDL has no config-defined symbol table and criteria targets are rejected"
+cost = "medium"
+
+[[command]]
+name = "shortcuts_inhibitor"
+table = "runtime_only"
+category = "accepted"
+source = "command; `commands/shortcuts_inhibitor.c`"
+probe = "shortcuts_inhibitor enable"
+parser = "accept"
+execution = "complete"
+state = "per-view future-request policy; command applies directly"
+classification = "implemented"
+cost = "done"
+
+[[command]]
+name = "show_marks"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/show_marks.c`"
+probe = "show_marks yes"
+parser = "accept"
+execution = "complete"
+state = "`Config.layout.titlebar.show_marks`; titlebar rendering"
+classification = "implemented, including criteria execution once per match"
+cost = "done"
+
+[[command]]
+name = "smart_borders"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/smart_borders.c`"
+probe = "smart_borders on"
+parser = "accept"
+execution = "partial"
+state = "`Config.layout.smart_borders`; `layout.update_config`"
+classification = "partial: accepts the KDL `no-gaps` alias; criteria execution matches sway's once-per-match behavior"
+cost = "small"
+
+[[command]]
+name = "smart_gaps"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/smart_gaps.c`"
+probe = "smart_gaps on"
+parser = "accept"
+execution = "complete"
+state = "`Config.layout.smart_gaps`; workspace working-area recomputation"
+classification = "implemented, including inverse_outer and runtime toggle"
+cost = "done"
+
+[[command]]
+name = "split"
+table = "runtime_only"
+category = "accepted"
+source = "command; `commands/split.c`"
+probe = "split h"
+parser = "accept"
+execution = "complete"
+state = "container layout state; command applies directly"
+classification = "complete, including singleton-parent flattening and criteria targets"
+cost = "done"
+
+[[command]]
+name = "splith"
+table = "runtime_only"
+category = "accepted"
+source = "command; `commands/splith.c`"
+probe = "splith"
+parser = "accept"
+execution = "complete"
+state = "alias for split horizontal"
+classification = "complete"
+cost = "done"
+
+[[command]]
+name = "splitt"
+table = "runtime_only"
+category = "accepted"
+source = "command; `commands/splitt.c`"
+probe = "splitt"
+parser = "accept"
+execution = "complete"
+state = "alias for split toggle"
+classification = "complete"
+cost = "done"
+
+[[command]]
+name = "splitv"
+table = "runtime_only"
+category = "accepted"
+source = "command; `commands/splitv.c`"
+probe = "splitv"
+parser = "accept"
+execution = "complete"
+state = "alias for split vertical"
+classification = "complete"
+cost = "done"
+
+[[command]]
+name = "sticky"
+table = "runtime_only"
+category = "accepted"
+source = "command; `commands/sticky.c`"
+probe = "sticky toggle"
+parser = "accept"
+execution = "partial"
+state = "per-window sticky state; command applies directly"
+classification = "partial: split-container targets fail before mutation because swayward has no floating-group representation"
+cost = "large"
+
+[[command]]
+name = "swap"
+table = "runtime_only"
+category = "accepted"
+source = "command; `commands/swap.c`"
+probe = "swap container with mark probe"
+parser = "accept"
+execution = "partial"
+state = "tree state; command applies directly"
+classification = "partial: `id` is rejected because xwayland-satellite does not expose X11 window IDs"
+cost = "medium"
+
+[[command]]
+name = "tiling_drag"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/tiling_drag.c`"
+probe = "tiling_drag yes"
+parser = "accept"
+execution = "complete"
+state = "`Config.input.tiling_drag`; gates modifier-held tiled-window move grabs"
+classification = "implemented and headlessly verified with real pointer input"
+cost = "done"
+
+[[command]]
+name = "tiling_drag_threshold"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/tiling_drag_threshold.c`"
+probe = "tiling_drag_threshold 9"
+parser = "accept"
+execution = "complete"
+state = "`Config.input.tiling_drag_threshold`; tiled-window move recognition distance"
+classification = "implemented and headlessly verified at the threshold boundary with real pointer input"
+cost = "done"
+
+[[command]]
+name = "title_align"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/title_align.c`"
+probe = "title_align center"
+parser = "accept"
+execution = "complete"
+state = "`Config.layout.titlebar.alignment`; titlebar rendering"
+classification = "implemented, including criteria execution once per match"
+cost = "done"
+
+[[command]]
+name = "title_format"
+table = "runtime_only"
+category = "accepted"
+source = "command; `commands/title_format.c`"
+probe = "title_format %title"
+parser = "accept"
+execution = "complete"
+state = "per-window or split-container title format; command applies directly"
+classification = "complete"
+cost = "done"
+
+[[command]]
+name = "titlebar_border_thickness"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/titlebar_border_thickness.c`"
+probe = "titlebar_border_thickness 1"
+parser = "accept"
+execution = "partial"
+state = "`Config.layout.titlebar.border_thickness`; bounded by vertical padding and rendered as an inset ring"
+classification = "partial: criteria-targeted execution is rejected"
+cost = "small"
+
+[[command]]
+name = "titlebar_padding"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/titlebar_padding.c`"
+probe = "titlebar_padding 4 3"
+parser = "accept"
+execution = "partial"
+state = "`Config.layout.titlebar.padding`; both axes bounded below by titlebar border thickness; `layout.update_config`"
+classification = "partial: criteria-targeted execution is rejected"
+cost = "small"
+
+[[command]]
+name = "unbindcode"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/unbindcode.c`"
+probe = "unbindcode 38"
+parser = "accept"
+execution = "partial"
+state = "live `Config.binds` or active mode binds; removal is visible to keyboard dispatch"
+classification = "partial: keyboard forms work; mouse-region, XKB group, --to-code, and criteria forms are rejected"
+cost = "medium"
+
+[[command]]
+name = "unbindgesture"
+table = "shared"
+category = "gap"
+gap_group = "binding"
+source = "shared; `commands/unbindgesture.c`"
+probe = "unbindgesture swipe:3:left"
+parser = "reject"
+state = "no command-binding model for gesture events"
+classification = "unimplemented gesture binding"
+cost = "large"
+
+[[command]]
+name = "unbindswitch"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/unbindswitch.c`"
+probe = "unbindswitch lid:on"
+parser = "accept"
+execution = "partial"
+state = "runtime mode-keyed switch-command overlay; removal is visible to switch dispatch"
+classification = "partial: runtime commands, named and active modes, toggle, and --locked work; --reload and KDL-binding replacement are rejected"
+cost = "medium"
+
+[[command]]
+name = "unbindsym"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/unbindsym.c`"
+probe = "unbindsym Mod4+Return"
+parser = "accept"
+execution = "partial"
+state = "live `Config.binds` or active mode binds; removal is visible to keyboard dispatch"
+classification = "partial: keyboard forms work; mouse-region, XKB group, --to-code, and criteria forms are rejected"
+cost = "medium"
+
+[[command]]
+name = "unmark"
+table = "runtime_only"
+category = "accepted"
+source = "command; `commands/unmark.c`"
+probe = "unmark probe"
+parser = "accept"
+execution = "complete"
+state = "per-container mark state; command applies directly"
+classification = "implemented"
+cost = "done"
+
+[[command]]
+name = "urgent"
+table = "runtime_only"
+category = "accepted"
+source = "command; `commands/urgent.c`"
+probe = "urgent toggle"
+parser = "accept"
+execution = "partial"
+state = "per-window urgency state; command applies directly"
+classification = "partial: manual urgency works; `allow` and `deny` remain fail-loud"
+cost = "medium"
+
+[[command]]
+name = "workspace"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/workspace.c`"
+probe = "workspace probe"
+parser = "accept"
+execution = "partial"
+state = "workspace tree state and per-workspace configuration; command applies directly"
+classification = "partial: criteria targets are unsupported"
+cost = "medium"
+
+[[command]]
+name = "workspace_auto_back_and_forth"
+table = "shared"
+category = "accepted"
+source = "shared; `commands/workspace_auto_back_and_forth.c`"
+probe = "workspace_auto_back_and_forth yes"
+parser = "accept"
+execution = "complete"
+state = "`Config.workspace_auto_back_and_forth`; config command path reapplies it"
+classification = "implemented, including criteria execution once per match"
+cost = "done"

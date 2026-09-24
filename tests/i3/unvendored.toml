@@ -1,0 +1,185 @@
+# Files from i3 that swayward does not vendor.
+#
+# GENERATED-CHECKABLE: the list must equal the set difference between i3's
+# testcases/t and tests/i3/t at the pinned commit. contrib/coverage-report
+# --unvendored verifies that, so this file cannot drift the way the prose
+# audit it replaced did.
+#
+# category:
+#   unreachable  the premise cannot exist here (X11 protocol, in-place
+#                restart, i3 binaries), so vendoring it would add a file
+#                that can never pass
+#   i3_only      an i3 subsystem sway does not have
+#   deferred     reachable, but blocked on work we have not done
+
+[files."000-load-deps.t"]
+category = "i3_only"
+reason = "Loads the Perl and XCB dependencies of i3's own test runner; it does not query a compositor (`i3/testcases/t/000-load-deps.t:5-19`)."
+
+[files."002-i3-sync.t"]
+category = "i3_only"
+reason = "Asserts i3's private `I3_SYNC` X ClientMessage handshake (`i3/testcases/lib/i3test.pm.in:728-787`; `i3/src/handlers.c:813-815`). The local helper is only a harness barrier, not that protocol."
+
+[files."004-unmanaged.t"]
+category = "unreachable"
+reason = "Requires an X11 override-redirect window and compares its pre-map and post-map X rectangles. Native `xdg_toplevel` has neither override-redirect state nor a client-selected absolute rectangle; see the X11 boundary above."
+
+[files."114-client-leader.t"]
+category = "unreachable"
+reason = "Uses `WM_CLIENT_LEADER`, `WM_TRANSIENT_FOR`, X input focus, and `window_properties.transient_for`. Native xdg-shell can express only the parent relation, not the leader or X IPC fields (`sway/sway/desktop/xdg_shell.c:228-235`; `sway/sway/ipc-json.c:670-700`)."
+
+[files."158-wm_take_focus.t"]
+category = "unreachable"
+reason = "Receives and distinguishes the ICCCM `WM_TAKE_FOCUS` ClientMessage and reads `_NET_WM_STATE_FOCUSED`; both require the in-process XWM and an addressable X window (`sway/sway/desktop/xwayland.c:816-869`)."
+
+[files."163-wm-state.t"]
+category = "unreachable"
+reason = "Reads ICCCM `WM_STATE_NORMAL` and `WM_STATE_WITHDRAWN` from an X window. No corresponding property exists on native xdg-shell surfaces; see the X11 boundary above."
+
+[files."171-config-migrate.t"]
+category = "i3_only"
+reason = "Executes `i3-migrate-config-to-v4 --v3` and checks its private v3 rewrite rules. Sway has no such utility in its command surface (`sway/sway/commands.c:44-144`)."
+
+[files."175-startup-notification.t"]
+category = "unreachable"
+reason = "The first placement scenario has a Wayland analogue: an activation token used before map assigns the view to the launch workspace (`sway/sway/xdg_activation_v1.c:20-41`), and `exec` creates tokens unless `--no-startup-id` is set (`sway/sway/commands/exec_always.c:28-67`). Later assertions instead propagate `_NET_STARTUP_ID` through `WM_CLIENT_LEADER`; xdg activation tokens have no leader-property inheritance. The complete unchanged file therefore cannot become green without fabricating X11 metadata."
+
+[files."195-net-active-window.t"]
+category = "unreachable"
+reason = "Drives `_NET_ACTIVE_WINDOW`, reads the root property, and addresses X dock and scratchpad windows by XID. xdg-activation can substitute only the activation request, not the root property or X identities (`sway/sway/xdg_activation_v1.c:8-49`)."
+
+[files."207-shmlog.t"]
+category = "i3_only"
+reason = "Executes `i3-dump-log` and the i3-only `shmlog` command. Sway's complete command tables contain neither (`sway/sway/commands.c:44-144`)."
+
+[files."209-ewmh-net-workarea.t"]
+category = "unreachable"
+reason = "Creates, reads, and expects deletion of `_NET_WORKAREA` on the X root window. The satellite boundary does not expose the X root to the compositor; see the X11 boundary above."
+
+[files."214-layout-restore-criteria.t"]
+category = "i3_only"
+reason = "Every behavior under test starts with `append_layout` and inspects JSON swallow placeholders. Sway has no layout-restoration command; see the layout-restoration boundary above."
+
+[files."215-layout-restore-crash.t"]
+category = "i3_only"
+reason = "Exercises malformed and partial `append_layout` JSON plus placeholder liveness. Sway has no `append_layout`; see the layout-restoration boundary above."
+
+[files."216-layout-restore-split-swallows.t"]
+category = "i3_only"
+reason = "Asserts `append_layout`'s private JSON `swallows` representation. Sway has no `append_layout`; see the layout-restoration boundary above."
+
+[files."217-NET_CURRENT_DESKTOP.t"]
+category = "unreachable"
+reason = "Reads and sends `_NET_CURRENT_DESKTOP` on the X root window. Workspace IPC is portable, but it cannot prove this EWMH property or ClientMessage path; see the X11 boundary above."
+
+[files."223-net-client-list.t"]
+category = "unreachable"
+reason = "Every assertion reads `_NET_CLIENT_LIST`, an array of X window IDs on the X root, including dock exclusion. Neither the property nor those XIDs cross the satellite boundary."
+
+[files."229-cleanup-tmpdir.t"]
+category = "i3_only"
+reason = "Inspects i3's private temporary directory and config-path X atom across exit and in-place restart. The in-process harness exposes neither process lifecycle; see the lifecycle boundary above."
+
+[files."230-floating-fullscreen-restart.t"]
+category = "i3_only"
+reason = "All postcondition assertions depend on preserving a floating X window across compositor restart. The harness cannot restart while retaining clients, and sway has no runtime restart command; see the lifecycle boundary above."
+
+[files."234-ewmh-desktop-names.t"]
+category = "unreachable"
+reason = "Reads `_NET_DESKTOP_NAMES` from the X root. `GET_WORKSPACES` can test workspace names, but substituting it would not test this EWMH publication path."
+
+[files."239-net-close-window-request.t"]
+category = "unreachable"
+reason = "Sends `_NET_CLOSE_WINDOW` to the X root. `xdg_toplevel.close` runs in the opposite direction, compositor to client, so no native client request can substitute for this EWMH message (`sway/sway/desktop/xdg_shell.c:252-256`)."
+
+[files."249-layout-restore-floating.t"]
+category = "i3_only"
+reason = "Loads and kills an i3 JSON `floating_con` placeholder through `append_layout`. Sway has neither that command nor i3's floating wrapper; see the layout-restoration boundary above."
+
+[files."250-layout-restore-multiple-criteria.t"]
+category = "i3_only"
+reason = "Tests selection among multiple JSON swallow criteria loaded by `append_layout`. Sway has no layout-restoration command."
+
+[files."253-multiple-net-wm-state-atoms.t"]
+category = "unreachable"
+reason = "Reads `_NET_WM_STATE_STICKY` and `_NET_WM_STATE_FULLSCREEN` atoms directly from X windows. Command state is covered elsewhere, but it cannot prove X property publication through the satellite."
+
+[files."259-net-wm-user-time.t"]
+category = "unreachable"
+reason = "Sets `_NET_WM_USER_TIME` before map and tests X focus prevention. Native xdg-shell has no user-time property; sway receives this metadata through its Xwayland view (`sway/sway/desktop/xwayland.c:816-869`)."
+
+[files."278-layout-restore-output.t"]
+category = "i3_only"
+reason = "Creates workspace objects and swallow placeholders by loading i3 JSON through `append_layout`. Sway has no layout-restoration command."
+
+[files."283-net-wm-state-hidden.t"]
+category = "unreachable"
+reason = "Every assertion reads `_NET_WM_STATE_HIDDEN` from X windows. xdg-toplevel's optional `suspended` configure state is not this asserted X property and sway's XWM owns the atom path."
+
+[files."288-i3-floating-window-atom.t"]
+category = "unreachable"
+reason = "Reads i3's proprietary `I3_FLOATING_WINDOW` X property. Sway does not publish an i3-private atom; portable floating state is already exposed through GET_TREE."
+
+[files."294-update-ewmh-atoms.t"]
+category = "unreachable"
+reason = "Reads three X-root EWMH properties after workspace deletion and rename. Workspace IPC cannot prove root-property publication; see the X11 boundary above."
+
+[files."300-restart-non-utf8.t"]
+category = "i3_only"
+reason = "The intended assertion follows an in-place restart with a live client. The harness cannot preserve that client through compositor replacement; see the lifecycle boundary above."
+
+[files."305-restart-reply.t"]
+category = "i3_only"
+reason = "Its sole assertion requires the i3 runtime `restart` command. Sway's complete runtime command table has no restart entry (`sway/sway/commands.c:112-144`)."
+
+[files."314-window-icon-padding.t"]
+category = "i3_only"
+reason = "Uses i3's `open` and `title_window_icon` commands and asserts the i3-only `window_icon_padding` IPC field. Neither command exists in sway's complete command tables (`sway/sway/commands.c:44-144`)."
+
+[files."318-i3-dmenu-desktop.t"]
+category = "i3_only"
+reason = "Executes `i3-dmenu-desktop` against generated `.desktop` files and a fake `i3-msg`; no compositor starts. Sway's command surface does not provide this i3 utility."
+
+[files."323-net-frame-extents.t"]
+category = "unreachable"
+reason = "Every assertion reads `_NET_FRAME_EXTENTS` from an X window. Border behavior is portable and covered elsewhere, but it cannot establish this XWM-owned property."
+
+[files."521-ewmh-desktop-viewport.t"]
+category = "unreachable"
+reason = "Reads `_NET_DESKTOP_VIEWPORT` coordinate pairs from the X root. Output and workspace IPC cannot prove this EWMH publication path."
+
+[files."525-i3bar-mouse-bindings.t"]
+category = "i3_only"
+reason = "Launches a real i3bar X window, sends XTEST buttons to it, and checks i3bar's IPC forwarding. Sway does not ship i3bar; external bars use IPC and their own input handling."
+
+[files."529-net-wm-desktop.t"]
+category = "unreachable"
+reason = "Every phase reads, sets, or sends `_NET_WM_DESKTOP` for an XID, including the sticky sentinel. Workspace commands cover related state but cannot prove this XWM-owned property and ClientMessage path."
+
+[files."532-xresources.t"]
+category = "unreachable"
+reason = "Populates the X root `RESOURCE_MANAGER` property and uses i3's `set_from_resource`. Sway has no such directive in its complete config command table (`sway/sway/commands.c:44-110`)."
+
+[files."533-randr15.t"]
+category = "i3_only"
+reason = "Injects binary RandR replies into i3's test server and combines them with i3bar output canonicalization. This does not drive sway's output-management protocol or the headless output control."
+
+[files."536-net-wm-desktop_mm.t"]
+category = "unreachable"
+reason = "Reads `_NET_WM_DESKTOP` after a cross-output move. The move is portable, but the sole assertion is the X property value; see the X11 boundary above."
+
+[files."542-layout-restore-remanage.t"]
+category = "i3_only"
+reason = "Changes X properties after loading JSON swallow placeholders through `append_layout`. Both the restoration engine and X remanage path are outside the native harness."
+
+[files."548-motif-hints.t"]
+category = "unreachable"
+reason = "Writes `_MOTIF_WM_HINTS` before and after map and inspects resulting borders. Native xdg-decoration negotiation is compositor/client protocol, not a mutable Motif property (`sway/sway/desktop/xwayland.c:816-869`)."
+
+[files."552-net-wm-state-multiple-changes.t"]
+category = "unreachable"
+reason = "Sends one X ClientMessage containing fullscreen and sticky atoms. Native xdg-toplevel can request fullscreen but has no sticky state or multi-atom request, so no equivalent request preserves the tested atomic input."
+
+[files."555-i3bar-workspace-output-assignment.t"]
+category = "i3_only"
+reason = "Launches and terminates the i3bar binary, then parses its private verbose drawing log. Sway does not ship i3bar, and compositor workspace IPC cannot prove i3bar rendering."
