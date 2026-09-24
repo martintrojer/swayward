@@ -257,6 +257,7 @@ pub struct TilingTree<W: LayoutElement> {
     nodes: HashMap<NodeId, Node<W>>,
     root: NodeId,
     focus: Option<NodeId>,
+    has_had_tile: bool,
     focus_history: Vec<NodeId>,
     previous_split_layouts: HashMap<NodeId, Layout>,
     title_formats: HashMap<NodeId, String>,
@@ -309,6 +310,7 @@ impl<W: LayoutElement> TilingTree<W> {
             nodes,
             root,
             focus: None,
+            has_had_tile: false,
             focus_history: Vec::new(),
             previous_split_layouts: HashMap::new(),
             title_formats: HashMap::new(),
@@ -331,6 +333,10 @@ impl<W: LayoutElement> TilingTree<W> {
 
     pub fn is_empty(&self) -> bool {
         self.focus.is_none()
+    }
+
+    pub fn has_had_tile(&self) -> bool {
+        self.has_had_tile
     }
 
     pub fn reset_empty_layout(&mut self) {
@@ -534,6 +540,7 @@ impl<W: LayoutElement> TilingTree<W> {
         activate: bool,
     ) -> NodeId {
         self.interactive_resize = None;
+        self.has_had_tile = true;
         tile.update_config(self.view_size, self.scale, self.options.clone());
         let pending_mode = tile.window().pending_sizing_mode();
         let previous_focus = self.focus;

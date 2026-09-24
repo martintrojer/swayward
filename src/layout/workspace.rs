@@ -653,6 +653,10 @@ impl<W: LayoutElement> Workspace<W> {
         self.tiles().map(Tile::window)
     }
 
+    pub fn tiling_has_had_window(&self) -> bool {
+        self.tiling.has_had_tile()
+    }
+
     pub fn windows_mut(&mut self) -> impl Iterator<Item = &mut W> + '_ {
         self.tiles_mut().map(Tile::window_mut)
     }

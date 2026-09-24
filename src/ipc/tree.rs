@@ -522,7 +522,9 @@ fn describe_workspace_node(
     } else {
         focus.extend(floating_focus);
     }
-    let representation = (!nodes.is_empty()).then(|| tree_representation(layout, &nodes));
+    let representation = workspace
+        .tiling_has_had_window()
+        .then(|| tree_representation(layout, &nodes));
     let mut nodes = nodes;
     set_child_windows_visible(layout, &focus, &mut nodes, workspace_visible);
     for node in &mut floating_nodes {

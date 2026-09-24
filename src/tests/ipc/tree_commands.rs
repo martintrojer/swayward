@@ -152,6 +152,33 @@ fn live_ipc_descriptions_match_sway_schema_and_values() {
 }
 
 #[test]
+fn workspace_with_only_floating_windows_reports_empty_tiling_representation() {
+    let mut f = Fixture::new();
+    let handle = f.swayward().event_loop.clone();
+    let ipc_server =
+        crate::ipc::server::IpcServer::start_at(&handle, Some(test_socket_path())).unwrap();
+    let socket = ipc_server.socket_path.clone().unwrap();
+    f.swayward().ipc_server = Some(ipc_server);
+    f.niri_state().ipc_keyboard_layouts_changed();
+    f.add_output(1, (1270, 1408));
+    let client = f.add_client();
+
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+    assert!(crate::command::execute(f.niri_state(), "floating enable")[0].success);
+
+    let mut stream = UnixStream::connect(socket).unwrap();
+    let workspaces = query_ipc(&mut f, &mut stream, MessageType::GetWorkspaces);
+    assert_eq!(workspaces[0]["representation"], "V[]");
+}
+
+#[test]
 fn tabbed_children_report_visibility_and_full_parent_percent() {
     let mut f = Fixture::new();
     let handle = f.swayward().event_loop.clone();
