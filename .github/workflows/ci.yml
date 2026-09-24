@@ -132,6 +132,8 @@ jobs:
       - uses: actions/checkout@v6
         with:
           show-progress: false
+          # check-divergence diffs against the recorded niri base commit.
+          fetch-depth: 0
       - run: sudo apt-get update -y && sudo apt-get install -y ripgrep shellcheck
       - run: shellcheck -S warning contrib/*.sh resources/swayward-session tests/i3/sway-calibration/*.sh
       - run: ./contrib/test-dev-run.sh
