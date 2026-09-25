@@ -56,6 +56,8 @@ pub struct Monitor<W: LayoutElement> {
     working_area: Rectangle<f64, Logical>,
     // Must always contain at least one.
     pub(super) workspaces: Vec<Workspace<W>>,
+    /// Workspace IDs in sway's output child order, separate from spatial storage.
+    sway_workspace_order: Vec<WorkspaceId>,
     /// Index of the currently active workspace.
     pub(super) active_workspace_idx: usize,
     /// Workspaces ordered from most to least recently focused.
@@ -341,6 +343,7 @@ impl<W: LayoutElement> Monitor<W> {
             workspaces.push(ws);
         }
 
+        let sway_workspace_order = workspaces.iter().map(Workspace::id).collect();
         let workspace_focus_history = workspaces.iter().map(Workspace::id).rev().collect();
 
         Self {
@@ -350,6 +353,7 @@ impl<W: LayoutElement> Monitor<W> {
             view_size,
             working_area,
             workspaces,
+            sway_workspace_order,
             active_workspace_idx,
             workspace_focus_history,
             previous_workspace_id: None,
@@ -479,30 +483,48 @@ impl<W: LayoutElement> Monitor<W> {
     }
 
     pub fn sort_sway_workspaces(&mut self) {
-        let active = self.active_workspace_ref().id();
-        // Sway orders numeric workspaces ahead of non-numeric workspaces and
-        // preserves creation order among equal-ranked entries
+        // Sway sorts the output's child list, not compositor spatial storage.
+        // Its stable sort preserves current order among equal-ranked entries
         // (sway/sway/tree/output.c:387-405).
-        let keys = (0..self.workspaces.len())
-            .map(|index| {
-                let workspace = &self.workspaces[index];
+        let keys = self
+            .workspaces
+            .iter()
+            .enumerate()
+            .map(|(index, workspace)| {
                 let key = if !workspace.has_sway_identity() {
-                    (2u8, 0, workspace.id())
+                    (2u8, 0)
                 } else if workspace.number().is_some() {
-                    (0, self.sway_workspace_number(index), workspace.id())
+                    (0, self.sway_workspace_number(index))
                 } else {
-                    // Named but non-numeric: after every number.
-                    (1, 0, workspace.id())
+                    (1, 0)
                 };
                 (workspace.id(), key)
             })
             .collect::<Vec<_>>();
-        self.workspaces.sort_by_key(|workspace| {
+        self.sway_workspace_order
+            .retain(|id| keys.iter().any(|(candidate, _)| candidate == id));
+        self.sway_workspace_order.sort_by_key(|id| {
             keys.iter()
+                .find(|(candidate, _)| candidate == id)
+                .map_or((2, 0), |(_, key)| *key)
+        });
+
+        let active = self.active_workspace_ref().id();
+        self.workspaces.sort_by_key(|workspace| {
+            let key = keys
+                .iter()
                 .find(|(id, _)| *id == workspace.id())
-                .map_or((2u8, 0, workspace.id()), |(_, key)| *key)
+                .map_or((2, 0), |(_, key)| *key);
+            (key.0, key.1, workspace.id())
         });
         self.active_workspace_idx = self.idx_of_ws(active).unwrap();
+    }
+
+    pub(crate) fn sway_workspaces(&self) -> impl Iterator<Item = (usize, &Workspace<W>)> {
+        self.sway_workspace_order.iter().filter_map(|id| {
+            let index = self.idx_of_ws(*id)?;
+            Some((index, &self.workspaces[index]))
+        })
     }
 
     /// Create a workspace, applying the per-name configuration for `name` when
@@ -530,10 +552,23 @@ impl<W: LayoutElement> Monitor<W> {
         ws.set_sway_identity(name, number);
         let id = ws.id();
         self.insert_new_workspace_at(idx, ws);
+        self.sway_workspace_order
+            .retain(|candidate| *candidate != id);
+        self.sway_workspace_order.push(id);
         id
     }
 
     fn insert_new_workspace_at(&mut self, idx: usize, ws: Workspace<W>) {
+        let order_index = self
+            .workspaces
+            .get(idx)
+            .and_then(|next| {
+                self.sway_workspace_order
+                    .iter()
+                    .position(|id| *id == next.id())
+            })
+            .unwrap_or(self.sway_workspace_order.len());
+        self.sway_workspace_order.insert(order_index, ws.id());
         self.workspaces.insert(idx, ws);
         if idx <= self.active_workspace_idx {
             self.active_workspace_idx += 1;
@@ -781,7 +816,8 @@ impl<W: LayoutElement> Monitor<W> {
             return;
         }
 
-        self.workspaces.remove(idx);
+        let removed = self.workspaces.remove(idx);
+        self.sway_workspace_order.retain(|id| *id != removed.id());
         if idx < self.active_workspace_idx {
             self.active_workspace_idx -= 1;
         }
@@ -817,6 +853,8 @@ impl<W: LayoutElement> Monitor<W> {
     pub fn detach_workspace(&mut self, id: WorkspaceId) -> Option<Workspace<W>> {
         let idx = self.idx_of_ws(id)?;
         let mut ws = self.workspaces.remove(idx);
+        self.sway_workspace_order
+            .retain(|candidate| *candidate != id);
         ws.set_output(None);
 
         // For monitor current workspace removal, we focus previous rather than next (<= rather
@@ -835,6 +873,16 @@ impl<W: LayoutElement> Monitor<W> {
         ws.update_config(self.options.clone());
 
         idx = idx.min(self.workspaces.len());
+        let order_index = self
+            .workspaces
+            .get(idx)
+            .and_then(|next| {
+                self.sway_workspace_order
+                    .iter()
+                    .position(|id| *id == next.id())
+            })
+            .unwrap_or(self.sway_workspace_order.len());
+        self.sway_workspace_order.insert(order_index, ws.id());
         self.workspaces.insert(idx, ws);
 
         if idx <= self.active_workspace_idx {
@@ -879,7 +927,8 @@ impl<W: LayoutElement> Monitor<W> {
             .collect::<Vec<_>>();
         for idx in doomed.into_iter().rev() {
             if idx != self.active_workspace_idx {
-                self.workspaces.remove(idx);
+                let removed = self.workspaces.remove(idx);
+                self.sway_workspace_order.retain(|id| *id != removed.id());
                 if idx < self.active_workspace_idx {
                     self.active_workspace_idx -= 1;
                 }
@@ -908,6 +957,8 @@ impl<W: LayoutElement> Monitor<W> {
 
         let active = self.active_workspace_ref().id();
 
+        self.sway_workspace_order
+            .extend(workspaces.iter().map(Workspace::id));
         self.workspaces.extend(workspaces);
         self.reap_empty_workspaces();
         self.active_workspace_idx = self.idx_of_ws(active).unwrap();

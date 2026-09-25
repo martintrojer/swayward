@@ -98,9 +98,13 @@ pub(crate) fn describe_workspaces_with_marks(
     container_marks: &std::collections::HashMap<(WorkspaceId, NodeId), Vec<String>>,
 ) -> Vec<Workspace> {
     layout
-        .workspaces()
+        .monitors()
+        .flat_map(|monitor| {
+            monitor
+                .sway_workspaces()
+                .map(move |(index, workspace)| (monitor, index, workspace))
+        })
         .filter_map(|(monitor, index, workspace)| {
-            let monitor = monitor?;
             if !workspace.must_be_kept() && monitor.active_workspace_ref().id() != workspace.id() {
                 return None;
             }
@@ -339,13 +343,12 @@ fn describe_output_node(
         monitor.output(),
         monitor.active_workspace_ref(),
     );
-    let workspaces = layout
-        .workspaces()
-        .filter(|(candidate, _, workspace)| {
-            (workspace.must_be_kept() || monitor.active_workspace_ref().id() == workspace.id())
-                && candidate.is_some_and(|candidate| candidate.output() == monitor.output())
+    let workspaces = monitor
+        .sway_workspaces()
+        .filter(|(_, workspace)| {
+            workspace.must_be_kept() || monitor.active_workspace_ref().id() == workspace.id()
         })
-        .map(|(_, index, workspace)| {
+        .map(|(index, workspace)| {
             describe_workspace_node(
                 layout,
                 workspace,

@@ -1348,3 +1348,15 @@ migrated = false
 paths = ["src/tests/ipc/tree_commands.rs"]
 what = "verify configured workspace layout through sway's existing tree layout fields and reject an i3-only workspace_layout alias."
 why = "Sway serializes workspace nodes with the common `layout` field and does not define i3's separate `workspace_layout` member (`sway/ipc-json.c:502-540`)."
+
+[[edit]]
+migrated = false
+paths = ["src/layout/monitor.rs", "src/ipc/tree.rs"]
+what = "track sway's stable output workspace order separately from the layout's spatial workspace vector and use it for IPC child traversal."
+why = "Sway appends workspaces to an output-owned list and stable-sorts that list, while swayward's inherited vector also drives active indices, animation, and workspace placement (`sway/tree/output.c:333-340,387-405`; `sway/tree/workspace.c:177-260`)."
+
+[[edit]]
+migrated = false
+paths = ["src/layout/monitor.rs", "src/ipc/tree.rs"]
+what = "track sway's stable output workspace order separately from the layout's spatial workspace vector and use it for IPC child traversal."
+why = "Sway appends workspaces to an output-owned list and stable-sorts that list, while swayward's inherited vector also drives active indices, animation, and workspace placement (`sway/tree/output.c:333-340,387-405`; `sway/tree/workspace.c:177-260`)."
