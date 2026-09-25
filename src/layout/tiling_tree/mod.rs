@@ -371,6 +371,25 @@ impl<W: LayoutElement> TilingTree<W> {
         for indicator in self.tab_indicators.values_mut() {
             indicator.update_config(options.layout.tab_indicator);
         }
+        let old_auto_layout = if self.view_size.h > self.view_size.w {
+            Layout::SplitV
+        } else {
+            Layout::SplitH
+        };
+        let new_auto_layout = if view_size.h > view_size.w {
+            Layout::SplitV
+        } else {
+            Layout::SplitH
+        };
+        if self.is_empty()
+            && self.options.layout.default_orientation == swayward_config::DefaultOrientation::Auto
+            && matches!(
+                self.nodes[&self.root].value,
+                TreeNode::Split { layout, .. } if layout == old_auto_layout
+            )
+        {
+            self.set_layout(self.root, new_auto_layout);
+        }
         self.view_size = view_size;
         self.parent_area = parent_area;
         self.gaps_to_edge = gaps_to_edge;

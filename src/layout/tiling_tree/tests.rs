@@ -1190,6 +1190,53 @@ fn configured_default_orientations_set_the_root_at_creation() {
 }
 
 #[test]
+fn empty_auto_tree_tracks_output_orientation_changes() {
+    let mut t = tree_with_options((1280., 720.), 0., |options| {
+        options.layout.default_orientation = swayward_config::DefaultOrientation::Auto;
+    });
+
+    t.update_config(
+        (720., 1280.).into(),
+        Rectangle::from_size((720., 1280.).into()),
+        false,
+        1.,
+        t.options.clone(),
+    );
+
+    assert!(matches!(
+        t.nodes[&t.root].value,
+        TreeNode::Split {
+            layout: Layout::SplitV,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn explicit_empty_layout_survives_output_orientation_changes() {
+    let mut t = tree_with_options((1280., 720.), 0., |options| {
+        options.layout.default_orientation = swayward_config::DefaultOrientation::Auto;
+    });
+    t.set_focused_layout(Layout::Stacked);
+
+    t.update_config(
+        (720., 1280.).into(),
+        Rectangle::from_size((720., 1280.).into()),
+        false,
+        1.,
+        t.options.clone(),
+    );
+
+    assert!(matches!(
+        t.nodes[&t.root].value,
+        TreeNode::Split {
+            layout: Layout::Stacked,
+            ..
+        }
+    ));
+}
+
+#[test]
 fn moving_a_single_window_sets_the_workspace_split_axis() {
     let mut t = tree_with_options((800., 1200.), 0., |options| {
         options.layout.default_orientation = swayward_config::DefaultOrientation::Auto;
