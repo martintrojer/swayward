@@ -1357,6 +1357,6 @@ why = "Sway appends workspaces to an output-owned list and stable-sorts that lis
 
 [[edit]]
 migrated = false
-paths = ["src/layout/monitor.rs", "src/ipc/tree.rs"]
-what = "track sway's stable output workspace order separately from the layout's spatial workspace vector and use it for IPC child traversal."
-why = "Sway appends workspaces to an output-owned list and stable-sorts that list, while swayward's inherited vector also drives active indices, animation, and workspace placement (`sway/tree/output.c:333-340,387-405`; `sway/tree/workspace.c:177-260`)."
+paths = ["src/layout/tiling_tree/movement.rs", "src/layout/tiling_tree/tests.rs"]
+what = "preserve focus history when a move-to-mark target is already the moved node's preceding sibling."
+why = "Sway leaves an already positioned container attached, so replaying move-to-mark does not reorder its focus stack (`sway/commands/move.c`)."

@@ -97,6 +97,18 @@ impl<W: LayoutElement> TilingTree<W> {
             } => (destination, None),
             _ => return false,
         };
+        let already_there = self.nodes[&id].parent == Some(parent)
+            && self.child_index(parent, id)
+                == after
+                    .and_then(|node| self.child_index(parent, node))
+                    .map(|index| index + 1);
+        if already_there
+            && self
+                .focus
+                .is_some_and(|focus| self.contains_node(id, focus))
+        {
+            return true;
+        }
         let old = self.compute_geometry();
         let Some(old_parent) = self.detach_subtree_only(id) else {
             return false;

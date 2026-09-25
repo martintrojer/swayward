@@ -1688,6 +1688,18 @@ fn move_subtree_to_node_inserts_beside_a_leaf_and_into_a_split() {
 }
 
 #[test]
+fn moving_a_subtree_to_its_existing_position_preserves_focus_order() {
+    let mut t = tree((1200., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let second = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+
+    assert!(t.move_subtree_to_node(second, first));
+
+    assert_eq!(t.focused_child_in(t.root), Some(second));
+    t.check_invariants();
+}
+
+#[test]
 fn move_subtree_to_ancestor_appends_after_existing_children() {
     let mut t = tree((1200., 800.), 0.);
     let a = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
