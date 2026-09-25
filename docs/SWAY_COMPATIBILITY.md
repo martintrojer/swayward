@@ -1,226 +1,193 @@
 **Sway compatibility**
 
-**All 15 of sway's IPC requests are answered, and 11 of them behave as sway's
-do.** All 8 event families swayward can emit are compared against sway; the
-other 2 belong to a bar swayward does not have. Query and event compatibility
-is broader than command compatibility; check the command table before assuming
-that an accepted command supports every sway form.
+Swayward speaks sway's IPC protocol on `SWAYSOCK`. `swaymsg`, Waybar, and other
+clients can connect without a swayward-specific backend. Queries, the container
+tree, workspace and window commands, and the event streams used by common
+clients are the strongest parts.
 
-The 4 that are not plain "implemented":
+The short version is: try the tool you already use. Unsupported requests and
+commands fail explicitly instead of pretending to work. The longer version is
+this page.
 
-- `RUN_COMMAND` executes most of sway's command set but not all of it. This
-  is the real gap and the one worth reading about below.
-- `SUBSCRIBE` accepts 8 of 10 event families. The 2 it rejects are emitted
-  by sway only for a configured `bar {}`, which swayward does not have, so
-  there is no event to deliver.
-- `GET_OUTPUTS` reports live geometry, scale, transform, identity and mode, but
-  conservatively reports unavailable backend capability, rendering and power state.
-- `GET_CONFIG` cannot be compliant: sway returns its own config file verbatim
-  and swayward's is KDL, so it reports not implemented rather than returning
-  something sway-shaped that is not sway.
+## Start with the measurements
 
-Each is detailed below with sway source citations.
+The public measurements live with the independent
+[`sway-ipc-oracle`](https://github.com/martintrojer/sway-ipc-oracle), not in a
+second table here:
 
-"Implemented" on this page means the reply was compared against sway 1.12's
-implementation at the cited lines. It does not mean every scalar value is
-pinned by a fixture; see [IPC oracle coverage](IPC_ORACLE_COVERAGE.md) for
-exactly what the automated checks prove and where they are blind. See
-[Known deviations](KNOWN_DEVIATIONS.md) for user-visible differences outside
-the request matrix.
+- [`i3/results/swayward.toml`](https://github.com/martintrojer/sway-ipc-oracle/blob/3d8159e7dbc1b296d52b00e45c12befcdcae605b/i3/results/swayward.toml)
+  records the unchanged i3 suite run. Read its pass, skip, and fail figures
+  together. A skip usually marks an i3-only premise or a harness boundary, not
+  a successful assertion.
+- [`sway-ipc/results/swayward.toml`](https://github.com/martintrojer/sway-ipc-oracle/blob/3d8159e7dbc1b296d52b00e45c12befcdcae605b/sway-ipc/results/swayward.toml)
+  records the captured sway IPC scenarios as match, mismatch, and not
+  applicable.
 
-## Why configuration and commands are separate here
+[`tests/oracle.toml`](https://github.com/martintrojer/swayward/blob/main/tests/oracle.toml)
+pins the revision used by this checkout. The [IPC oracle coverage](IPC_ORACLE_COVERAGE.md) page explains what
+the scenarios compare and where the faster in-process tests are still blind.
+These are measurements, not a compatibility percentage. One passing assertion
+does not vouch for the command beside it.
 
-Sway has **one command table for both the config file and IPC**. `find_handler_ex`
-consults the config or command table first and then falls back to a shared
-`handlers[]` list (`sway/sway/commands.c:162-173`), so in sway there is no real
-distinction between a "config directive" and a "runtime command". `font`,
-`default_border`, `hide_edge_borders`, `smart_gaps` and the rest are all
-`swaymsg`-able, and they take effect immediately: `cmd_font` re-parses the font
-and calls `config_update_font_height`, while `hide_edge_borders` and
-`smart_gaps` call `arrange_root`.
+## The wire does not bluff
 
-Swayward separates the two. Configuration is KDL, parsed by `swayward-config`;
-runtime commands are a separate parser. They share no table. **That seam, not a
-feature decision, is why most of the gaps below exist.** A sway directive that
-looks like configuration usually has a working swayward equivalent in KDL; what
-it lacks is a way to change it live over IPC.
+For an IPC request there are only two honest answers. Swayward either returns
+what sway returns, or it returns a structured not-implemented failure. It does
+not put swayward-specific content in a valid-looking sway envelope. That reply
+would parse, then leave the client to fail somewhere less useful.
 
-So the practical question is not "is this supported" but "supported *where*":
+`GET_CONFIG` is the clearest example. Sway returns the sway config file
+verbatim (`sway/sway/config.c:734-773`, `sway/sway/ipc-server.c:908-917`).
+Swayward reads KDL, so it returns `{"success": false}` rather than relabelling
+KDL as sway config text. Sway uses the same kind of refusal for `IPC_SYNC`
+(`sway/sway/ipc-server.c:919-925`).
 
-- **Accepted.** The parser accepts at least one representative invocation for
-  68 of sway's 82 unique runtime command names. Execution-level comparison
-  classifies 24 families as complete and 44 as partial.
-- **Fail-loud with a stated reason.** 8 command names return a structured
-  failure because the underlying state or capability is absent. The accepted
-  `urgent` command also rejects its unsupported `allow|deny` policy forms.
-- **Deliberate.** 1 command name, `bar`, is unavailable because swayward has no
-  managed bar. Sway's 2 ignored client commands are not accepted yet.
-- **Unimplemented.** The other 3 rejected names need runtime config, binding,
-  criteria, variable, or input/output/seat mutation.
-
-See the [`RUN_COMMAND` audit](RUN_COMMAND_AUDIT.md) for the method and category
-definitions. The per-command data, including realistic probes, sway sources,
-state paths, classifications, and rough costs, is in
+The raw request and event inventory lives in
 [`tests/sway/compatibility.toml`](https://github.com/martintrojer/swayward/blob/main/tests/sway/compatibility.toml).
-`contrib/command-census` checks every recorded parser result. Commands outside
-the accepted forms return an error rather than being silently ignored.
+`contrib/command-census --check` checks the inventory against the parser and the
+figures quoted here. Markdown is not generated from the TOML.
 
-## IPC requests
+## Requests you can rely on
 
-On the wire there are only two honest answers, and every row below is one of
-them. A request either behaves exactly as sway's does, or it is **not
-implemented** and returns `{"success": false}`. Swayward never returns a
-sway-shaped reply carrying swayward-shaped content: that parses, so the client
-fails later with nothing to attribute it to. Sway declines `IPC_SYNC` the same
-way (`sway/sway/ipc-server.c:919-925`).
+11 of sway's 15 IPC request types are implemented. The everyday state
+queries are in this group:
 
-`GET_CONFIG` is the worked example. Sway returns the verbatim sway config file,
-swayward's config is KDL, and there is no honest conversion, so it is reported
-as not implemented rather than approximated.
+- `GET_TREE` returns the live nested container tree, including titlebar
+  `deco_rect` values. The oracle includes 14 sway 1.12 tree scenarios.
+- `GET_WORKSPACES`, `GET_MARKS`, `GET_BINDING_MODES`, and
+  `GET_BINDING_STATE` return live compositor state.
+- `GET_INPUTS` returns the 12 fields sway emits, with keyboard, pointer, and
+  libinput fields present under the same conditions as sway's
+  `ipc_json_describe_input` serializer (`sway/sway/ipc-json.c`).
+- `GET_SEATS` returns swayward's single seat, its capabilities, focused
+  container, and devices.
+- `GET_VERSION` returns all 6 sway fields (`sway/sway/ipc-json.c:225-239`).
+  Its `variant` is `swayward`; the version number is a swayward release date,
+  not a claim to match a sway feature level.
+- `SEND_TICK` replies with sway's success object and emits the payload to tick
+  subscribers.
+- `SYNC` returns sway's exact `{"success": false}` response. Sway does not
+  implement this inherited i3 request either, so declining it is compatible
+  behaviour (`sway/sway/ipc-server.c:919-925`).
+- `GET_BAR_CONFIG` behaves as sway does when no bar is configured: listing bars
+  returns `[]`, and asking for an ID returns `No bar with that ID`
+  (`sway/sway/ipc-server.c:846-880`).
 
-| Request | Status | Boundary |
-|---|---|---|
-| `RUN_COMMAND` | Partial | Accepts 68 of sway 1.12's 82 unique runtime command names. Unsupported syntax returns a sway-shaped failure array. See the [complete command audit](RUN_COMMAND_AUDIT.md). |
-| `GET_WORKSPACES` | Implemented | Returns live global workspace identities. Fixture and focused tests cover the top-level shape and selected values. |
-| `SUBSCRIBE` | Partial | Accepts 8 of sway's 10 families: `workspace`, `output`, `mode`, `shutdown`, `window`, `binding`, `tick`, and `input`. Rejects `barconfig_update` and `bar_state_update`. Sway emits both only for a configured `bar {}`, which swayward does not have, so there is no event to deliver; the subscription is refused rather than accepted and left permanently silent. See [Bars](KNOWN_DEVIATIONS.md#bars). |
-| `GET_OUTPUTS` | Partial | Returns sway 1.12's complete field set and live geometry, scale, transform, subpixel layout, identity, current workspace, current mode, and runtime power state (`sway/ipc-json.c:299-413`). Sway reports both `dpms` and `power` from the backend enabled bit (`sway/ipc-json.c:340-346`), and swayward reports both from the power state changed by `output power` or its deprecated `dpms` alias. The schema is captured from the exact 1.12 tag, and the pinned oracle’s `contrib/check-sway-fixture-schema` compares fixture keys with that source. The serializer sees only active layout outputs, so `active` is always true and `primary` is always false. Swayward has no scale-filter setting, so `scale_filter` is `nearest`. Adaptive-sync, tearing, HDR, and render-time capability/state do not reach this query path, so those fields conservatively report their disabled defaults rather than claiming the captured backend's values. |
-| `GET_TREE` | Implemented | Returns the live nested container tree, including titlebar `deco_rect` values. 14 sway 1.12 fixtures cover its schema and selected semantics. |
-| `GET_MARKS` | Implemented | Returns marks created and removed through commands. |
-| `GET_BAR_CONFIG` | Implemented | Empty payload returns `[]`; a requested ID returns sway's exact `{ "success": false, "error": "No bar with that ID" }`. Both are byte-identical to what sway replies when no bar is configured (`sway/sway/ipc-server.c:846-880`), so the request is fully compliant. Swayward has no `bar {}` block, so the configured-bar list is always empty; that is the deliberate part, and it lives in the config, not on the wire. See [Bars](KNOWN_DEVIATIONS.md#bars). |
-| `GET_VERSION` | Implemented | Returns all 6 fields sway returns (`sway/sway/ipc-json.c:225-239`): `human_readable`, `variant`, `major`, `minor`, `patch`, `loaded_config_file_name`. `variant` is `swayward`, which is the field sway provides for exactly this purpose and is how a client distinguishes the two. The version numbers are a date (see [versioning](UPSTREAM.md#versioning)), not a sway feature level. No sway fixture pins the individual values. |
-| `GET_BINDING_MODES` | Implemented | Returns `default` followed by configured mode names. |
-| `GET_CONFIG` | Not implemented | Returns `{"success": false}`. Sway's contract is the verbatim text of the sway config file (`sway/sway/config.c:734-773`, `sway/sway/ipc-server.c:908-917`), and swayward's config is KDL, so there is nothing sway-shaped to return. Serving KDL in sway's envelope would be well-formed and wrong, breaking a client with no error to attribute it to. Sway answers a request it declines the same way (`sway/sway/ipc-server.c:919-925`, IPC_SYNC). |
-| `SEND_TICK` | Implemented | Replies with sway's success object and emits the payload to `tick` subscribers. |
-| `SYNC` | Implemented | Returns `{"success": false}`, byte-identical to sway. Sway decided not to support this i3 request and replies the same way rather than closing the socket (`sway/sway/ipc-server.c:919-925`). Declining it *is* the compliant behaviour. |
-| `GET_BINDING_STATE` | Implemented | Returns `{"name": mode}`. The green `311-get-binding-modes.t` file exercises message type 12 at startup and after a mode change. |
-| `GET_INPUTS` | Implemented | Returns live input devices. All 12 fields sway emits are present and conditioned as sway conditions them (`sway/sway/ipc-json.c`, `ipc_json_describe_input`): `repeat_delay`, `repeat_rate` and the 3 `xkb_*` fields on keyboards, `scroll_factor` on pointers only, and a `libinput` sub-object whose `send_events` is unconditional while `tap*` and `accel_*` appear only when the device reports the capability. Verified against a live session, not only the fixture. |
-| `GET_SEATS` | Implemented | Returns swayward's single seat, capabilities, focused container ID, and devices. |
+The partial requests are:
 
-Unknown message numbers are rejected by the wire decoder. The automated suite
-does not enumerate every unsupported request. In particular, it does not assert
-every unsupported request's exact error response.
+- `RUN_COMMAND` covers most, not all, of sway's runtime command language. The
+  next section gives the practical boundary.
+- `SUBSCRIBE` accepts 8 of sway's 10 event families. It refuses
+  `barconfig_update` and `bar_state_update` because swayward has no managed
+  `bar {}` and therefore no corresponding event to send. See
+  [Bars](KNOWN_DEVIATIONS.md#bars).
+- `GET_OUTPUTS` returns sway 1.12's complete field set and live geometry,
+  identity, mode, scale, transform, subpixel layout, current workspace, and
+  runtime power state (`sway/ipc-json.c:299-413`). Backend adaptive-sync,
+  tearing, HDR, and render-time capability or state do not reach this query
+  path, so those fields use disabled defaults rather than made-up backend
+  values. Sway derives both `dpms` and `power` from the backend enabled bit
+  (`sway/ipc-json.c:340-346`); swayward updates both after `output power` or
+  its deprecated `dpms` alias.
 
-## Runtime commands
+The remaining request is `GET_CONFIG`, which is deliberately not implemented
+for the reason above. Unknown message numbers are rejected by the wire decoder.
 
-The same parser serves `swaymsg` and KDL bindings such as:
+## Commands: broad, not complete
 
-```kdl
-binds {
-    Mod+H { command "focus left"; }
-}
-```
+Sway has one handler system for config directives and IPC commands:
+`find_handler_ex` checks the active command table and then the shared table
+(`sway/sway/commands.c:162-173`). Settings such as `font`,
+`hide_edge_borders`, and `smart_gaps` can therefore be changed with `swaymsg`.
 
-| Family | Supported forms and limits |
-|---|---|
-| Focus | Bare `focus`; directions; `parent`, `child`, `next`, and `prev`; `next|prev sibling`; `floating`, `tiling`, and `mode_toggle`; `focus output <direction|name>`; and criteria-targeted `focus workspace`. |
-| Move | Directional moves with an omitted or pixel distance; floating `move position` by coordinates, center, or pointer; moves to a workspace, output, mark, or scratchpad; and workspace moves to an output. Directional distances other than pixels return a failure. Absolute positions do not accept percentage points. |
-| Workspace | Switch by name or number, including `next`, `prev`, `next_on_output`, `prev_on_output`, `back_and_forth`, and `current`; assign a workspace to an output; and rename a workspace. |
-| Layout | `layout splith|splitv|tabbed|stacked|stacking|default`; default, split, all, and explicit-list toggle cycles; and `split h|v|t|toggle`. `split none` returns a failure. |
-| Window state | Workspace and global `fullscreen enable|disable|toggle`; `floating enable|disable|toggle`; `urgent enable|disable|toggle` with sway's boolean aliases; `border`; `sticky`; and `title_format`. `urgent allow|deny` remains fail-loud because swayward does not store the per-window permission that sway checks before accepting a client urgency request (`sway/commands/urgent.c:9-31`; `sway/desktop/xwayland.c:766-773`). |
-| Scratchpad | `move scratchpad` and `scratchpad show` |
-| Resize | Grow or shrink an axis in pixels or percentage points, with an optional fallback amount; set width, height, or both. |
-| Layout settings | `focus_wrapping`, `workspace_layout`, `default_orientation` (and its `orientation` alias), `hide_edge_borders`, `smart_borders`, `focus_follows_mouse`, `workspace_auto_back_and_forth`, `floating_minimum_size`, `floating_maximum_size`, `font`, `titlebar_padding`, `titlebar_border_thickness`, `mouse_warping`, `xwayland`, `popup_during_fullscreen`, `floating_modifier`, and `default_border` with its `default_floating_border`, `new_window` and `new_float` spellings, plus the deprecated `force_focus_wrapping`. At runtime, `mouse_warping output|container|none` stores sway's three-state policy. KDL has no `mouse-warping` node, so the translator approximates enabled modes with `warp-mouse-to-focus`; `reload` resets the runtime policy to `none` and applies that inherited centering option. `xwayland` is accepted but refuses a change, because the mode is fixed at launch in sway too. Sway serves these from the same table as its config file, so they are live commands there; swayward stores them in KDL and re-applies the config after each change. Accepted values and error strings follow sway's own command files, including `hide_edge_borders smart` folding into the smart-border toggle. `reload` re-reads the file and discards these runtime changes, as in sway. Output configuration is the exception: swayward keeps a transient output change across a reload that did not edit the output settings, where sway discards it. See [Reload and transient output configuration](KNOWN_DEVIATIONS.md#reload-and-transient-output-configuration). |
-| Gaps | Change inner or per-side outer gaps on the current workspace or all workspaces with `set`, `plus`, `minus`, or `toggle`. |
-| Runtime bindings | `bindsym`, `unbindsym`, `bindcode`, and `unbindcode` mutate the default or active-mode binding vector that keyboard dispatch reads on every event. Equal key/flag/device bindings overwrite in place; unbinding a missing binding fails. `--release`, `--locked`, `--inhibited`, `--no-repeat`, `--no-warn`, and `--input-device=` are supported for keyboard bindings. `bindswitch` and `unbindswitch` use a runtime mode-keyed command table checked before KDL's narrower spawn-only switch events; `on`, `off`, `toggle`, `--locked`, and `--no-warn` work. Reload discards all runtime binds, as sway does. Mouse-region bindings, XKB `GroupN`, `--to-code`, criteria-targeted forms, switch `--reload`, and replacing a KDL switch-event binding remain fail-loud. Gesture binds remain unavailable because gesture events have no sway command-binding path. |
-| Process and session | `exec`, `exec_always`, `exit`, `kill`, `reload`, `mode <name>`, `nop`, and headless-only `create_output` with sway's 1920×1080 default. The tty and single-window winit backends cannot add outputs and return sway's `Can only create outputs for Wayland, X11 or headless backends` failure without changing output state (`sway/commands/create_output.c:12-52`). |
-| Marks, rules, and swap | `mark`, `unmark`, `for_window`, and `swap container with id|con_id|mark`. Native Wayland windows have no X11 ID for the `id` form. |
-| Output power | `output <name> power on|off|toggle` and the deprecated `dpms` alias. `output * power|dpms on|off` fans out over connected outputs; sway rejects wildcard toggle (`sway/commands/output/power.c:15-31`). Both spellings update `GET_OUTPUTS` and emit `output::unspecified`, as sway does after applying output state (`sway/ipc-json.c:340-346`; `sway/desktop/output.c:397-399`; `sway/ipc-server.c:510-518`). Reload resets runtime power state because sway rebuilds and replaces its output-config list (`sway/commands/reload.c:28-34`; `sway/config.c:136-141,220-226`). Replug retains the state because sway stores the command in that list and reapplies matching entries to a new output (`sway/config/output.c:241-294,703-738`). Idle wake does not mutate output configuration; idle activity only notifies wlroots (`sway/input/seat.c:106-112`), so a user-powered-off output remains off. |
+Swayward has two parsers. KDL configuration goes through `swayward-config`, and
+runtime commands go through `swayward-ipc`. Most command gaps come from that
+seam: the setting exists in KDL, but there is no safe live mutation path for
+it yet.
 
-Criteria parsing accepts sway-style selectors, including `app_id`, `title`,
-`workspace`, `con_id`, `con_mark`, urgency, floating or tiling state, sandbox
-metadata, and the case-sensitive tag set through `xdg_toplevel_tag_v1`.
-Swayward cannot populate separate X11 `class`,
-`instance`, `window_role`, or `window_type` values for the ordinary Wayland
-surfaces supplied by xwayland-satellite. Criteria-targeted execution supports
-focus; move by direction, position, workspace, output, mark, or scratchpad; workspace moves to
-an output; marks; swap; fullscreen; sticky; title format; borders; floating;
-kill; resize; container layout; and `nop`. Other commands with criteria return a
-failure instead of running against the wrong target.
+The parser accepts 68 of sway 1.12's 82 unique runtime command names. Of those,
+24 command families are complete and 44 are partial. An accepted name means at
+least one real form works; it does not mean every option, target, or unit works.
 
-Commands outside these forms return a `RUN_COMMAND` result with
-`"success":false`. Parse failures also include `"parse_error":true`.
-`opacity` remains fail-loud: swayward can render rule-derived per-window
-opacity, but it has no mutable per-container opacity state for sway's
-`set|plus|minus` command (`sway/commands/opacity.c:9-40`). `inhibit_idle` also
-remains fail-loud. Swayward honors application-created idle inhibitors, but it
-has no user-inhibitor object or the `focus`, `fullscreen`, `open`, and `visible`
-policy modes required by sway (`sway/commands/inhibit_idle.c:8-50`;
-`sway/tree/view.c:281-303`).
+The commonly used forms include:
 
-`allow_tearing` remains fail-loud because swayward's DRM renderer does not
-request asynchronous page flips; accepting it would promise immediate
-presentation that the compositor cannot provide (`sway/commands/allow_tearing.c:6-25`;
-`sway/desktop/output.c:254-269`). `max_render_time` also remains fail-loud:
-sway delays rendering by the output and focused view budgets, while swayward's
-frame clock has no per-view deadline (`sway/commands/max_render_time.c:6-32`;
-`sway/desktop/output.c:150-185`; `src/frame_clock.rs`). The exact missing-argument
-error remains `Missing max render time argument.`
+- focus and movement by direction, workspace, output, mark, or scratchpad;
+- workspace switching, naming, assignment, and back-and-forth;
+- split, tabbed, stacked, fullscreen, floating, sticky, and border state;
+- pixel and percentage resizing;
+- marks, criteria, `for_window`, and container swaps;
+- runtime keyboard and switch bindings, modes, and several layout settings;
+- gaps, output configuration and power, process commands, reload, and exit.
 
-Swayward implements the top-level `shortcuts_inhibitor enable|disable` command.
-Each view stores a separate future-request policy. `enable` changes only that
-policy; `disable` also deactivates the view's current inhibitor. New protocol
-requests activate for the default and enabled policies and remain inactive for
-the disabled policy, matching sway (`sway/commands/shortcuts_inhibitor.c:10-49`;
-`sway/input/input-manager.c:288-345`). The separate `seat <name>
-shortcuts_inhibitor activate|deactivate|toggle` namespace remains unsupported.
+Unsupported syntax returns a `RUN_COMMAND` result with `"success": false`.
+Parse failures also include `"parse_error": true`. The parser never turns an
+unknown form into a successful no-op.
 
-The `input` and `seat` namespaces are rejected as a whole. Sway serves them
-from command tables shared with its config file (`sway/sway/commands/input.c`;
-`sway/sway/commands/seat.c`). Swayward reads their equivalent settings from KDL
-and has no general runtime mutation path, so each returns a failure rather than
-a silent no-op.
+For the full list, use the hand-maintained data in
+[`tests/sway/compatibility.toml`](https://github.com/martintrojer/swayward/blob/main/tests/sway/compatibility.toml).
+Each command row includes a realistic probe, its sway source, parser result,
+execution classification, state path, and rough cost. The
+[`RUN_COMMAND` audit](RUN_COMMAND_AUDIT.md) explains the categories and shows
+how to query the census without copying it into another document.
 
-The `output` namespace is partial. Core enable, mode, scale, transform,
-position, adaptive-sync, bit-depth, modeline, and power commands have runtime
-paths. The `*` target fans out over currently connected outputs rather than
-storing sway's wildcard config for future outputs. Other output subcommands
-remain fail-loud.
+### The larger command gaps
 
-The two wholly rejected namespaces are not equally far away, and the distance
-is in the configuration model rather than in the command parsers.
+`input` and `seat` are refused as whole namespaces. Sway serves both from tables
+shared with its config parser (`sway/sway/commands/input.c` and
+`sway/sway/commands/seat.c`). Swayward's input configuration is keyed by device
+class rather than by each sway device identifier, and swayward has one seat
+created at startup. Accepting either namespace before those state models exist
+would be a polite-looking lie.
 
-- **`input`** needs a configuration model change first. Sway addresses a device
-  by identifier or by `type:<class>`; swayward's input settings are keyed by
-  device class only (`swayward-config/src/input.rs:12-26`), with no per-device
-  map. Swayward computes sway-shaped identifiers for binds and reports them
-  through `GET_INPUTS`, so it can name a device it cannot yet configure
-  individually. Per-device settings would change the KDL schema, not just add a
-  command.
-- **`seat`** has the least to act on. Swayward runs a single seat created at
-  startup (`src/swayward.rs:2517-2518`) and has no seat configuration block, so
-  `attach`, `fallback`, and `keyboard_grouping` have no second seat to address.
-  `hide_cursor` and `xcursor_theme` have KDL equivalents under `cursor`.
+The `output` namespace is partial. Enable, mode, scale, transform, position,
+adaptive-sync, bit depth, modeline, and power have runtime paths. An `*` target
+applies to connected outputs; unlike sway, it is not retained as wildcard
+configuration for outputs connected later. Other output subcommands fail.
+
+Commands that promise state swayward cannot represent also fail. For example,
+`opacity` needs mutable per-container opacity (`sway/commands/opacity.c:9-40`),
+`inhibit_idle` needs sway's user-inhibitor policy modes
+(`sway/commands/inhibit_idle.c:8-50`, `sway/tree/view.c:281-303`), and
+`allow_tearing` needs asynchronous page flips
+(`sway/commands/allow_tearing.c:6-25`, `sway/desktop/output.c:254-269`).
+`max_render_time` needs per-output and per-view render budgets, which
+swayward's frame clock does not have (`sway/commands/max_render_time.c:6-32`,
+`sway/desktop/output.c:150-185`, `src/frame_clock.rs`).
+
+Criteria work for native Wayland identity, title, workspace, marks, urgency,
+floating state, sandbox metadata, and `xdg_toplevel_tag_v1` tags. Ordinary
+Xwayland surfaces arrive through xwayland-satellite as Wayland toplevels, so
+separate X11 `class`, `instance`, `window_role`, `window_type`, and XID values
+are unavailable. [Known deviations](KNOWN_DEVIATIONS.md) covers that boundary
+and the other user-visible differences.
 
 ## Events
 
-Swayward supports subscriptions for these event families:
+Subscriptions cover 8 of sway's 10 event families:
 
-| Event | Status | Evidence |
-|---|---|---|
-| Workspace | Emitted | Emits every change value sway emits: `init`, `focus`, `empty`, `rename`, `move`, `urgent`, and `reload`. `move` and `urgent` are each compared with a sway 1.11 fixture (`workspace_move_event_matches_sway_shape`, `workspace_urgency_event_matches_sway_shape`). A whole-layout change with no sway equivalent, such as a config reload that rebuilds workspaces, emits `reload`, which is the value sway uses for the same situation (`sway/sway/commands/reload.c`). |
-| Window | Emitted | A headless test compares a live `focus` event with a sway fixture. Sway 1.12 window-map sequences pin the current native-view schema, including `tag`; the remaining individual event fixtures are 1.11 captures and most are not emitted one by one in tests. |
-| Mode | Emitted | A headless subscriber switches to a configured mode and compares the event with sway 1.11's `resize` fixture. |
-| Binding | Emitted | Real keyboard and pointer bindings emit `binding::run`. A headless test compares the payload with a sway 1.11 fixture. |
-| Tick | Emitted | A tick subscription first receives `{"first":true,"payload":""}` after the successful subscription reply. `SEND_TICK` then emits the supplied payload with `first:false`, matching sway's ordering and flags. |
-| Output | Emitted | Output configuration changes emit sway's exact `{"change":"unspecified"}` payload. |
-| Shutdown | Emitted | SIGINT, SIGTERM, SIGHUP, confirmed quit actions, and a nested-window close emit `{"change":"exit"}` before stopping the event loop. |
-| Input | Emitted | Device hotplug emits `added` and `removed`; keymap reloads emit `xkb_keymap`; layout switches emit `xkb_layout`. Each event reuses the exact device object returned by `GET_INPUTS`. Swayward does not emit `libinput_config`: config reload is its only runtime libinput mutation path, and its backend-neutral input model cannot determine whether applying a setting changed a given libinput device (`sway/input/libinput.c:200-348`). |
-| Bar configuration and state | Deliberate deviation | `SUBSCRIBE` rejects `barconfig_update` and `bar_state_update`; swayward does not manage a bar. See [Bars](KNOWN_DEVIATIONS.md#bars). |
+- workspace, window, mode, and binding events;
+- initial and requested tick events;
+- output and shutdown events;
+- input hotplug, keymap, and layout events.
 
-## Verified clients
+The event payloads use sway's names and object shapes. The oracle contains the
+captured schemas; focused headless tests exercise live ordering and selected
+values. `barconfig_update` and `bar_state_update` are refused at subscription
+time because swayward does not manage a bar. A refused subscription is clearer
+than one that stays silent forever.
 
-- **swaywardmsg:** ships with swayward and speaks the same protocol. Tested
-  against sway 1.11 as well, where `get_version`, `get_workspaces`, and
-  `get_tree` all returned correct replies, which confirms the client half of
-  the protocol in both directions.
-- **swaymsg 1.11:** tested manually against a nested compositor. Tree and state
-  queries returned replies, supported commands ran, unsupported commands returned
-  failures, and the connection remained usable after an error. This is a manual
-  smoke test, not an automated client test.
-- **waybar 0.15.0:** tested manually without swayward-specific changes. Its
-  `sway/workspaces`, `sway/window`, and `sway/mode` modules subscribed without IPC
-  errors. The bar rendered at 1905 by 34 pixels, and workspace or window changes
-  caused fresh tree queries. This is a manual smoke test, not an automated waybar
-  test.
+## Clients exercised so far
 
-No compatibility claim is made here for other clients.
+- **swaywardmsg** ships with swayward and uses the same protocol. It has also
+  queried sway successfully, which checks the client half in the other
+  direction.
+- **swaymsg 1.11** has been used against a nested swayward session. Queries and
+  supported commands worked, unsupported commands returned failures, and the
+  connection remained usable after an error. This was a manual smoke test.
+- **Waybar 0.15.0** has been used without swayward-specific changes. Its
+  `sway/workspaces`, `sway/window`, and `sway/mode` modules subscribed and
+  refreshed from tree changes. This was also a manual smoke test.
+
+Those checks do not make a claim for every version or every client. If your
+client finds a boundary, a short failing example is much more useful than a
+compatibility percentage.
