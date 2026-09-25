@@ -127,6 +127,12 @@ pub(crate) fn compute<W: LayoutElement>(
             .titlebar_owned_by_parent
             .retain(|id| !contains_node(nodes, fullscreen_root, *id));
     }
+    for id in mapped_under_fullscreen {
+        result.titlebars.remove(id);
+        result.titlebar_leaves.remove(id);
+        result.titlebar_attached.remove(id);
+        result.titlebar_owned_by_parent.remove(id);
+    }
     result.border_visible.extend(
         result
             .leaf_boxes
@@ -406,7 +412,7 @@ fn assign<W: LayoutElement>(
                 for (index, (child, percent)) in children.iter().zip(percents).enumerate() {
                     let percent = if mapped_under_fullscreen.contains(child) {
                         0.
-                    } else if fullscreen.is_empty() {
+                    } else if mapped_under_fullscreen.is_empty() {
                         *percent
                     } else {
                         *percent / visible_total

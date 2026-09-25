@@ -348,13 +348,18 @@ impl<W: LayoutElement> TilingTree<W> {
 
     pub fn reset_empty_layout(&mut self) {
         assert!(self.is_empty());
-        let layout = match self.options.layout.default_orientation {
-            swayward_config::DefaultOrientation::Horizontal => Layout::SplitH,
-            swayward_config::DefaultOrientation::Vertical => Layout::SplitV,
-            swayward_config::DefaultOrientation::Auto if self.view_size.h > self.view_size.w => {
-                Layout::SplitV
-            }
-            swayward_config::DefaultOrientation::Auto => Layout::SplitH,
+        let layout = match self.preserved_auto_layout {
+            Some(layout) => layout,
+            None => match self.options.layout.default_orientation {
+                swayward_config::DefaultOrientation::Horizontal => Layout::SplitH,
+                swayward_config::DefaultOrientation::Vertical => Layout::SplitV,
+                swayward_config::DefaultOrientation::Auto
+                    if self.view_size.h > self.view_size.w =>
+                {
+                    Layout::SplitV
+                }
+                swayward_config::DefaultOrientation::Auto => Layout::SplitH,
+            },
         };
         self.set_layout(self.root, layout);
     }

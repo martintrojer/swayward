@@ -1237,6 +1237,33 @@ fn explicit_empty_layout_survives_output_orientation_changes() {
 }
 
 #[test]
+fn emptied_initial_tree_keeps_its_pre_mode_orientation() {
+    let mut t = tree_with_options((1280., 720.), 0., |options| {
+        options.layout.default_orientation = swayward_config::DefaultOrientation::Auto;
+    });
+    t.preserve_empty_auto_layout();
+    t.update_config(
+        (720., 1280.).into(),
+        Rectangle::from_size((720., 1280.).into()),
+        false,
+        1.,
+        t.options.clone(),
+    );
+    let window = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+
+    t.remove_tile_node(window).unwrap();
+    t.reset_empty_layout();
+
+    assert!(matches!(
+        t.nodes[&t.root].value,
+        TreeNode::Split {
+            layout: Layout::SplitH,
+            ..
+        }
+    ));
+}
+
+#[test]
 fn moving_a_single_window_sets_the_workspace_split_axis() {
     let mut t = tree_with_options((800., 1200.), 0., |options| {
         options.layout.default_orientation = swayward_config::DefaultOrientation::Auto;
@@ -2712,6 +2739,9 @@ fn mapping_under_fullscreen_preserves_focus_and_sibling_percents() {
     let mapped = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
 
     assert_eq!(t.focus(), Some(fullscreen));
+    let first_geometry = t.geometry(first).unwrap();
+    assert_eq!(first_geometry.size.w, t.view_size().w / 2.);
+    assert_eq!(t.ipc_decoration_rect(&3), None);
     let TreeNode::Split { percents, .. } = &t.nodes[&t.root].value else {
         panic!("root must be a split");
     };

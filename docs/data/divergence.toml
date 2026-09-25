@@ -1273,8 +1273,8 @@ why = "Sway hides views outside the active child of every tabbed or stacked ance
 
 [[edit]]
 migrated = false
-paths = ["src/ipc/tree.rs", "src/layout/tiling_tree/fullscreen.rs", "src/layout/tiling_tree/introspection.rs", "src/layout/tiling_tree/mod.rs", "src/tests/ipc/tree_commands.rs", "src/tests/ipc/workspace_output.rs"]
-what = "retain and serialize sway's fullscreen map-time tree state, including focus, visibility, percent, border, and decoration fields."
+paths = ["src/ipc/tree.rs", "src/layout/tiling_tree/fullscreen.rs", "src/layout/tiling_tree/geometry.rs", "src/layout/tiling_tree/introspection.rs", "src/layout/tiling_tree/mod.rs", "src/layout/tiling_tree/tests.rs", "src/tests/ipc/tree_commands.rs", "src/tests/ipc/workspace_output.rs"]
+what = "retain and serialize sway's fullscreen map-time tree state, including focus, visibility, percent, border, decoration, and pre-fullscreen geometry fields."
 why = "Sway leaves windows mapped under workspace fullscreen unfocused and reports their pre-transaction border state while arranging only the fullscreen branch (`sway/tree/view.c:698-710`, `sway/ipc-json.c:710-761`)."
 
 [[edit]]
