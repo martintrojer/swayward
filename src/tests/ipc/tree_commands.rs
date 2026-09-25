@@ -482,6 +482,37 @@ fn emptied_workspace_is_recreated_with_default_layout() {
 }
 
 #[test]
+fn configured_workspace_layout_uses_sways_layout_field_without_an_i3_alias() {
+    let mut config = swayward_config::Config::default();
+    config.layout.workspace_layout = swayward_config::WorkspaceLayout::Tabbed;
+    let mut f = Fixture::with_config(config);
+    f.add_output(1, (1280, 720));
+    let client = f.add_client();
+
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &Default::default(),
+        &Default::default(),
+    ))
+    .unwrap();
+    let workspace = &tree["nodes"][1]["nodes"][0];
+    assert_eq!(workspace["layout"], "splith");
+    assert_eq!(workspace["nodes"][0]["layout"], "tabbed");
+    assert!(workspace.get("workspace_layout").is_none());
+}
+
+#[test]
 fn layout_on_a_focused_nested_split_does_not_promote_to_the_workspace_root() {
     for (outer, expected_outer, inner, expected_inner) in [
         ("stacking", "stacked", "tabbed", "tabbed"),
