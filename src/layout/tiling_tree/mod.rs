@@ -279,6 +279,7 @@ pub struct TilingTree<W: LayoutElement> {
     clock: Clock,
     options: Rc<Options>,
     gaps: f64,
+    preserved_auto_layout: Option<Layout>,
 }
 
 impl<W: LayoutElement> TilingTree<W> {
@@ -333,6 +334,7 @@ impl<W: LayoutElement> TilingTree<W> {
             clock,
             gaps: options.layout.gaps,
             options,
+            preserved_auto_layout: None,
         }
     }
 
@@ -357,6 +359,51 @@ impl<W: LayoutElement> TilingTree<W> {
         self.set_layout(self.root, layout);
     }
 
+    pub fn preserve_empty_auto_layout(&mut self) {
+        let TreeNode::Split { layout, .. } = self.nodes[&self.root].value else {
+            unreachable!();
+        };
+        self.preserved_auto_layout = Some(layout);
+    }
+
+    pub fn track_empty_auto_layout(&mut self) {
+        let Some(preserved) = self.preserved_auto_layout.take() else {
+            return;
+        };
+        if self.is_empty()
+            && self.options.layout.default_orientation == swayward_config::DefaultOrientation::Auto
+            && matches!(
+                self.nodes[&self.root].value,
+                TreeNode::Split { layout, .. } if layout == preserved
+            )
+        {
+            self.reset_empty_layout();
+        }
+    }
+
+    fn update_empty_auto_layout(&mut self, view_size: Size<f64, Logical>) {
+        let old_auto_layout = if self.view_size.h > self.view_size.w {
+            Layout::SplitV
+        } else {
+            Layout::SplitH
+        };
+        let new_auto_layout = if view_size.h > view_size.w {
+            Layout::SplitV
+        } else {
+            Layout::SplitH
+        };
+        if self.preserved_auto_layout.is_none()
+            && self.is_empty()
+            && self.options.layout.default_orientation == swayward_config::DefaultOrientation::Auto
+            && matches!(
+                self.nodes[&self.root].value,
+                TreeNode::Split { layout, .. } if layout == old_auto_layout
+            )
+        {
+            self.set_layout(self.root, new_auto_layout);
+        }
+    }
+
     pub fn update_config(
         &mut self,
         view_size: Size<f64, Logical>,
@@ -371,25 +418,7 @@ impl<W: LayoutElement> TilingTree<W> {
         for indicator in self.tab_indicators.values_mut() {
             indicator.update_config(options.layout.tab_indicator);
         }
-        let old_auto_layout = if self.view_size.h > self.view_size.w {
-            Layout::SplitV
-        } else {
-            Layout::SplitH
-        };
-        let new_auto_layout = if view_size.h > view_size.w {
-            Layout::SplitV
-        } else {
-            Layout::SplitH
-        };
-        if self.is_empty()
-            && self.options.layout.default_orientation == swayward_config::DefaultOrientation::Auto
-            && matches!(
-                self.nodes[&self.root].value,
-                TreeNode::Split { layout, .. } if layout == old_auto_layout
-            )
-        {
-            self.set_layout(self.root, new_auto_layout);
-        }
+        self.update_empty_auto_layout(view_size);
         self.view_size = view_size;
         self.parent_area = parent_area;
         self.gaps_to_edge = gaps_to_edge;

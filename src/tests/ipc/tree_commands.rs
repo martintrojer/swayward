@@ -493,6 +493,53 @@ fn split_containers_report_sway_container_state_fields() {
 }
 
 #[test]
+fn initial_workspace_keeps_pre_mode_orientation_and_later_workspace_uses_configured_mode() {
+    let config = swayward_config::Config::parse_mem(
+        r#"output "headless-1" { mode custom=true "1270x1408@60"; }"#,
+    )
+    .unwrap();
+    let mut f = Fixture::with_config(config);
+    f.add_output(1, (1280, 720));
+    let client = f.add_client();
+
+    for (workspace, app_id) in [(None, "initial"), (Some("2"), "later")] {
+        if let Some(workspace) = workspace {
+            assert!(crate::command::execute(
+                f.niri_state(),
+                &format!("workspace {workspace}")
+            )[0]
+            .success);
+        }
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        let surface = window.surface.clone();
+        window.commit();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &Default::default(),
+        &Default::default(),
+    ))
+    .unwrap();
+    assert_eq!(
+        find_json_parent_of_app_id(&tree, "initial").unwrap()["layout"],
+        "splith"
+    );
+    assert_eq!(
+        find_json_parent_of_app_id(&tree, "later").unwrap()["layout"],
+        "splitv"
+    );
+}
+
+#[test]
 fn emptied_workspace_is_recreated_with_default_layout() {
     let mut config = swayward_config::Config::default();
     config.animations.off = true;

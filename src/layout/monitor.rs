@@ -302,6 +302,7 @@ impl<W: LayoutElement> Monitor<W> {
         ws_id_to_activate: Option<WorkspaceId>,
         initial_workspace_name: Option<String>,
         initial_workspace_number: Option<i32>,
+        preserve_initial_auto_layout: bool,
         clock: Clock,
         base_options: Rc<Options>,
         layout_config: Option<LayoutPart>,
@@ -319,6 +320,9 @@ impl<W: LayoutElement> Monitor<W> {
         for (idx, ws) in workspaces.iter_mut().enumerate() {
             assert!(ws.must_be_kept());
 
+            if preserve_initial_auto_layout {
+                ws.preserve_empty_auto_layout();
+            }
             ws.set_output(Some(output.clone()));
             ws.update_config(options.clone());
 
@@ -332,6 +336,12 @@ impl<W: LayoutElement> Monitor<W> {
         // trailing placeholder is an affordance of its scrolling strip.
         if workspaces.is_empty() {
             let mut ws = Workspace::new(output.clone(), clock.clone(), options.clone());
+            // Sway creates the compositor's first workspace from the first
+            // output's pre-configuration mode, then keeps that split when the
+            // configured mode is applied. Later outputs use their configured mode.
+            if preserve_initial_auto_layout {
+                ws.preserve_empty_auto_layout();
+            }
             if let Some(name) = initial_workspace_name {
                 let (name, number) =
                     super::sway_workspace_identity(crate::command::WorkspaceTarget::Name(name))
@@ -416,6 +426,10 @@ impl<W: LayoutElement> Monitor<W> {
 
     pub fn active_workspace(&mut self) -> &mut Workspace<W> {
         &mut self.workspaces[self.active_workspace_idx]
+    }
+
+    pub fn refresh_empty_auto_layout(&mut self, idx: usize) {
+        self.workspaces[idx].track_empty_auto_layout();
     }
 
     pub fn idx_of_ws(&self, id: WorkspaceId) -> Option<usize> {

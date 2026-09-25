@@ -793,6 +793,14 @@ impl<W: LayoutElement> Workspace<W> {
         self.tiling.set_node_fullscreen(id, mode)
     }
 
+    pub fn preserve_empty_auto_layout(&mut self) {
+        self.tiling.preserve_empty_auto_layout();
+    }
+
+    pub fn track_empty_auto_layout(&mut self) {
+        self.tiling.track_empty_auto_layout();
+    }
+
     pub fn set_output(&mut self, output: Option<Output>) {
         if self.output == output {
             return;

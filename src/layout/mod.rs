@@ -1189,6 +1189,7 @@ impl<W: LayoutElement> Layout<W> {
                     .1
             })
             .flatten();
+        let preserve_initial_auto_layout = self.workspaces().next().is_none();
         self.monitor_set = match mem::take(&mut self.monitor_set) {
             MonitorSet::Normal {
                 mut monitors,
@@ -1265,6 +1266,7 @@ impl<W: LayoutElement> Layout<W> {
                     ws_id_to_activate,
                     initial_workspace_name.clone(),
                     initial_workspace_number,
+                    preserve_initial_auto_layout,
                     self.clock.clone(),
                     self.options.clone(),
                     layout_config,
@@ -1303,6 +1305,7 @@ impl<W: LayoutElement> Layout<W> {
                     ws_id_to_activate,
                     initial_workspace_name,
                     initial_workspace_number,
+                    preserve_initial_auto_layout,
                     self.clock.clone(),
                     self.options.clone(),
                     layout_config,
@@ -3219,6 +3222,12 @@ impl<W: LayoutElement> Layout<W> {
             .map(|(output, index, _)| (output, index));
 
         if let Some((output, index)) = existing {
+            if let Some(output) = output.as_ref() {
+                let monitor = self.monitor_for_output_mut(output).unwrap();
+                if !monitor.workspaces[index].tiling_has_had_window() {
+                    monitor.refresh_empty_auto_layout(index);
+                }
+            }
             self.activate_workspace_at(output.as_ref(), index);
             return Ok(());
         }
@@ -3252,6 +3261,10 @@ impl<W: LayoutElement> Layout<W> {
         let layout_config = layout_config_for(&self.workspace_configs, name.as_deref());
         let monitor = &mut monitors[monitor_idx];
         let index = monitor.workspaces_len().saturating_sub(1);
+        if monitor.workspaces_len() == 1 && !monitor.active_workspace_ref().tiling_has_had_window()
+        {
+            monitor.refresh_empty_auto_layout(0);
+        }
         let id = monitor.add_sway_workspace_at(index, name, number, layout_config);
         // Sway sorts on every creation: workspace_create calls
         // output_sort_workspaces (sway/sway/tree/workspace.c:259), which orders
