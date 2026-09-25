@@ -1096,7 +1096,7 @@ why = ""
 [[edit]]
 migrated = true
 paths = ["src/layout/tiling_tree/geometry.rs", "src/layout/tiling_tree/tests.rs"]
-what = "arrange fullscreen containers over the complete output without applying implicit outer gaps, matching sway's fullscreen workspace arrangement."
+what = "arrange the fullscreen subtree over the complete output without applying implicit outer gaps while retaining the ordinary workspace geometry for obscured siblings, matching sway's separate workspace and fullscreen arrangement passes."
 why = ""
 
 [[edit]]

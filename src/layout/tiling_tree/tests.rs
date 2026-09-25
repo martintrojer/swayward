@@ -3308,6 +3308,22 @@ fn tab_indicator_focus_target_is_the_focused_descendant() {
 }
 
 #[test]
+fn stacked_siblings_keep_their_geometry_while_one_is_fullscreen() {
+    let mut t = tree((1000., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let second = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.set_layout(t.root, Layout::Stacked);
+
+    assert!(t.set_node_fullscreen(second, Some(FullscreenMode::Workspace)));
+
+    assert_eq!(t.geometry(first).unwrap().loc.y, t.titlebar_height * 2.);
+    assert_eq!(
+        t.geometry(second),
+        Some(Rectangle::from_size(t.view_size()))
+    );
+}
+
+#[test]
 fn fullscreen_suppresses_titlebar() {
     let mut t = tree((1000., 800.), 0.);
     let id = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);

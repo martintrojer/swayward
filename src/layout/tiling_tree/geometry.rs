@@ -62,18 +62,13 @@ pub(crate) fn compute<W: LayoutElement>(
         uncovered_top_borders: HashMap::new(),
     };
     let gaps = gaps.max(0.);
-    let area = if fullscreen.is_empty() {
-        let mut area = apply_struts(parent_area, scale, struts);
-        if !outer_gaps_configured {
-            area.loc.x += gaps;
-            area.loc.y += gaps;
-            area.size.w = (area.size.w - gaps * 2.).max(0.);
-            area.size.h = (area.size.h - gaps * 2.).max(0.);
-        }
-        area
-    } else {
-        Rectangle::from_size(view_size)
-    };
+    let mut area = apply_struts(parent_area, scale, struts);
+    if !outer_gaps_configured {
+        area.loc.x += gaps;
+        area.loc.y += gaps;
+        area.size.w = (area.size.w - gaps * 2.).max(0.);
+        area.size.h = (area.size.h - gaps * 2.).max(0.);
+    }
     let fullscreen_root = fullscreen.iter().copied().next();
     let workspace_area = area;
     assign(
@@ -83,7 +78,7 @@ pub(crate) fn compute<W: LayoutElement>(
         area,
         gaps,
         titlebar_height,
-        fullscreen,
+        &HashSet::new(),
         mapped_under_fullscreen,
         None,
         false,
@@ -99,6 +94,7 @@ pub(crate) fn compute<W: LayoutElement>(
         &mut result,
     );
     if let Some(fullscreen_root) = fullscreen_root {
+        let area = Rectangle::from_size(view_size);
         assign(
             nodes,
             title_formats,
@@ -121,6 +117,15 @@ pub(crate) fn compute<W: LayoutElement>(
             draw_uncovered_top_border,
             &mut result,
         );
+        result
+            .titlebars
+            .retain(|id, _| !contains_node(nodes, fullscreen_root, *id));
+        result
+            .titlebar_attached
+            .retain(|id| !contains_node(nodes, fullscreen_root, *id));
+        result
+            .titlebar_owned_by_parent
+            .retain(|id| !contains_node(nodes, fullscreen_root, *id));
     }
     result.border_visible.extend(
         result
@@ -171,6 +176,20 @@ fn is_strip_entry<W: LayoutElement>(nodes: &HashMap<NodeId, Node<W>>, id: NodeId
                 }
             )
         })
+}
+
+fn contains_node<W: LayoutElement>(
+    nodes: &HashMap<NodeId, Node<W>>,
+    root: NodeId,
+    id: NodeId,
+) -> bool {
+    root == id
+        || match nodes.get(&root).map(|node| &node.value) {
+            Some(TreeNode::Split { children, .. }) => children
+                .iter()
+                .any(|child| contains_node(nodes, *child, id)),
+            _ => false,
+        }
 }
 
 fn subtree_has_visible_leaf<W: LayoutElement>(
