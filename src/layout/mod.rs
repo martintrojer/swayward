@@ -3401,14 +3401,19 @@ impl<W: LayoutElement> Layout<W> {
         let current = positions
             .iter()
             .position(|(_, _, id, _)| *id == active.id())?;
+        let mut order = (0..positions.len()).collect::<Vec<_>>();
+        if !next {
+            order.reverse();
+        }
+        let ordered = || order.iter().map(|index| (*index, &positions[*index]));
 
+        // Sway scans outputs and each output's stored workspace list forwards
+        // for next and backwards for prev. Numeric comparison chooses the next
+        // distinct number, but scan order breaks ties between names with the
+        // same numeric prefix (sway/sway/tree/workspace.c:548-677).
         let target = if let Some(number) = current_number {
-            let numbered = positions
-                .iter()
-                .filter(|(_, _, _, candidate)| candidate.is_some());
-            let relative = numbered
-                .clone()
-                .filter(|(_, _, _, candidate)| {
+            let relative = ordered()
+                .filter(|(_, (_, _, _, candidate))| {
                     candidate.is_some_and(|candidate| {
                         if next {
                             candidate > number
@@ -3417,53 +3422,47 @@ impl<W: LayoutElement> Layout<W> {
                         }
                     })
                 })
-                .min_by_key(|(_, _, _, candidate)| {
+                .min_by_key(|(_, (_, _, _, candidate))| {
                     candidate.map(|candidate| candidate.abs_diff(number))
-                });
-            relative.or_else(|| {
-                let named = positions
-                    .iter()
-                    .filter(|(_, _, _, candidate)| candidate.is_none());
-                let other = if next {
-                    named.clone().next()
-                } else {
-                    named.clone().next_back()
-                };
-                other.or_else(|| {
-                    if next {
-                        numbered.min_by_key(|(_, _, _, candidate)| *candidate)
-                    } else {
-                        numbered.max_by_key(|(_, _, _, candidate)| *candidate)
-                    }
                 })
+                .map(|(_, position)| position);
+            relative.or_else(|| {
+                ordered()
+                    .find(|(_, (_, _, _, candidate))| candidate.is_none())
+                    .map(|(_, position)| position)
+                    .or_else(|| {
+                        ordered()
+                            .filter(|(_, (_, _, _, candidate))| candidate.is_some())
+                            .min_by_key(|(_, (_, _, _, candidate))| {
+                                candidate.map(|candidate| if next { candidate } else { -candidate })
+                            })
+                            .map(|(_, position)| position)
+                    })
             })
         } else {
-            let named = positions
-                .iter()
-                .enumerate()
-                .filter(|(_, (_, _, _, number))| number.is_none());
-            let relative = if next {
-                named.clone().find(|(index, _)| *index > current)
-            } else {
-                named.clone().rev().find(|(index, _)| *index < current)
-            };
-            relative.map(|(_, position)| position).or_else(|| {
-                let numbered = positions
-                    .iter()
-                    .filter(|(_, _, _, number)| number.is_some());
-                if next {
-                    numbered.min_by_key(|(_, _, _, number)| *number)
-                } else {
-                    numbered.max_by_key(|(_, _, _, number)| *number)
-                }
-                .or_else(|| {
-                    if next {
-                        named.map(|(_, position)| position).next()
-                    } else {
-                        named.map(|(_, position)| position).next_back()
-                    }
+            ordered()
+                .find(|(index, (_, _, _, number))| {
+                    number.is_none()
+                        && if next {
+                            *index > current
+                        } else {
+                            *index < current
+                        }
                 })
-            })
+                .map(|(_, position)| position)
+                .or_else(|| {
+                    ordered()
+                        .filter(|(_, (_, _, _, number))| number.is_some())
+                        .min_by_key(|(_, (_, _, _, number))| {
+                            number.map(|number| if next { number } else { -number })
+                        })
+                        .map(|(_, position)| position)
+                })
+                .or_else(|| {
+                    ordered()
+                        .find(|(_, (_, _, _, number))| number.is_none())
+                        .map(|(_, position)| position)
+                })
         }?;
         Some((target.0.clone(), target.1))
     }

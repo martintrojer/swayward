@@ -1336,3 +1336,9 @@ migrated = false
 paths = ["tests/i3/lib/i3test.pm", "tests/i3/coverage.toml"]
 what = "classify i3's sticky-focus assertions as skips while preserving the raw comparisons for all other assertions."
 why = "Sway focuses the destination before reparenting sticky containers, unlike i3's expectation that the sticky container retains focus (`sway/input/seat.c:1178-1222`)."
+
+[[edit]]
+migrated = false
+paths = ["src/layout/mod.rs", "src/tests/ipc/focus_and_move.rs"]
+what = "select global next and previous workspaces using forward or reverse output and workspace traversal to break equal-number ties."
+why = "Sway scans the root output list and each output's workspace list in command direction, so equal numeric prefixes retain stable per-output order (`sway/tree/workspace.c:548-677`)."

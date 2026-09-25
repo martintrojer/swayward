@@ -1116,6 +1116,57 @@ fn workspace_next_and_prev_on_output_wrap_in_stored_order() {
 }
 
 #[test]
+fn workspace_next_and_prev_follow_global_output_order_for_equal_numbers() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1280, 720));
+    f.add_output(2, (1920, 1080));
+    let first_output = f.niri_output(1).name();
+    let second_output = f.niri_output(2).name();
+    let client = f.add_client();
+    for (workspace, output) in [
+        ("1", &first_output),
+        ("2", &second_output),
+        ("6:c", &second_output),
+        ("5", &first_output),
+        ("6:a", &first_output),
+        ("6:b", &first_output),
+    ] {
+        assert!(
+            crate::command::execute(f.niri_state(), &format!("workspace {workspace}"))[0].success
+        );
+        let window = f.client(client).create_window();
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+        assert!(
+            crate::command::execute(
+                f.niri_state(),
+                &format!("workspace {workspace} output {output}")
+            )[0]
+            .success
+        );
+    }
+
+    assert!(crate::command::execute(f.niri_state(), "workspace 5")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "workspace next")[0].success);
+    assert_eq!(
+        f.swayward().layout.active_workspace().unwrap().sway_name(),
+        Some("6:a".into())
+    );
+
+    assert!(crate::command::execute(f.niri_state(), "workspace 7")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "workspace prev")[0].success);
+    assert_eq!(
+        f.swayward().layout.active_workspace().unwrap().sway_name(),
+        Some("6:c".into())
+    );
+}
+
+#[test]
 fn workspace_next_and_prev_cross_outputs() {
     let mut f = Fixture::new();
     f.add_output(1, (1280, 720));
