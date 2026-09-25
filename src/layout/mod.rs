@@ -3074,6 +3074,16 @@ impl<W: LayoutElement> Layout<W> {
         monitor.switch_workspace(idx);
     }
 
+    pub fn finish_sway_workspace_switch(&mut self, target: &crate::command::WorkspaceTarget) {
+        let target = self
+            .workspaces()
+            .find(|(_, _, workspace)| workspace_matches_target(workspace, target))
+            .map(|(_, _, workspace)| workspace.id());
+        if let Some(monitor) = self.active_monitor() {
+            monitor.finish_workspace_switch(target);
+        }
+    }
+
     pub fn switch_workspace_auto_back_and_forth(&mut self, idx: usize) {
         let previous_name = {
             let Some(monitor) = self.active_monitor() else {

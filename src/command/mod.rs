@@ -456,6 +456,12 @@ fn execute_one(
             target,
             auto_back_and_forth,
         } => {
+            if target != WorkspaceTarget::BackAndForth {
+                // Sway completes focus changes synchronously. Finish a prior
+                // render-only transition before resolving the next named or
+                // numbered command so its inactive empty workspace is gone.
+                state.swayward.layout.finish_sway_workspace_switch(&target);
+            }
             let auto_back_and_forth = auto_back_and_forth
                 && state
                     .swayward

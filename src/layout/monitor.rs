@@ -1279,6 +1279,20 @@ impl<W: LayoutElement> Monitor<W> {
         self.previous_workspace_name.as_deref()
     }
 
+    pub fn finish_workspace_switch(&mut self, target: Option<WorkspaceId>) {
+        let Some(WorkspaceSwitch::Animation(_)) = self.workspace_switch else {
+            return;
+        };
+        if !self.active_workspace_ref().has_windows() {
+            return;
+        }
+        self.workspace_switch = None;
+        if let Some(previous) = self.previous_workspace_id.filter(|id| Some(*id) != target) {
+            self.consider_destroy_workspace(previous);
+        }
+        self.clean_up_workspaces();
+    }
+
     pub fn switch_workspace(&mut self, idx: usize) {
         self.activate_workspace(min(idx, self.workspaces.len() - 1));
     }

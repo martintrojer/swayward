@@ -354,6 +354,28 @@ fn workspace_back_and_forth_without_history_uses_sway_error() {
 }
 
 #[test]
+fn interrupted_workspace_switch_reaps_its_empty_source() {
+    let (mut f, socket) = ipc_fixture();
+    f.add_output(1, (1270, 1408));
+
+    for workspace in ["/tmp/first", "/tmp/second", "/tmp/third"] {
+        assert!(crate::command::execute(f.niri_state(), &format!("workspace {workspace}"))[0].success);
+    }
+    f.swayward().clock.set_complete_instantly(true);
+    f.swayward().layout.advance_animations();
+
+    let mut stream = UnixStream::connect(socket).unwrap();
+    let workspaces = query_ipc(&mut f, &mut stream, MessageType::GetWorkspaces);
+    let names = workspaces
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|workspace| workspace["name"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(names, ["/tmp/third"]);
+}
+
+#[test]
 fn workspace_back_and_forth_recreates_a_reaped_previous_workspace() {
     let (mut f, socket) = ipc_fixture();
     f.add_output(1, (1920, 1080));
