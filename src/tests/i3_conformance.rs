@@ -1284,8 +1284,12 @@ fn run_i3_test(test: &str) {
             for path in &self.files {
                 let _ = std::fs::remove_file(path);
             }
+            // remove_dir_all: the IPC server's socket still sits inside the
+            // directory when this runs, so a plain remove_dir fails and every
+            // conformance test left one directory behind (about 16,000 after
+            // a day of gate runs).
             for path in &self.dirs {
-                let _ = std::fs::remove_dir(path);
+                let _ = std::fs::remove_dir_all(path);
             }
         }
     }
