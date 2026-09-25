@@ -1959,6 +1959,26 @@ fn layout_default_restores_the_same_previous_split_as_toggle() {
 }
 
 #[test]
+fn bare_layout_toggle_restores_the_previous_split() {
+    let mut t = tree((1200., 800.), 0.);
+    t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.set_layout(t.root, Layout::SplitV);
+    t.set_focused_layout(Layout::Tabbed);
+
+    t.toggle_focused_layout(&swayward_ipc::command::LayoutToggle::Default);
+
+    assert!(matches!(
+        t.nodes[&t.root].value,
+        TreeNode::Split {
+            layout: Layout::SplitV,
+            ..
+        }
+    ));
+    t.check_invariants();
+}
+
+#[test]
 fn layout_toggle_restores_the_previous_split_axis() {
     for previous in [Layout::SplitH, Layout::SplitV] {
         let mut t = tree((1200., 800.), 0.);

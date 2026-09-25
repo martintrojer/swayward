@@ -259,16 +259,7 @@ impl<W: LayoutElement> TilingTree<W> {
             swayward_ipc::command::Layout::ToggleSplit => None,
         };
         let next = match toggle {
-            LayoutToggle::Default => match current {
-                Layout::SplitH | Layout::SplitV => Layout::Stacked,
-                Layout::Stacked => Layout::Tabbed,
-                Layout::Tabbed => self
-                    .previous_split_layouts
-                    .get(&target)
-                    .copied()
-                    .unwrap_or(Layout::SplitH),
-            },
-            LayoutToggle::Split => {
+            LayoutToggle::Default | LayoutToggle::Split => {
                 self.toggle_layout_split(target);
                 return true;
             }

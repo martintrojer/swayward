@@ -1360,3 +1360,9 @@ migrated = false
 paths = ["src/layout/tiling_tree/movement.rs", "src/layout/tiling_tree/tests.rs"]
 what = "preserve focus history when a move-to-mark target is already the moved node's preceding sibling."
 why = "Sway leaves an already positioned container attached, so replaying move-to-mark does not reorder its focus stack (`sway/commands/move.c`)."
+
+[[edit]]
+migrated = false
+paths = ["src/layout/tiling_tree/tree_layout.rs", "src/layout/tiling_tree/tests.rs"]
+what = "make bare layout toggle use the same split-axis toggle as layout toggle split."
+why = "Sway routes both forms through toggle_split_layout, restoring prev_split_layout from tabbed or stacked instead of entering the all-layout cycle (`sway/commands/layout.c:24-60`)."
