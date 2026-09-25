@@ -569,6 +569,7 @@ impl<W: LayoutElement> Monitor<W> {
             })
             .unwrap_or(self.sway_workspace_order.len());
         self.sway_workspace_order.insert(order_index, ws.id());
+        self.workspace_focus_history.push(ws.id());
         self.workspaces.insert(idx, ws);
         if idx <= self.active_workspace_idx {
             self.active_workspace_idx += 1;
@@ -883,6 +884,7 @@ impl<W: LayoutElement> Monitor<W> {
             })
             .unwrap_or(self.sway_workspace_order.len());
         self.sway_workspace_order.insert(order_index, ws.id());
+        self.workspace_focus_history.push(ws.id());
         self.workspaces.insert(idx, ws);
 
         if idx <= self.active_workspace_idx {

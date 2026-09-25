@@ -146,6 +146,72 @@ fn live_ipc_descriptions_match_sway_schema_and_values() {
 }
 
 #[test]
+fn moved_workspace_keeps_destination_output_focus_order() {
+    let config = swayward_config::Config::parse_mem(
+        r#"
+        output "headless-1" { mode custom=true "1270x1408@60"; scale 1; }
+        output "headless-2" { mode custom=true "1270x1408@60"; scale 1; }
+        "#,
+    )
+    .unwrap();
+    let mut f = Fixture::with_config(config);
+    let handle = f.swayward().event_loop.clone();
+    let ipc_server =
+        crate::ipc::server::IpcServer::start_at(&handle, Some(test_socket_path())).unwrap();
+    let socket = ipc_server.socket_path.clone().unwrap();
+    f.swayward().ipc_server = Some(ipc_server);
+    f.niri_state().ipc_keyboard_layouts_changed();
+    f.add_output(1, (1280, 720));
+    f.add_output(2, (1280, 720));
+    assert!(crate::command::execute(f.niri_state(), "workspace __fixture_reset")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "workspace 1")[0].success);
+    let client = f.add_client();
+
+    map_test_window(&mut f, client, "fixture-1");
+    assert!(crate::command::execute(f.niri_state(), "move workspace to output right")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "workspace 2")[0].success);
+    map_test_window(&mut f, client, "fixture-2");
+    assert!(crate::command::execute(f.niri_state(), "focus output left")[0].success);
+
+    let mut stream = UnixStream::connect(socket).unwrap();
+    let tree = query_ipc(&mut f, &mut stream, MessageType::GetTree);
+    let output_focus = tree["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .skip(1)
+        .map(|output| {
+            let workspaces = output["nodes"].as_array().unwrap();
+            let workspace_names = workspaces
+                .iter()
+                .map(|workspace| workspace["name"].as_str().unwrap())
+                .collect::<Vec<_>>();
+            let focused_names = output["focus"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|id| {
+                    workspaces
+                        .iter()
+                        .find(|workspace| workspace["id"] == *id)
+                        .unwrap()["name"]
+                        .as_str()
+                        .unwrap()
+                })
+                .collect::<Vec<_>>();
+            (workspace_names, focused_names)
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        output_focus,
+        [
+            (vec!["3"], vec!["3"]),
+            (vec!["1", "2"], vec!["2", "1"]),
+        ]
+    );
+}
+
+#[test]
 fn workspace_with_only_floating_windows_reports_empty_tiling_representation() {
     let mut f = Fixture::new();
     let handle = f.swayward().event_loop.clone();
