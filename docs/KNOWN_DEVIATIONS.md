@@ -2,7 +2,20 @@ This reference lists user-visible differences from sway. It does not list
 internal changes inherited from the niri fork. See
 [Divergence from upstream niri](DIVERGENCE.md) for that engineering ledger.
 
-Each entry is one of three kinds, because they need different things from you:
+Start here. If a row sounds relevant to your setup, its details include the
+exact behaviour, the reason for it, and the sway source citations.
+
+| Deviation | What you will notice | Details |
+|-----------|----------------------|---------|
+| KDL configuration | Sway config files need translation. A few settings and defaults have no exact KDL spelling. | [Configuration](#configuration) |
+| No managed bar | Swayward does not launch swaybar or read a `bar {}` block. Configure a layer-shell bar directly. | [Bars](#bars) |
+| GNOME portal backend | The GNOME backend is the default, with `xdg-desktop-portal-wlr` available as a fallback. | [Desktop integration](#desktop-integration) |
+| Reload keeps display changes | A display change made by a protocol client survives `reload` unless the file changes the output settings. | [Reload and transient output configuration](#reload-and-transient-output-configuration) |
+| Layout and Xwayland limits | Scrollable tiling, some i3-only structures, and full X11 identity are not available. | [Layout and Xwayland](#layout-and-xwayland) |
+| No floating split containers | Swayward can float windows, but not a whole split container. | [Floating split containers](#floating-split-containers) |
+
+The details use three labels, because each kind needs something different from
+you:
 
 - **Config format.** The behaviour exists; the way you ask for it differs,
   because swayward is configured in KDL rather than sway's format. The
