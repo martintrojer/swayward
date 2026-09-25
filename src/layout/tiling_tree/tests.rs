@@ -3146,6 +3146,33 @@ fn tabbed_split_only_exposes_the_focused_branch() {
 }
 
 #[test]
+fn leaves_nested_below_a_tab_or_stack_report_their_own_titlebars() {
+    for layout in [Layout::Tabbed, Layout::Stacked] {
+        let mut t = tree((1000., 800.), 0.);
+        let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+        t.set_layout(t.root, layout);
+        t.split(first, Layout::SplitH);
+        t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+        t.set_focus(t.root);
+        t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+
+        let IpcNode::Split { children, .. } = t.ipc_tree() else {
+            panic!("workspace root is not a split");
+        };
+        let IpcNode::Split { children, .. } = &children[0] else {
+            panic!("tab or stack child is not a split");
+        };
+        assert!(children.iter().all(|child| matches!(
+            child,
+            IpcNode::Leaf {
+                deco_rect: Some(_),
+                ..
+            }
+        )));
+    }
+}
+
+#[test]
 fn stacked_split_reserves_one_titlebar_row_per_child() {
     let mut t = tree((1000., 800.), 0.);
     let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);

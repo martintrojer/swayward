@@ -1327,6 +1327,12 @@ why = "Sway computes an output container's percentage from its horizontal share 
 
 [[edit]]
 migrated = false
+paths = ["src/layout/tiling_tree/introspection.rs", "src/layout/tiling_tree/tests.rs"]
+what = "report titlebar decoration rectangles for leaves in inactive nested tabbed or stacked branches even though those titlebars are not rendered."
+why = "Sway's GET_TREE serializes the pending decoration geometry independently of whether a tabbed or stacked ancestor currently makes the view visible (`sway/ipc-json.c:635-652`; `sway/tree/view.c:1180-1193`)."
+
+[[edit]]
+migrated = false
 paths = ["tests/i3/lib/i3test.pm", "tests/i3/coverage.toml"]
 what = "classify i3's sticky-focus assertions as skips while preserving the raw comparisons for all other assertions."
 why = "Sway focuses the destination before reparenting sticky containers, unlike i3's expectation that the sticky container retains focus (`sway/input/seat.c:1178-1222`)."

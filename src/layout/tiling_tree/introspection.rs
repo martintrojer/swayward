@@ -12,13 +12,13 @@ impl<W: LayoutElement> TilingTree<W> {
     pub fn ipc_decoration_rect(&self, window: &W::Id) -> Option<Rectangle<f64, Logical>> {
         let id = self.node_for_window(window)?;
         let mut geometry = self.compute_geometry();
-        if let Some(bar) = geometry.titlebars.remove(&id).filter(|bar| bar.visible) {
+        if let Some(bar) = geometry.titlebars.remove(&id) {
             return Some(bar.ipc_rect);
         }
         geometry
             .titlebars
             .into_iter()
-            .find(|(titlebar_id, bar)| geometry.titlebar_leaves[titlebar_id] == id && bar.visible)
+            .find(|(titlebar_id, _)| geometry.titlebar_leaves[titlebar_id] == id)
             .map(|(_, bar)| bar.ipc_rect)
     }
 
@@ -230,7 +230,6 @@ impl<W: LayoutElement> TilingTree<W> {
                     deco_rect: geometries
                         .titlebars
                         .get(&id)
-                        .filter(|bar| bar.visible)
                         .map(|bar| bar.ipc_rect)
                         .or_else(|| {
                             (tree.fullscreen_node().is_some()
