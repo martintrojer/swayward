@@ -1270,6 +1270,16 @@ fn layout_on_an_empty_tree_sets_the_root_layout() {
 }
 
 #[test]
+fn layout_on_an_empty_tree_marks_its_representation_initialized() {
+    let mut t = tree((1200., 800.), 0.);
+    assert!(!t.has_had_tile());
+
+    t.set_focused_layout(Layout::Stacked);
+
+    assert!(t.has_had_tile());
+}
+
+#[test]
 fn split_on_an_empty_tree_sets_the_root_layout() {
     let mut t = tree((1200., 800.), 0.);
 
