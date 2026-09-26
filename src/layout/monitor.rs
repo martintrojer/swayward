@@ -1871,6 +1871,18 @@ impl<W: LayoutElement> Monitor<W> {
         ws.border_resize_edges_under(pos_within_output - geo.loc)
     }
 
+    pub fn gap_resize_edges_under(
+        &self,
+        pos_within_output: Point<f64, Logical>,
+    ) -> Option<(&W, ResizeEdge)> {
+        if self.overview_progress.is_some() {
+            return None;
+        }
+
+        let (ws, geo) = self.workspace_under(pos_within_output)?;
+        ws.gap_resize_edges_under(pos_within_output - geo.loc)
+    }
+
     pub(super) fn insert_position(
         &self,
         pos_within_output: Point<f64, Logical>,

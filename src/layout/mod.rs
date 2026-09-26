@@ -4560,6 +4560,15 @@ impl<W: LayoutElement> Layout<W> {
         mon.border_resize_edges_under(pos_within_output)
     }
 
+    pub fn gap_resize_edges_under(
+        &self,
+        output: &Output,
+        pos_within_output: Point<f64, Logical>,
+    ) -> Option<(&W, ResizeEdge)> {
+        let mon = self.monitor_for_output(output)?;
+        mon.gap_resize_edges_under(pos_within_output)
+    }
+
     pub fn workspace_under(
         &self,
         extended_bounds: bool,

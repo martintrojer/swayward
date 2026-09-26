@@ -14,6 +14,7 @@ use smithay::backend::input::{
     TabletToolTipState, TouchEvent,
 };
 use smithay::backend::libinput::LibinputInputBackend;
+use smithay::desktop::Window;
 use smithay::input::dnd::DnDGrab;
 use smithay::input::keyboard::xkb::keysym_get_name;
 use smithay::input::keyboard::{keysyms, FilterResult, Keysym, Layout, ModifiersState};
@@ -33,7 +34,7 @@ use smithay::input::{tablet, SeatHandler};
 use smithay::output::Output;
 use smithay::reexports::wayland_server::protocol::wl_data_source::WlDataSource;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::utils::{Logical, Point, Rectangle, Transform, SERIAL_COUNTER};
+use smithay::utils::{Logical, Point, Rectangle, Serial, Transform, SERIAL_COUNTER};
 use smithay::wayland::keyboard_shortcuts_inhibit::KeyboardShortcutsInhibitor;
 use smithay::wayland::pointer_constraints::{with_pointer_constraint, PointerConstraint};
 use swayward_config::{
@@ -3085,6 +3086,10 @@ impl State {
         }
         let icon = self
             .border_resize_edges_under_pointer(pointer)
+            .or_else(|| {
+                self.gap_resize_edges_under_pointer(pointer)
+                    .map(|(_, edges, _)| (false, edges))
+            })
             .map(|(floating, edges)| {
                 if floating {
                     edges.cursor_icon()
@@ -3107,6 +3112,56 @@ impl State {
                 .cursor_manager
                 .set_cursor_image(CursorImageStatus::default_named());
         }
+    }
+
+    /// Activates `window` and starts a pointer resize of `edges`, shared by
+    /// the border and gap handles.
+    fn begin_edge_resize(
+        &mut self,
+        pointer: &PointerHandle<State>,
+        window: Window,
+        edges: ResizeEdge,
+        location: Point<f64, Logical>,
+        button_code: u32,
+        serial: Serial,
+    ) {
+        self.swayward.layout.activate_window(&window);
+        if !self
+            .swayward
+            .layout
+            .interactive_resize_begin(window.clone(), edges)
+        {
+            return;
+        }
+        let start_data = PointerGrabStartData {
+            focus: None,
+            button: button_code,
+            location,
+        };
+        let grab = ResizeGrab::new(AnyStartData::Pointer(start_data), window);
+        pointer.set_grab(self, grab, serial, Focus::Clear);
+        self.swayward
+            .cursor_manager
+            .set_cursor_image(CursorImageStatus::Named(edges.cursor_icon()));
+    }
+
+    /// The tiled window, edge and pointer location a plain left press in the
+    /// gap under the pointer resizes, when `input { gap-resize }` is on.
+    fn gap_resize_edges_under_pointer(
+        &self,
+        pointer: &PointerHandle<State>,
+    ) -> Option<(Window, ResizeEdge, Point<f64, Logical>)> {
+        if !self.swayward.config.borrow().input.gap_resize
+            || self.swayward.pointer_contents.window.is_some()
+            || self.swayward.pointer_contents.layer.is_some()
+            || self.swayward.layout.is_overview_open()
+        {
+            return None;
+        }
+        let location = pointer.current_location();
+        let (output, pos) = self.swayward.output_under(location)?;
+        let (mapped, edges) = self.swayward.layout.gap_resize_edges_under(output, pos)?;
+        Some((mapped.window.clone(), edges, location))
     }
 
     /// Whether the pointer is over a border a plain left press resizes, and
@@ -3391,24 +3446,14 @@ impl State {
                     })
                     .flatten();
                 if let Some((location, edges)) = border_resize {
-                    self.swayward.layout.activate_window(&window);
-                    if self
-                        .swayward
-                        .layout
-                        .interactive_resize_begin(window.clone(), edges)
-                    {
-                        let start_data = PointerGrabStartData {
-                            focus: None,
-                            button: button_code,
-                            location,
-                        };
-                        let start_data = AnyStartData::Pointer(start_data);
-                        let grab = ResizeGrab::new(start_data, window.clone());
-                        pointer.set_grab(self, grab, serial, Focus::Clear);
-                        self.swayward
-                            .cursor_manager
-                            .set_cursor_image(CursorImageStatus::Named(edges.cursor_icon()));
-                    }
+                    self.begin_edge_resize(
+                        &pointer,
+                        window.clone(),
+                        edges,
+                        location,
+                        button_code,
+                        serial,
+                    );
                 } else if (overview_move || regular_move) && !pointer.is_grabbed() {
                     let location = pointer.current_location();
 
@@ -3551,6 +3596,14 @@ impl State {
                 self.swayward.layout.focus_output(&output);
                 self.swayward.layout.toggle_overview_to_workspace(ws_idx);
 
+                // FIXME: granular.
+                self.swayward.queue_redraw_all();
+            } else if let Some((window, edges, location)) = (button == Some(MouseButton::Left)
+                && !pointer.is_grabbed())
+            .then(|| self.gap_resize_edges_under_pointer(&pointer))
+            .flatten()
+            {
+                self.begin_edge_resize(&pointer, window, edges, location, button_code, serial);
                 // FIXME: granular.
                 self.swayward.queue_redraw_all();
             } else if let Some(output) = self.swayward.output_under_cursor() {

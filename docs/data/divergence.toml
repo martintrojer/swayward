@@ -1396,3 +1396,9 @@ migrated = false
 paths = ["src/input/mod.rs", "src/swayward.rs", "src/layout/mod.rs", "src/layout/monitor.rs", "src/layout/workspace.rs", "src/layout/tile.rs", "swayward-config/src/input.rs", "swayward-config/src/lib.rs", "resources/default-config.kdl", "docs/wiki/Configuration:-Input.md"]
 what = "start an interactive resize on a plain left press on a window border, tiled only across an edge shared with a sibling and floating from any border edge, show sway's resize cursor while hovering such a border, and gate both behind `input { border-resize }`, on by default."
 why = "Sway resizes from the border with no modifier held and changes the cursor over a resizable edge (`sway/sway/input/seatop_default.c:39-118,396-410,468-474`, `sway/sway/input/cursor.c` `cursor_update_image`). niri only resized with Mod+right-drag, so a sway user could not grab a border. Sway has no switch for this; the toggle is swayward's."
+
+[[edit]]
+migrated = false
+paths = ["src/input/mod.rs", "src/layout/mod.rs", "src/layout/monitor.rs", "src/layout/workspace.rs", "swayward-config/src/input.rs", "swayward-config/src/lib.rs", "resources/default-config.kdl", "docs/wiki/Configuration:-Input.md"]
+what = "add `input { gap-resize }`, off by default: a plain left press in the gap between two tiled windows starts the border drag's interactive resize on the shared edge, with the same hover cursor; outer gaps, floating windows and gap corners are not handles."
+why = "Sway's only no-modifier resize handle is a visible border, so a borderless setup that marks focus with niri's focus ring could not drag-resize at all. The gap is where that ring is drawn. Sway has no equivalent, so the option is off by default and recorded in docs/KNOWN_DEVIATIONS.md."

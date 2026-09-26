@@ -2780,6 +2780,49 @@ impl<W: LayoutElement> Workspace<W> {
         Some((window, edges))
     }
 
+    /// The tiled window and edge a plain left press in the gap at `pos`
+    /// resizes, for `input { gap-resize }`. Sway has no such handle: its gaps
+    /// belong to the workspace. The rules are its border drag's
+    /// (`sway/sway/input/seatop_default.c:111-118`): only an edge shared
+    /// with a sibling counts, so outer gaps never resize.
+    pub fn gap_resize_edges_under(&self, pos: Point<f64, Logical>) -> Option<(&W, ResizeEdge)> {
+        let gap = self.options.layout.gaps;
+        if gap <= 0. || self.window_under(pos).is_some() {
+            return None;
+        }
+        self.tiling
+            .tiles_with_render_positions()
+            .filter(|(tile, _, visible)| *visible && tile.sizing_mode().is_normal())
+            .find_map(|(tile, tile_pos, _)| {
+                let size = tile.tile_size();
+                let grown = Rectangle::new(
+                    tile_pos - Point::from((gap, gap)),
+                    size + Size::from((gap * 2., gap * 2.)),
+                );
+                if !grown.contains(pos) {
+                    return None;
+                }
+                let local = pos - tile_pos;
+                // One edge per press, and only the edge the point lies
+                // beyond: a gap corner between four windows resizes nothing.
+                let edges = [
+                    (local.x < 0., ResizeEdge::LEFT),
+                    (local.x >= size.w, ResizeEdge::RIGHT),
+                    (local.y < 0., ResizeEdge::TOP),
+                    (local.y >= size.h, ResizeEdge::BOTTOM),
+                ];
+                let mut beyond = edges.iter().filter(|(hit, _)| *hit).map(|(_, edge)| *edge);
+                let edge = beyond.next()?;
+                if beyond.next().is_some() {
+                    return None;
+                }
+                let window = tile.window();
+                self.tiling
+                    .is_internal_edge(window.id(), edge)
+                    .then_some((window, edge))
+            })
+    }
+
     pub fn descendants_added(&mut self, id: &W::Id) -> bool {
         self.floating.descendants_added(id)
     }

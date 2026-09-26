@@ -122,6 +122,21 @@ Swayward now defaults XDG activation requests to `urgent`, matching sway. Users
 who relied on the previous fallback, which focused requests carrying a valid
 serial, can restore it with `focus-on-window-activation "smart"`.
 
+### Resizing from the gap between windows
+
+**Deliberate.**
+
+Sway resizes a window when you left-drag its border
+(`sway/input/seatop_default.c:396-410`), and so does swayward, under
+`input { border-resize }`, on by default. A borderless sway setup has nothing to
+drag: the gap between windows belongs to the workspace and ignores the press.
+
+Swayward adds `input { gap-resize }`, off by default, which makes the gap
+between two tiled windows a resize handle as well. It follows the border
+drag's rules: left button with no modifier, only an edge shared with a
+neighbour (outer gaps never resize), and the same resize cursor. It serves
+setups that use niri's focus ring instead of sway borders.
+
 ### Client titlebar colors
 
 **Command gap.**

@@ -13,6 +13,9 @@ input {
     // Resize windows by left-dragging a border between them, as sway does,
     // with no modifier held. Set to false to resize only with Mod+right-drag.
     border-resize true
+    // Also resize by left-dragging the gap between two tiled windows, for
+    // borderless setups. Sway has no such handle.
+    // gap-resize
 
     keyboard {
         xkb {

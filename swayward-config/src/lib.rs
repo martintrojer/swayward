@@ -909,6 +909,7 @@ mod tests {
                 tiling-drag false
                 tiling-drag-threshold 17
                 border-resize false
+                gap-resize
             }
             "#,
         )
@@ -920,6 +921,7 @@ mod tests {
         assert!(!config.input.tiling_drag);
         assert_eq!(config.input.tiling_drag_threshold, 17);
         assert!(!config.input.border_resize);
+        assert!(config.input.gap_resize);
     }
 
     #[test]
@@ -1761,6 +1763,7 @@ mod tests {
                 tiling_drag: true,
                 tiling_drag_threshold: 9,
                 border_resize: true,
+                gap_resize: false,
                 mod_key: Some(
                     IsoLevel3Shift,
                 ),
