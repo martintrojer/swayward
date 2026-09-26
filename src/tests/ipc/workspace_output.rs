@@ -890,6 +890,46 @@ fn workspace_focus_spans_tiled_and_floating_children() {
     assert_eq!(workspace["focus"].as_array().unwrap().len(), 2);
 }
 
+#[test]
+fn newly_focused_tiled_window_precedes_floating_children_in_workspace_focus() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    map_test_window(&mut f, client, "first");
+    map_test_window(&mut f, client, "floating");
+    assert!(crate::command::execute(f.niri_state(), "floating enable")[0].success);
+    map_test_window(&mut f, client, "newest");
+
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &Default::default(),
+        &Default::default(),
+    ))
+    .unwrap();
+    let workspace = &tree["nodes"][1]["nodes"][0];
+    let children = workspace["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .chain(workspace["floating_nodes"].as_array().unwrap());
+    let focus = workspace["focus"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|id| {
+            children
+                .clone()
+                .find(|node| node["id"] == *id)
+                .unwrap()["app_id"]
+                .as_str()
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(focus, ["newest", "floating", "first"]);
+}
+
 fn floating_order(tree: &Value) -> (Vec<&str>, Vec<&str>) {
     let workspace = tree["nodes"]
         .as_array()

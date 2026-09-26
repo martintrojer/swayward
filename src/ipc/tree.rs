@@ -523,6 +523,25 @@ fn describe_workspace_node(
     } else {
         focus.extend(floating_focus);
     }
+    if !workspace.floating_is_active() {
+        let focus_timestamps = workspace
+            .windows()
+            .filter_map(|window| {
+                window
+                    .focus_timestamp()
+                    .map(|timestamp| (window_id(window.id()), timestamp))
+            })
+            .collect::<std::collections::HashMap<_, _>>();
+        let children = nodes.iter().chain(&floating_nodes).collect::<Vec<_>>();
+        focus.sort_by_key(|id| {
+            Reverse(
+                children
+                    .iter()
+                    .find(|child| child.id == *id)
+                    .and_then(|child| newest_focus_timestamp(child, &focus_timestamps)),
+            )
+        });
+    }
     let representation = workspace
         .tiling_has_had_window()
         .then(|| tree_representation(layout, &nodes));
@@ -556,6 +575,18 @@ fn describe_workspace_node(
     node.fullscreen_mode = 1;
     node.urgent = workspace.is_urgent();
     node
+}
+
+fn newest_focus_timestamp(
+    node: &Node,
+    focus_timestamps: &std::collections::HashMap<i64, std::time::Duration>,
+) -> Option<std::time::Duration> {
+    node.nodes
+        .iter()
+        .chain(&node.floating_nodes)
+        .filter_map(|child| newest_focus_timestamp(child, focus_timestamps))
+        .chain(focus_timestamps.get(&node.id).copied())
+        .max()
 }
 
 fn set_tabbed_percentages(layout: NodeLayout, children: &mut [Node], parent_rect: Rect) {

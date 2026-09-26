@@ -1303,6 +1303,12 @@ why = "Sway initializes a workspace representation only after inserting a tiling
 
 [[edit]]
 migrated = false
+paths = ["src/ipc/tree.rs", "src/tests/ipc/workspace_output.rs"]
+what = "merge tiled and floating workspace children into one focus array ordered by their windows' focus timestamps."
+why = "Sway builds every IPC node's focus array from the seat's single MRU node stack, so mapping a tiled window after focusing a floating window places the new tiled child before that floating child (`sway/ipc-json.c:784-834`)."
+
+[[edit]]
+migrated = false
 paths = ["src/layout/tiling_tree/tree_layout.rs", "src/tests/ipc/tree_commands.rs"]
 what = "wrap the workspace's children when tabbed or stacking layout is applied to a focused split whose command target is the workspace root."
 why = "Sway changes the workspace layout in place only when the workspace itself is focused; a focused child split at the root gains a nested layout container instead (`sway/commands/layout.c`; `sway/tree/container.c`)."
