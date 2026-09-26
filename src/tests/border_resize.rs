@@ -209,3 +209,64 @@ fn gap_resize_is_off_by_default() {
 
     assert_eq!(tile_widths(&mut s.f), [185., 185.]);
 }
+
+/// `[tabbed: A B] | C`, with `visible` the shown tab and focused.
+fn tabbed_setup(visible: &str) -> (Setup, [WlSurface; 3]) {
+    let mut s = setup(true);
+    let id = s.id;
+    let f = &mut s.f;
+    let [a, c] = s.surfaces.clone();
+    f.client(id).window(&a).set_title("A");
+    f.client(id).window(&c).set_title("C");
+    assert!(f.swayward().layout.focus_left());
+    assert!(crate::command::execute(f.niri_state(), "splith")[0].success);
+    let b = map_window(f, id);
+    f.client(id).window(&b).set_title("B");
+    assert!(crate::command::execute(f.niri_state(), "layout tabbed")[0].success);
+    if visible == "A" {
+        assert!(crate::command::execute(f.niri_state(), "focus left")[0].success);
+    }
+    let all = [a, b, c];
+    settle(f, id, &all);
+    assert_eq!(focused_title(f).as_deref(), Some(visible));
+    (s, all)
+}
+
+fn settle(f: &mut Fixture, id: ClientId, surfaces: &[WlSurface]) {
+    for _ in 0..3 {
+        for surface in surfaces {
+            commit_configured(f, id, surface);
+        }
+    }
+}
+
+fn focused_title(f: &mut Fixture) -> Option<String> {
+    use crate::layout::LayoutElement as _;
+    f.swayward().layout.focus().map(|mapped| mapped.title())
+}
+
+/// C's width: the tab container and C share the output, so it measures
+/// where the boundary between them sits.
+fn right_width(f: &mut Fixture) -> f64 {
+    use crate::layout::LayoutElement as _;
+    let ws = f.swayward().layout.active_workspace().unwrap();
+    ws.tiles_with_render_positions()
+        .find(|(tile, _, _)| tile.window().title() == "C")
+        .map(|(tile, _, _)| tile.tile_size().w)
+        .unwrap()
+}
+
+#[test]
+fn every_tab_resizes_from_the_border_it_shares_with_a_neighbour() {
+    // The first tab once found its tab siblings as a "neighbour" across its
+    // right edge, so the drag resized nothing. Sway only counts an exactly
+    // parallel split (`sway/sway/commands/resize.c:45-64`).
+    for visible in ["A", "B"] {
+        let (mut s, all) = tabbed_setup(visible);
+        drag(&mut s, 198, 50);
+        settle(&mut s.f, s.id, &all);
+
+        assert_eq!(right_width(&mut s.f), 150., "tab {visible} shown");
+        assert_eq!(focused_title(&mut s.f).as_deref(), Some(visible));
+    }
+}

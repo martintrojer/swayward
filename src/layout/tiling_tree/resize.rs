@@ -498,7 +498,10 @@ impl<W: LayoutElement> TilingTree<W> {
             else {
                 return None;
             };
-            if Self::layouts_parallel(*parent_layout, layout) {
+            // Only a split of exactly the resized orientation has a boundary
+            // to move: tabs and stacks share one box, so their siblings are
+            // not neighbours (`sway/sway/commands/resize.c:45-64`).
+            if *parent_layout == layout {
                 let index = children.iter().position(|child| *child == branch)?;
                 let neighbor_index = if toward_before {
                     index.checked_sub(1)
