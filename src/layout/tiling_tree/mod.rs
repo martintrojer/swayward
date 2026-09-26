@@ -987,9 +987,10 @@ impl<W: LayoutElement> TilingTree<W> {
             return None;
         }
         let node = self.remove_node(id)?;
-        let TreeNode::Leaf { tile } = node.value else {
+        let TreeNode::Leaf { mut tile } = node.value else {
             unreachable!();
         };
+        tile.clear_tiled_content_size();
         self.interactive_resize = None;
         if let Some(parent) = node.parent {
             self.remove_child(parent, id);

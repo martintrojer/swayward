@@ -1,6 +1,7 @@
 use core::f64;
 use std::rc::Rc;
 
+use smithay::backend::renderer::element::utils::CropRenderElement;
 use smithay::backend::renderer::element::{Element, Kind};
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::utils::{Logical, Point, Rectangle, Scale, Size};
@@ -143,6 +144,14 @@ pub struct Tile<W: LayoutElement> {
     /// Extra damage for clipped surface corner radius changes.
     rounded_corner_damage: RoundedCornerDamage,
 
+    /// Content size of the tiling container this tile was last laid out in.
+    ///
+    /// sway clips a tiled view to its container's content box whatever size the client commits
+    /// (`sway/sway/tree/view.c:1032-1062`). A client that will not shrink, or has not yet
+    /// answered a configure, would otherwise paint over its neighbour. `None` outside the tiling
+    /// tree and while maximized or fullscreen.
+    tiled_content_size: Option<Size<f64, Logical>>,
+
     /// The view size for the tile's workspace.
     ///
     /// Used as the fullscreen target size.
@@ -168,6 +177,8 @@ swayward_render_elements! {
         Border = BorderRenderElement,
         Shadow = ShadowRenderElement,
         ClippedSurface = ClippedSurfaceRenderElement<R>,
+        CroppedSurface = CropRenderElement<LayoutElementRenderElement<R>>,
+        CroppedClippedSurface = CropRenderElement<ClippedSurfaceRenderElement<R>>,
         Offscreen = OffscreenRenderElement,
         ExtraDamage = ExtraDamage,
         BackgroundEffect = BackgroundEffectElement,
@@ -263,6 +274,7 @@ impl<W: LayoutElement> Tile<W> {
             interactive_move_offset: Point::from((0., 0.)),
             unmap_snapshot: None,
             rounded_corner_damage: Default::default(),
+            tiled_content_size: None,
             view_size,
             scale,
             clock,
@@ -995,6 +1007,10 @@ impl<W: LayoutElement> Tile<W> {
 
     pub fn window_size(&self) -> Size<f64, Logical> {
         let mut size = self.window.size().to_f64();
+        if let Some(slot) = self.tiled_slot_size() {
+            size.w = f64::min(size.w, slot.w);
+            size.h = f64::min(size.h, slot.h);
+        }
         size = size
             .to_physical_precise_round(self.scale)
             .to_logical(self.scale);
@@ -1066,6 +1082,11 @@ impl<W: LayoutElement> Tile<W> {
 
     fn is_in_input_region(&self, mut point: Point<f64, Logical>) -> bool {
         point -= self.window_loc().to_f64();
+        // Input follows the crop: the part of an oversized tiled surface that is not drawn does
+        // not take the pointer from the neighbour drawn there.
+        if self.exceeds_tiled_slot() && !Rectangle::from_size(self.window_size()).contains(point) {
+            return false;
+        }
         self.window.is_in_input_region(point)
     }
 
@@ -1091,6 +1112,25 @@ impl<W: LayoutElement> Tile<W> {
         }
     }
 
+    /// The container content size that bounds the window, while tiled in normal sizing mode.
+    fn tiled_slot_size(&self) -> Option<Size<f64, Logical>> {
+        self.tiled_content_size
+            .filter(|_| self.sizing_mode.is_normal())
+    }
+
+    /// Whether the committed surface is larger than its tiling container and must be cropped.
+    fn exceeds_tiled_slot(&self) -> bool {
+        self.tiled_slot_size().is_some_and(|slot| {
+            let size = self.window.size().to_f64();
+            size.w > slot.w || size.h > slot.h
+        })
+    }
+
+    /// Forgets the tiling container, for a tile leaving the tiling tree.
+    pub(super) fn clear_tiled_content_size(&mut self) {
+        self.tiled_content_size = None;
+    }
+
     pub fn request_tile_size(
         &mut self,
         mut size: Size<f64, Logical>,
@@ -1100,6 +1140,7 @@ impl<W: LayoutElement> Tile<W> {
         let (left, right, top, bottom) = self.decoration_insets();
         size.w = f64::max(1., size.w - left - right);
         size.h = f64::max(1., size.h - top - bottom);
+        self.tiled_content_size = Some(size);
 
         // The size request has to be i32 unfortunately, due to Wayland. We floor here instead of
         // round to avoid situations where proportionally-sized columns don't fit on the screen
@@ -1138,6 +1179,7 @@ impl<W: LayoutElement> Tile<W> {
         animate: bool,
         transaction: Option<Transaction>,
     ) {
+        self.tiled_content_size = None;
         self.window.request_size(
             size.to_i32_round(),
             SizingMode::Maximized,
@@ -1147,6 +1189,7 @@ impl<W: LayoutElement> Tile<W> {
     }
 
     pub fn request_fullscreen(&mut self, animate: bool, transaction: Option<Transaction>) {
+        self.tiled_content_size = None;
         self.window.request_size(
             self.view_size.to_i32_round(),
             SizingMode::Fullscreen,
@@ -1341,6 +1384,14 @@ impl<W: LayoutElement> Tile<W> {
             let geo = Rectangle::new(window_render_loc, window_size);
             let radius = radius.fit_to(window_size.w as f32, window_size.h as f32);
 
+            // A tiled surface larger than its container is cropped to it, as sway clips the
+            // view's scene tree to the container content box (`sway/sway/tree/view.c:1032-1062`).
+            // `window_size()` is already bounded by the container, so `geo` is that box. A crop
+            // rather than the clip shader, because solid-colour buffers bypass texture shaders.
+            let crop = self
+                .exceeds_tiled_slot()
+                .then(|| geo.to_physical_precise_round(scale));
+
             let clip_shader = ClippedSurfaceRenderElement::shader(ctx.renderer).cloned();
             let clip = |elem| match elem {
                 LayoutElementRenderElement::Wayland(elem) => {
@@ -1406,7 +1457,24 @@ impl<W: LayoutElement> Tile<W> {
 
             self.window
                 .render_normal(ctx.r(), window_render_loc, scale, win_alpha, &mut |elem| {
-                    push(clip(elem))
+                    let elem = clip(elem);
+                    let Some(crop) = crop else {
+                        push(elem);
+                        return;
+                    };
+                    let cropped = match elem {
+                        TileRenderElement::LayoutElement(elem) => {
+                            CropRenderElement::from_element(elem, scale, crop).map(Into::into)
+                        }
+                        TileRenderElement::ClippedSurface(elem) => {
+                            CropRenderElement::from_element(elem, scale, crop).map(Into::into)
+                        }
+                        // Blocked-out borders are drawn at `geo`, inside the container.
+                        elem => Some(elem),
+                    };
+                    if let Some(elem) = cropped {
+                        push(elem);
+                    }
                 });
         }
 

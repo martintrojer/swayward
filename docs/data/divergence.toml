@@ -1366,3 +1366,9 @@ migrated = false
 paths = ["src/layout/tiling_tree/tree_layout.rs", "src/layout/tiling_tree/tests.rs"]
 what = "make bare layout toggle use the same split-axis toggle as layout toggle split."
 why = "Sway routes both forms through toggle_split_layout, restoring prev_split_layout from tabbed or stacked instead of entering the all-layout cycle (`sway/commands/layout.c:24-60`)."
+
+[[edit]]
+migrated = false
+paths = ["src/layout/tile.rs", "src/layout/tiling_tree/mod.rs", "src/tests/client.rs", "src/tests/mod.rs"]
+what = "crop a tiled window's surface, and its input region, to its container's content box when the client commits a size larger than the container, and forget the box when the tile leaves the tiling tree or goes maximized or fullscreen."
+why = "Sway clips every tiled view to `con->current.content_width/height` whatever size the client commits (`sway/sway/tree/view.c:1032-1062`), so a client that will not shrink below its minimum size, or has not yet answered a configure, cannot paint over its neighbour."

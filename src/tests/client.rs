@@ -597,6 +597,29 @@ impl Client {
         self.state.gamma_controls.last_mut().unwrap()
     }
 
+    /// Like [`Self::create_shm_buffer`], but keeps the pool's memfd so a test can read back
+    /// what the compositor wrote into it.
+    pub fn create_readable_shm_buffer(
+        &self,
+        width: i32,
+        height: i32,
+        stride: i32,
+        format: wl_shm::Format,
+    ) -> (WlBuffer, std::os::fd::OwnedFd) {
+        let pool_len = (stride * height) as usize;
+        let fd = memfd_create("swayward-test-shm", MemfdFlags::CLOEXEC).unwrap();
+        ftruncate(&fd, pool_len as u64).unwrap();
+        let pool =
+            self.state
+                .shm
+                .as_ref()
+                .unwrap()
+                .create_pool(fd.as_fd(), pool_len as i32, &self.qh, ());
+        let buffer = pool.create_buffer(0, width, height, stride, format, &self.qh, ());
+        pool.destroy();
+        (buffer, fd)
+    }
+
     pub fn create_shm_buffer(
         &self,
         width: i32,
@@ -823,6 +846,15 @@ impl Window {
 
     pub fn attach_null(&self) {
         self.surface.attach(None, 0, 0);
+    }
+
+    /// Attaches an opaque single-pixel buffer of the given colour.
+    pub fn attach_color_buffer(&self, r: u8, g: u8, b: u8) {
+        let scale = |c: u8| u32::from(c) * (u32::MAX / 255);
+        let buffer =
+            self.spbm
+                .create_u32_rgba_buffer(scale(r), scale(g), scale(b), u32::MAX, &self.qh, ());
+        self.surface.attach(Some(&buffer), 0, 0);
     }
 
     pub fn set_size(&self, w: u16, h: u16) {
