@@ -22,6 +22,28 @@ Prefer the headless harness wherever it can answer the question. `src/tests/`
 drives a real compositor and real `wayland-client` clients with no nested
 session, and unlike a human watching a screen it runs in CI.
 
+## Start from main, finish on the full gate
+
+Begin every fix from current `main` (`git checkout --detach main` in a
+worktree), and run the whole gate on that tree before calling it done:
+nightly fmt, clippy, `cargo test --all`, and the slow gates below when
+`src/layout/` changed. A fix verified on a stale base or with focused tests
+only broke main four times in one day: two fixes that each passed alone
+collided, and a command change regressed green i3 files that only the full
+conformance runner exercises.
+
+Done means pushed, or committed where the orchestrator cherry-picks. A close
+note that names a commit must name one that exists on the remote.
+
+## Scratch space lives on disk
+
+`/tmp` is a RAM-backed tmpfs: whatever accumulates there is memory, and then
+swap on the operator's session. Put extra `CARGO_TARGET_DIR`s, clones, logs
+and measurement output under `~/hacking/<name>` and delete them when done.
+A stray 5.5 GB target directory and 16,000 leaked test socket directories
+once took `/tmp` to 5.8 GB. Tests clean up what they create, including
+directories that still hold a socket (`remove_dir_all`).
+
 ## Cap a nested compositor or it eats the machine
 
 Testing against a live swayward runs a second compositor inside the operator's
@@ -172,6 +194,11 @@ test you can edit to pass is not evidence. Run `./contrib/fetch-oracle` before
 the in-process harness. Where i3 and sway differ, record a skip with a citation
 into sway's source rather than changing the assertion.
 
+Measure swayward against the oracle from a clean clone of it, passing `--out`
+outside the repo: the runners' default output path is a tracked results file,
+and a measurement taken from a worker's half-edited clone gave misleading
+numbers.
+
 `tests/i3/coverage.toml` is the source of truth for what the in-process harness measures.
 Use `./contrib/coverage-report` for the current census; its `--json` output is
 machine-readable. `./contrib/coverage-report --check` must report 0 violations.
@@ -183,6 +210,14 @@ Run the slow gate for changes under `src/layout/`:
 
 ```sh
 RUN_SLOW_TESTS=1 PROPTEST_CASES=20000 cargo test -p swayward --lib tiling_tree
+```
+
+The randomized layout test needs `RUN_SLOW_TESTS=1` too: without it it runs
+zero cases and reports success. CI runs 200,000 in release mode; locally, run
+at least
+
+```sh
+RUN_SLOW_TESTS=1 PROPTEST_CASES=20000 cargo test --release -p swayward --lib random_operations_dont_panic
 ```
 
 `random_operations_dont_panic` searches fresh cases rather than replaying the
