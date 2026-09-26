@@ -5367,31 +5367,30 @@ fn find_bind<'a>(
         return modified_bind;
     }
 
-    raw.filter(|raw| *raw != modified)
-        .and_then(|raw| {
-            find_configured_bind_with_context(
-                bindings.clone(),
-                mod_key,
-                &[Trigger::Keysym(raw)],
-                raw_modifiers,
-                input_device,
-                group,
-                locked,
-                inhibited,
-            )
-        })
-        .or_else(|| {
-            find_configured_bind_with_context(
-                bindings,
-                mod_key,
-                &[Trigger::Keycode(key_code.raw())],
-                code_modifiers,
-                input_device,
-                group,
-                locked,
-                inhibited,
-            )
-        })
+    raw.and_then(|raw| {
+        find_configured_bind_with_context(
+            bindings.clone(),
+            mod_key,
+            &[Trigger::Keysym(raw)],
+            raw_modifiers,
+            input_device,
+            group,
+            locked,
+            inhibited,
+        )
+    })
+    .or_else(|| {
+        find_configured_bind_with_context(
+            bindings,
+            mod_key,
+            &[Trigger::Keycode(key_code.raw())],
+            code_modifiers,
+            input_device,
+            group,
+            locked,
+            inhibited,
+        )
+    })
 }
 
 fn mouse_regions_match(

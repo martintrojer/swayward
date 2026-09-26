@@ -1414,3 +1414,9 @@ migrated = false
 paths = ["src/layout/tile.rs", "src/layout/mod.rs", "src/window/mapped.rs"]
 what = "clip a tiled toplevel's pointer input to its window geometry in all cases, not only when the surface is oversized, while leaving its popups unclipped through a new `LayoutElement::is_in_popup_input_region`."
 why = "Sway clips every tiled view to its content box, input included (`sway/sway/tree/view.c:1032-1062`). A client drawing its own decorations keeps an input margin outside its geometry for resizing; unclipped, it took the pointer from the gap and the neighbour, showing the client's resize cursor and swallowing gap-resize and focus clicks there."
+
+[[edit]]
+migrated = false
+paths = ["src/input/mod.rs", "src/tests/ipc/bindings.rs"]
+what = "match a raw keysym with the unconsumed modifier state even when XKB resolves it to the same modified keysym."
+why = "Shift is consumed for BackSpace even though its symbol remains BackSpace, so `Shift+BackSpace` bindings otherwise never fire."

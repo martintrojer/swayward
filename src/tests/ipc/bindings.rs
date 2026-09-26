@@ -1947,6 +1947,23 @@ fn translated_keysym_uses_post_transition_consumed_modifiers() {
 }
 
 #[test]
+fn consumed_shift_still_matches_an_unchanged_raw_keysym() {
+    let config = swayward_config::Config::parse_mem(
+        r#"binds { Super+Shift+BackSpace { command "rename workspace to shifted-backspace"; }; }"#,
+    )
+    .unwrap();
+    let mut fixture = Fixture::with_config(config);
+    fixture.add_output(1, (1280, 720));
+
+    type_key_chords(&mut fixture, &[&[133, 50, 22]]);
+    assert!(fixture
+        .swayward()
+        .layout
+        .find_workspace_by_name("shifted-backspace")
+        .is_some());
+}
+
+#[test]
 fn bindcode_uses_the_xkb_keycode_from_real_input() {
     let config = swayward_config::Config::parse_mem(
         r#"binds { "code:39" { command "rename workspace to bindcode"; }; }"#,
