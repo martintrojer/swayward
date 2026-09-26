@@ -1137,7 +1137,7 @@ fn workspace_focus_events_mark_only_the_new_workspace_focused() {
     window.ack_last_and_commit();
     fixture.double_roundtrip(client);
 
-    let mut subscriber = UnixStream::connect(socket).unwrap();
+    let mut subscriber = UnixStream::connect(&socket).unwrap();
     subscriber
         .write_all(&swayward_ipc::wire::encode(
             MessageType::Subscribe,
@@ -1147,11 +1147,16 @@ fn workspace_focus_events_mark_only_the_new_workspace_focused() {
     let (_, reply) = read_ipc_reply(&mut fixture, &mut subscriber);
     assert_eq!(reply, r#"{"success": true}"#);
 
+    let mut command = UnixStream::connect(&socket).unwrap();
     let mut remainder = Vec::new();
     for name in ["2", "3", "1"] {
-        assert!(
-            crate::command::execute(fixture.niri_state(), &format!("workspace {name}"))[0].success
+        let reply = query_ipc_with_payload(
+            &mut fixture,
+            &mut command,
+            MessageType::RunCommand,
+            &format!("workspace {name}"),
         );
+        assert_eq!(reply[0]["success"], true);
         loop {
             let ((event_type, payload), next) =
                 read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder);
@@ -1162,6 +1167,13 @@ fn workspace_focus_events_mark_only_the_new_workspace_focused() {
                 assert_eq!(event["current"]["name"], name);
                 assert_eq!(event["current"]["focused"], true, "{event}");
                 assert_eq!(event["old"]["focused"], false, "{event}");
+                if name == "2" {
+                    assert_eq!(
+                        event["old"]["nodes"][0]["focused"], false,
+                        "the old workspace snapshot must reflect the completed focus mutation: {event}"
+                    );
+                    assert_eq!(event["old"]["nodes"][0]["visible"], false, "{event}");
+                }
                 break;
             }
         }

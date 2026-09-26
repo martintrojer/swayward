@@ -30,6 +30,7 @@ enum CommandTarget {
 }
 
 pub fn execute(state: &mut State, input: &str) -> Vec<CommandOutcome> {
+    state.ipc_begin_workspace_transaction();
     // Sway expands variables before dispatch, for every argument except the
     // name being defined by `set` (`sway/sway/commands.c:283-285`). This is the
     // single choke point for both IPC commands and key bindings, matching
@@ -48,7 +49,7 @@ pub fn execute(state: &mut State, input: &str) -> Vec<CommandOutcome> {
         }
     }
     let mut retained_targets = None;
-    parsed
+    let outcomes = parsed
         .into_iter()
         .map(|parsed| match parsed {
             Ok(parsed) => {
@@ -59,7 +60,9 @@ pub fn execute(state: &mut State, input: &str) -> Vec<CommandOutcome> {
             }
             Err(error) => error,
         })
-        .collect()
+        .collect();
+    state.ipc_commit_workspace_transaction();
+    outcomes
 }
 
 fn execute_one(
@@ -599,6 +602,12 @@ fn execute_one(
             None
         }
         Command::Output { target, actions } => {
+            if actions
+                .iter()
+                .any(|action| matches!(action, swayward_ipc::OutputAction::Off))
+            {
+                state.ipc_suppress_workspace_moves();
+            }
             let targets = if target == "*" {
                 state
                     .swayward
@@ -609,9 +618,14 @@ fn execute_one(
             } else {
                 vec![target]
             };
-            let has_power_action = actions
-                .iter()
-                .any(|action| matches!(action, swayward_ipc::OutputAction::Power { .. }));
+            let has_output_event = actions.iter().any(|action| {
+                matches!(
+                    action,
+                    swayward_ipc::OutputAction::On
+                        | swayward_ipc::OutputAction::Off
+                        | swayward_ipc::OutputAction::Power { .. }
+                )
+            });
             for target in targets {
                 for action in &actions {
                     if let swayward_ipc::OutputAction::Power { power } = action {
@@ -653,7 +667,7 @@ fn execute_one(
                     state.apply_transient_output_config(&target, &config_actions);
                 }
             }
-            if has_power_action {
+            if has_output_event {
                 state.swayward.ipc_output_changed();
             }
             None
