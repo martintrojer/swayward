@@ -1319,12 +1319,14 @@ fn layout_on_an_empty_tree_sets_the_root_layout() {
 }
 
 #[test]
-fn layout_on_an_empty_tree_marks_its_representation_initialized() {
+fn layout_on_an_empty_tree_initializes_representation_only_when_it_changes() {
     let mut t = tree((1200., 800.), 0.);
     assert!(!t.has_had_tile());
 
-    t.set_focused_layout(Layout::Stacked);
+    t.set_focused_layout(Layout::SplitH);
+    assert!(!t.has_had_tile());
 
+    t.set_focused_layout(Layout::Stacked);
     assert!(t.has_had_tile());
 }
 

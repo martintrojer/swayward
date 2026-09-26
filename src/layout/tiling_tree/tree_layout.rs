@@ -141,19 +141,21 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub fn set_focused_layout(&mut self, layout: Layout) -> Vec<(NodeId, NodeId)> {
-        // Sway starts exposing the workspace representation after an explicit
-        // layout command, even when the workspace has never held a window.
-        self.has_had_tile = true;
-        self.empty_representation_layout = None;
+        let root_layout = match self.nodes.get(&self.root).map(|node| &node.value) {
+            Some(TreeNode::Split { layout, .. }) => *layout,
+            Some(TreeNode::Leaf { .. }) | None => unreachable!(),
+        };
+        // Sway initializes or refreshes an empty workspace representation only
+        // when the command changes its layout.
+        if layout != root_layout {
+            self.has_had_tile = true;
+            self.empty_representation_layout = None;
+        }
         let focus = self.focus;
         let (target, remapped) = self.focused_layout_target();
         let Some(target) = target else {
             self.set_layout(self.root, layout);
             return remapped;
-        };
-        let root_layout = match self.nodes.get(&self.root).map(|node| &node.value) {
-            Some(TreeNode::Split { layout, .. }) => *layout,
-            Some(TreeNode::Leaf { .. }) | None => unreachable!(),
         };
         if target == self.root
             && focus.is_some_and(|focus| {
