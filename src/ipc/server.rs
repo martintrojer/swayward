@@ -430,6 +430,7 @@ fn parse_subscriptions(payload: &[u8]) -> Option<Vec<String>> {
                     | "mode"
                     | "shutdown"
                     | "window"
+                    | "barconfig_update"
                     | "binding"
                     | "tick"
                     | "input"

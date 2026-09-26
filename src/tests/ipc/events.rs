@@ -71,6 +71,31 @@ fn get_config_reports_not_implemented_rather_than_returning_kdl() {
 }
 
 #[test]
+fn subscribing_to_all_sway_event_families_succeeds() {
+    let (mut fixture, socket) = ipc_fixture();
+    let mut subscriber = UnixStream::connect(&socket).unwrap();
+    subscriber
+        .write_all(&swayward_ipc::wire::encode(
+            MessageType::Subscribe,
+            r#"["workspace","output","mode","window","barconfig_update","binding","shutdown","tick","input"]"#,
+        ))
+        .unwrap();
+
+    let ((msg_type, payload), remainder) =
+        read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, Vec::new());
+    assert_eq!(msg_type, MessageType::Subscribe as u32);
+    assert_eq!(payload, r#"{"success": true}"#);
+    let ((event_type, payload), remainder) =
+        read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder);
+    assert_eq!(event_type, (1 << 31) | 7);
+    assert_eq!(
+        serde_json::from_str::<Value>(&payload).unwrap(),
+        serde_json::json!({"first": true, "payload": ""})
+    );
+    assert!(remainder.is_empty());
+}
+
+#[test]
 fn input_subscription_emits_added_and_removed_with_get_inputs_payload() {
     let (mut fixture, socket) = ipc_fixture();
     let mut subscriber = UnixStream::connect(&socket).unwrap();

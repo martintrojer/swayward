@@ -1387,6 +1387,12 @@ why = "The default filter is `swayward=debug`, inherited from niri. A sway-shape
 
 [[edit]]
 migrated = false
+paths = ["src/ipc/server.rs", "src/tests/ipc/events.rs"]
+what = "accept sway's `barconfig_update` event family in subscriptions, including an all-family subscription used with SEND_TICK as an event-stream barrier."
+why = "Sway accepts all nine event names even when no bar configuration exists (`sway/sway/ipc-server.c`, IPC_SUBSCRIBE), so rejecting the unimplemented event family also rejected otherwise supported families in the same request."
+
+[[edit]]
+migrated = false
 paths = ["resources/default-config.kdl", "swayward-config/src/lib.rs"]
 what = "ship active `gestures { hot-corners { off; } }` and `recent-windows { off; }` stanzas, with the remaining options commented out, so the default config neither opens the overview from a screen corner nor binds Alt/Mod+Tab and Alt/Mod+grave to the recent-windows switcher."
 why = "Sway has no hot corners and no Alt-Tab switcher. niri enables both by default, so a sway user loses the top-left corner to the overview and has Mod+Tab taken. Putting the stanzas in the file keeps both features one line away from being turned on."
