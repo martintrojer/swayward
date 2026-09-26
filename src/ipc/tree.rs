@@ -489,8 +489,7 @@ fn describe_workspace_node(
                 compositor_layout.is_scratchpad_window(&tile.window().window),
                 true,
             );
-            node.focused =
-                workspace.floating_is_active() && active_window == Some(tile.window().id());
+            node.focused = active_window == Some(tile.window().id());
             let border = tile.sway_border();
             node.border = ipc_border(border.0);
             node.current_border_width = i32::from(border.1);

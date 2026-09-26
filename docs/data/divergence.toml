@@ -1285,6 +1285,12 @@ why = "Sway serializes every container percentage from its own pending box and i
 
 [[edit]]
 migrated = false
+paths = ["src/ipc/tree.rs"]
+what = "serialize the active workspace window as focused after a floating window enters fullscreen and moves into the tiling tree."
+why = "Sway preserves raw seat focus while fullscreening a floating container (`sway/tree/container.c:1187-1210`), so the resulting floating IPC node remains focused even though swayward's internal floating/tiling focus selector changes during the move."
+
+[[edit]]
+migrated = false
 paths = ["src/backend/headless.rs", "src/backend/mod.rs", "src/tests/ipc/outputs.rs"]
 what = "apply configured and runtime custom modes to headless outputs and keep their output-management mode records current."
 why = "The headless backend is used by sway-compatible IPC clients and the oracle, so a successful output mode command must change the advertised compositor geometry rather than only mutating configuration."

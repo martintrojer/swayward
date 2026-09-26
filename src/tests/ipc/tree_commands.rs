@@ -729,6 +729,38 @@ fn layout_splitv_wraps_a_single_window_without_changing_the_workspace_axis() {
 }
 
 #[test]
+fn fullscreen_floating_window_keeps_sways_raw_focus() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1280, 720));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.xdg_toplevel.set_app_id("fixture-1".into());
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    assert!(crate::command::execute(f.niri_state(), "floating enable")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "fullscreen enable")[0].success);
+
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &Default::default(),
+        &Default::default(),
+    ))
+    .unwrap();
+    assert_eq!(
+        find_json_node_with_app_id(&tree, "fixture-1").unwrap()["focused"],
+        true
+    );
+}
+
+#[test]
 fn focus_parent_then_layout_targets_the_parent_of_the_focused_container() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));
