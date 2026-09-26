@@ -53,7 +53,8 @@ bindsym $missing+x nop
         self.assertIn('code:24 { command "kill"; }', result.stdout)
         self.assertIn("touchpad {", result.stdout)
         self.assertIn("tap", result.stdout)
-        self.assertIn("natural-scroll false", result.stdout)
+        self.assertNotIn("natural-scroll false", result.stdout)
+        self.assertIn("// sway-to-kdl: sway natural_scroll disabled", result.stdout)
         self.assertIn('layout "us"', result.stdout)
         self.assertIn("repeat-delay 300", result.stdout)
         self.assertNotIn("$mod", result.stdout)
@@ -1044,6 +1045,22 @@ bindsym $missing+x nop
         self.assertIn("default-column-width { proportion 0.5; }", result.stdout)
         self.assertIn("default-window-height { proportion 0.6; }", result.stdout)
         self.assertIn("manual attention: none", result.stderr)
+
+    def test_disabled_libinput_flags_emit_output_the_parser_accepts(self):
+        result = self.translate(
+            "input type:pointer {\n    natural_scroll disabled\n    left_handed disabled\n}\n"
+            "input type:touchpad {\n    tap disabled\n    dwt enabled\n}\n"
+        )
+        for flag in ["natural-scroll", "left-handed", "tap"]:
+            self.assertNotIn(f"{flag} false", result.stdout)
+        self.assertIn("        dwt\n", result.stdout)
+        binary = ROOT / "target" / "debug" / "swayward"
+        if binary.exists():
+            with tempfile.NamedTemporaryFile("w", suffix=".kdl") as config:
+                config.write(result.stdout)
+                config.flush()
+                subprocess.run([binary, "validate", "-c", config.name], check=True,
+                               capture_output=True)
 
     def test_for_window_preserves_sticky_as_a_map_time_command(self):
         for value in ["enable", "disable", "toggle"]:

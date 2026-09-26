@@ -1269,7 +1269,9 @@ class Translator:
             if name == "drag":
                 rendered = f"{name} {str(value == 'enabled').lower()}"
             elif value in {"enabled", "disabled"}:
-                rendered = name if value == "enabled" else f"{name} false"
+                # libinput booleans are bare KDL flags that take no argument:
+                # presence enables them and absence leaves them off.
+                rendered = name if value == "enabled" else f"// sway-to-kdl: sway {item}"
             elif name in enum_values:
                 rendered = f"{name} {self.quote(enum_values[name].get(value, value))}"
             elif name in {"layout", "model", "options", "rules", "variant"}:
