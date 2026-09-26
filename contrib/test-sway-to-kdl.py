@@ -1062,6 +1062,28 @@ bindsym $missing+x nop
                 subprocess.run([binary, "validate", "-c", config.name], check=True,
                                capture_output=True)
 
+    def test_for_window_translates_pixel_size_and_relative_position(self):
+        result = self.translate(
+            'for_window [app_id="foo"] floating enable, resize set 760 420, '
+            "move position 75 ppt 75 ppt\n"
+            'for_window [app_id="bar"] floating enable, resize set 640px 480 px, '
+            "move position 10px 20 px\n"
+        )
+        self.assertIn("default-column-width { fixed 760; }", result.stdout)
+        self.assertIn("default-window-height { fixed 420; }", result.stdout)
+        self.assertIn("default-column-width { fixed 640; }", result.stdout)
+        self.assertIn("default-window-height { fixed 480; }", result.stdout)
+        self.assertIn(
+            'sway-for-window-command "move position 75 ppt 75 ppt"', result.stdout
+        )
+        self.assertIn('sway-for-window-command "move position 10px 20 px"', result.stdout)
+        self.assertIn("manual attention: none", result.stderr)
+
+    def test_for_window_resize_set_mixing_units_stays_fail_loud(self):
+        result = self.translate('for_window [app_id="foo"] resize set 50 ppt 400 px\n')
+        self.assertIn("needs manual conversion", result.stdout)
+        self.assertNotIn("default-column-width", result.stdout)
+
     def test_for_window_preserves_sticky_as_a_map_time_command(self):
         for value in ["enable", "disable", "toggle"]:
             with self.subTest(value=value):

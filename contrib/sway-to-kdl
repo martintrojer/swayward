@@ -964,6 +964,41 @@ class Translator:
             "}",
         ]
 
+    @staticmethod
+    def split_amounts(words: list[str]) -> list[tuple[int, str]] | None:
+        """Parse sway size amounts such as `5 px`, `5px`, `5 ppt` or `5`."""
+        amounts: list[tuple[int, str]] = []
+        index = 0
+        while index < len(words):
+            found = re.fullmatch(r"(-?\d+)(px|ppt)?", words[index])
+            if found is None:
+                return None
+            unit = found.group(2)
+            index += 1
+            if unit is None and index < len(words) and words[index] in {"px", "ppt"}:
+                unit = words[index]
+                index += 1
+            amounts.append((int(found.group(1)), unit or "px"))
+        return amounts
+
+    def fixed_resize_set(self, words: list[str]) -> tuple[int, int] | None:
+        if words[:2] != ["resize", "set"]:
+            return None
+        amounts = self.split_amounts(words[2:])
+        if (
+            amounts is None
+            or len(amounts) != 2
+            or any(unit != "px" or value <= 0 for value, unit in amounts)
+        ):
+            return None
+        return amounts[0][0], amounts[1][0]
+
+    def is_move_position_coordinates(self, words: list[str]) -> bool:
+        if words[:2] != ["move", "position"]:
+            return False
+        amounts = self.split_amounts(words[2:])
+        return amounts is not None and len(amounts) == 2
+
     def translate_for_window(
         self, source: Path, line: int, criteria: str, command: str
     ) -> None:
@@ -1054,10 +1089,22 @@ class Translator:
                         f"for_window {criteria} {directive}",
                         "resize size needs manual conversion",
                     )
+            elif (
+                resized := self.fixed_resize_set(words)
+            ) is not None:
+                width, height = resized
+                effects += [
+                    f"    default-column-width {{ fixed {width}; }}",
+                    f"    default-window-height {{ fixed {height}; }}",
+                ]
             elif words == ["move", "position", "center"]:
                 effects.append(
                     f"    sway-for-window-command {self.quote('move position center')}"
                 )
+            elif self.is_move_position_coordinates(words):
+                # swayward parses sway's relative `move position <x> <y>`
+                # with px or ppt units and runs it after the window maps.
+                effects.append(f"    sway-for-window-command {self.quote(directive)}")
             elif len(words) == 2 and words[0] == "sticky" and words[1] in {
                 "enable",
                 "disable",
