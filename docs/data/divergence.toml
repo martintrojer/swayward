@@ -1384,3 +1384,9 @@ migrated = false
 paths = ["src/ipc/server.rs"]
 what = "log each emitted IPC event and each received IPC request at `trace` instead of `debug`."
 why = "The default filter is `swayward=debug`, inherited from niri. A sway-shaped event stream and bars that poll GET_TREE make these two lines about 90% of `session.log`, which buries the debug output worth reading. `RUST_LOG=swayward::ipc::server=trace` brings them back."
+
+[[edit]]
+migrated = false
+paths = ["resources/default-config.kdl", "swayward-config/src/lib.rs"]
+what = "ship active `gestures { hot-corners { off; } }` and `recent-windows { off; }` stanzas, with the remaining options commented out, so the default config neither opens the overview from a screen corner nor binds Alt/Mod+Tab and Alt/Mod+grave to the recent-windows switcher."
+why = "Sway has no hot corners and no Alt-Tab switcher. niri enables both by default, so a sway user loses the top-left corner to the overview and has Mod+Tab taken. Putting the stanzas in the file keeps both features one line away from being turned on."

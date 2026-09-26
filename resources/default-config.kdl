@@ -415,12 +415,19 @@ animations {
 // every affected frame. Enable it together with a window-rule background-effect.
 // blur { on; passes 3; offset 2.0; noise 0.02; saturation 1.0; }
 
-// Gestures retain their compiled defaults; configure them only to tune edge actions or hot corners.
-// gestures {
-//     dnd-edge-view-scroll { trigger-width 30; delay-ms 100; max-speed 1500; }
-//     dnd-edge-workspace-switch { trigger-height 50; delay-ms 100; max-speed 1500; }
-//     hot-corners { off; top-left; top-right; bottom-left; bottom-right; }
-// }
+// Hot corners open the overview when the pointer touches a screen corner.
+// Sway has none, so they are off; list corners instead of `off` to enable them.
+gestures {
+    // dnd-edge-view-scroll { trigger-width 30; delay-ms 100; max-speed 1500; }
+    // dnd-edge-workspace-switch { trigger-height 50; delay-ms 100; max-speed 1500; }
+    hot-corners {
+        off
+        // top-left
+        // top-right
+        // bottom-left
+        // bottom-right
+    }
+}
 
 // The overview retains its compiled appearance defaults.
 // overview { zoom 0.5; backdrop-color "#000000"; workspace-shadow { off; softness 30; spread 5; offset x=0 y=5; color "#0007"; }; }
@@ -693,15 +700,21 @@ mode "resize" {
 // Named workspaces can be assigned to outputs; none are pinned by default.
 // workspace "web" { open-on-output "eDP-1"; sway-output-assignment "eDP-1" "HDMI-A-1"; layout "tabbed"; }
 
-// Recent-window switching stays dormant until one of these bindings is enabled.
-// recent-windows {
-//     off
-//     debounce-ms 150
-//     open-delay-ms 150
-//     highlight { active-color "#ffc87f"; urgent-color "#9b0000"; padding 10; corner-radius 4; }
-//     previews { max-height 720; max-scale 0.25; }
-//     binds { Alt+Tab { next-window; }; Alt+Shift+Tab { previous-window; }; }
-// }
+// The recent-windows (Alt-Tab) switcher is off, so none of its keys are bound.
+// Removing `off` enables it with compiled-in binds on Alt/Mod + Tab/grave.
+recent-windows {
+    off
+    // debounce-ms 750
+    // open-delay-ms 150
+    // highlight { active-color "#999999ff"; urgent-color "#ff9999ff"; padding 30; corner-radius 0; }
+    // previews { max-height 480; max-scale 0.5; }
+    // binds {
+    //     Alt+Tab { next-window; }
+    //     Alt+Shift+Tab { previous-window; }
+    //     Alt+grave { next-window filter="app-id"; }
+    //     Alt+Shift+grave { previous-window filter="app-id"; }
+    // }
+}
 
 // Includes are deployment-specific, so the shipped config is self-contained.
 // include "local.kdl" optional=true

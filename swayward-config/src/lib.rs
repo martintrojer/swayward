@@ -998,6 +998,13 @@ mod tests {
     }
 
     #[test]
+    fn default_config_disables_hot_corners_and_recent_windows() {
+        let config = Config::load_default();
+        assert!(config.gestures.hot_corners.off);
+        assert!(!config.recent_windows.on);
+    }
+
+    #[test]
     fn uncovered_top_border_can_be_disabled() {
         let config = Config::parse_mem("layout { draw-uncovered-top-border false; }").unwrap();
         assert!(!config.layout.draw_uncovered_top_border);
@@ -3432,6 +3439,12 @@ mod tests {
 
         -    prefer_no_csd: false,
         +    prefer_no_csd: true,
+
+        -            off: false,
+        +            off: true,
+
+        -        on: true,
+        +        on: false,
         "#,
         );
     }
