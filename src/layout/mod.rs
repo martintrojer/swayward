@@ -5311,13 +5311,13 @@ impl<W: LayoutElement> Layout<W> {
         workspace.set_focused_width(change);
     }
 
-    pub fn set_window_width(&mut self, window: Option<&W::Id>, change: SizeChange) {
+    pub fn set_window_width(&mut self, window: Option<&W::Id>, change: SizeChange) -> Option<bool> {
         if window.is_some_and(|window| self.is_scratchpad_hidden(window)) {
-            return;
+            return None;
         }
         if let Some(InteractiveMoveState::Moving(move_)) = &mut self.interactive_move {
             if window.is_none() || window == Some(move_.tile.window().id()) {
-                return;
+                return None;
             }
         }
 
@@ -5330,12 +5330,9 @@ impl<W: LayoutElement> Layout<W> {
             )
         } else {
             self.active_workspace_mut()
-        };
+        }?;
 
-        let Some(workspace) = workspace else {
-            return;
-        };
-        workspace.set_window_width(window, change, automatic_maximum);
+        Some(workspace.set_window_width(window, change, automatic_maximum))
     }
 
     pub fn resize_tiling_node(
@@ -5344,13 +5341,10 @@ impl<W: LayoutElement> Layout<W> {
         node: tiling_tree::NodeId,
         width: bool,
         change: SizeChange,
-    ) {
-        if let Some(workspace) = self
-            .workspaces_mut()
+    ) -> Option<bool> {
+        self.workspaces_mut()
             .find(|workspace| workspace.id() == workspace_id)
-        {
-            workspace.resize_tiling_node(node, width, change);
-        }
+            .map(|workspace| workspace.resize_tiling_node(node, width, change))
     }
 
     pub fn resize_tiling_node_edge(
@@ -5396,13 +5390,17 @@ impl<W: LayoutElement> Layout<W> {
         workspace.set_window_size_sway(window, width, height, automatic_maximum);
     }
 
-    pub fn set_window_height(&mut self, window: Option<&W::Id>, change: SizeChange) {
+    pub fn set_window_height(
+        &mut self,
+        window: Option<&W::Id>,
+        change: SizeChange,
+    ) -> Option<bool> {
         if window.is_some_and(|window| self.is_scratchpad_hidden(window)) {
-            return;
+            return None;
         }
         if let Some(InteractiveMoveState::Moving(move_)) = &mut self.interactive_move {
             if window.is_none() || window == Some(move_.tile.window().id()) {
-                return;
+                return None;
             }
         }
 
@@ -5415,12 +5413,9 @@ impl<W: LayoutElement> Layout<W> {
             )
         } else {
             self.active_workspace_mut()
-        };
+        }?;
 
-        let Some(workspace) = workspace else {
-            return;
-        };
-        workspace.set_window_height(window, change, automatic_maximum);
+        Some(workspace.set_window_height(window, change, automatic_maximum))
     }
 
     pub fn resize_window_edge(

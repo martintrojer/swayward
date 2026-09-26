@@ -85,16 +85,14 @@ impl<W: LayoutElement> TilingTree<W> {
         true
     }
 
-    pub fn set_window_width(&mut self, window: Option<&W::Id>, change: SizeChange) {
-        if let Some(id) = self.resolve_node(window) {
-            self.resize_node_dimension(id, true, change);
-        }
+    pub fn set_window_width(&mut self, window: Option<&W::Id>, change: SizeChange) -> bool {
+        self.resolve_node(window)
+            .is_some_and(|id| self.resize_node_dimension(id, true, change))
     }
 
-    pub fn set_window_height(&mut self, window: Option<&W::Id>, change: SizeChange) {
-        if let Some(id) = self.resolve_node(window) {
-            self.resize_node_dimension(id, false, change);
-        }
+    pub fn set_window_height(&mut self, window: Option<&W::Id>, change: SizeChange) -> bool {
+        self.resolve_node(window)
+            .is_some_and(|id| self.resize_node_dimension(id, false, change))
     }
 
     pub fn set_window_size_sway(
@@ -109,8 +107,13 @@ impl<W: LayoutElement> TilingTree<W> {
         self.set_node_size_sway(id, width, height);
     }
 
-    pub fn resize_node_dimension_command(&mut self, id: NodeId, width: bool, change: SizeChange) {
-        self.resize_node_dimension(id, width, change);
+    pub fn resize_node_dimension_command(
+        &mut self,
+        id: NodeId,
+        width: bool,
+        change: SizeChange,
+    ) -> bool {
+        self.resize_node_dimension(id, width, change)
     }
 
     pub fn resize_node_edge_command(
@@ -341,7 +344,7 @@ impl<W: LayoutElement> TilingTree<W> {
         }
     }
 
-    fn resize_node_dimension(&mut self, id: NodeId, width: bool, change: SizeChange) {
+    fn resize_node_dimension(&mut self, id: NodeId, width: bool, change: SizeChange) -> bool {
         let wanted = if width {
             Layout::SplitH
         } else {
@@ -357,7 +360,7 @@ impl<W: LayoutElement> TilingTree<W> {
                 },
             }) = self.nodes.get(&parent_id)
             else {
-                return;
+                return false;
             };
             if *layout == wanted && children.len() > 1 {
                 let geometries = self.compute_geometry();
@@ -369,11 +372,11 @@ impl<W: LayoutElement> TilingTree<W> {
                     }
                 };
                 let Some(parent_extent) = geometries.ipc_nodes.get(&parent_id).map(extent) else {
-                    return;
+                    return false;
                 };
                 let child_extent = |child| geometries.ipc_nodes.get(child).map(extent);
                 let Some(current) = child_extent(&branch) else {
-                    return;
+                    return false;
                 };
                 let available = children
                     .iter()
@@ -388,12 +391,12 @@ impl<W: LayoutElement> TilingTree<W> {
                         ((parent_extent * value / 100.).trunc() - current) / available
                     }
                 };
-                self.resize_across_siblings(parent_id, branch, delta);
-                return;
+                return self.resize_across_siblings(parent_id, branch, delta);
             }
             branch = parent_id;
             parent = *grandparent;
         }
+        false
     }
 
     fn resize_node_dimension_sway(&mut self, id: NodeId, width: bool, change: SizeChange) {

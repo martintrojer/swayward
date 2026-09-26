@@ -926,9 +926,9 @@ impl<W: LayoutElement> FloatingSpace<W> {
         change: SizeChange,
         animate: bool,
         automatic_maximum: Size<i32, Logical>,
-    ) {
+    ) -> bool {
         let Some(id) = id.or(self.active_window_id.as_ref()) else {
-            return;
+            return false;
         };
         let idx = self.idx_of(id).unwrap();
 
@@ -974,6 +974,7 @@ impl<W: LayoutElement> FloatingSpace<W> {
             max_size,
         );
         win.request_size_once(win_size, animate);
+        current_tile != tile.tile_expected_or_current_size().w
     }
 
     pub fn set_window_outer_width(
@@ -1062,9 +1063,9 @@ impl<W: LayoutElement> FloatingSpace<W> {
         change: SizeChange,
         animate: bool,
         automatic_maximum: Size<i32, Logical>,
-    ) {
+    ) -> bool {
         let Some(id) = id.or(self.active_window_id.as_ref()) else {
-            return;
+            return false;
         };
         let idx = self.idx_of(id).unwrap();
 
@@ -1110,6 +1111,7 @@ impl<W: LayoutElement> FloatingSpace<W> {
             max_size,
         );
         win.request_size_once(win_size, animate);
+        current_tile != tile.tile_expected_or_current_size().h
     }
 
     fn focus_directional(

@@ -432,6 +432,34 @@ fn focused_split_rejects_border_and_resizes_as_one_container() {
 }
 
 #[test]
+fn tiled_axis_resize_without_parallel_siblings_reports_failure() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1280, 800));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    for command in ["resize grow width 10 px", "resize shrink height 10 px"] {
+        let outcome = crate::command::execute(f.niri_state(), command);
+        assert_eq!(
+            outcome,
+            [swayward_ipc::CommandOutcome {
+                success: false,
+                error: Some("Cannot resize any further".into()),
+                parse_error: Some(true),
+            }],
+            "{command}"
+        );
+    }
+}
+
+#[test]
 fn tiled_grow_at_workspace_edge_reports_failure() {
     let mut f = Fixture::new();
     f.add_output(1, (1280, 800));
@@ -461,7 +489,12 @@ fn tiled_grow_at_workspace_edge_reports_failure() {
 
 #[test]
 fn floating_grow_edges_change_origin_and_size_like_sway() {
-    let config = swayward_config::Config::parse_mem("animations { off; }").unwrap();
+    let mut config = swayward_config::Config::default();
+    config.animations.off = true;
+    config.layout.floating_maximum_size = swayward_config::FloatingSize {
+        width: 1280,
+        height: 800,
+    };
     let mut f = Fixture::with_config(config);
     f.add_output_at(1, (1280, 800), Some((100, 50)));
     let client = f.add_client();
@@ -566,11 +599,47 @@ fn floating_grow_edges_change_origin_and_size_like_sway() {
     let before = rect(&mut f);
     assert_eq!(before["width"], 1280);
     assert_eq!(before["height"], 800);
-    let outcome = crate::command::execute(f.niri_state(), "resize grow right 10 px or 25 ppt");
-    assert!(!outcome[0].success);
+    for command in [
+        "resize grow right 10 px or 25 ppt",
+        "resize grow width 10 px or 25 ppt",
+    ] {
+        let outcome = crate::command::execute(f.niri_state(), command);
+        assert_eq!(
+            outcome,
+            [swayward_ipc::CommandOutcome {
+                success: false,
+                error: Some("Cannot resize any further".into()),
+                parse_error: Some(true),
+            }],
+            "{command}"
+        );
+        assert_eq!(rect(&mut f), before, "{command}");
+    }
+
+    assert!(crate::command::execute(f.niri_state(), "resize set 1 px 1 px")[0].success);
+    let requested = f
+        .swayward()
+        .layout
+        .focus()
+        .unwrap()
+        .expected_size()
+        .unwrap();
+    let window = f.client(client).window(&surface);
+    window.set_size(
+        requested.w.try_into().unwrap(),
+        requested.h.try_into().unwrap(),
+    );
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+    let before = rect(&mut f);
+    let outcome = crate::command::execute(f.niri_state(), "resize shrink height 10 px");
     assert_eq!(
-        outcome[0].error.as_deref(),
-        Some("Cannot resize any further")
+        outcome,
+        [swayward_ipc::CommandOutcome {
+            success: false,
+            error: Some("Cannot resize any further".into()),
+            parse_error: Some(true),
+        }]
     );
     assert_eq!(rect(&mut f), before);
 }
