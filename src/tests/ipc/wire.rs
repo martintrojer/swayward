@@ -251,6 +251,47 @@ fn unknown_request_types_get_a_structured_reply_and_keep_the_connection() {
 }
 
 #[test]
+fn malformed_frames_disconnect_instead_of_matching_sways_timeout() {
+    let (mut fixture, socket) = ipc_fixture();
+
+    for frame in [
+        b"i3-ipc\0\0".to_vec(),
+        {
+            let mut frame = swayward_ipc::wire::encode_raw(0, "nop");
+            frame[6..10].copy_from_slice(&10u32.to_ne_bytes());
+            frame
+        },
+        {
+            let mut frame = swayward_ipc::wire::encode_raw(0, "");
+            frame[6..10].copy_from_slice(&u32::MAX.to_ne_bytes());
+            frame
+        },
+    ] {
+        let mut stream = UnixStream::connect(&socket).unwrap();
+        stream.write_all(&frame).unwrap();
+        stream.shutdown(std::net::Shutdown::Write).unwrap();
+        stream.set_nonblocking(true).unwrap();
+
+        let deadline = Instant::now() + Duration::from_secs(1);
+        loop {
+            fixture.dispatch();
+            let mut byte = [0; 1];
+            match stream.read(&mut byte) {
+                Ok(0) => break,
+                Err(error) if error.kind() == std::io::ErrorKind::ConnectionReset => break,
+                Ok(_) => panic!("malformed frame unexpectedly received a reply"),
+                Err(ref error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
+                Err(error) => panic!("error reading malformed-frame response: {error}"),
+            }
+            assert!(
+                Instant::now() < deadline,
+                "malformed frame left the client hanging"
+            );
+        }
+    }
+}
+
+#[test]
 fn malformed_frames_do_not_hang_or_wedge_the_server() {
     // "It never hangs" is the half of the wire invariant most likely to fail,
     // and these are the frames a buggy client actually sends. Each case uses a

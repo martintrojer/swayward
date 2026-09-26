@@ -91,7 +91,11 @@ The partial requests are:
   its deprecated `dpms` alias.
 
 The remaining request is `GET_CONFIG`, which is deliberately not implemented
-for the reason above. Unknown message numbers are rejected by the wire decoder.
+for the reason above. Unknown message numbers receive a structured failure.
+Sway instead leaves those clients waiting without a reply; swayward deliberately
+diverges because its IPC contract does not permit a request to hang. For the
+same reason, a client that half-closes a truncated or oversized frame is
+disconnected rather than retained indefinitely as sway retains it.
 
 ## Commands: broad, not complete
 
