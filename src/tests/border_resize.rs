@@ -270,3 +270,80 @@ fn every_tab_resizes_from_the_border_it_shares_with_a_neighbour() {
         assert_eq!(focused_title(&mut s.f).as_deref(), Some(visible));
     }
 }
+
+/// Recommits `surface` like a client drawing its own decorations: the buffer
+/// is `margin` larger on every side than the window geometry, and the
+/// default input region covers all of it.
+fn commit_with_csd_margin(f: &mut Fixture, id: ClientId, surface: &WlSurface, margin: i32) {
+    let window = f.client(id).window(surface);
+    let (w, h) = window.configures_received.last().unwrap().1.size;
+    window.set_size((w + margin * 2) as u16, (h + margin * 2) as u16);
+    window.xdg_surface.set_window_geometry(margin, margin, w, h);
+    window.commit();
+    f.double_roundtrip(id);
+}
+
+#[test]
+fn a_tiled_window_input_margin_does_not_cover_the_gap() {
+    // Sway clips a tiled view to its geometry, input included
+    // (`sway/sway/tree/view.c:1032-1062`), so the resize margin a client keeps
+    // around its own decorations never reaches into the gap.
+    let mut s = setup_with(gap_config(true), [185., 185.]);
+    let left = s.surfaces[0].clone();
+    commit_with_csd_margin(&mut s.f, s.id, &left, 10);
+
+    let output = s.f.niri_output(1);
+    let over_gap =
+        s.f.swayward()
+            .layout
+            .window_under(&output, (200., 100.).into());
+    assert!(over_gap.is_none(), "the margin takes the gap");
+
+    // `drag` recommits both windows at their configured size after the
+    // release, which only affects what happens afterwards.
+    drag(&mut s, 200, 50);
+    let widths = tile_widths(&mut s.f);
+    assert_eq!(widths[1], 135., "{widths:?}");
+}
+
+#[test]
+fn a_popup_over_the_gap_keeps_its_input() {
+    // Only the toplevel is clipped: a menu that opens across the gap still
+    // takes the click there, rather than the gap handle.
+    let mut s = setup_with(gap_config(true), [185., 185.]);
+    let right = s.surfaces[1].clone();
+    let parent = s.f.client(s.id).window(&right).xdg_surface.clone();
+    // A 100x100 popup centred on the right window's top-left corner, at
+    // (205, 10), spans the gap at x in [195, 205) from y 10 down.
+    let popup = s.f.client(s.id).create_popup(&parent).surface.clone();
+    popup.commit();
+    s.f.double_roundtrip(s.id);
+    // The test client acks popup configures itself.
+    let buffer = {
+        let window = s.f.client(s.id).window(&right);
+        window
+            .spbm
+            .create_u32_rgba_buffer(0, 0, 0, u32::MAX, &window.qh, ())
+    };
+    // Scale the single-pixel buffer up to the 100x100 the positioner asked for.
+    let viewport = {
+        let state = &s.f.client(s.id).state;
+        state
+            .viewporter
+            .as_ref()
+            .unwrap()
+            .get_viewport(&popup, &state.qh, ())
+    };
+    viewport.set_destination(100, 100);
+    popup.attach(Some(&buffer), 0, 0);
+    popup.commit();
+    s.f.double_roundtrip(s.id);
+
+    let output = s.f.niri_output(1);
+    let hit =
+        s.f.swayward()
+            .layout
+            .window_under(&output, (200., 30.).into())
+            .map(|(_, hit)| matches!(hit, crate::layout::HitType::Input { .. }));
+    assert_eq!(hit, Some(true), "the popup lost its input over the gap");
+}

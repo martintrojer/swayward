@@ -5,7 +5,7 @@ use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::desktop::space::SpaceElement as _;
-use smithay::desktop::{PopupKind, PopupManager, Window};
+use smithay::desktop::{PopupKind, PopupManager, Window, WindowSurfaceType};
 use smithay::output::{self, Output};
 use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1;
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
@@ -843,6 +843,13 @@ impl LayoutElement for Mapped {
     fn is_in_input_region(&self, point: Point<f64, Logical>) -> bool {
         let surface_local = point + self.window.geometry().loc.to_f64();
         self.window.is_in_input_region(&surface_local)
+    }
+
+    fn is_in_popup_input_region(&self, point: Point<f64, Logical>) -> bool {
+        let surface_local = point + self.window.geometry().loc.to_f64();
+        self.window
+            .surface_under(surface_local, WindowSurfaceType::POPUP)
+            .is_some()
     }
 
     fn render_normal<R: NiriRenderer>(

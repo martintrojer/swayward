@@ -1082,10 +1082,15 @@ impl<W: LayoutElement> Tile<W> {
 
     fn is_in_input_region(&self, mut point: Point<f64, Logical>) -> bool {
         point -= self.window_loc().to_f64();
-        // Input follows the crop: the part of an oversized tiled surface that is not drawn does
-        // not take the pointer from the neighbour drawn there.
-        if self.exceeds_tiled_slot() && !Rectangle::from_size(self.window_size()).contains(point) {
-            return false;
+        // A tiled toplevel takes input only inside its geometry, as sway clips a tiled view,
+        // input included (`sway/sway/tree/view.c:1032-1062`). Without this, the margin a client
+        // keeps around its own decorations for resizing takes the pointer from the gap and the
+        // neighbour, and an oversized surface takes it from the neighbour drawn over it. Popups
+        // are not clipped.
+        if self.tiled_slot_size().is_some() {
+            return self.window.is_in_popup_input_region(point)
+                || (Rectangle::from_size(self.window_size()).contains(point)
+                    && self.window.is_in_input_region(point));
         }
         self.window.is_in_input_region(point)
     }

@@ -1408,3 +1408,9 @@ migrated = false
 paths = ["src/input/mod.rs", "src/layout/workspace.rs"]
 what = "make the modifier resize drag pick the corner of the quadrant under the pointer, split at the half, resize a tiled window on both axes at once, and drop niri's double-click full-width and reset-height gestures from that path."
 why = "Sway's floating_modifier resize always starts from a corner chosen by halves (`sway/sway/input/seatop_default.c:413-435,477-487`) and moves the horizontal and vertical boundaries independently (`sway/sway/input/seatop_resize_tiling.c:52-127`). niri chose edges by thirds and resized one axis, and its double-click gestures would fire on every corner once every press is a corner. Sway has neither gesture."
+
+[[edit]]
+migrated = false
+paths = ["src/layout/tile.rs", "src/layout/mod.rs", "src/window/mapped.rs"]
+what = "clip a tiled toplevel's pointer input to its window geometry in all cases, not only when the surface is oversized, while leaving its popups unclipped through a new `LayoutElement::is_in_popup_input_region`."
+why = "Sway clips every tiled view to its content box, input included (`sway/sway/tree/view.c:1032-1062`). A client drawing its own decorations keeps an input margin outside its geometry for resizing; unclipped, it took the pointer from the gap and the neighbour, showing the client's resize cursor and swallowing gap-resize and focus clicks there."

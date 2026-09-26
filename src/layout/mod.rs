@@ -158,6 +158,14 @@ pub trait LayoutElement {
     /// The point is relative to the element's visual geometry.
     fn is_in_input_region(&self, point: Point<f64, Logical>) -> bool;
 
+    /// Checks whether a point is in the input region of one of the element's popups.
+    ///
+    /// The point is relative to the element's visual geometry. Popups are not clipped to a
+    /// tiled container, unlike the toplevel surface.
+    fn is_in_popup_input_region(&self, _point: Point<f64, Logical>) -> bool {
+        false
+    }
+
     /// Renders the element at the given visual location.
     ///
     /// The element should be rendered in such a way that its visual geometry ends up at the given
