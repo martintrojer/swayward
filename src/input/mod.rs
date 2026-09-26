@@ -21,7 +21,8 @@ use smithay::input::pointer::{
     AxisFrame, ButtonEvent, CursorIcon, CursorImageStatus, Focus, GestureHoldBeginEvent,
     GestureHoldEndEvent, GesturePinchBeginEvent, GesturePinchEndEvent, GesturePinchUpdateEvent,
     GestureSwipeBeginEvent, GestureSwipeEndEvent, GestureSwipeUpdateEvent,
-    GrabStartData as PointerGrabStartData, MotionEvent, PointerGrab, RelativeMotionEvent,
+    GrabStartData as PointerGrabStartData, MotionEvent, PointerGrab, PointerHandle,
+    RelativeMotionEvent,
 };
 use smithay::input::tablet::tool::GrabStartData as TabletToolGrabStartData;
 use smithay::input::tablet::{TabletDescriptor, TabletSeatHandler, TabletSeatTrait};
@@ -2950,6 +2951,8 @@ impl State {
             self.swayward.pointer_inside_hot_corner = true;
         }
 
+        self.update_border_resize_cursor(&pointer);
+
         // Activate a new confinement if necessary.
         self.swayward.maybe_activate_pointer_constraint();
 
@@ -3043,6 +3046,8 @@ impl State {
             self.swayward.pointer_inside_hot_corner = true;
         }
 
+        self.update_border_resize_cursor(&pointer);
+
         self.swayward.maybe_activate_pointer_constraint();
 
         // We moved the pointer, show it.
@@ -3069,6 +3074,60 @@ impl State {
         // Redraw to update the cursor position.
         // FIXME: redraw only outputs overlapping the cursor.
         self.swayward.queue_redraw_all();
+    }
+
+    /// Shows sway's resize cursor over a resizable border
+    /// (`sway/sway/input/cursor.c`, `cursor_update_image`): directional for
+    /// floating windows, `col-resize` or `row-resize` for tiled ones.
+    fn update_border_resize_cursor(&mut self, pointer: &PointerHandle<State>) {
+        if pointer.is_grabbed() {
+            return;
+        }
+        let icon = self
+            .border_resize_edges_under_pointer(pointer)
+            .map(|(floating, edges)| {
+                if floating {
+                    edges.cursor_icon()
+                } else if edges.intersects(ResizeEdge::LEFT_RIGHT) {
+                    CursorIcon::ColResize
+                } else {
+                    CursorIcon::RowResize
+                }
+            });
+        if let Some(icon) = icon {
+            self.swayward.border_resize_cursor = true;
+            self.swayward
+                .cursor_manager
+                .set_cursor_image(CursorImageStatus::Named(icon));
+        } else if std::mem::take(&mut self.swayward.border_resize_cursor)
+            && self.swayward.pointer_contents.surface.is_none()
+        {
+            // A surface under the pointer sets its own cursor on enter.
+            self.swayward
+                .cursor_manager
+                .set_cursor_image(CursorImageStatus::default_named());
+        }
+    }
+
+    /// Whether the pointer is over a border a plain left press resizes, and
+    /// whether that window floats.
+    fn border_resize_edges_under_pointer(
+        &self,
+        pointer: &PointerHandle<State>,
+    ) -> Option<(bool, ResizeEdge)> {
+        if !self.swayward.config.borrow().input.border_resize
+            || self.swayward.pointer_contents.surface.is_some()
+            || self.swayward.layout.is_overview_open()
+        {
+            return None;
+        }
+        let (window, _) = self.swayward.pointer_contents.window.as_ref()?;
+        let (output, pos) = self.swayward.output_under(pointer.current_location())?;
+        let (mapped, edges) = self
+            .swayward
+            .layout
+            .border_resize_edges_under(output, pos)?;
+        (&mapped.window == window).then_some((mapped.is_floating(), edges))
     }
 
     fn on_pointer_button<I: InputBackend>(&mut self, event: I::PointerButtonEvent) {
@@ -3314,7 +3373,43 @@ impl State {
                     } else {
                         button == Some(drag_move_button) && drag_mod_down
                     };
-                if (overview_move || regular_move) && !pointer.is_grabbed() {
+                // Sway resizes from a border on a plain left press, tiled before any modifier
+                // move and floating after one (`sway/sway/input/seatop_default.c:396-474`).
+                let border_resize = (!is_overview_open
+                    && button == Some(MouseButton::Left)
+                    && !pointer.is_grabbed()
+                    && self.swayward.config.borrow().input.border_resize
+                    && (is_tiling || !regular_move))
+                    .then(|| {
+                        let location = pointer.current_location();
+                        let (output, pos) = self.swayward.output_under(location)?;
+                        let (target, edges) = self
+                            .swayward
+                            .layout
+                            .border_resize_edges_under(output, pos)?;
+                        (target.window == window).then_some((location, edges))
+                    })
+                    .flatten();
+                if let Some((location, edges)) = border_resize {
+                    self.swayward.layout.activate_window(&window);
+                    if self
+                        .swayward
+                        .layout
+                        .interactive_resize_begin(window.clone(), edges)
+                    {
+                        let start_data = PointerGrabStartData {
+                            focus: None,
+                            button: button_code,
+                            location,
+                        };
+                        let start_data = AnyStartData::Pointer(start_data);
+                        let grab = ResizeGrab::new(start_data, window.clone());
+                        pointer.set_grab(self, grab, serial, Focus::Clear);
+                        self.swayward
+                            .cursor_manager
+                            .set_cursor_image(CursorImageStatus::Named(edges.cursor_icon()));
+                    }
+                } else if (overview_move || regular_move) && !pointer.is_grabbed() {
                     let location = pointer.current_location();
 
                     if !is_overview_open {

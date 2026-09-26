@@ -2746,6 +2746,40 @@ impl<W: LayoutElement> Workspace<W> {
             })
     }
 
+    /// The topmost window under `pos` and the border edges a plain left drag
+    /// resizes there, following sway's `find_resize_edge`
+    /// (`sway/sway/input/seatop_default.c:111-118`): floating windows resize
+    /// from any border edge, tiled windows only from an edge shared with a
+    /// sibling.
+    pub fn border_resize_edges_under(&self, pos: Point<f64, Logical>) -> Option<(&W, ResizeEdge)> {
+        let (tile, pos_within_tile, hit) =
+            self.tiles_with_render_positions()
+                .find_map(|(tile, tile_pos, visible)| {
+                    // Consistent with window_under(): the first visible hit wins.
+                    if !visible {
+                        return None;
+                    }
+                    let pos_within_tile = pos - tile_pos;
+                    let hit = tile.hit(pos_within_tile)?;
+                    Some((tile, pos_within_tile, hit))
+                })?;
+        // The client surface keeps its own clicks.
+        if !matches!(hit, HitType::Activate { .. }) {
+            return None;
+        }
+        let edges = tile.border_edges_at(pos_within_tile);
+        if edges.is_empty() {
+            return None;
+        }
+        let window = tile.window();
+        if !self.floating.has_window(window.id())
+            && !self.tiling.is_internal_edge(window.id(), edges)
+        {
+            return None;
+        }
+        Some((window, edges))
+    }
+
     pub fn descendants_added(&mut self, id: &W::Id) -> bool {
         self.floating.descendants_added(id)
     }

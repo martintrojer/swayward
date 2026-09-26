@@ -1227,6 +1227,32 @@ impl<W: LayoutElement> Tile<W> {
         size
     }
 
+    /// The border edges under `point`, in tile coordinates, as sway's
+    /// `find_edge` computes them (`sway/sway/input/seatop_default.c:76-104`):
+    /// within the border thickness of the decorated box. A hidden, `none` or
+    /// `csd` border, or a non-normal sizing mode, has no edges.
+    pub fn border_edges_at(&self, point: Point<f64, Logical>) -> ResizeEdge {
+        let Some(width) = self.effective_border_width().filter(|width| *width > 0.) else {
+            return ResizeEdge::empty();
+        };
+        let point = point - self.bob_offset();
+        let size = self.tile_size();
+        let mut edges = ResizeEdge::empty();
+        if point.x < width {
+            edges |= ResizeEdge::LEFT;
+        }
+        if point.y < width {
+            edges |= ResizeEdge::TOP;
+        }
+        if point.x >= size.w - width {
+            edges |= ResizeEdge::RIGHT;
+        }
+        if point.y >= size.h - width {
+            edges |= ResizeEdge::BOTTOM;
+        }
+        edges
+    }
+
     pub fn bob_offset(&self) -> Point<f64, Logical> {
         if self.window.rules().baba_is_float != Some(true) {
             return Point::from((0., 0.));

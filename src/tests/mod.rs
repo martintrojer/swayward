@@ -4,6 +4,7 @@ mod client;
 pub(crate) mod fixture;
 mod server;
 
+mod border_resize;
 mod ext_workspace;
 mod floating;
 mod foreign_toplevel;

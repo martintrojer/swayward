@@ -908,6 +908,7 @@ mod tests {
             input {
                 tiling-drag false
                 tiling-drag-threshold 17
+                border-resize false
             }
             "#,
         )
@@ -918,6 +919,7 @@ mod tests {
         assert_eq!(config.layout.titlebar.alignment, TitleAlignment::Right);
         assert!(!config.input.tiling_drag);
         assert_eq!(config.input.tiling_drag_threshold, 17);
+        assert!(!config.input.border_resize);
     }
 
     #[test]
@@ -1758,6 +1760,7 @@ mod tests {
                 workspace_auto_back_and_forth: true,
                 tiling_drag: true,
                 tiling_drag_threshold: 9,
+                border_resize: true,
                 mod_key: Some(
                     IsoLevel3Shift,
                 ),

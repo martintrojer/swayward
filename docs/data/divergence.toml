@@ -1390,3 +1390,9 @@ migrated = false
 paths = ["resources/default-config.kdl", "swayward-config/src/lib.rs"]
 what = "ship active `gestures { hot-corners { off; } }` and `recent-windows { off; }` stanzas, with the remaining options commented out, so the default config neither opens the overview from a screen corner nor binds Alt/Mod+Tab and Alt/Mod+grave to the recent-windows switcher."
 why = "Sway has no hot corners and no Alt-Tab switcher. niri enables both by default, so a sway user loses the top-left corner to the overview and has Mod+Tab taken. Putting the stanzas in the file keeps both features one line away from being turned on."
+
+[[edit]]
+migrated = false
+paths = ["src/input/mod.rs", "src/swayward.rs", "src/layout/mod.rs", "src/layout/monitor.rs", "src/layout/workspace.rs", "src/layout/tile.rs", "swayward-config/src/input.rs", "swayward-config/src/lib.rs", "resources/default-config.kdl", "docs/wiki/Configuration:-Input.md"]
+what = "start an interactive resize on a plain left press on a window border, tiled only across an edge shared with a sibling and floating from any border edge, show sway's resize cursor while hovering such a border, and gate both behind `input { border-resize }`, on by default."
+why = "Sway resizes from the border with no modifier held and changes the cursor over a resizable edge (`sway/sway/input/seatop_default.c:39-118,396-410,468-474`, `sway/sway/input/cursor.c` `cursor_update_image`). niri only resized with Mod+right-drag, so a sway user could not grab a border. Sway has no switch for this; the toggle is swayward's."

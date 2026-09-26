@@ -423,6 +423,47 @@ impl<W: LayoutElement> TilingTree<W> {
         true
     }
 
+    /// Whether `edge` of `window` borders a sibling rather than the
+    /// workspace, following sway's `edge_is_external`
+    /// (`sway/sway/input/seatop_default.c:39-74`): some ancestor with exactly
+    /// the parallel split layout has a sibling on that side. A combined edge
+    /// matches no layout in sway, so corners are always external.
+    pub fn is_internal_edge(&self, window: &W::Id, edge: ResizeEdge) -> bool {
+        let (wanted, before) = if edge == ResizeEdge::LEFT {
+            (Layout::SplitH, true)
+        } else if edge == ResizeEdge::RIGHT {
+            (Layout::SplitH, false)
+        } else if edge == ResizeEdge::TOP {
+            (Layout::SplitV, true)
+        } else if edge == ResizeEdge::BOTTOM {
+            (Layout::SplitV, false)
+        } else {
+            return false;
+        };
+        let Some(mut id) = self.node_for_window(window) else {
+            return false;
+        };
+        while let Some(parent) = self.nodes.get(&id).and_then(|node| node.parent) {
+            if let Some(Node {
+                value: TreeNode::Split {
+                    layout, children, ..
+                },
+                ..
+            }) = self.nodes.get(&parent)
+            {
+                if *layout == wanted {
+                    if let Some(index) = children.iter().position(|child| *child == id) {
+                        if (before && index > 0) || (!before && index + 1 < children.len()) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            id = parent;
+        }
+        false
+    }
+
     fn resize_boundary(
         &self,
         id: NodeId,

@@ -10,6 +10,9 @@ input {
     // Allow dragging tiled windows and require 9 logical pixels of movement.
     tiling-drag true
     tiling-drag-threshold 9
+    // Resize windows by left-dragging a border between them, as sway does,
+    // with no modifier held. Set to false to resize only with Mod+right-drag.
+    border-resize true
 
     keyboard {
         xkb {
