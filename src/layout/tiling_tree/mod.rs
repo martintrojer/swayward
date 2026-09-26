@@ -801,6 +801,7 @@ impl<W: LayoutElement> TilingTree<W> {
             else {
                 return None;
             };
+            self.set_layout(self.root, layout);
             let children = children
                 .into_iter()
                 .map(|child| self.take_detached_node(child))
@@ -843,7 +844,38 @@ impl<W: LayoutElement> TilingTree<W> {
     ) -> (NodeId, Vec<(NodeId, NodeId)>) {
         let focus_history = subtree.focus_history;
         let mut remapped = Vec::new();
-        let id = self.insert_detached_node(subtree.node, None, &mut remapped);
+        let node = if self.is_empty() {
+            match subtree.node {
+                DetachedNode::Split {
+                    children,
+                    percents: detached_percents,
+                    ..
+                } => {
+                    self.set_layout(self.root, Layout::SplitH);
+                    let ids = children
+                        .into_iter()
+                        .map(|child| {
+                            self.insert_detached_node(child, Some(self.root), &mut remapped)
+                        })
+                        .collect::<Vec<_>>();
+                    let TreeNode::Split {
+                        children, percents, ..
+                    } = &mut self.nodes.get_mut(&self.root).unwrap().value
+                    else {
+                        unreachable!();
+                    };
+                    *percents = detached_percents;
+                    *children = ids;
+                    self.restore_transferred_focus(focus_history);
+                    self.request_window_sizes();
+                    return (self.root, remapped);
+                }
+                node => node,
+            }
+        } else {
+            subtree.node
+        };
+        let id = self.insert_detached_node(node, None, &mut remapped);
         let (parent, after) =
             match target.and_then(|target| self.nodes.get(&target).map(|node| (target, node))) {
                 Some((
@@ -863,6 +895,15 @@ impl<W: LayoutElement> TilingTree<W> {
                 _ => (self.root, None),
             };
         self.insert_child(parent, id, after);
+        self.restore_transferred_focus(focus_history);
+        if self.focus.is_none() {
+            self.set_focus_id(self.focused_leaf_in(id));
+        }
+        self.request_window_sizes();
+        (id, remapped)
+    }
+
+    fn restore_transferred_focus(&mut self, focus_history: Vec<W::Id>) {
         let insertion = usize::from(self.focus.is_some());
         for window in focus_history.into_iter().rev() {
             if let Some(leaf) = self.node_for_window(&window) {
@@ -872,10 +913,8 @@ impl<W: LayoutElement> TilingTree<W> {
             }
         }
         if self.focus.is_none() {
-            self.set_focus_id(self.focused_leaf_in(id));
+            self.set_focus_id(self.focused_leaf_in(self.root));
         }
-        self.request_window_sizes();
-        (id, remapped)
     }
 
     pub fn finish_subtree_detach(&mut self, old_parent: Option<NodeId>) {

@@ -1660,6 +1660,48 @@ fn cross_workspace_swap_exchanges_positions_marks_and_fullscreen() {
 }
 
 #[test]
+fn moving_a_container_tree_to_an_empty_workspace_unwraps_its_children() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1270, 1408));
+    let client = f.add_client();
+    for app_id in ["first", "second"] {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+    assert!(crate::command::execute(f.niri_state(), "focus parent")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "mark group")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "workspace target")[0].success);
+
+    let outcome = crate::command::execute(f.niri_state(), "[con_mark=group] move workspace target");
+    assert!(outcome[0].success, "{outcome:?}");
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(crate::ipc::tree::describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &Default::default(),
+        &Default::default(),
+    ))
+    .unwrap();
+    let target = tree["nodes"][1]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|workspace| workspace["name"] == "target")
+        .unwrap();
+    assert_eq!(target["layout"], "splith");
+    assert_eq!(target["nodes"].as_array().unwrap().len(), 2);
+    assert_eq!(target["nodes"][0]["app_id"], "first");
+    assert_eq!(target["nodes"][1]["app_id"], "second");
+}
+
+#[test]
 fn criteria_targeted_move_workspace_preserves_a_container_subtree() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));
