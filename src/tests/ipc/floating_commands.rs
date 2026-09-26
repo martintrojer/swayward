@@ -432,6 +432,30 @@ fn focused_split_rejects_border_and_resizes_as_one_container() {
 }
 
 #[test]
+fn tiled_axis_resize_without_parallel_siblings_reports_failure() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1280, 800));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    for command in ["resize grow width 10 px", "resize shrink height 10 px"] {
+        let outcome = crate::command::execute(f.niri_state(), command);
+        assert!(!outcome[0].success, "{command}: {outcome:?}");
+        assert_eq!(
+            outcome[0].error.as_deref(),
+            Some("Cannot resize any further")
+        );
+    }
+}
+
+#[test]
 fn tiled_grow_at_workspace_edge_reports_failure() {
     let mut f = Fixture::new();
     f.add_output(1, (1280, 800));

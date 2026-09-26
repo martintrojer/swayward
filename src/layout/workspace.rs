@@ -1906,14 +1906,15 @@ impl<W: LayoutElement> Workspace<W> {
         window: Option<&W::Id>,
         change: SizeChange,
         automatic_maximum: Size<i32, Logical>,
-    ) {
+    ) -> bool {
         if window.map_or(self.floating_is_active.get(), |id| {
             self.floating.has_window(id)
         }) {
             self.floating
                 .set_window_width(window, change, true, automatic_maximum);
+            true
         } else {
-            self.tiling.set_window_width(window, change);
+            self.tiling.set_window_width(window, change)
         }
     }
 
@@ -1922,9 +1923,9 @@ impl<W: LayoutElement> Workspace<W> {
         node: crate::layout::tiling_tree::NodeId,
         width: bool,
         change: SizeChange,
-    ) {
+    ) -> bool {
         self.tiling
-            .resize_node_dimension_command(node, width, change);
+            .resize_node_dimension_command(node, width, change)
     }
 
     pub fn resize_tiling_node_edge(
@@ -1971,14 +1972,15 @@ impl<W: LayoutElement> Workspace<W> {
         window: Option<&W::Id>,
         change: SizeChange,
         automatic_maximum: Size<i32, Logical>,
-    ) {
+    ) -> bool {
         if window.map_or(self.floating_is_active.get(), |id| {
             self.floating.has_window(id)
         }) {
             self.floating
                 .set_window_height(window, change, true, automatic_maximum);
+            true
         } else {
-            self.tiling.set_window_height(window, change);
+            self.tiling.set_window_height(window, change)
         }
     }
 

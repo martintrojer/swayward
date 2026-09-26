@@ -236,7 +236,7 @@ pub(super) fn resize(
             SizeChange::AdjustProportion(f64::from(amount))
         }
     };
-    match (target, axis) {
+    let changed = match (target, axis) {
         (CommandTarget::Window(_), ResizeAxis::Width) => state
             .swayward
             .layout
@@ -273,10 +273,11 @@ pub(super) fn resize(
                     .layout
                     .resize_tiling_node_edge(workspace, node, edge, change),
             };
-            if changed == Some(false) {
-                return Err(failure("Cannot resize any further"));
-            }
+            changed
         }
+    };
+    if changed == Some(false) {
+        return Err(failure("Cannot resize any further"));
     }
     Ok(())
 }
