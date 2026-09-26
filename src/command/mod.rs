@@ -197,7 +197,11 @@ fn execute_one(
             let Some(workspace) = state.swayward.layout.active_workspace() else {
                 return failure("Cannot move workspaces in a direction");
             };
-            if focused_target(state).is_none() {
+            let target = focused_target(state);
+            if target.is_none()
+                || matches!(target, Some(CommandTarget::Container(workspace, node))
+                    if state.swayward.layout.is_tiling_root(workspace, node))
+            {
                 return command_failure("Cannot move workspaces in a direction");
             };
             let fullscreen_floating = workspace.active_floating_is_fullscreen();
@@ -221,8 +225,8 @@ fn execute_one(
                 state.swayward.queue_redraw_all();
                 None
             } else {
-                let Some(target) = focused_target(state) else {
-                    return success();
+                let Some(target) = target else {
+                    unreachable!();
                 };
                 let outcome = move_direction(
                     state,

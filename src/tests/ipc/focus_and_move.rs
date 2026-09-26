@@ -844,6 +844,31 @@ fn move_split_container_to_output_preserves_the_subtree() {
 }
 
 #[test]
+fn moving_a_workspace_fails_like_sway() {
+    let mut f = Fixture::new();
+    f.add_output(1, (800, 600));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    assert!(crate::command::execute(f.niri_state(), "focus parent")[0].success);
+    assert_eq!(
+        crate::command::execute(f.niri_state(), "move right"),
+        [swayward_ipc::CommandOutcome {
+            success: false,
+            error: Some("Cannot move workspaces in a direction".into()),
+            parse_error: Some(false),
+        }]
+    );
+}
+
+#[test]
 fn move_split_container_direction_crosses_output_as_a_subtree() {
     let mut f = Fixture::new();
     f.add_named_output_at("left".into(), (800, 600), Some((0, 0)));
