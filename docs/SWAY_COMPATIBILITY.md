@@ -95,7 +95,10 @@ for the reason above. Unknown message numbers receive a structured failure.
 Sway instead leaves those clients waiting without a reply; swayward deliberately
 diverges because its IPC contract does not permit a request to hang. For the
 same reason, a client that half-closes a truncated or oversized frame is
-disconnected rather than retained indefinitely as sway retains it.
+disconnected rather than retained indefinitely as sway retains it. Invalid
+UTF-8 commands receive valid JSON describing the encoding error; sway echoes
+the invalid byte into its nominal JSON reply, producing bytes that no JSON
+client can parse.
 
 ## Commands: broad, not complete
 

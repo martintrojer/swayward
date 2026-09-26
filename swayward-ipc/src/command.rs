@@ -526,7 +526,7 @@ pub fn parse_with_variables(
     for (text, delimiter) in split_commands(input) {
         let mut text = text.trim();
         if text.is_empty() {
-            if delimiter == Some(';') {
+            if matches!(delimiter, Some(';') | Some('\0')) {
                 criteria = None;
             }
             criteria_allowed = delimiter != Some(',');
@@ -553,7 +553,16 @@ pub fn parse_with_variables(
             }
         }
 
-        let parsed = if variables.is_empty() {
+        let parsed = if text
+            .split_ascii_whitespace()
+            .next()
+            .is_some_and(|name| name.eq_ignore_ascii_case("nop"))
+        {
+            // Sway's nop handler ignores its raw tail, including malformed
+            // quoting, instead of asking the generic argument parser to
+            // tokenize it (`sway/sway/commands/nop.c`).
+            Ok(Command::Nop)
+        } else if variables.is_empty() {
             // Preserve the exact old path for commands such as `exec` and
             // `for_window`, whose parsers intentionally consume their raw
             // tails rather than a reconstructed argv.
@@ -594,7 +603,7 @@ pub fn parse_with_variables(
                 break;
             }
         }
-        if delimiter == Some(';') {
+        if matches!(delimiter, Some(';') | Some('\0')) {
             criteria = None;
         }
         criteria_allowed = delimiter != Some(',');
@@ -676,7 +685,7 @@ fn split_commands(input: &str) -> Vec<(&str, Option<char>)> {
             '\'' | '"' => quote = Some(ch),
             '[' => brackets += 1,
             ']' => brackets = (brackets - 1).max(0),
-            ';' | ',' if brackets == 0 => {
+            ';' | ',' | '\0' if brackets == 0 => {
                 commands.push((&input[start..index], Some(ch)));
                 start = index + ch.len_utf8();
             }
@@ -2665,6 +2674,24 @@ mod workspace_number_tests {
 #[cfg(test)]
 mod command_list_tests {
     use super::*;
+
+    #[test]
+    fn nul_starts_a_new_command_like_sway() {
+        let parsed = parse("nop before\0after");
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].as_ref().unwrap().command, Command::Nop);
+        assert_eq!(
+            parsed[1].as_ref().unwrap_err().error.as_deref(),
+            Some("Unknown/invalid command 'after'")
+        );
+    }
+
+    #[test]
+    fn unterminated_nop_argument_is_ignored_like_sway() {
+        let parsed = parse("nop \"unterminated");
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].as_ref().unwrap().command, Command::Nop);
+    }
 
     #[test]
     fn comma_does_not_start_new_criteria() {

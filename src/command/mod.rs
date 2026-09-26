@@ -123,7 +123,7 @@ fn execute_one(
             }
             None
         }
-        Command::Focus => None,
+        Command::Focus => return command_failure("No container to focus was specified."),
         Command::FocusWorkspace => return failure("No container to focus was specified."),
         Command::FocusDirection(direction) => focus::direction(state, direction),
         Command::FocusOutput(identifier) => {
@@ -2388,6 +2388,17 @@ mod tests {
                 old: None,
                 new_name: "mail".into(),
             }
+        );
+    }
+
+    #[test]
+    fn bare_focus_fails_like_sway() {
+        let mut fixture = crate::tests::fixture::Fixture::new();
+        let outcome = execute(fixture.niri_state(), "nop before; focus");
+        assert!(outcome[0].success);
+        assert_eq!(
+            outcome[1],
+            command_failure("No container to focus was specified.")
         );
     }
 

@@ -251,6 +251,27 @@ fn unknown_request_types_get_a_structured_reply_and_keep_the_connection() {
 }
 
 #[test]
+fn invalid_utf8_command_gets_a_structured_json_failure() {
+    let (mut fixture, socket) = ipc_fixture();
+    let mut stream = UnixStream::connect(socket).unwrap();
+    let mut frame = swayward_ipc::wire::encode_raw(0, "");
+    frame[6..10].copy_from_slice(&1u32.to_ne_bytes());
+    frame.push(0xff);
+    stream.write_all(&frame).unwrap();
+
+    let (reply_type, payload) = read_ipc_reply(&mut fixture, &mut stream);
+    assert_eq!(reply_type, 0);
+    assert_eq!(
+        serde_json::from_str::<Value>(&payload).unwrap(),
+        serde_json::json!([{
+            "success": false,
+            "error": "command is not valid UTF-8",
+            "parse_error": true,
+        }])
+    );
+}
+
+#[test]
 fn malformed_frames_disconnect_instead_of_matching_sways_timeout() {
     let (mut fixture, socket) = ipc_fixture();
 
