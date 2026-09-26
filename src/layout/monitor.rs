@@ -1112,7 +1112,6 @@ impl<W: LayoutElement> Monitor<W> {
         );
         if let (Some(fullscreen), Some(fullscreen_window)) = (fullscreen, fullscreen_window) {
             self.workspaces[new_idx].set_window_fullscreen(&fullscreen_window, Some(fullscreen));
-            self.workspaces[new_idx].set_fullscreen_restore_to_floating(&fullscreen_window);
         }
 
         if self.workspace_switch.is_none() {

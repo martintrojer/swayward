@@ -519,6 +519,34 @@ fn move_to_workspace_creates_the_target_and_moves_the_window() {
 }
 
 #[test]
+fn moving_fullscreen_away_from_a_window_mapped_under_it_keeps_the_moved_leaf_tiled() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+
+    assert!(crate::command::execute(f.niri_state(), "workspace source")[0].success);
+    map_test_window(&mut f, client, "left");
+    map_test_window(&mut f, client, "fullscreen");
+    assert!(crate::command::execute(f.niri_state(), "fullscreen enable")[0].success);
+    map_test_window(&mut f, client, "mapped-under-fullscreen");
+
+    assert!(crate::command::execute(f.niri_state(), "move workspace destination")[0].success);
+
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &swayward.marks_by_window,
+        &swayward.marks_by_container,
+    ))
+    .unwrap();
+    let moved = find_json_node_with_app_id(&tree, "fullscreen").unwrap();
+    assert_eq!(moved["type"], "con");
+    assert_eq!(moved["floating"], "auto_off");
+    assert_eq!(moved["fullscreen_mode"], 1);
+}
+
+#[test]
 fn move_workspace_focuses_the_moved_window_in_the_destination_reply() {
     let (mut f, socket) = ipc_fixture();
     f.add_output(1, (1920, 1080));

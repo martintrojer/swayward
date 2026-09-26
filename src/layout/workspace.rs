@@ -753,16 +753,6 @@ impl<W: LayoutElement> Workspace<W> {
         self.tiling.fullscreen_window()
     }
 
-    pub fn set_fullscreen_restore_to_floating(&mut self, window: &W::Id) {
-        if let Some(tile) = self
-            .tiling
-            .tiles_mut()
-            .find(|tile| tile.window().id() == window)
-        {
-            tile.restore_to_floating = true;
-        }
-    }
-
     pub fn set_window_fullscreen(
         &mut self,
         window: &W::Id,

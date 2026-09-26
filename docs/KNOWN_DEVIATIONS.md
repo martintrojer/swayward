@@ -571,9 +571,13 @@ Swayward floats windows, not containers. `FloatingSpace` stores a
 (`src/layout/floating.rs:36-38`), and `Workspace::toggle_window_floating`
 accepts a single window id (`src/layout/workspace.rs:1641`). Commands whose
 result needs floating split-container state (`floating enable` or `toggle`,
-`move scratchpad`, and `sticky` with a split focused) therefore fail with
-`floating container groups are not supported` before changing state.
-`floating disable` on an already tiled split remains a successful no-op.
+`move scratchpad`, `sticky`, or moving to a floating or scratchpad mark with a
+split focused) therefore fail before changing state. Direct floating, sticky,
+and scratchpad commands report `floating container groups are not supported`;
+mark moves report the unsupported subtree destination. `floating disable` on
+an already tiled split remains a successful no-op. Moving a fullscreen leaf
+does not need a group: swayward keeps the leaf tiled and preserves its
+fullscreen state, matching sway's single-window behavior.
 
 Supporting it needs a floating container representation plus coordinated
 rendering, geometry, focus, IPC, toggle-back, workspace-move, scratchpad and
