@@ -1399,6 +1399,12 @@ why = "Sway emits `new` before arranging, applying borders or receiving the titl
 
 [[edit]]
 migrated = false
+paths = ["src/ipc/server.rs", "src/tests/ipc/events.rs"]
+what = "keep a newly mapped window hidden in its pre-focus `new` and `title` event snapshots when another window already exists."
+why = "Sway emits both map-time events before `seat_set_focus_container` makes the new tab active (`sway/sway/tree/view.c:902,942-947`; `sway/sway/input/seat.c:1197`), so the new window remains invisible until its later focus event."
+
+[[edit]]
+migrated = false
 paths = ["resources/default-config.kdl", "swayward-config/src/lib.rs"]
 what = "ship active `gestures { hot-corners { off; } }` and `recent-windows { off; }` stanzas, with the remaining options commented out, so the default config neither opens the overview from a screen corner nor binds Alt/Mod+Tab and Alt/Mod+grave to the recent-windows switcher."
 why = "Sway has no hot corners and no Alt-Tab switcher. niri enables both by default, so a sway user loses the top-left corner to the overview and has Mod+Tab taken. Putting the stanzas in the file keeps both features one line away from being turned on."

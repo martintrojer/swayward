@@ -726,6 +726,21 @@ pub(crate) fn find_node_by_id(value: &serde_json::Value, id: i64) -> Option<&ser
     })
 }
 
+fn find_parent_of_node(value: &serde_json::Value, id: i64) -> Option<&serde_json::Value> {
+    ["nodes", "floating_nodes"].into_iter().find_map(|key| {
+        let children = value.get(key)?.as_array()?;
+        if children
+            .iter()
+            .any(|child| child.get("id").and_then(serde_json::Value::as_i64) == Some(id))
+        {
+            return Some(value);
+        }
+        children
+            .iter()
+            .find_map(|child| find_parent_of_node(child, id))
+    })
+}
+
 fn find_workspace_by_id(node: &swayward_ipc::Node, id: u64) -> Option<&swayward_ipc::Node> {
     if node.node_type == swayward_ipc::NodeType::Workspace
         && node.id == crate::ipc::tree::workspace_id(id)
@@ -1479,6 +1494,18 @@ impl State {
                     container["border"] = "none".into();
                     container["current_border_width"] = 0.into();
                     container["focused"] = false.into();
+                    let hidden_before_focus = find_parent_of_node(&current_tree, node_id)
+                        .is_some_and(|parent| {
+                            parent["layout"]
+                                .as_str()
+                                .is_some_and(|layout| matches!(layout, "tabbed" | "stacked"))
+                                && parent["nodes"]
+                                    .as_array()
+                                    .is_some_and(|nodes| nodes.len() > 1)
+                        });
+                    if hidden_before_focus {
+                        container["visible"] = false.into();
+                    }
                     container["name"] = serde_json::Value::Null;
                     container["percent"] = 0.0.into();
                     for rect in ["deco_rect", "rect", "window_rect"] {
