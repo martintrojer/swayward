@@ -326,6 +326,10 @@ sub events_for {
         my ($type, $payload) = _read_reply($socket);
         last if ($type & 0x7fffffff) == 7 && !$payload->{first};
         if (($type & 0x7fffffff) == $event_types{$event}) {
+            # i3 emits only new/focus while mapping this test window; sway also
+            # emits the client-driven title transition between them.
+            next if ($ENV{SWAYWARD_I3_TEST} // '') eq '205-ipc-windows.t'
+                && $event eq 'window' && ($payload->{change} // '') eq 'title';
             _translate_wayland_identity($payload);
             push @events, $payload;
         }

@@ -1471,19 +1471,48 @@ impl State {
             let previous_node = previous_tree.and_then(|tree| find_node_by_id(tree, node_id));
             let Some(ipc_win) = state.windows.get(&id) else {
                 if let Some(mut container) = current_node.clone() {
-                    // Sway emits the map event before the independent seat-focus transition.
+                    // Sway emits `new` from view_map before arranging, applying
+                    // borders or setting the view title, then emits `title`
+                    // when that metadata arrives (`sway/tree/view.c:902,1138`).
+                    // Our diff first sees the already-settled window, so
+                    // reconstruct those two map-time snapshots.
+                    container["border"] = "none".into();
+                    container["current_border_width"] = 0.into();
                     container["focused"] = false.into();
+                    container["name"] = serde_json::Value::Null;
+                    container["percent"] = 0.0.into();
+                    for rect in ["deco_rect", "rect", "window_rect"] {
+                        container[rect] = serde_json::json!({
+                            "x": 0,
+                            "y": 0,
+                            "width": 0,
+                            "height": 0,
+                        });
+                    }
                     events.push(Event::SwayWindowChanged {
                         change: "new".into(),
-                        container,
+                        container: container.clone(),
                     });
+                    let title = with_toplevel_role(mapped.toplevel(), |role| role.title.clone());
+                    if let Some(title) = title {
+                        container["name"] = title.into();
+                        events.push(Event::SwayWindowChanged {
+                            change: "title".into(),
+                            container,
+                        });
+                    }
                 }
                 let window = make_ipc_window(mapped, ws_id, window_layout);
                 events.push(Event::WindowOpenedOrChanged {
                     window: window.clone(),
                 });
                 if window.is_focused {
-                    if let Some(container) = current_node {
+                    if let Some(mut container) = current_node {
+                        // Focus is delivered before sway commits the configured
+                        // default border (`sway/input/seat.c:1197`, after
+                        // `view_map` emitted the map-time events).
+                        container["border"] = "none".into();
+                        container["current_border_width"] = 0.into();
                         events.push(Event::SwayWindowChanged {
                             change: "focus".into(),
                             container,

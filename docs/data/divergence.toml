@@ -1393,6 +1393,12 @@ why = "Sway accepts all nine event names even when no bar configuration exists (
 
 [[edit]]
 migrated = false
+paths = ["src/ipc/server.rs", "src/tests/ipc/events.rs", "tests/i3/lib/i3test.pm", "tests/i3/README.md"]
+what = "reconstruct sway's pre-layout `window::new` and metadata-time `window::title` events when a mapped window first appears in the event-state diff, while filtering sway's extra title transition from i3's unchanged two-event map assertion."
+why = "Sway emits `new` before arranging, applying borders or receiving the title, then emits `title` when metadata arrives (`sway/sway/tree/view.c:902,1138`). Swayward first observes the window after layout settles, so emitting only that snapshot lost one event and gave the other the wrong payload."
+
+[[edit]]
+migrated = false
 paths = ["resources/default-config.kdl", "swayward-config/src/lib.rs"]
 what = "ship active `gestures { hot-corners { off; } }` and `recent-windows { off; }` stanzas, with the remaining options commented out, so the default config neither opens the overview from a screen corner nor binds Alt/Mod+Tab and Alt/Mod+grave to the recent-windows switcher."
 why = "Sway has no hot corners and no Alt-Tab switcher. niri enables both by default, so a sway user loses the top-left corner to the overview and has Mod+Tab taken. Putting the stanzas in the file keeps both features one line away from being turned on."

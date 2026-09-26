@@ -178,7 +178,7 @@ on X11 configure requests remain unproven.
 
 ### Per-file harness branch audit
 
-An audit at commit `current` found 28 textual references to
+An audit at commit `current` found 29 textual references to
 `SWAYWARD_I3_TEST` in the current harness. The count fell from 69 when the
 broad assertion-name, assertion-number, and subtest interceptors were deleted.
 Those branches emitted TAP skips before comparing values; the remaining branches
@@ -191,7 +191,7 @@ deliberate, reviewable change.
 | --- | --- | ---: | --- |
 | Portability substitution | `194` initial-floating path and four size fields; `531` fullscreen request; `295` activated state; `240` activation event; `287` client rectangle | 9 | Each branch drives a native Wayland operation that preserves the tested behavior. The corresponding coverage rows cite sway's xdg-shell, activation, focus, and geometry behavior. |
 | Cited skip | `159`/`196`/`235`/`262`/`540` skip dispatch and reason selection; assertion skips for `193`, `260`, `294`, `287`, `228`, `518`, `194`, `541`, `319`, `133`, `132`, `166`, `551`, `164`, and `285` | 17 | Each branch marks an assertion or file that cannot hold against sway or the Wayland harness. Each file remains outside the derived green set; its coverage row gives the source citation and boundary. The five-file skip-all dispatch and its two-way reason selection count as two references. |
-| Setup or lifecycle adaptation | `298` removes i3's unsupported `ipc_kill_timeout 500` test directive; `202` finds sway's nested scratchpad workspace; `289` preserves shutdown subscriptions and requests in-process exit; `553` maps transient parents and isolates i3's unsupported `all` policy | 4 | The row records sway's fixed 4 MB write-buffer behavior and the native backpressure test. |
+| Setup or lifecycle adaptation | `298` removes i3's unsupported `ipc_kill_timeout 500` test directive; `202` finds sway's nested scratchpad workspace; `205` filters sway's extra client-driven title event from i3's two-event assertion; `289` preserves shutdown subscriptions and requests in-process exit; `553` maps transient parents and isolates i3's unsupported `all` policy | 5 | Each branch preserves the unchanged test's intended assertion while adapting a cited sway lifecycle or protocol difference. |
 | Weakens the oracle | `201`; both `238` checks; `509`; `307`; `510`; `231`; `245`; `320`; `513`; `120`; `169`; `512`; `550-split-redundant-containers`; `302`; and both `527` checks | 17 | Fifteen files containing 78 TAP skips were listed as passing in full. This masked the cited incompatibilities as false greens. The audit removed all fifteen from the old `passing.txt` manifest and deleted the duplicate, unreachable `509` branch. |
 
 The category-(d) branches did not conceal an unknown compositor regression: the

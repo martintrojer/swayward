@@ -739,14 +739,23 @@ fn captured_window_map_sequences_pin_focus_order_and_multiplicity() {
 }
 
 #[test]
-fn mapping_a_focused_window_emits_new_then_focus() {
+fn mapping_a_focused_window_emits_new_title_then_focus() {
     let (mut fixture, socket) = ipc_fixture();
     fixture.add_output(1, (1920, 1080));
     fixture.niri_state().ipc_refresh_layout();
     let client = fixture.add_client();
     let mut subscriber = subscribe_to_window_events(&mut fixture, &socket);
 
-    map_test_window(&mut fixture, client, "focused-map");
+    let window = fixture.client(client).create_window();
+    window.xdg_toplevel.set_app_id("focused-map".into());
+    window.set_title("focused-map");
+    window.commit();
+    let surface = window.surface.clone();
+    fixture.roundtrip(client);
+    let window = fixture.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    fixture.double_roundtrip(client);
     fixture.niri_state().update_keyboard_focus();
     assert!(fixture
         .swayward()
@@ -756,19 +765,33 @@ fn mapping_a_focused_window_emits_new_then_focus() {
     fixture.niri_state().ipc_refresh_layout();
 
     let mut remainder = Vec::new();
-    let changes = (0..2)
+    let events = (0..3)
         .map(|_| {
             let ((event_type, payload), next) =
                 read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder.clone());
             remainder = next;
             assert_eq!(event_type, (1 << 31) | 3);
-            serde_json::from_str::<Value>(&payload).unwrap()["change"]
-                .as_str()
-                .unwrap()
-                .to_owned()
+            serde_json::from_str::<Value>(&payload).unwrap()
         })
         .collect::<Vec<_>>();
-    assert_eq!(changes, ["new", "focus"]);
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event["change"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        ["new", "title", "focus"]
+    );
+    for event in &events[..2] {
+        assert_eq!(event["container"]["border"], "none");
+        assert_eq!(event["container"]["current_border_width"], 0);
+        assert_eq!(event["container"]["focused"], false);
+        assert_eq!(event["container"]["percent"], 0.0);
+        assert_eq!(event["container"]["rect"], serde_json::json!({"x":0,"y":0,"width":0,"height":0}));
+    }
+    assert_eq!(events[0]["container"]["name"], Value::Null);
+    assert_eq!(events[1]["container"]["name"], "focused-map");
+    assert_eq!(events[2]["container"]["border"], "none");
+    assert_eq!(events[2]["container"]["current_border_width"], 0);
 }
 
 #[test]
