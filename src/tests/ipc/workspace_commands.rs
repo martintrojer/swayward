@@ -278,7 +278,7 @@ fn scratchpad_show_moves_visible_window_to_current_workspace_and_focuses_it() {
     tiled.ack_last_and_commit();
     f.double_roundtrip(client);
 
-    let mut subscriber = UnixStream::connect(socket).unwrap();
+    let mut subscriber = UnixStream::connect(&socket).unwrap();
     subscriber
         .write_all(&swayward_ipc::wire::encode(
             MessageType::Subscribe,
@@ -287,7 +287,14 @@ fn scratchpad_show_moves_visible_window_to_current_workspace_and_focuses_it() {
         .unwrap();
     let _ = read_ipc_reply(&mut f, &mut subscriber);
 
-    assert!(crate::command::execute(f.niri_state(), "scratchpad show")[0].success);
+    let mut command = UnixStream::connect(&socket).unwrap();
+    let reply = query_ipc_with_payload(
+        &mut f,
+        &mut command,
+        MessageType::RunCommand,
+        "scratchpad show",
+    );
+    assert_eq!(reply[0]["success"], true);
     let focused = f.swayward().layout.focus().unwrap();
     assert_eq!(focused.id(), scratchpad_id);
     let focused_window = focused.window.clone();
@@ -295,18 +302,21 @@ fn scratchpad_show_moves_visible_window_to_current_workspace_and_focuses_it() {
     assert_eq!(workspace.sway_name().as_deref(), Some("target"));
     assert!(workspace.has_window(&focused_window));
     let mut events = Vec::new();
+    let mut remainder = Vec::new();
     for _ in 0..2 {
-        let (event_type, payload) = read_ipc_reply(&mut f, &mut subscriber);
+        let ((event_type, payload), next) =
+            read_ipc_reply_with_remainder(&mut f, &mut subscriber, remainder);
+        remainder = next;
         assert_eq!(event_type, (1 << 31) | 3);
         events.push(serde_json::from_str::<Value>(&payload).unwrap());
     }
-    assert_eq!(events[0]["change"], "move");
+    assert_eq!(events[0]["change"], "focus");
     assert_eq!(
         events[0]["container"]["id"],
         crate::ipc::tree::window_id(scratchpad_id)
     );
     assert_eq!(events[0]["container"]["type"], "floating_con");
-    assert_eq!(events[1]["change"], "focus");
+    assert_eq!(events[1]["change"], "move");
 }
 
 #[test]

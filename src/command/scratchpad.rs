@@ -4,11 +4,13 @@ use super::{failure, CommandTarget};
 use crate::swayward::State;
 
 pub(super) fn move_focused(state: &mut State) {
+    state.ipc_order_scratchpad_events(crate::ipc::server::ScratchpadEventOrder::Hide);
     state.swayward.layout.move_to_scratchpad(None);
     state.swayward.queue_redraw_all();
 }
 
 pub(super) fn show(state: &mut State) {
+    state.ipc_order_scratchpad_events(crate::ipc::server::ScratchpadEventOrder::Show);
     state.swayward.layout.show_scratchpad(None);
     state.swayward.queue_redraw_all();
 }
@@ -18,6 +20,7 @@ pub(super) fn move_targeted(
     target: CommandTarget,
 ) -> Result<(), CommandOutcome> {
     let window = target_window(state, target)?;
+    state.ipc_order_scratchpad_events(crate::ipc::server::ScratchpadEventOrder::Hide);
     state.swayward.layout.move_to_scratchpad(Some(&window));
     state.swayward.queue_redraw_all();
     Ok(())
@@ -31,6 +34,12 @@ pub(super) fn show_targeted(
     if !state.swayward.layout.is_scratchpad_window(&window) {
         return Err(failure("Container is not in scratchpad."));
     }
+    let order = if state.swayward.layout.is_scratchpad_hidden(&window) {
+        crate::ipc::server::ScratchpadEventOrder::Show
+    } else {
+        crate::ipc::server::ScratchpadEventOrder::Hide
+    };
+    state.ipc_order_scratchpad_events(order);
     state.swayward.layout.show_scratchpad(Some(&window));
     state.swayward.queue_redraw_all();
     Ok(())

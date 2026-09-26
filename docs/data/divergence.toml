@@ -1423,6 +1423,12 @@ why = "Sway emits workspace events from tree mutation sites, so a settled diff a
 
 [[edit]]
 migrated = false
+paths = ["src/command/scratchpad.rs", "src/ipc/server.rs", "src/tests/ipc/workspace_commands.rs"]
+what = "mark scratchpad command transactions so IPC emits hide as `floating`, then `move`, and show as `focus`, then `move`, with each event's mutation-time snapshot."
+why = "Sway emits scratchpad events at separate mutation phases (`sway/tree/container.c`, `sway/tree/root.c`, `sway/input/seat.c`); settled diffs reversed both transitions and mixed their snapshots."
+
+[[edit]]
+migrated = false
 paths = ["resources/default-config.kdl", "swayward-config/src/lib.rs"]
 what = "ship active `gestures { hot-corners { off; } }` and `recent-windows { off; }` stanzas, with the remaining options commented out, so the default config neither opens the overview from a screen corner nor binds Alt/Mod+Tab and Alt/Mod+grave to the recent-windows switcher."
 why = "Sway has no hot corners and no Alt-Tab switcher. niri enables both by default, so a sway user loses the top-left corner to the overview and has Mod+Tab taken. Putting the stanzas in the file keeps both features one line away from being turned on."

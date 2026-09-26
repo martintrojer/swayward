@@ -66,6 +66,13 @@ struct QueryState {
 struct WorkspaceEventTransaction {
     events: Vec<Event>,
     suppress_workspace_moves: bool,
+    scratchpad: Option<ScratchpadEventOrder>,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum ScratchpadEventOrder {
+    Hide,
+    Show,
 }
 
 struct EventStreamClient {
@@ -1277,6 +1284,15 @@ impl State {
         }
     }
 
+    pub(crate) fn ipc_order_scratchpad_events(&mut self, order: ScratchpadEventOrder) {
+        let Some(server) = &self.swayward.ipc_server else {
+            return;
+        };
+        if let Some(transaction) = server.workspace_events.borrow_mut().as_mut() {
+            transaction.scratchpad = Some(order);
+        }
+    }
+
     pub(crate) fn ipc_suppress_workspace_moves(&mut self) {
         let Some(server) = &self.swayward.ipc_server else {
             return;
@@ -1300,6 +1316,80 @@ impl State {
             &self.swayward.marks_by_container,
         );
         let mut events = transaction.events;
+        if let Some(order) = transaction.scratchpad {
+            let scratchpad_snapshots = events
+                .iter()
+                .filter_map(|event| match event {
+                    Event::SwayWindowChanged { change, container }
+                        if matches!(change.as_str(), "floating" | "move" | "focus") =>
+                    {
+                        Some(container.clone())
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            let hidden = scratchpad_snapshots
+                .iter()
+                .find(|container| container["scratchpad_state"] == "fresh")
+                .cloned();
+            let visible = scratchpad_snapshots
+                .iter()
+                .find(|container| container["scratchpad_state"] == "none")
+                .cloned();
+            let mut scratchpad_events = events
+                .iter()
+                .enumerate()
+                .filter_map(|(index, event)| match event {
+                    Event::SwayWindowChanged { change, .. }
+                        if matches!(change.as_str(), "floating" | "move" | "focus") =>
+                    {
+                        Some(index)
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            let positions = scratchpad_events.clone();
+            scratchpad_events.sort_by_key(|index| match (&order, &events[*index]) {
+                (ScratchpadEventOrder::Hide, Event::SwayWindowChanged { change, .. })
+                    if change == "floating" =>
+                {
+                    0
+                }
+                (ScratchpadEventOrder::Show, Event::SwayWindowChanged { change, .. })
+                    if change == "focus" =>
+                {
+                    0
+                }
+                _ => 1,
+            });
+            let reordered = scratchpad_events
+                .iter()
+                .map(|index| events[*index].clone())
+                .collect::<Vec<_>>();
+            for (index, mut event) in positions.into_iter().zip(reordered) {
+                if let Event::SwayWindowChanged { change, container } = &mut event {
+                    match order {
+                        ScratchpadEventOrder::Hide if change == "floating" => {
+                            if let Some(visible) = &visible {
+                                *container = visible.clone();
+                            }
+                            container["scratchpad_state"] = "none".into();
+                            container["focused"] = true.into();
+                            container["visible"] = true.into();
+                        }
+                        ScratchpadEventOrder::Hide if change == "move" => {
+                            if let Some(hidden) = &hidden {
+                                *container = hidden.clone();
+                            }
+                            container["focused"] = false.into();
+                            container["visible"] = false.into();
+                        }
+                        _ => {}
+                    }
+                }
+                events[index] = event;
+            }
+        }
 
         // Sway emits these at their tree mutation sites. Swayward's fallback
         // diff may discover an adjacent pair in the opposite order, so restore
@@ -1366,7 +1456,7 @@ impl State {
                 }
                 Event::WorkspaceInitialized { current } => {
                     if let Some(settled) = find_workspace_by_tree_id(&current_tree, current.id) {
-                        *current = Box::new(settled.clone());
+                        **current = settled.clone();
                         current.focused = false;
                     }
                     if sticky_move.is_some() {
@@ -1377,7 +1467,7 @@ impl State {
                 Event::WorkspaceFocusChanged { old, current } => {
                     if let Some(old) = old {
                         if let Some(settled) = find_workspace_by_tree_id(&current_tree, old.id) {
-                            *old = Box::new(settled.clone());
+                            **old = settled.clone();
                             old.focused = false;
                         } else {
                             clear_workspace_focus(old, true);
@@ -1389,7 +1479,7 @@ impl State {
                         }
                     }
                     if let Some(settled) = find_workspace_by_tree_id(&current_tree, current.id) {
-                        *current = Box::new(settled.clone());
+                        **current = settled.clone();
                         current.focused = true;
                     }
                     if sticky_move.is_some() {
