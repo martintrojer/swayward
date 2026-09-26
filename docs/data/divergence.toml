@@ -1388,8 +1388,8 @@ why = "The default filter is `swayward=debug`, inherited from niri. A sway-shape
 [[edit]]
 migrated = false
 paths = ["src/ipc/server.rs", "src/tests/ipc/wire.rs"]
-what = "report sway's default `seat0` name in GET_SEATS instead of exposing the backend implementation name."
-why = "Sway creates `seat0` as its default seat regardless of the active backend (`sway/sway/input/input-manager.c:28`, `sway/sway/server.c:711`) and serializes that seat's protocol name (`sway/sway/ipc-json.c:1231-1242`)."
+what = "report sway's default `seat0` name in GET_SEATS instead of exposing the backend implementation name, and derive its capability bits from attached IPC devices rather than Smithay's always-present keyboard and pointer handlers."
+why = "Sway creates `seat0` as its default seat regardless of the active backend and updates its capability bits from attached input devices (`sway/sway/input/input-manager.c:28`, `sway/sway/server.c:711`, `sway/sway/input/seat.c:604-635`). It serializes that seat's protocol name and capabilities directly (`sway/sway/ipc-json.c:1231-1242`)."
 
 [[edit]]
 migrated = false

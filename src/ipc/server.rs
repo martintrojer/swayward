@@ -696,9 +696,15 @@ fn refresh_input_query_state(swayward: &crate::swayward::Swayward, state: &mut Q
     let devices = describe_inputs(swayward);
     state.inputs = serde_json::to_string(&devices).unwrap_or_else(|_| "[]".into());
 
-    let capabilities = u32::from(swayward.seat.get_pointer().is_some())
-        | (u32::from(swayward.seat.get_keyboard().is_some()) << 1)
-        | (u32::from(swayward.seat.get_touch().is_some()) << 2);
+    let capabilities = devices.iter().fold(0, |capabilities, device| {
+        capabilities
+            | match device["type"].as_str() {
+                Some("pointer") => 1,
+                Some("keyboard") => 2,
+                Some("touch") => 4,
+                _ => 0,
+            }
+    });
     let focus = swayward
         .layout
         .focus()

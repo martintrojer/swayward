@@ -8,6 +8,23 @@ fn ipc_refresh_without_a_seat_keyboard_does_not_panic() {
 }
 
 #[test]
+fn get_seats_reports_capabilities_from_attached_devices() {
+    let (mut fixture, socket) = ipc_fixture();
+    let mut stream = UnixStream::connect(socket).unwrap();
+
+    let seats = query_ipc(&mut fixture, &mut stream, MessageType::GetSeats);
+    assert_eq!(
+        seats,
+        serde_json::json!([{
+            "name": "seat0",
+            "capabilities": 0,
+            "focus": 0,
+            "devices": []
+        }])
+    );
+}
+
+#[test]
 fn get_inputs_and_seats_return_sway_schema_and_values() {
     let mut fixture = Fixture::new();
     let handle = fixture.swayward().event_loop.clone();
