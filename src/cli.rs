@@ -34,6 +34,25 @@ pub struct Cli {
     pub subcommand: Option<Sub>,
 }
 
+#[cfg(test)]
+mod tests {
+    use clap::error::ErrorKind;
+
+    use super::*;
+
+    #[test]
+    fn version_flag_reports_swayward_version_independently_of_niri_base() {
+        let Err(error) = Cli::try_parse_from(["swayward", "--version"]) else {
+            panic!("--version should exit through clap")
+        };
+        let output = error.to_string();
+
+        assert_eq!(error.kind(), ErrorKind::DisplayVersion);
+        assert!(output.starts_with("swayward beta0-dev ("));
+        assert!(output.ends_with(")\n"));
+    }
+}
+
 #[derive(Subcommand)]
 pub enum Sub {
     /// Communicate with the running swayward instance.

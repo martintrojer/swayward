@@ -181,6 +181,21 @@ fn every_message_type_replies_and_leaves_the_connection_usable() {
     assert_eq!(version["variant"], "swayward");
 }
 
+#[test]
+fn get_version_reports_swayward_version_independently_of_niri_base() {
+    let (mut fixture, socket) = ipc_fixture();
+    let mut stream = UnixStream::connect(socket).unwrap();
+
+    let version = query_ipc(&mut fixture, &mut stream, MessageType::GetVersion);
+    let human_readable = version["human_readable"].as_str().unwrap();
+
+    assert!(human_readable.starts_with("swayward beta0-dev ("));
+    assert!(human_readable.ends_with(')'));
+    assert_eq!(version["major"], 1);
+    assert_eq!(version["minor"], 0);
+    assert_eq!(version["patch"], 0);
+}
+
 fn nested_split_fixture() -> Fixture {
     let mut fixture = Fixture::new();
     fixture.add_output(1, (800, 600));

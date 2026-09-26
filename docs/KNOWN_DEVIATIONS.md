@@ -228,9 +228,15 @@ GTK backend as documented in [Important software](https://github.com/martintroje
 `major`, `minor`, `patch`, and `loaded_config_file_name`. Sway defines that
 schema in sway 1.12's `sway/sway/ipc-json.c:225-238`; the target tag and exact
 commit are recorded in `sway-ipc/fixtures/schema-version.json` in the pinned oracle.
-Swayward reports its own variant and package version in those fields rather than
-claiming to be sway or i3. Therefore, i3's `193-ipc-version.t` assertion that
-the major version is always 4 does not apply.
+Swayward reports its own variant and public version rather than claiming to be
+sway or i3. `human_readable` contains `swayward beta0-dev` until beta1 is tagged,
+followed by `git describe` in parentheses; the description retains the niri base
+tag. The numeric fields are `1.0.0`: i3ipc and similar bindings deserialize them
+as integers, while swaymsg displays only `human_readable` and Waybar does not
+request `GET_VERSION`. Major 1 identifies the sway protocol family without
+claiming support for features introduced by a later sway minor release. Therefore,
+i3's `193-ipc-version.t` assertion that the major version is always 4 does not
+apply.
 
 `GET_INPUTS` reports sway's scalar `scroll_factor` when swayward's horizontal
 and vertical factors agree; when they differ, it reports sway's default 1.0

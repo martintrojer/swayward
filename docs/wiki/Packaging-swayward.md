@@ -96,25 +96,31 @@ You may also want to set the `RUN_SLOW_TESTS=1` environment variable to run the 
 
 ### Version string
 
-The swayward version string includes its version and commit hash:
+The swayward version string includes its public version and git description.
+The description also keeps the niri release at the merge base visible:
 
 ```
 $ swayward --version
-swayward 25.01 (e35c630)
+swayward beta0-dev (v26.04-183-ga0cebbd2)
 ```
 
-When building in a packaging system, there's usually no repository, so the commit hash is unavailable and the version will show "unknown commit".
-In this case, please set the commit hash manually:
+The public version is independent of Cargo's package version, which remains the
+niri merge-base version. Until beta1 is tagged, the public version is
+`beta0-dev`.
+
+When building in a packaging system, there's usually no repository, so the git description is unavailable and the version will show "unknown commit".
+In this case, please set it manually:
 
 ```
 $ export SWAYWARD_BUILD_COMMIT="e35c630"
 ...proceed to build swayward
 ```
 
-You can also override the version string entirely, in this case please make sure the corresponding swayward version stays intact:
+You can also override the version string entirely. Preserve the public
+swayward version and the source description:
 
 ```
-$ export SWAYWARD_BUILD_VERSION_STRING="25.01-1 (e35c630)"
+$ export SWAYWARD_BUILD_VERSION_STRING="beta0-dev (v26.04-183-ga0cebbd2)"
 ...proceed to build swayward
 ```
 

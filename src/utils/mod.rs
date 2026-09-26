@@ -140,23 +140,21 @@ impl ResizeEdge {
     }
 }
 
+/// Swayward's public version. Cargo's package version tracks the niri merge base instead.
+pub const SWAYWARD_VERSION: &str = "beta0-dev";
+
+/// Numeric IPC identity for clients that model sway's GET_VERSION fields.
+pub const SWAYWARD_IPC_VERSION: (u32, u32, u32) = (1, 0, 0);
+
 pub fn version() -> String {
     if let Some(v) = option_env!("SWAYWARD_BUILD_VERSION_STRING") {
         return String::from(v);
     }
 
-    const MAJOR: &str = env!("CARGO_PKG_VERSION_MAJOR");
-    const MINOR: &str = env!("CARGO_PKG_VERSION_MINOR");
-    const PATCH: &str = env!("CARGO_PKG_VERSION_PATCH");
-
     let commit =
         option_env!("SWAYWARD_BUILD_COMMIT").unwrap_or(git_version!(fallback = "unknown commit"));
 
-    if PATCH == "0" {
-        format!("{MAJOR}.{MINOR:0>2} ({commit})")
-    } else {
-        format!("{MAJOR}.{MINOR:0>2}.{PATCH} ({commit})")
-    }
+    format!("{SWAYWARD_VERSION} ({commit})")
 }
 
 pub fn get_monotonic_time() -> Duration {

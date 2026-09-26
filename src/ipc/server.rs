@@ -30,7 +30,7 @@ use swayward_ipc::{
 use crate::ipc::tree::{describe_tree, describe_workspaces_with_marks};
 use crate::layout::workspace::WorkspaceId;
 use crate::swayward::State;
-use crate::utils::{version, with_toplevel_role};
+use crate::utils::{version, with_toplevel_role, SWAYWARD_IPC_VERSION};
 use crate::window::Mapped;
 
 const INITIAL_WRITE_BUFFER_SIZE: usize = 128;
@@ -515,11 +515,11 @@ async fn dispatch(ctx: &ClientCtx, msg_type: MessageType, payload: &[u8]) -> Str
     }
     match msg_type {
         MessageType::GetVersion => serde_json::to_string(&Version {
-            human_readable: version(),
+            human_readable: format!("swayward {}", version()),
             variant: "swayward".into(),
-            major: env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap_or(0),
-            minor: env!("CARGO_PKG_VERSION_MINOR").parse().unwrap_or(0),
-            patch: env!("CARGO_PKG_VERSION_PATCH").parse().unwrap_or(0),
+            major: SWAYWARD_IPC_VERSION.0,
+            minor: SWAYWARD_IPC_VERSION.1,
+            patch: SWAYWARD_IPC_VERSION.2,
             loaded_config_file_name: ctx.query_state.borrow().loaded_config_file_name.clone(),
         })
         .unwrap_or_else(|_| r#"{"success":false,"error":"serialization failed"}"#.into()),

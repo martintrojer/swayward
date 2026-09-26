@@ -62,8 +62,9 @@ queries are in this group:
 - `GET_SEATS` returns swayward's single seat, its capabilities, focused
   container, and devices.
 - `GET_VERSION` returns all 6 sway fields (`sway/sway/ipc-json.c:225-239`).
-  Its `variant` is `swayward`; the version number is a swayward release date,
-  not a claim to match a sway feature level.
+  Its `variant` is `swayward`; `human_readable` carries the swayward release and
+  git description. The numeric version is `1.0.0`, identifying the sway protocol
+  family without claiming a later sway feature level.
 - `SEND_TICK` replies with sway's success object and emits the payload to tick
   subscribers.
 - `SYNC` returns sway's exact `{"success": false}` response. Sway does not
