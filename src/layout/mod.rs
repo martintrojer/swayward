@@ -5506,7 +5506,27 @@ impl<W: LayoutElement> Layout<W> {
         let Some(workspace) = workspace else {
             return;
         };
+        let target = window
+            .cloned()
+            .or_else(|| workspace.active_window().map(|win| win.id().clone()));
         workspace.toggle_window_floating(window);
+        if let Some(target) = target {
+            self.forget_scratchpad_window_if_tiled(&target);
+        }
+    }
+
+    /// Returning a container to tiling removes it from the scratchpad
+    /// (sway/tree/container.c:990-994).
+    fn forget_scratchpad_window_if_tiled(&mut self, window: &W::Id) {
+        if !self.scratchpad_windows.contains(window) {
+            return;
+        }
+        let tiled = self
+            .workspaces()
+            .any(|(_, _, ws)| ws.has_window(window) && !ws.is_floating(window));
+        if tiled {
+            self.scratchpad_windows.retain(|id| id != window);
+        }
     }
 
     pub fn set_window_floating(&mut self, window: Option<&W::Id>, floating: bool) {
@@ -5535,7 +5555,13 @@ impl<W: LayoutElement> Layout<W> {
         let Some(workspace) = workspace else {
             return;
         };
+        let target = window
+            .cloned()
+            .or_else(|| workspace.active_window().map(|win| win.id().clone()));
         workspace.set_window_floating(window, floating);
+        if let Some(target) = target {
+            self.forget_scratchpad_window_if_tiled(&target);
+        }
     }
 
     pub fn focus_floating(&mut self) {
@@ -6956,6 +6982,8 @@ impl<W: LayoutElement> Layout<W> {
                 );
             }
         }
+
+        self.forget_scratchpad_window_if_tiled(window);
     }
 
     pub fn interactive_move_is_moving_above_output(&self, output: &Output) -> bool {

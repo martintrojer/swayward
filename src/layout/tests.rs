@@ -2655,6 +2655,47 @@ fn tiled_window_gets_sway_default_size_when_first_moved_to_scratchpad() {
     assert_eq!(pos.tile_pos_in_workspace_view, Some((320., 90.)));
 }
 
+// sway/tree/container.c:990-994: every return to tiling removes the
+// container from the scratchpad, including a drag toggled to tiling.
+#[test]
+fn toggling_a_dragged_scratchpad_window_to_tiling_removes_it_from_the_scratchpad() {
+    let mut layout = check_ops([
+        Op::AddOutput(1),
+        Op::AddWindow {
+            params: TestWindowParams::new(1),
+        },
+    ]);
+    layout.move_to_scratchpad(Some(&1));
+    layout.show_scratchpad(Some(&1));
+    assert!(layout.is_scratchpad_window(&1));
+
+    check_ops_on_layout(
+        &mut layout,
+        [
+            Op::InteractiveMoveBegin {
+                window: 1,
+                output_idx: 1,
+                px: 0.0,
+                py: 0.0,
+            },
+            Op::InteractiveMoveUpdate {
+                window: 1,
+                dx: 100.0,
+                dy: 100.0,
+                output_idx: 1,
+                px: 0.0,
+                py: 0.0,
+            },
+            Op::ToggleWindowFloating { id: None },
+        ],
+    );
+    assert!(layout.is_scratchpad_window(&1), "still mid-drag");
+
+    check_ops_on_layout(&mut layout, [Op::InteractiveMoveEnd { window: 1 }]);
+    assert!(!layout.is_scratchpad_window(&1));
+    assert!(layout.scratchpad_is_empty());
+}
+
 #[test]
 fn scratchpad_default_size_honors_client_size_hints() {
     let mut options = Options::default();

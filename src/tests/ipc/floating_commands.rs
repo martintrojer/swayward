@@ -1654,3 +1654,43 @@ fn move_output_accepts_direction_name_and_workspace_forms() {
     );
     assert!(crate::command::execute(f.niri_state(), "move workspace output right")[0].success);
 }
+
+// sway/tree/container.c:990-994: returning a container to tiling removes it
+// from the scratchpad, so a later `scratchpad show` finds nothing to toggle.
+#[test]
+fn unfloating_a_shown_scratchpad_window_removes_it_from_the_scratchpad() {
+    for unfloat in ["floating disable", "floating toggle"] {
+        let mut f = Fixture::new();
+        f.add_output(1, (1280, 720));
+        let client = f.add_client();
+        let window = f.client(client).create_window();
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+        let id = f.swayward().layout.focus().unwrap().window.clone();
+
+        assert!(crate::command::execute(f.niri_state(), "move scratchpad")[0].success);
+        assert!(crate::command::execute(f.niri_state(), "scratchpad show")[0].success);
+        assert!(f.swayward().layout.is_scratchpad_window(&id));
+
+        let outcome = crate::command::execute(f.niri_state(), unfloat);
+        assert!(outcome[0].success, "{unfloat}: {outcome:?}");
+        assert!(
+            !f.swayward().layout.is_scratchpad_window(&id),
+            "{unfloat}"
+        );
+        assert!(!f.swayward().layout.focus().unwrap().is_floating(), "{unfloat}");
+        assert_eq!(
+            crate::command::execute(f.niri_state(), "scratchpad show")[0]
+                .error
+                .as_deref(),
+            Some("Scratchpad is empty"),
+            "{unfloat}"
+        );
+        assert_eq!(f.swayward().layout.focus().map(|w| w.window.clone()), Some(id));
+    }
+}

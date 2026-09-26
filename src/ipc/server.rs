@@ -1497,6 +1497,13 @@ impl State {
             let moved = ipc_win.workspace_id != workspace_id;
             let shown_from_scratchpad =
                 moved && previous_node.is_some_and(|node| node["scratchpad_state"] == "fresh");
+            // root_scratchpad_remove_container emits `move` (sway/tree/root.c:150-154).
+            let left_scratchpad =
+                previous_node
+                    .zip(current_node.as_ref())
+                    .is_some_and(|(old, current)| {
+                        old["scratchpad_state"] == "fresh" && current["scratchpad_state"] == "none"
+                    });
             let floating_changed = ipc_win.is_floating != mapped.is_floating();
             let sway_floating_changed = previous_node
                 .zip(current_node.as_ref())
@@ -1512,7 +1519,7 @@ impl State {
 
             if let Some(container) = current_node.clone() {
                 for change in [
-                    moved.then_some("move"),
+                    (moved || left_scratchpad).then_some("move"),
                     sway_floating_changed.then_some("floating"),
                     title_changed.then_some("title"),
                     fullscreen_changed.then_some("fullscreen_mode"),

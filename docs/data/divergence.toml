@@ -1372,3 +1372,9 @@ migrated = false
 paths = ["src/layout/tile.rs", "src/layout/tiling_tree/mod.rs", "src/tests/client.rs", "src/tests/mod.rs"]
 what = "crop a tiled window's surface, and its input region, to its container's content box when the client commits a size larger than the container, and forget the box when the tile leaves the tiling tree or goes maximized or fullscreen."
 why = "Sway clips every tiled view to `con->current.content_width/height` whatever size the client commits (`sway/sway/tree/view.c:1032-1062`), so a client that will not shrink below its minimum size, or has not yet answered a configure, cannot paint over its neighbour."
+
+[[edit]]
+migrated = false
+paths = ["src/layout/mod.rs", "src/layout/tests.rs", "src/ipc/server.rs"]
+what = "remove a window from the scratchpad when it returns to tiling through floating disable, floating toggle or a drag toggled to tiling, and emit sway's `move` window event before `floating`."
+why = "Sway's container_set_floating calls root_scratchpad_remove_container before re-tiling, and that function emits `move` (`sway/tree/container.c:990-994`, `sway/tree/root.c:145-155`). Without this, a scratchpad window could not leave the scratchpad."

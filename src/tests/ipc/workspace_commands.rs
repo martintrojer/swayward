@@ -1932,3 +1932,54 @@ fn fullscreen_parent_after_child_map(
         f.swayward().layout.focus().unwrap().id() != parent_id,
     )
 }
+
+// sway/tree/container.c:990-994 removes the container from the scratchpad
+// before returning it to tiling. root_scratchpad_remove_container emits
+// `move` (sway/tree/root.c:150-154) and container_set_floating then emits
+// `floating` (sway/tree/container.c:1029).
+#[test]
+fn unfloating_a_scratchpad_window_emits_move_then_floating() {
+    let (mut f, socket) = ipc_fixture();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+    let id = f.swayward().layout.focus().unwrap().id();
+
+    assert!(crate::command::execute(f.niri_state(), "move scratchpad")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "scratchpad show")[0].success);
+    f.niri_state().refresh_and_flush_clients();
+
+    let mut subscriber = UnixStream::connect(socket).unwrap();
+    subscriber
+        .write_all(&swayward_ipc::wire::encode(
+            MessageType::Subscribe,
+            r#"["window"]"#,
+        ))
+        .unwrap();
+    let _ = read_ipc_reply(&mut f, &mut subscriber);
+
+    assert!(crate::command::execute(f.niri_state(), "floating disable")[0].success);
+    let mut events = Vec::new();
+    let mut remainder = Vec::new();
+    for _ in 0..2 {
+        let ((event_type, payload), rest) =
+            read_ipc_reply_with_remainder(&mut f, &mut subscriber, remainder);
+        remainder = rest;
+        assert_eq!(event_type, (1 << 31) | 3);
+        events.push(serde_json::from_str::<Value>(&payload).unwrap());
+    }
+    for event in &events {
+        assert_eq!(event["container"]["id"], crate::ipc::tree::window_id(id));
+        assert_eq!(event["container"]["type"], "con");
+        assert_eq!(event["container"]["scratchpad_state"], "none");
+    }
+    assert_eq!(events[0]["change"], "move");
+    assert_eq!(events[1]["change"], "floating");
+}
