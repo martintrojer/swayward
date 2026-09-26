@@ -652,22 +652,28 @@ fn set_windows_visible(node: &mut Node, visible: bool) {
 }
 
 fn apply_fullscreen_state(nodes: &mut [Node], workspace_visible: bool) -> bool {
-    let Some(fullscreen) = nodes.iter().position(contains_fullscreen) else {
-        return false;
-    };
-    for (index, node) in nodes.iter_mut().enumerate() {
-        if index == fullscreen {
-            node.percent = Some(1.);
-            if node.fullscreen_mode == 0 {
-                apply_fullscreen_state(&mut node.nodes, workspace_visible);
+    fn apply(nodes: &mut [Node], workspace_visible: bool, set_full_percent: bool) -> bool {
+        let Some(fullscreen) = nodes.iter().position(contains_fullscreen) else {
+            return false;
+        };
+        for (index, node) in nodes.iter_mut().enumerate() {
+            if index == fullscreen {
+                if set_full_percent {
+                    node.percent = Some(1.);
+                }
+                if node.fullscreen_mode == 0 {
+                    apply(&mut node.nodes, workspace_visible, false);
+                } else {
+                    set_windows_visible(node, workspace_visible);
+                }
             } else {
-                set_windows_visible(node, workspace_visible);
+                set_windows_visible(node, false);
             }
-        } else {
-            set_windows_visible(node, false);
         }
+        true
     }
-    true
+
+    apply(nodes, workspace_visible, true)
 }
 
 fn contains_fullscreen(node: &Node) -> bool {
@@ -1167,5 +1173,47 @@ mod tests {
             ipc_border(swayward_ipc::command::BorderStyle::Toggle),
             NodeBorder::None
         );
+    }
+
+    #[test]
+    fn fullscreen_descendants_keep_percentages() {
+        let leaf = |id, percent, fullscreen_mode| {
+            let mut node = common_node(
+                id,
+                NodeType::Con,
+                NodeLayout::None,
+                "none",
+                None,
+                Rect::default(),
+                vec![],
+                vec![],
+                vec![],
+                false,
+                NodeProperties::None {},
+            );
+            node.percent = percent;
+            node.fullscreen_mode = fullscreen_mode;
+            node
+        };
+        let mut branch = common_node(
+            1,
+            NodeType::Con,
+            NodeLayout::SplitH,
+            "horizontal",
+            None,
+            Rect::default(),
+            vec![leaf(2, Some(0.4), 0), leaf(3, Some(0.6), 1)],
+            vec![],
+            vec![],
+            false,
+            NodeProperties::None {},
+        );
+        branch.percent = Some(0.5);
+        let mut nodes = vec![branch, leaf(4, Some(0.5), 0)];
+
+        assert!(apply_fullscreen_state(&mut nodes, true));
+        assert_eq!(nodes[0].percent, Some(1.));
+        assert_eq!(nodes[0].nodes[0].percent, Some(0.4));
+        assert_eq!(nodes[0].nodes[1].percent, Some(0.6));
     }
 }

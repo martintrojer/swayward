@@ -1279,6 +1279,12 @@ why = "Sway leaves windows mapped under workspace fullscreen unfocused and repor
 
 [[edit]]
 migrated = false
+paths = ["src/ipc/tree.rs"]
+what = "preserve arranged percentages within a fullscreen branch while assigning the full workspace percentage only to the branch root."
+why = "Sway serializes every container percentage from its own pending box and its immediate parent's box, so nested descendants retain numeric percentages under fullscreen (`sway/ipc-json.c:746-755`)."
+
+[[edit]]
+migrated = false
 paths = ["src/backend/headless.rs", "src/backend/mod.rs", "src/tests/ipc/outputs.rs"]
 what = "apply configured and runtime custom modes to headless outputs and keep their output-management mode records current."
 why = "The headless backend is used by sway-compatible IPC clients and the oracle, so a successful output mode command must change the advertised compositor geometry rather than only mutating configuration."
