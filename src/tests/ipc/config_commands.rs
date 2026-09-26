@@ -135,6 +135,8 @@ fn empty_workspace_command_parse_errors_match_sway() {
     fixture.add_output(1, (1920, 1080));
 
     for (command, parse_error, error) in [
+        ("border 1pixel", true, "Only views can have borders"),
+        ("border none", true, "Only views can have borders"),
         ("resize grow width 10 px", true, "Cannot resize nothing"),
         ("scratchpad show", true, "Scratchpad is empty"),
         ("sticky toggle", false, "No current container"),

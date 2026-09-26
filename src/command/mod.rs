@@ -39,12 +39,21 @@ pub fn execute(state: &mut State, input: &str) -> Vec<CommandOutcome> {
     let mut parsed = parse_with_variables(input, &state.swayward.sway_variables);
     if state.swayward.layout.focus().is_none() {
         for parsed in &mut parsed {
-            let Err(error) = parsed else {
+            if matches!(parsed, Ok(parsed) if matches!(parsed.command, Command::Border(_))) {
+                *parsed = Err(swayward_ipc::command::parse_error(
+                    "Only views can have borders",
+                ));
                 continue;
-            };
-            let message = error.error.as_deref().unwrap_or_default();
-            if message.starts_with("Expected 'resize ") || message.starts_with("Invalid resize ") {
-                *error = swayward_ipc::command::parse_error("Cannot resize nothing");
+            }
+            if let Err(error) = parsed {
+                let message = error.error.as_deref().unwrap_or_default();
+                if message.starts_with("Expected 'border ") {
+                    *error = swayward_ipc::command::parse_error("Only views can have borders");
+                } else if message.starts_with("Expected 'resize ")
+                    || message.starts_with("Invalid resize ")
+                {
+                    *error = swayward_ipc::command::parse_error("Cannot resize nothing");
+                }
             }
         }
     }
