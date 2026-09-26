@@ -150,16 +150,16 @@ impl<W: LayoutElement> TilingTree<W> {
             self.set_layout(self.root, layout);
             return remapped;
         };
-        let grouped_root = matches!(
-            self.nodes.get(&self.root).map(|node| &node.value),
-            Some(TreeNode::Split {
-                layout: Layout::Tabbed | Layout::Stacked,
-                ..
-            })
-        );
+        let root_layout = match self.nodes.get(&self.root).map(|node| &node.value) {
+            Some(TreeNode::Split { layout, .. }) => *layout,
+            Some(TreeNode::Leaf { .. }) | None => unreachable!(),
+        };
         if target == self.root
-            && focus.is_some_and(|focus| self.tile(focus).is_some() || grouped_root)
-            && matches!(layout, Layout::Tabbed | Layout::Stacked)
+            && focus.is_some_and(|focus| {
+                self.tile(focus).is_some()
+                    || matches!(root_layout, Layout::Tabbed | Layout::Stacked)
+            })
+            && layout != root_layout
         {
             self.wrap_root_children(layout);
             self.request_window_sizes();

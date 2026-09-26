@@ -1433,6 +1433,38 @@ fn stacked_layout_wraps_a_single_workspace_leaf() {
 }
 
 #[test]
+fn layout_split_wraps_a_single_workspace_leaf_when_changing_axis() {
+    let mut t = tree((1200., 800.), 0.);
+    let leaf = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+
+    t.set_focused_layout(Layout::SplitV);
+
+    let TreeNode::Split {
+        layout: root_layout,
+        children,
+        ..
+    } = &t.nodes[&t.root].value
+    else {
+        panic!("root must be a split");
+    };
+    assert_eq!(*root_layout, Layout::SplitH);
+    let [wrapper] = children.as_slice() else {
+        panic!("workspace must contain one wrapper");
+    };
+    assert!(matches!(
+        &t.nodes[wrapper].value,
+        TreeNode::Split {
+            layout: Layout::SplitV,
+            children,
+            ..
+        } if children == &[leaf]
+    ));
+    assert_eq!(t.nodes[&leaf].parent, Some(*wrapper));
+    assert_eq!(t.focus(), Some(leaf));
+    t.check_invariants();
+}
+
+#[test]
 fn split_retargets_a_singleton_split_parent() {
     for (parent_layout, requested_layout) in [
         (Layout::SplitH, Layout::SplitH),
