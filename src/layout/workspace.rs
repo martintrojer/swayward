@@ -2728,17 +2728,19 @@ impl<W: LayoutElement> Workspace<W> {
                 if tile.hit(pos_within_tile).is_some() {
                     let size = tile.tile_size().to_f64();
 
-                    let mut edges = ResizeEdge::empty();
-                    if pos_within_tile.x < size.w / 3. {
-                        edges |= ResizeEdge::LEFT;
-                    } else if 2. * size.w / 3. < pos_within_tile.x {
-                        edges |= ResizeEdge::RIGHT;
-                    }
-                    if pos_within_tile.y < size.h / 3. {
-                        edges |= ResizeEdge::TOP;
-                    } else if 2. * size.h / 3. < pos_within_tile.y {
-                        edges |= ResizeEdge::BOTTOM;
-                    }
+                    // Sway's modifier resize picks the corner of the quadrant
+                    // under the pointer, split at the strict half
+                    // (`sway/sway/input/seatop_default.c:413-417,477-481`).
+                    let mut edges = if pos_within_tile.x > size.w / 2. {
+                        ResizeEdge::RIGHT
+                    } else {
+                        ResizeEdge::LEFT
+                    };
+                    edges |= if pos_within_tile.y > size.h / 2. {
+                        ResizeEdge::BOTTOM
+                    } else {
+                        ResizeEdge::TOP
+                    };
                     return Some(edges);
                 }
 

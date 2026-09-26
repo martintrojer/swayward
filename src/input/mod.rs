@@ -56,7 +56,7 @@ use crate::swayward::{CastTarget, PointerVisibility, State};
 use crate::ui::mru::{WindowMru, WindowMruUi};
 use crate::ui::screenshot_ui::ScreenshotUi;
 use crate::utils::spawning::{spawn, spawn_sh};
-use crate::utils::{center, get_monotonic_time, CastSessionId, ResizeEdge};
+use crate::utils::{center, CastSessionId, ResizeEdge};
 
 pub mod backend_ext;
 pub mod click_grab;
@@ -3517,62 +3517,17 @@ impl State {
                         .resize_edges_under(output, pos_within_output)
                         .unwrap_or(ResizeEdge::empty());
 
+                    // Sway has no double-click gestures here: every press
+                    // resizes from the corner under the pointer.
                     if !edges.is_empty() {
-                        // See if we got a double resize-click gesture.
-                        // FIXME: deduplicate with resize_request in xdg-shell somehow.
-                        let time = get_monotonic_time();
-                        let last_cell = mapped.last_interactive_resize_start();
-                        let mut last = last_cell.get();
-                        last_cell.set(Some((time, edges)));
-
-                        // Floating windows don't have either of the double-resize-click
-                        // gestures, so just allow it to resize.
-                        if mapped.is_floating() {
-                            last = None;
-                            last_cell.set(None);
-                        }
-
-                        if let Some((last_time, last_edges)) = last {
-                            if time.saturating_sub(last_time) <= DOUBLE_CLICK_TIME {
-                                // Allow quick resize after a triple click.
-                                last_cell.set(None);
-
-                                let intersection = edges.intersection(last_edges);
-                                if intersection.intersects(ResizeEdge::LEFT_RIGHT) {
-                                    // FIXME: don't activate once we can pass specific windows
-                                    // to actions.
-                                    self.swayward.layout.activate_window(&window);
-                                    self.swayward.layout.toggle_full_width();
-                                }
-                                if intersection.intersects(ResizeEdge::TOP_BOTTOM) {
-                                    self.swayward.layout.activate_window(&window);
-                                    self.swayward.layout.reset_window_height(Some(&window));
-                                }
-                                // FIXME: granular.
-                                self.swayward.queue_redraw_all();
-                                return;
-                            }
-                        }
-
-                        self.swayward.layout.activate_window(&window);
-
-                        if self
-                            .swayward
-                            .layout
-                            .interactive_resize_begin(window.clone(), edges)
-                        {
-                            let start_data = PointerGrabStartData {
-                                focus: None,
-                                button: button_code,
-                                location,
-                            };
-                            let start_data = AnyStartData::Pointer(start_data);
-                            let grab = ResizeGrab::new(start_data, window.clone());
-                            pointer.set_grab(self, grab, serial, Focus::Clear);
-                            self.swayward
-                                .cursor_manager
-                                .set_cursor_image(CursorImageStatus::Named(edges.cursor_icon()));
-                        }
+                        self.begin_edge_resize(
+                            &pointer,
+                            window.clone(),
+                            edges,
+                            location,
+                            button_code,
+                            serial,
+                        );
                     }
                 }
 

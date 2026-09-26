@@ -222,30 +222,43 @@ impl<W: LayoutElement> TilingTree<W> {
         {
             return false;
         }
-        let horizontal = edges.intersects(ResizeEdge::LEFT_RIGHT);
-        let vertical = edges.intersects(ResizeEdge::TOP_BOTTOM);
-        let wanted_layout = if horizontal {
-            Layout::SplitH
-        } else if vertical {
-            Layout::SplitV
-        } else {
+        // A corner resizes both axes, each against its own sibling boundary,
+        // as sway's seatop_begin_resize_tiling does
+        // (`sway/sway/input/seatop_resize_tiling.c:106-127`). An axis with no
+        // boundary in that direction is skipped, not fatal.
+        let axes: Vec<_> = [
+            (true, edges.intersection(ResizeEdge::LEFT_RIGHT)),
+            (false, edges.intersection(ResizeEdge::TOP_BOTTOM)),
+        ]
+        .into_iter()
+        .filter(|(_, edge)| !edge.is_empty())
+        .filter_map(|(horizontal, edge)| {
+            let layout = if horizontal {
+                Layout::SplitH
+            } else {
+                Layout::SplitV
+            };
+            let toward_before = edge.intersects(ResizeEdge::LEFT | ResizeEdge::TOP);
+            let (first, second, initial_first, initial_second, axis_size, sign) =
+                self.resize_boundary(id, layout, toward_before)?;
+            Some(ResizeAxis {
+                horizontal,
+                first,
+                second,
+                initial_first,
+                initial_second,
+                axis_size,
+                sign,
+            })
+        })
+        .collect();
+        if axes.is_empty() {
             return false;
-        };
-        let toward_before = edges.intersects(ResizeEdge::LEFT | ResizeEdge::TOP);
-        let Some((first, second, first_percent, second_percent, axis_size, sign)) =
-            self.resize_boundary(id, wanted_layout, toward_before)
-        else {
-            return false;
-        };
+        }
         self.interactive_resize = Some(InteractiveResize {
             window,
             target: id,
-            first,
-            second,
-            initial_first: first_percent,
-            initial_second: second_percent,
-            axis_size,
-            sign,
+            axes,
             data: InteractiveResizeData { edges },
         });
         true
@@ -262,26 +275,29 @@ impl<W: LayoutElement> TilingTree<W> {
         if &resize.window != window {
             return false;
         }
-        let amount = if resize.data.edges.intersects(ResizeEdge::LEFT_RIGHT) {
-            delta.x
-        } else {
-            delta.y
-        } * resize.sign
-            / resize.axis_size.max(1.);
-        let (first, second) = (resize.first, resize.second);
-        let current = self.sibling_percents(first, second);
-        let Some((current_first, current_second)) = current else {
-            return false;
-        };
-        let target_first = resize.initial_first + amount;
-        let target_second = resize.initial_second - amount;
-        let change = target_first - current_first;
-        if target_first <= 0. || target_second <= 0. {
-            return false;
-        }
+        let axes = resize.axes.clone();
         let old = self.compute_geometry();
-        let changed = self.resize_adjacent_inner(first, second, change);
-        debug_assert!((current_second - change - target_second).abs() <= 1e-6);
+        let mut changed = false;
+        for axis in axes {
+            let moved = if axis.horizontal { delta.x } else { delta.y };
+            let amount = moved * axis.sign / axis.axis_size.max(1.);
+            let Some((current_first, current_second)) =
+                self.sibling_percents(axis.first, axis.second)
+            else {
+                continue;
+            };
+            let target_first = axis.initial_first + amount;
+            let target_second = axis.initial_second - amount;
+            // Each axis stops at its own limit without holding up the other.
+            if target_first <= 0. || target_second <= 0. {
+                continue;
+            }
+            let change = target_first - current_first;
+            if self.resize_adjacent_inner(axis.first, axis.second, change) {
+                debug_assert!((current_second - change - target_second).abs() <= 1e-6);
+                changed = true;
+            }
+        }
         if changed {
             self.animate_geometry_changes(old, None);
         }

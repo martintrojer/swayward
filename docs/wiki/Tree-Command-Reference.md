@@ -86,7 +86,7 @@ equivalents and keep working while the session is locked.
 | Gesture | Action |
 | --- | --- |
 | `Mod` and left-drag | Move the window |
-| `Mod` and right-drag | Resize the window. Grab from a corner |
+| `Mod` and right-drag | Resize the window from the corner nearest the pointer, both ways at once |
 
 ### Inspect the tree
 

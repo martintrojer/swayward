@@ -2914,6 +2914,51 @@ fn interactive_resize_uses_the_adjacent_sibling_boundary() {
 }
 
 #[test]
+fn corner_interactive_resize_moves_both_boundaries() {
+    // [1 | [2 / 3]]: window 2's bottom-left corner borders 1 horizontally and
+    // 3 vertically, so a diagonal drag moves both, as sway does.
+    let mut t = tree((1000., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let second = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.split(second, Layout::SplitV);
+    let third = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+
+    assert!(t.interactive_resize_begin(2, crate::utils::ResizeEdge::BOTTOM_LEFT));
+    assert!(t.interactive_resize_update(&2, Point::from((-100., 80.))));
+
+    assert_eq!(t.geometry(first).unwrap().size.w, 400.);
+    assert_eq!(t.geometry(second).unwrap().size.w, 600.);
+    assert_eq!(t.geometry(second).unwrap().size.h, 480.);
+    assert_eq!(t.geometry(third).unwrap().size.h, 320.);
+    t.check_invariants();
+}
+
+#[test]
+fn corner_interactive_resize_skips_an_axis_without_a_neighbour() {
+    // Side by side, a top-right corner has no vertical neighbour: the drag
+    // still resizes horizontally and ignores the vertical motion.
+    let mut t = tree((1000., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+
+    assert!(t.interactive_resize_begin(1, crate::utils::ResizeEdge::TOP_RIGHT));
+    assert!(t.interactive_resize_update(&1, Point::from((100., -50.))));
+
+    assert_eq!(t.geometry(first).unwrap().size.w, 600.);
+    assert_eq!(t.geometry(first).unwrap().size.h, 800.);
+    t.check_invariants();
+}
+
+#[test]
+fn a_lone_window_has_no_interactive_resize() {
+    let mut t = tree((1000., 800.), 0.);
+    t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+
+    assert!(!t.interactive_resize_begin(1, crate::utils::ResizeEdge::BOTTOM_RIGHT));
+    assert!(t.interactive_resize.is_none());
+}
+
+#[test]
 fn external_resize_cancels_interactive_resize_without_reverting_it() {
     let mut t = tree((1000., 800.), 0.);
     t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);

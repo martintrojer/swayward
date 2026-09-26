@@ -226,13 +226,21 @@ struct PendingMode {
 struct InteractiveResize<I> {
     window: I,
     target: NodeId,
+    /// One sibling boundary per resized axis, like sway's separate `h_con`
+    /// and `v_con` (`sway/sway/input/seatop_resize_tiling.c:12-27`).
+    axes: Vec<ResizeAxis>,
+    data: InteractiveResizeData,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ResizeAxis {
+    horizontal: bool,
     first: NodeId,
     second: NodeId,
     initial_first: f64,
     initial_second: f64,
     axis_size: f64,
     sign: f64,
-    data: InteractiveResizeData,
 }
 
 swayward_render_elements! {
@@ -1773,11 +1781,13 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     fn cancel_resize_for(&mut self, id: NodeId) {
-        if self
-            .interactive_resize
-            .as_ref()
-            .is_some_and(|resize| resize.target == id || resize.first == id || resize.second == id)
-        {
+        if self.interactive_resize.as_ref().is_some_and(|resize| {
+            resize.target == id
+                || resize
+                    .axes
+                    .iter()
+                    .any(|axis| axis.first == id || axis.second == id)
+        }) {
             self.interactive_resize = None;
         }
     }

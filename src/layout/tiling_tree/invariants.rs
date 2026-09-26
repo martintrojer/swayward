@@ -82,7 +82,10 @@ impl<W: LayoutElement> TilingTree<W> {
         );
         if let Some(resize) = &self.interactive_resize {
             assert_eq!(self.node_for_window(&resize.window), Some(resize.target));
-            assert!(self.sibling_percents(resize.first, resize.second).is_some());
+            assert!(!resize.axes.is_empty());
+            for axis in &resize.axes {
+                assert!(self.sibling_percents(axis.first, axis.second).is_some());
+            }
         }
     }
 
