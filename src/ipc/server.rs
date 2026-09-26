@@ -222,7 +222,7 @@ impl IpcServer {
             Event::CastStartedOrChanged { .. } => "cast_started_or_changed",
             Event::CastStopped { .. } => "cast_stopped",
         };
-        debug!(event_type, "emitting IPC event");
+        trace!(event_type, "emitting IPC event");
         let mut streams = self.event_streams.borrow_mut();
         let mut to_remove = Vec::new();
         for (idx, stream) in streams.iter_mut().enumerate() {
@@ -336,7 +336,7 @@ async fn handle_client(ctx: ClientCtx, stream: Async<'static, UnixStream>) -> an
             );
         })?;
         let msg_type = MessageType::try_from(raw_type).ok();
-        debug!(?msg_type, raw_type, payload_len, "received IPC request");
+        trace!(?msg_type, raw_type, payload_len, "received IPC request");
         if payload_len > MAX_PAYLOAD_SIZE {
             anyhow::bail!("IPC payload exceeds {MAX_PAYLOAD_SIZE} bytes");
         }

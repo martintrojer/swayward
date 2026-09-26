@@ -1378,3 +1378,9 @@ migrated = false
 paths = ["src/layout/mod.rs", "src/layout/tests.rs", "src/ipc/server.rs"]
 what = "remove a window from the scratchpad when it returns to tiling through floating disable, floating toggle or a drag toggled to tiling, and emit sway's `move` window event before `floating`."
 why = "Sway's container_set_floating calls root_scratchpad_remove_container before re-tiling, and that function emits `move` (`sway/tree/container.c:990-994`, `sway/tree/root.c:145-155`). Without this, a scratchpad window could not leave the scratchpad."
+
+[[edit]]
+migrated = false
+paths = ["src/ipc/server.rs"]
+what = "log each emitted IPC event and each received IPC request at `trace` instead of `debug`."
+why = "The default filter is `swayward=debug`, inherited from niri. A sway-shaped event stream and bars that poll GET_TREE make these two lines about 90% of `session.log`, which buries the debug output worth reading. `RUST_LOG=swayward::ipc::server=trace` brings them back."
