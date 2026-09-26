@@ -705,7 +705,7 @@ fn refresh_input_query_state(swayward: &crate::swayward::Swayward, state: &mut Q
         .map(|window| crate::ipc::tree::window_id(window.id()))
         .unwrap_or(0);
     state.seats = serde_json::to_string(&[IpcSeat {
-        name: &swayward.seat_name,
+        name: "seat0",
         capabilities,
         focus,
         devices: &devices,

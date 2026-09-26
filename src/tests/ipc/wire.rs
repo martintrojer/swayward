@@ -67,7 +67,7 @@ fn get_inputs_and_seats_return_sway_schema_and_values() {
     assert_eq!(
         seats,
         serde_json::json!([{
-            "name": "headless",
+            "name": "seat0",
             "capabilities": 3,
             "focus": focused,
             "devices": inputs
