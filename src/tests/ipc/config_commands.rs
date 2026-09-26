@@ -485,11 +485,11 @@ fn layout_and_split_commands_preserve_a_focused_floating_window_and_the_tree() {
         ("split v", r#"[{"success":true}]"#),
         (
             "layout tabbed",
-            r#"[{"success":false,"error":"Unable to change layout of floating windows"}]"#,
+            r#"[{"success":false,"error":"Unable to change layout of floating windows","parse_error":false}]"#,
         ),
         (
             "layout toggle split",
-            r#"[{"success":false,"error":"Unable to change layout of floating windows"}]"#,
+            r#"[{"success":false,"error":"Unable to change layout of floating windows","parse_error":false}]"#,
         ),
     ] {
         let before = fixture
