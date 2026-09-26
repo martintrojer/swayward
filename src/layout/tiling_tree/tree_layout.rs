@@ -100,6 +100,19 @@ impl<W: LayoutElement> TilingTree<W> {
                 children[index] = wrapper;
                 percents[index] = old_percent;
                 self.nodes.get_mut(&id).unwrap().parent = Some(wrapper);
+                if let Some(fullscreen) = self
+                    .pending_modes
+                    .get_mut(&id)
+                    .and_then(|mode| mode.fullscreen.take())
+                {
+                    self.pending_modes
+                        .entry(wrapper)
+                        .or_insert(PendingMode {
+                            fullscreen: None,
+                            maximized: false,
+                        })
+                        .fullscreen = Some(fullscreen);
+                }
             }
             self.compact_tree();
             self.request_window_sizes();
@@ -407,6 +420,19 @@ impl<W: LayoutElement> TilingTree<W> {
         children[index] = wrapper;
         percents[index] = old_percent;
         self.nodes.get_mut(&id).unwrap().parent = Some(wrapper);
+        if let Some(fullscreen) = self
+            .pending_modes
+            .get_mut(&id)
+            .and_then(|mode| mode.fullscreen.take())
+        {
+            self.pending_modes
+                .entry(wrapper)
+                .or_insert(PendingMode {
+                    fullscreen: None,
+                    maximized: false,
+                })
+                .fullscreen = Some(fullscreen);
+        }
         wrapper
     }
 

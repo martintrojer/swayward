@@ -1281,6 +1281,22 @@ fn moving_a_single_window_sets_the_workspace_split_axis() {
 }
 
 #[test]
+fn splitting_a_fullscreen_leaf_transfers_fullscreen_to_its_wrapper() {
+    let mut t = tree((1200., 800.), 0.);
+    let window = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.set_focus(window);
+    assert!(t.set_node_fullscreen(window, Some(FullscreenMode::Workspace)));
+
+    t.split_focused(Layout::SplitV);
+
+    let wrapper = t.nodes[&window].parent.unwrap();
+    assert_eq!(t.fullscreen_node(), Some(wrapper));
+    assert_eq!(t.fullscreen_mode(window), None);
+    t.check_invariants();
+}
+
+#[test]
 fn split_on_an_emptied_tree_updates_layout_but_retains_its_representation() {
     let mut t = tree((1200., 800.), 0.);
     let window = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
