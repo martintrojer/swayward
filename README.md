@@ -12,9 +12,12 @@ putting one rectangle beside another rectangle, but correctly.
 
 **Status: beta.** The compositor runs live sessions,
 speaks sway's IPC to real clients. The external oracle currently records 1,427
-passes, 800 skips, and 1,084 failures or unreached assertions from i3's suite. What it has not had is people: automated testing here is
-headless, so nothing yet tells us how it behaves on your hardware, and no
-stranger has installed it.
+passes, 800 skips, and 1,084 failures or unreached assertions from i3's suite. It is
+also somebody's desktop now: the maintainer's two work machines run it every
+day, both Fedora 44, one a single-monitor sway setup with Waybar and kanshi,
+the other two monitors running DankMaterialShell with its outputs set in
+`config.kdl`. No spare laptop, no fallback session doing the real work. That is
+still two desks, not a hardware survey, and no stranger has installed it yet.
 
 ![Four windows tiled by swayward over a wallpaper, with Waybar across the top: a terminal on the left, and on the right a tabbed container whose visible tab splits a terminal above Yazi](docs/wiki/_assets/shots/readme-desktop-v2.png)
 

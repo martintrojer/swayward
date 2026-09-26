@@ -54,8 +54,9 @@ The suite includes:
 This is not a comparison with anyone else's engineering. It is how a young
 compositor pays for asking you to risk a session on it.
 
-It is also not proof that swayward is ready for your machine. Hardware coverage
-and time in live sessions remain thin. The suite is why we think the early beta
+It is also not proof that swayward is ready for your machine. Beyond the
+maintainer's two work machines, hardware coverage and time in live
+sessions remain thin. The suite is why we think the early beta
 is worth testing, not why we think testing is finished. The current counts and
 the limits of the oracle are explained in [Testing and
 conformance](Testing-and-Conformance.md).
@@ -167,9 +168,11 @@ immediate problem.
 
 ### Is swayward ready for daily use?
 
-It is an early beta. It runs real sessions, but hardware coverage and outside
-use are still thin. Try it if you know how to recover from a broken compositor
-session and can report what happened.
+It is an early beta. The maintainer's two work machines run it as their daily
+session, both Fedora 44: one monitor with Waybar and kanshi, and two monitors
+with DankMaterialShell and outputs configured in `config.kdl`. Outside those two
+desks, hardware coverage and outside use are still thin. Try it if you know how
+to recover from a broken compositor session and can report what happened.
 
 Keep another compositor or desktop installed. Do not make swayward the only way
 into a machine you need today.
