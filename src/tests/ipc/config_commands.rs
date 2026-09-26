@@ -1038,12 +1038,32 @@ fn title_format_updates_get_tree_and_titlebar_after_client_title_change() {
     fixture.double_roundtrip(client);
 
     assert!(crate::command::execute(fixture.niri_state(), "border normal")[0].success);
+    let mut subscriber = UnixStream::connect(&socket).unwrap();
+    subscriber
+        .write_all(&swayward_ipc::wire::encode(
+            MessageType::Subscribe,
+            r#"["window"]"#,
+        ))
+        .unwrap();
+    let _ = read_ipc_reply(&mut fixture, &mut subscriber);
+
     let outcome = crate::command::execute(
         fixture.niri_state(),
         r#"[app_id="format-app"] title_format [%app_id|%shell|%class|%instance|%sandbox_engine|%sandbox_app_id|%sandbox_instance_id] %title"#,
     );
     assert!(outcome[0].success);
-
+    fixture.niri_state().ipc_refresh_layout();
+    let (event_type, event) = read_ipc_reply(&mut fixture, &mut subscriber);
+    assert_eq!(event_type, (1 << 31) | 3);
+    let event: Value = serde_json::from_str(&event).unwrap();
+    assert_eq!(event["change"], "title");
+    assert_eq!(event["container"]["name"], "before");
+    subscriber.set_nonblocking(true).unwrap();
+    let mut byte = [0];
+    assert!(matches!(
+        subscriber.read(&mut byte),
+        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock
+    ));
     let mut stream = UnixStream::connect(socket).unwrap();
     let tree = query_ipc(&mut fixture, &mut stream, MessageType::GetTree);
     assert_eq!(

@@ -1486,3 +1486,9 @@ migrated = false
 paths = ["src/command/window.rs", "src/layout/floating.rs", "src/layout/mod.rs", "src/layout/tiling_tree/resize.rs", "src/layout/workspace.rs", "src/tests/ipc/floating_commands.rs"]
 what = "propagate whether floating and tiled width/height resize commands changed the effective container size, and return sway's CMD_INVALID-shaped refusal when min/max constraints or a missing parallel boundary make the resize a no-op."
 why = "Sway rejects no-op resize adjustments with `Cannot resize any further` after clamping floating deltas and comparing tiled fractions (`sway/commands/resize.c:180-218, 220-280`); swayward previously discarded the corresponding layout result for width and height commands."
+
+[[edit]]
+migrated = false
+paths = ["src/ipc/server.rs", "src/tests/ipc/config_commands.rs"]
+what = "track a window's formatted title in IPC event state and emit one `window::title` event when the `title_format` command changes only compositor-rendered title text."
+why = "Sway emits `window::title` when `title_format` recomputes the container title (`sway/sway/commands/title_format.c:25-28`; `sway/sway/tree/view.c:1117-1138`). Swayward's event state tracked only the client's raw title, so the command produced no event."

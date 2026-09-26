@@ -1153,9 +1153,10 @@ fn make_ipc_window(
     workspace_id: Option<WorkspaceId>,
     layout: WindowLayout,
 ) -> swayward_ipc::Window {
+    let title = mapped.formatted_title();
     with_toplevel_role(mapped.toplevel(), |role| swayward_ipc::Window {
         id: mapped.id().get(),
-        title: role.title.clone(),
+        title: Some(title),
         app_id: role.app_id.clone(),
         pid: mapped.credentials().map(|c| c.pid),
         workspace_id: workspace_id.map(|id| id.get()),
@@ -1877,8 +1878,7 @@ impl State {
             let sway_floating_changed = previous_node
                 .zip(current_node.as_ref())
                 .is_some_and(|(old, current)| old["type"] != current["type"]);
-            let title_changed =
-                with_toplevel_role(mapped.toplevel(), |role| ipc_win.title != role.title);
+            let title_changed = ipc_win.title.as_deref() != Some(&mapped.formatted_title());
             let fullscreen_changed = previous_node
                 .zip(current_node.as_ref())
                 .is_some_and(|(old, current)| old["fullscreen_mode"] != current["fullscreen_mode"]);

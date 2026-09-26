@@ -250,6 +250,20 @@ failure. See
 the [compatibility matrix](SWAY_COMPATIBILITY.md) for the supported subset and
 the [IPC oracle coverage](IPC_ORACLE_COVERAGE.md) for its test boundary.
 
+### Per-view rendering and idle policy commands
+
+**Command gap.**
+
+Swayward refuses `opacity`, `inhibit_idle`, `allow_tearing`, and
+`max_render_time`. Sway stores each value on the target container or view and
+exposes all but opacity in `GET_TREE` (`sway/commands/opacity.c:9-40`,
+`sway/commands/inhibit_idle.c:8-50`, `sway/commands/allow_tearing.c:6-25`, and
+`sway/commands/max_render_time.c:6-32`). Swayward has no equivalent mutable
+per-view state. Its window-rule opacity is computed from configuration, idle
+inhibition comes from client protocol objects, and its frame clock has no
+per-view tearing or render-deadline controls. Returning success would therefore
+report state that the compositor does not apply.
+
 ### Reload and transient output configuration
 
 **Deliberate.**
