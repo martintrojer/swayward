@@ -194,10 +194,15 @@ test you can edit to pass is not evidence. Run `./contrib/fetch-oracle` before
 the in-process harness. Where i3 and sway differ, record a skip with a citation
 into sway's source rather than changing the assertion.
 
-Measure swayward against the oracle from a clean clone of it, passing `--out`
-outside the repo: the runners' default output path is a tracked results file,
-and a measurement taken from a worker's half-edited clone gave misleading
-numbers.
+Measure swayward against the oracle from a clean worktree of it, passing
+`--out` outside the repo: the runners' default output path is a tracked
+results file, and a measurement taken from a worker's half-edited clone gave
+misleading numbers. The operator's own oracle checkout is
+`~/hacking/sway-ipc-oracle`; leave it alone and add a worktree beside it:
+`git -C ~/hacking/sway-ipc-oracle worktree add
+~/hacking/sway-ipc-oracle.worktrees/<name> -b <branch> origin/main`. Thirteen
+separate clones accumulated before this rule, and agents edited the operator's
+checkout because it was the obvious local copy.
 
 `tests/i3/coverage.toml` is the source of truth for what the in-process harness measures.
 Use `./contrib/coverage-report` for the current census; its `--json` output is
