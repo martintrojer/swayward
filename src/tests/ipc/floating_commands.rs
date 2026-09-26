@@ -447,10 +447,15 @@ fn tiled_grow_at_workspace_edge_reports_failure() {
 
     let outcome = crate::command::execute(f.niri_state(), "resize grow right 10 px");
 
-    assert!(!outcome[0].success);
+    // sway answers CMD_INVALID here (sway/commands/resize.c:217,278), so the
+    // reply carries parse_error = true.
     assert_eq!(
-        outcome[0].error.as_deref(),
-        Some("Cannot resize any further")
+        outcome,
+        [swayward_ipc::CommandOutcome {
+            success: false,
+            error: Some("Cannot resize any further".into()),
+            parse_error: Some(true),
+        }]
     );
 }
 

@@ -274,7 +274,9 @@ pub(super) fn resize(
                     .resize_tiling_node_edge(workspace, node, edge, change),
             };
             if changed == Some(false) {
-                return Err(failure("Cannot resize any further"));
+                return Err(swayward_ipc::command::parse_error(
+                    "Cannot resize any further",
+                ));
             }
         }
     }
