@@ -17,7 +17,13 @@ impl Pattern {
                 .ucp(true)
                 .build(value)
                 .map(Self::Regex)
-                .map_err(|error| format!("Regex compilation for '{value}' failed: {error}"))
+                .map_err(|error| {
+                    let message = error.to_string();
+                    let message = message
+                        .rsplit_once(": ")
+                        .map_or(message.as_str(), |(_, tail)| tail);
+                    format!("Regex compilation for '{value}' failed: {message}")
+                })
         }
     }
 
@@ -302,6 +308,14 @@ fn parse_pairs(input: &str) -> Result<Vec<(String, Option<String>)>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn regex_compile_errors_match_sways_pcre2_message() {
+        assert_eq!(
+            Criteria::parse(r#"[app_id="["]"#, None).unwrap_err(),
+            "Regex compilation for '[' failed: missing terminating ] for character class"
+        );
+    }
 
     #[test]
     fn pcre2_lookaround_pattern_matches() {

@@ -36,14 +36,16 @@ pub fn execute(state: &mut State, input: &str) -> Vec<CommandOutcome> {
     // sway, where a binding re-enters execute_command at press time
     // (`sway/sway/commands/bind.c:635`).
     let mut parsed = parse_with_variables(input, &state.swayward.sway_variables);
-    if state.swayward.layout.focus().is_none()
-        && input
-            .split_whitespace()
-            .next()
-            .is_some_and(|name| name.eq_ignore_ascii_case("resize"))
-        && parsed.first().is_some_and(Result::is_err)
-    {
-        parsed[0] = Err(swayward_ipc::command::parse_error("Cannot resize nothing"));
+    if state.swayward.layout.focus().is_none() {
+        for parsed in &mut parsed {
+            let Err(error) = parsed else {
+                continue;
+            };
+            let message = error.error.as_deref().unwrap_or_default();
+            if message.starts_with("Expected 'resize ") || message.starts_with("Invalid resize ") {
+                *error = swayward_ipc::command::parse_error("Cannot resize nothing");
+            }
+        }
     }
     let mut retained_targets = None;
     parsed
@@ -2392,13 +2394,21 @@ mod tests {
     }
 
     #[test]
-    fn bare_focus_fails_like_sway() {
+    fn empty_layout_command_failures_match_sway() {
         let mut fixture = crate::tests::fixture::Fixture::new();
+        fixture.add_output(1, (1920, 1080));
         let outcome = execute(fixture.niri_state(), "nop before; focus");
         assert!(outcome[0].success);
         assert_eq!(
             outcome[1],
             command_failure("No container to focus was specified.")
+        );
+
+        let outcome = execute(fixture.niri_state(), "workspace fuzz; resize");
+        assert!(outcome[0].success);
+        assert_eq!(
+            outcome[1],
+            swayward_ipc::command::parse_error("Cannot resize nothing")
         );
     }
 
@@ -2724,7 +2734,7 @@ mod tests {
         let stacked = parse("layout stacked");
         assert_eq!(
             stacked[0].as_ref().unwrap_err().error.as_deref(),
-            Some("Expected 'layout <splith|splitv|tabbed|stacking|toggle>'")
+            Some("Expected 'layout default|tabbed|stacking|splitv|splith' or 'layout toggle [split|all]' or 'layout toggle [split|tabbed|stacking|splitv|splith] [split|tabbed|stacking|splitv|splith]...'")
         );
         assert_eq!(command("layout default"), Command::LayoutDefault);
         assert_eq!(
