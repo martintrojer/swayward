@@ -68,14 +68,21 @@ fn mark_event_matches_captured_sway_schema() {
 
     assert!(crate::command::execute(fixture.niri_state(), "mark event-mark")[0].success);
     fixture.niri_state().ipc_refresh_layout();
-    let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
+    let ((event_type, payload), remainder) =
+        read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, Vec::new());
+    assert_eq!(event_type, (1 << 31) | 3);
+    let cleared = serde_json::from_str::<Value>(&payload).unwrap();
+    assert_eq!(cleared["change"], "mark");
+    assert_eq!(cleared["container"]["marks"], serde_json::json!([]));
+
+    let ((event_type, payload), remainder) =
+        read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder);
     assert_eq!(event_type, (1 << 31) | 3);
     let expected: Value = serde_json::from_str(sway_fixture!("events/window.mark.json")).unwrap();
-    assert_event_shape(
-        &expected,
-        &serde_json::from_str(&payload).unwrap(),
-        "$window",
-    );
+    let marked = serde_json::from_str(&payload).unwrap();
+    assert_event_shape(&expected, &marked, "$window");
+    assert_eq!(marked["container"]["marks"], serde_json::json!(["event-mark"]));
+    assert!(remainder.is_empty());
 }
 
 #[test]

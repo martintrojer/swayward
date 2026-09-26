@@ -1536,8 +1536,27 @@ fn mark_target(state: &mut State, target: CommandTarget, mark: &str, add: bool, 
             .get(&(workspace, node))
             .is_some_and(|marks| marks.iter().any(|existing| existing == mark)),
     };
-    if !add {
+    if !add && matches!(target, CommandTarget::Window(_)) {
+        let node_id = match target {
+            CommandTarget::Window(window) => crate::ipc::tree::window_id(window),
+            CommandTarget::Container(..) => unreachable!(),
+        };
+        let tree = serde_json::to_value(crate::ipc::tree::describe_tree(
+            &state.swayward.layout,
+            &state.swayward.global_space,
+            &state.swayward.marks_by_window,
+            &state.swayward.marks_by_container,
+        ))
+        .unwrap_or_default();
+        let container = crate::ipc::server::find_node_by_id(&tree, node_id).cloned();
         unmark_target(state, target, None);
+        if let (Some(server), Some(mut container)) = (&state.swayward.ipc_server, container) {
+            container["marks"] = serde_json::json!([]);
+            server.send_event(swayward_ipc::legacy::Event::SwayWindowChanged {
+                change: "mark".into(),
+                container,
+            });
+        }
     }
     unmark_globally(state, Some(mark));
     if !toggle || !had_mark {
@@ -1549,6 +1568,24 @@ fn mark_target(state: &mut State, target: CommandTarget, mark: &str, add: bool, 
                 .entry((workspace, node))
                 .or_default()
                 .push(mark.to_owned()),
+        }
+    }
+    if let CommandTarget::Container(_, node) = target {
+        let tree = serde_json::to_value(crate::ipc::tree::describe_tree(
+            &state.swayward.layout,
+            &state.swayward.global_space,
+            &state.swayward.marks_by_window,
+            &state.swayward.marks_by_container,
+        ))
+        .unwrap_or_default();
+        if let (Some(server), Some(container)) = (
+            &state.swayward.ipc_server,
+            crate::ipc::server::find_node_by_id(&tree, crate::ipc::tree::container_id(node)),
+        ) {
+            server.send_event(swayward_ipc::legacy::Event::SwayWindowChanged {
+                change: "mark".into(),
+                container: container.clone(),
+            });
         }
     }
     refresh_titlebar_marks(state);

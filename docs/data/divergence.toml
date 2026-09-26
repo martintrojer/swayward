@@ -1405,6 +1405,12 @@ why = "Sway emits both map-time events before `seat_set_focus_container` makes t
 
 [[edit]]
 migrated = false
+paths = ["src/command/mod.rs", "src/tests/ipc/bindings.rs", "tests/i3/lib/i3test.pm", "tests/i3/README.md"]
+what = "emit both `window::mark` snapshots when replacing a view's marks and the final mark snapshot for a split container, while filtering sway's extra view pre-clear event from i3's unchanged one-event assertion."
+why = "Sway's default mark command calls `container_clear_marks`, which emits even for an already empty list, before `container_add_mark` emits again with the new mark (`sway/sway/tree/container.c:1657-1679`)."
+
+[[edit]]
+migrated = false
 paths = ["resources/default-config.kdl", "swayward-config/src/lib.rs"]
 what = "ship active `gestures { hot-corners { off; } }` and `recent-windows { off; }` stanzas, with the remaining options commented out, so the default config neither opens the overview from a screen corner nor binds Alt/Mod+Tab and Alt/Mod+grave to the recent-windows switcher."
 why = "Sway has no hot corners and no Alt-Tab switcher. niri enables both by default, so a sway user loses the top-left corner to the overview and has Mod+Tab taken. Putting the stanzas in the file keeps both features one line away from being turned on."
