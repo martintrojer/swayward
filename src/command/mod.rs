@@ -1550,10 +1550,10 @@ fn mark_target(state: &mut State, target: CommandTarget, mark: &str, add: bool, 
             .get(&(workspace, node))
             .is_some_and(|marks| marks.iter().any(|existing| existing == mark)),
     };
-    if !add && matches!(target, CommandTarget::Window(_)) {
+    if !add {
         let node_id = match target {
             CommandTarget::Window(window) => crate::ipc::tree::window_id(window),
-            CommandTarget::Container(..) => unreachable!(),
+            CommandTarget::Container(_, node) => crate::ipc::tree::container_id(node),
         };
         let tree = serde_json::to_value(crate::ipc::tree::describe_tree(
             &state.swayward.layout,

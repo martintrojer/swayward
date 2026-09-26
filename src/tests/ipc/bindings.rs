@@ -86,6 +86,56 @@ fn mark_event_matches_captured_sway_schema() {
 }
 
 #[test]
+fn plain_mark_on_container_emits_clear_then_add_events() {
+    let (mut fixture, socket) = ipc_fixture();
+    fixture.add_output(1, (800, 600));
+    let client = fixture.add_client();
+    for index in 0..3 {
+        let window = fixture.client(client).create_window();
+        window.xdg_toplevel.set_app_id(format!("event-{index}"));
+        window.set_title(&format!("event-{index}"));
+        let surface = window.surface.clone();
+        window.commit();
+        fixture.roundtrip(client);
+        let window = fixture.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        fixture.double_roundtrip(client);
+        if index == 0 {
+            assert!(crate::command::execute(fixture.niri_state(), "splitv")[0].success);
+        }
+        if index == 1 {
+            assert!(crate::command::execute(fixture.niri_state(), "splith")[0].success);
+        }
+    }
+    assert!(crate::command::execute(fixture.niri_state(), "focus parent")[0].success);
+
+    let mut subscriber = UnixStream::connect(socket).unwrap();
+    subscriber
+        .write_all(&swayward_ipc::wire::encode(
+            MessageType::Subscribe,
+            r#"["window"]"#,
+        ))
+        .unwrap();
+    let _ = read_ipc_reply(&mut fixture, &mut subscriber);
+
+    assert!(crate::command::execute(fixture.niri_state(), "mark containermark")[0].success);
+    fixture.niri_state().ipc_refresh_layout();
+    let ((_, payload), remainder) =
+        read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, Vec::new());
+    let cleared = serde_json::from_str::<Value>(&payload).unwrap();
+    assert_eq!(cleared["change"], "mark");
+    assert_eq!(cleared["container"]["marks"], serde_json::json!([]));
+
+    let ((_, payload), remainder) =
+        read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder);
+    let marked = serde_json::from_str::<Value>(&payload).unwrap();
+    assert_eq!(marked["change"], "mark");
+    assert_eq!(marked["container"]["marks"], serde_json::json!(["containermark"]));
+    assert!(remainder.is_empty());
+}
+
+#[test]
 fn close_event_matches_captured_sway_schema_before_removal() {
     let (mut fixture, socket) = ipc_fixture();
     fixture.add_output(1, (800, 600));
