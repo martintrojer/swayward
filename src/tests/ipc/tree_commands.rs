@@ -212,7 +212,7 @@ fn moved_workspace_keeps_destination_output_focus_order() {
 }
 
 #[test]
-fn workspace_with_only_floating_windows_reports_empty_tiling_representation() {
+fn emptied_workspace_retains_its_last_populated_representation() {
     let mut f = Fixture::new();
     let handle = f.swayward().event_loop.clone();
     let ipc_server =
@@ -220,7 +220,7 @@ fn workspace_with_only_floating_windows_reports_empty_tiling_representation() {
     let socket = ipc_server.socket_path.clone().unwrap();
     f.swayward().ipc_server = Some(ipc_server);
     f.niri_state().ipc_keyboard_layouts_changed();
-    f.add_output(1, (1270, 1408));
+    f.add_output(1, (1280, 720));
     let client = f.add_client();
 
     let window = f.client(client).create_window();
@@ -232,10 +232,12 @@ fn workspace_with_only_floating_windows_reports_empty_tiling_representation() {
     window.ack_last_and_commit();
     f.double_roundtrip(client);
     assert!(crate::command::execute(f.niri_state(), "floating enable")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "splith")[0].success);
 
     let mut stream = UnixStream::connect(socket).unwrap();
     let workspaces = query_ipc(&mut f, &mut stream, MessageType::GetWorkspaces);
-    assert_eq!(workspaces[0]["representation"], "V[]");
+    assert_eq!(workspaces[0]["layout"], "splith");
+    assert_eq!(workspaces[0]["representation"], "H[]");
 }
 
 #[test]

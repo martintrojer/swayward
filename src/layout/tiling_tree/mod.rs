@@ -269,6 +269,7 @@ pub struct TilingTree<W: LayoutElement> {
     root: NodeId,
     focus: Option<NodeId>,
     has_had_tile: bool,
+    empty_representation_layout: Option<Layout>,
     focus_history: Vec<NodeId>,
     previous_split_layouts: HashMap<NodeId, Layout>,
     title_formats: HashMap<NodeId, String>,
@@ -324,6 +325,7 @@ impl<W: LayoutElement> TilingTree<W> {
             root,
             focus: None,
             has_had_tile: false,
+            empty_representation_layout: None,
             focus_history: Vec::new(),
             previous_split_layouts: HashMap::new(),
             title_formats: HashMap::new(),
@@ -352,6 +354,17 @@ impl<W: LayoutElement> TilingTree<W> {
 
     pub fn has_had_tile(&self) -> bool {
         self.has_had_tile
+    }
+
+    pub fn representation_layout(&self) -> Layout {
+        let TreeNode::Split { layout, .. } = self.nodes[&self.root].value else {
+            unreachable!()
+        };
+        if self.is_empty() {
+            self.empty_representation_layout.unwrap_or(layout)
+        } else {
+            layout
+        }
     }
 
     pub fn reset_empty_layout(&mut self) {
@@ -1010,6 +1023,10 @@ impl<W: LayoutElement> TilingTree<W> {
             }
         }
         if self.windows().next().is_none() {
+            let TreeNode::Split { layout, .. } = self.nodes[&self.root].value else {
+                unreachable!()
+            };
+            self.empty_representation_layout = Some(layout);
             self.pending_modes.clear();
             self.set_focus_id(None);
         } else if self.focus == Some(id) {

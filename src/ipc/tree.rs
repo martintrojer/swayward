@@ -544,7 +544,7 @@ fn describe_workspace_node(
     }
     let representation = workspace
         .tiling_has_had_window()
-        .then(|| tree_representation(layout, &nodes));
+        .then(|| tree_representation(ipc_layout(workspace.tiling_representation_layout()), &nodes));
     let mut nodes = nodes;
     set_tabbed_percentages(layout, &mut nodes, rect);
     if !apply_fullscreen_state(&mut nodes, workspace_visible) {

@@ -19,7 +19,7 @@ use super::floating::{apply_position_change, FloatingSpace, FloatingSpaceRenderE
 use super::shadow::Shadow;
 use super::tile::{Tile, TileRenderSnapshot};
 use super::tiling_tree::{
-    DetachedSubtree, Direction, InsertTarget, NodeId, TilingTree, TilingTreeRenderElement,
+    DetachedSubtree, Direction, InsertTarget, Layout, NodeId, TilingTree, TilingTreeRenderElement,
 };
 use super::{
     ActivateWindow, HitType, InsertPosition, InteractiveResizeData, LayoutElement, Options,
@@ -655,6 +655,10 @@ impl<W: LayoutElement> Workspace<W> {
 
     pub fn tiling_has_had_window(&self) -> bool {
         self.tiling.has_had_tile()
+    }
+
+    pub fn tiling_representation_layout(&self) -> Layout {
+        self.tiling.representation_layout()
     }
 
     pub fn windows_mut(&mut self) -> impl Iterator<Item = &mut W> + '_ {

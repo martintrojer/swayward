@@ -144,6 +144,7 @@ impl<W: LayoutElement> TilingTree<W> {
         // Sway starts exposing the workspace representation after an explicit
         // layout command, even when the workspace has never held a window.
         self.has_had_tile = true;
+        self.empty_representation_layout = None;
         let focus = self.focus;
         let (target, remapped) = self.focused_layout_target();
         let Some(target) = target else {
