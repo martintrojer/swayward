@@ -1831,18 +1831,15 @@ impl<W: LayoutElement> Tile<W> {
     }
 
     pub fn has_sway_titlebar(&self) -> bool {
+        self.has_configured_sway_titlebar() && self.effective_border_width().is_some()
+    }
+
+    pub(crate) fn has_configured_sway_titlebar(&self) -> bool {
         // Only `normal` draws a titlebar. When no rule or command has set a
         // border this follows `default_border`, so the answer stays
         // consistent with sway_border() above; they were allowed to disagree
         // once and the i3 centering test caught it.
-        !self.sway_uses_csd
-            && match self.sway_border {
-                Some((style, _)) => style == BorderStyle::Normal,
-                None => {
-                    self.default_sway_border().0 == BorderStyle::Normal
-                        && self.effective_border_width().is_some()
-                }
-            }
+        !self.sway_uses_csd && self.sway_border().0 == BorderStyle::Normal
     }
 
     pub fn set_sway_border(

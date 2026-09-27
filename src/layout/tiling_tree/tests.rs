@@ -1306,6 +1306,20 @@ fn splitting_a_fullscreen_leaf_transfers_fullscreen_to_its_wrapper() {
     let wrapper = t.nodes[&window].parent.unwrap();
     assert_eq!(t.fullscreen_node(), Some(wrapper));
     assert_eq!(t.fullscreen_mode(window), None);
+    let IpcNode::Split { children, .. } = t.ipc_tree() else {
+        panic!("workspace root is not a split");
+    };
+    let IpcNode::Split { children, .. } = &children[0] else {
+        panic!("fullscreen child is not wrapped");
+    };
+    assert!(matches!(
+        &children[..],
+        [IpcNode::Leaf {
+            deco_rect: Some(_),
+            rect,
+            ..
+        }] if rect.loc.y > 0.
+    ));
     t.check_invariants();
 }
 

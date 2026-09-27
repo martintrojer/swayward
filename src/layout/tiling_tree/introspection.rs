@@ -216,49 +216,50 @@ impl<W: LayoutElement> TilingTree<W> {
                         })
                         .collect(),
                 },
-                TreeNode::Leaf { tile } => IpcNode::Leaf {
-                    id,
-                    window: tile.window().id().clone(),
-                    percent,
-                    focused: tree.focus == Some(id),
-                    fullscreen_mode: tree.fullscreen_mode(id).map_or(0, |mode| mode as i32),
-                    rect: geometries
+                TreeNode::Leaf { tile } => {
+                    let fallback_titlebar = tree.fullscreen_node().is_some()
+                        && tree.fullscreen_mode(id).is_none()
+                        && !tree.mapped_under_fullscreen.contains(&id)
+                        && tile.has_configured_sway_titlebar()
+                        && !geometries.titlebars.contains_key(&id);
+                    let mut rect = geometries
                         .leaf_ipc_rects
                         .get(&id)
                         .copied()
-                        .unwrap_or_default(),
-                    deco_rect: geometries
-                        .titlebars
-                        .get(&id)
-                        .map(|bar| bar.ipc_rect)
-                        .or_else(|| {
-                            (tree.fullscreen_node().is_some()
-                                && tree.fullscreen_mode(id).is_none()
-                                && !tree.mapped_under_fullscreen.contains(&id)
-                                && tile.has_sway_titlebar())
-                            .then(|| {
-                                Rectangle::new(
-                                    Point::default(),
-                                    (
-                                        geometries
-                                            .leaf_ipc_rects
-                                            .get(&id)
-                                            .map_or(0., |rect| rect.size.w),
-                                        tree.titlebar_height,
+                        .unwrap_or_default();
+                    if fallback_titlebar {
+                        rect.loc.y += tree.titlebar_height;
+                        rect.size.h = (rect.size.h - tree.titlebar_height).max(0.);
+                    }
+                    IpcNode::Leaf {
+                        id,
+                        window: tile.window().id().clone(),
+                        percent,
+                        focused: tree.focus == Some(id),
+                        fullscreen_mode: tree.fullscreen_mode(id).map_or(0, |mode| mode as i32),
+                        rect,
+                        deco_rect: geometries
+                            .titlebars
+                            .get(&id)
+                            .map(|bar| bar.ipc_rect)
+                            .or_else(|| {
+                                fallback_titlebar.then(|| {
+                                    Rectangle::new(
+                                        Point::default(),
+                                        (rect.size.w, tree.titlebar_height).into(),
                                     )
-                                        .into(),
-                                )
-                            })
-                        }),
-                    border: tile.sway_border(),
-                    border_edges: geometries
-                        .border_edges
-                        .get(&id)
-                        .copied()
-                        .unwrap_or_else(ResizeEdge::all),
-                    sticky: tile.is_sticky,
-                    mapped_under_fullscreen: tree.mapped_under_fullscreen.contains(&id),
-                },
+                                })
+                            }),
+                        border: tile.sway_border(),
+                        border_edges: geometries
+                            .border_edges
+                            .get(&id)
+                            .copied()
+                            .unwrap_or_else(ResizeEdge::all),
+                        sticky: tile.is_sticky,
+                        mapped_under_fullscreen: tree.mapped_under_fullscreen.contains(&id),
+                    }
+                }
             }
         }
 
