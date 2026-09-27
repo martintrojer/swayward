@@ -2685,8 +2685,9 @@ impl Swayward {
             )
             .unwrap();
 
-        let socket_name = create_wayland_socket.then(|| {
-            let socket_source = ListeningSocketSource::new_auto().unwrap();
+        let socket_name = if create_wayland_socket {
+            let socket_source =
+                ListeningSocketSource::new_auto().context("unable to open Wayland socket")?;
             let socket_name = socket_source.socket_name().to_os_string();
             event_loop
                 .insert_source(socket_source, move |client, _, state| {
@@ -2697,9 +2698,11 @@ impl Swayward {
                         security_context: None,
                     });
                 })
-                .unwrap();
-            socket_name
-        });
+                .context("unable to register Wayland socket")?;
+            Some(socket_name)
+        } else {
+            None
+        };
 
         #[cfg(not(test))]
         let ipc_server = if socket_name.is_some() {
