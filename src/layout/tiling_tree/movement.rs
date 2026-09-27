@@ -204,7 +204,7 @@ impl<W: LayoutElement> TilingTree<W> {
         let backwards = matches!(direction, Direction::Left | Direction::Up);
         let mut branch = id;
         let mut parent = self.nodes.get(&id).and_then(|node| node.parent);
-        let mut found_axis = false;
+        let mut exhausted_axis = false;
         while let Some(parent_id) = parent {
             let Some(Node {
                 parent: grandparent,
@@ -216,7 +216,7 @@ impl<W: LayoutElement> TilingTree<W> {
                 return false;
             };
             if Self::layouts_parallel(*layout, wanted_layout) {
-                found_axis = true;
+                exhausted_axis = true;
                 let Some(index) = children.iter().position(|child| *child == branch) else {
                     return false;
                 };
@@ -243,7 +243,10 @@ impl<W: LayoutElement> TilingTree<W> {
                         false,
                     );
                 }
-                if parent_id == self.root && branch != id {
+                if parent_id == self.root {
+                    if branch == id {
+                        return false;
+                    }
                     let Some(boundary) = children
                         .get(if backwards { 0 } else { children.len() - 1 })
                         .copied()
@@ -264,14 +267,15 @@ impl<W: LayoutElement> TilingTree<W> {
             branch = parent_id;
             parent = *grandparent;
         }
-        if found_axis {
-            return false;
-        }
         let Some(old_parent) = self.detach_subtree_only(id) else {
             return false;
         };
         self.wrap_root_for_direction(id, direction);
-        self.reap_empty_from(old_parent);
+        if exhausted_axis {
+            self.collapse_from(old_parent);
+        } else {
+            self.reap_empty_from(old_parent);
+        }
         self.compact_tree();
         self.finish_directional_move(id);
         true

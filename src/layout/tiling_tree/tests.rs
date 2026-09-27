@@ -2454,6 +2454,30 @@ fn directional_move_squashes_the_whole_tree() {
 }
 
 #[test]
+fn directional_move_escapes_a_singleton_parallel_parent() {
+    let mut t = tree((1200., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let second = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.split(second, Layout::SplitV);
+
+    assert!(t.move_direction(second, Direction::Down));
+
+    let IpcNode::Split {
+        layout, children, ..
+    } = t.ipc_tree()
+    else {
+        panic!("root must be a split");
+    };
+    assert_eq!(layout, Layout::SplitV);
+    assert!(matches!(
+        &children[..],
+        [IpcNode::Leaf { id: top, .. }, IpcNode::Leaf { id: bottom, .. }]
+            if *top == first && *bottom == second
+    ));
+    t.check_invariants();
+}
+
+#[test]
 fn directional_move_squashes_after_reordering_siblings() {
     let mut t = tree((1200., 800.), 0.);
     let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
