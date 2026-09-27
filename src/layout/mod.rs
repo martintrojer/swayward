@@ -4200,9 +4200,7 @@ impl<W: LayoutElement> Layout<W> {
             let disables_fullscreen = workspace.id() == active_workspace
                 || workspace.fullscreen_mode() == Some(tiling_tree::FullscreenMode::Global);
             if disables_fullscreen {
-                if let Some(window) = workspace.fullscreen_window().cloned() {
-                    workspace.set_fullscreen(&window, false);
-                }
+                workspace.disable_fullscreen();
             }
         }
 

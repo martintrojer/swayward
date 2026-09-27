@@ -1513,6 +1513,18 @@ why = "Sway serializes `parse_error` whenever a command result has an error (`sw
 
 [[edit]]
 migrated = false
+paths = ["swayward-ipc/src/command.rs"]
+what = "report sway's exact invalid-border grammar, which allows an optional width only after `pixel`."
+why = "Sway's `cmd_border` error is `Expected 'border <none|normal|pixel|csd|toggle>' or 'border pixel <px>'` (`sway/commands/border.c:59-90`)."
+
+[[edit]]
+migrated = false
+paths = ["src/layout/mod.rs", "src/layout/workspace.rs", "src/layout/tiling_tree/fullscreen.rs", "src/tests/ipc/workspace_commands.rs"]
+what = "apply unscoped fullscreen only to the focused floating window when the floating layer is active, and retain structural focus when fullscreening an already focused tiling container."
+why = "Sway fullscreen targets the seat's raw focused node; applying it to both the active floating window and stale tiling focus left two fullscreen nodes, while descending a directly focused split changed GET_TREE focus metadata (`sway/commands/fullscreen.c`; `sway/tree/container.c`)."
+
+[[edit]]
+migrated = false
 paths = ["src/ipc/server.rs", "src/tests/ipc/config_commands.rs"]
 what = "track a window's formatted title in IPC event state and emit one `window::title` event when the `title_format` command changes only compositor-rendered title text."
 why = "Sway emits `window::title` when `title_format` recomputes the container title (`sway/sway/commands/title_format.c:25-28`; `sway/sway/tree/view.c:1117-1138`). Swayward's event state tracked only the client's raw title, so the command produced no event."

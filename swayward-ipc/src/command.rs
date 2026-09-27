@@ -1874,8 +1874,7 @@ pub fn parse_boolean(value: &str, current: bool) -> bool {
 }
 
 fn parse_border(args: &[&str]) -> Result<Border, String> {
-    const SYNTAX: &str =
-        "Expected 'border <none|normal|pixel|csd|toggle>' or 'border <normal|pixel|toggle> <px>'";
+    const SYNTAX: &str = "Expected 'border <none|normal|pixel|csd|toggle>' or 'border pixel <px>'";
     let Some(style) = args.first() else {
         return Err(SYNTAX.into());
     };

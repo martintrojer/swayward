@@ -54,6 +54,45 @@ fn closing_last_window_focuses_workspace_node() {
 }
 
 #[test]
+fn fullscreen_with_a_focused_floating_window_does_not_target_the_tiling_parent() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    map_test_window(&mut f, client, "tiled");
+    map_test_window(&mut f, client, "floating");
+    assert!(crate::command::execute(f.niri_state(), "floating enable")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "focus tiling")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "layout tabbed")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "focus floating")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "fullscreen")[0].success);
+
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &Default::default(),
+        &Default::default(),
+    ))
+    .unwrap();
+    assert_eq!(find_json_node_with_app_id(&tree, "floating").unwrap()["fullscreen_mode"], 1);
+    assert_eq!(find_json_parent_of_app_id(&tree, "tiled").unwrap()["fullscreen_mode"], 0);
+
+    assert!(crate::command::execute(f.niri_state(), "fullscreen disable")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "focus tiling")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "focus parent")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "fullscreen enable")[0].success);
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &Default::default(),
+        &Default::default(),
+    ))
+    .unwrap();
+    assert_eq!(find_json_parent_of_app_id(&tree, "tiled").unwrap()["focused"], true);
+}
+
+#[test]
 fn get_tree_has_one_focused_node_after_scratchpad_cycle() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));

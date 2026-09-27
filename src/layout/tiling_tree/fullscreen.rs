@@ -45,7 +45,9 @@ impl<W: LayoutElement> TilingTree<W> {
                     maximized: false,
                 })
                 .fullscreen = Some(fullscreen);
-            self.set_focus_id(self.focused_leaf_in(id));
+            if self.focus != Some(id) {
+                self.set_focus_id(self.focused_leaf_in(id));
+            }
         }
         self.cancel_resize_for(id);
         true
