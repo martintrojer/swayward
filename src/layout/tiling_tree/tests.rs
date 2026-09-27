@@ -635,7 +635,7 @@ fn nested_container_titlebars_show_the_tree_and_update_after_close() {
         t.remove_tile_node(inner_second);
         assert_eq!(
             t.compute_geometry().titlebars[&outer].title,
-            "V[window 2 window 3]"
+            "V[window 2 T[window 3]]"
         );
     }
 }

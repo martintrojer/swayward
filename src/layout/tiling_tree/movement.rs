@@ -186,8 +186,8 @@ impl<W: LayoutElement> TilingTree<W> {
                 TreeNode::Leaf { .. } => unreachable!(),
             };
             if !Self::layouts_parallel(root_layout, wanted_layout) {
-                let old_parent = self.nodes[&id].parent;
                 self.set_layout(self.root, wanted_layout);
+                let old_parent = self.nodes[&id].parent;
                 if let Some(parent) = old_parent.filter(|parent| *parent != self.root) {
                     self.detach_subtree_only(id);
                     self.insert_child_at(self.root, id, 0);

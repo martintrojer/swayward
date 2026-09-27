@@ -1032,14 +1032,6 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub fn remove_tile_node(&mut self, id: NodeId) -> Option<Tile<W>> {
-        self.remove_tile_node_inner(id, true)
-    }
-
-    fn remove_tile_node_preserving_parent(&mut self, id: NodeId) -> Option<Tile<W>> {
-        self.remove_tile_node_inner(id, false)
-    }
-
-    fn remove_tile_node_inner(&mut self, id: NodeId, collapse: bool) -> Option<Tile<W>> {
         let old_geometries = self.compute_geometry();
         if !matches!(
             self.nodes.get(&id).map(|node| &node.value),
@@ -1055,12 +1047,7 @@ impl<W: LayoutElement> TilingTree<W> {
         self.interactive_resize = None;
         if let Some(parent) = node.parent {
             self.remove_child(parent, id);
-            if collapse {
-                self.collapse_from(parent);
-                self.compact_tree();
-            } else {
-                self.reap_empty_from(parent);
-            }
+            self.reap_empty_from(parent);
         }
         if self.windows().next().is_none() {
             let TreeNode::Split { layout, .. } = self.nodes[&self.root].value else {
@@ -1078,6 +1065,10 @@ impl<W: LayoutElement> TilingTree<W> {
         }
         self.animate_geometry_changes(old_geometries, None);
         Some(*tile)
+    }
+
+    fn remove_tile_node_preserving_parent(&mut self, id: NodeId) -> Option<Tile<W>> {
+        self.remove_tile_node(id)
     }
 
     fn remove_node(&mut self, id: NodeId) -> Option<Node<W>> {
