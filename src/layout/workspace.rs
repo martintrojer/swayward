@@ -15,7 +15,7 @@ use swayward_config::utils::MergeWith as _;
 use swayward_config::{CornerRadius, OutputName, PresetSize, Workspace as WorkspaceConfig};
 use swayward_ipc::{ColumnDisplay, PositionChange, SizeChange, WindowLayout};
 
-use super::floating::{apply_position_change, FloatingSpace, FloatingSpaceRenderElement};
+use super::floating_tree::{apply_position_change, FloatingLayout, FloatingLayoutRenderElement};
 use super::shadow::Shadow;
 use super::tile::{Tile, TileRenderSnapshot};
 use super::tiling_tree::{
@@ -47,7 +47,7 @@ pub struct Workspace<W: LayoutElement> {
     tiling: TilingTree<W>,
 
     /// The floating layout.
-    floating: FloatingSpace<W>,
+    floating: FloatingLayout<W>,
 
     /// Whether the floating layout is active instead of the scrolling layout.
     floating_is_active: FloatingActive,
@@ -158,7 +158,7 @@ impl WorkspaceId {
 swayward_render_elements! {
     WorkspaceRenderElement<R> => {
         Scrolling = TilingTreeRenderElement<R>,
-        Floating = FloatingSpaceRenderElement<R>,
+        Floating = FloatingLayoutRenderElement<R>,
     }
 }
 
@@ -262,7 +262,7 @@ impl<W: LayoutElement> Workspace<W> {
             options.clone(),
         );
 
-        let floating = FloatingSpace::new(
+        let floating = FloatingLayout::new(
             view_size,
             working_area,
             scale.fractional_scale(),
@@ -338,7 +338,7 @@ impl<W: LayoutElement> Workspace<W> {
             options.clone(),
         );
 
-        let floating = FloatingSpace::new(
+        let floating = FloatingLayout::new(
             view_size,
             working_area,
             scale.fractional_scale(),
@@ -3054,7 +3054,7 @@ impl<W: LayoutElement> Workspace<W> {
         &mut self.tiling
     }
 
-    pub fn floating(&self) -> &FloatingSpace<W> {
+    pub fn floating(&self) -> &FloatingLayout<W> {
         &self.floating
     }
 
