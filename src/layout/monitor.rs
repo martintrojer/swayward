@@ -623,6 +623,9 @@ impl<W: LayoutElement> Monitor<W> {
         }
 
         let prev_active_idx = self.active_workspace_idx;
+        if prev_active_idx != idx && !self.workspaces[prev_active_idx].has_windows() {
+            self.workspaces[prev_active_idx].reset_empty_tiling_layout();
+        }
         self.active_workspace_idx = idx;
         let active = self.active_workspace_ref().id();
         self.workspace_focus_history.retain(|id| *id != active);

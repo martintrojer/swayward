@@ -661,6 +661,11 @@ impl<W: LayoutElement> Workspace<W> {
         self.tiling.representation_layout()
     }
 
+    pub(super) fn reset_empty_tiling_layout(&mut self) {
+        assert!(!self.has_windows());
+        self.tiling.reset_empty_layout();
+    }
+
     pub fn windows_mut(&mut self) -> impl Iterator<Item = &mut W> + '_ {
         self.tiles_mut().map(Tile::window_mut)
     }
@@ -1124,9 +1129,6 @@ impl<W: LayoutElement> Workspace<W> {
         }
 
         self.update_focus_floating_tiling_after_removing(from_floating);
-        if self.tiling.is_empty() {
-            self.tiling.reset_empty_layout();
-        }
 
         removed
     }

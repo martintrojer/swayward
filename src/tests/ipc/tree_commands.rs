@@ -212,7 +212,7 @@ fn moved_workspace_keeps_destination_output_focus_order() {
 }
 
 #[test]
-fn emptied_workspace_retains_its_last_populated_representation() {
+fn active_emptied_workspace_retains_its_layout_and_representation() {
     let mut f = Fixture::new();
     let handle = f.swayward().event_loop.clone();
     let ipc_server =
@@ -231,13 +231,13 @@ fn emptied_workspace_retains_its_last_populated_representation() {
     window.attach_new_buffer();
     window.ack_last_and_commit();
     f.double_roundtrip(client);
-    assert!(crate::command::execute(f.niri_state(), "floating enable")[0].success);
-    assert!(crate::command::execute(f.niri_state(), "splith")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "move down")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "move scratchpad")[0].success);
 
     let mut stream = UnixStream::connect(socket).unwrap();
     let workspaces = query_ipc(&mut f, &mut stream, MessageType::GetWorkspaces);
-    assert_eq!(workspaces[0]["layout"], "splith");
-    assert_eq!(workspaces[0]["representation"], "H[]");
+    assert_eq!(workspaces[0]["layout"], "splitv");
+    assert_eq!(workspaces[0]["representation"], "V[]");
 }
 
 #[test]

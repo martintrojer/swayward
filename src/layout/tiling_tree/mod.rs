@@ -383,6 +383,7 @@ impl<W: LayoutElement> TilingTree<W> {
             },
         };
         self.set_layout(self.root, layout);
+        self.empty_representation_layout = Some(layout);
     }
 
     pub fn preserve_empty_auto_layout(&mut self) {
