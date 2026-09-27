@@ -1163,6 +1163,16 @@ fn criteria_split_command_applies_to_a_matched_split_container() {
 }
 
 #[test]
+fn layout_default_without_previous_split_is_a_parse_error() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+
+    let outcome = crate::command::execute(f.niri_state(), "layout default");
+    assert!(!outcome[0].success);
+    assert_eq!(outcome[0].parse_error, Some(true));
+}
+
+#[test]
 fn criteria_layout_applies_to_every_matched_windows_container() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));

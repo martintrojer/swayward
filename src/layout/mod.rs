@@ -4451,7 +4451,7 @@ impl<W: LayoutElement> Layout<W> {
     pub fn restore_focused_split_layout(&mut self) -> Option<(WorkspaceId, Vec<(NodeId, NodeId)>)> {
         let workspace = self.active_workspace_mut()?;
         let id = workspace.id();
-        Some((id, workspace.restore_focused_split_layout()))
+        Some((id, workspace.restore_focused_split_layout()?))
     }
 
     pub fn toggle_focused_layout_split(&mut self) -> Option<(WorkspaceId, Vec<(NodeId, NodeId)>)> {

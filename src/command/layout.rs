@@ -38,8 +38,12 @@ fn reject_floating(state: &State) -> Result<(), CommandOutcome> {
 
 pub(super) fn default(state: &mut State) -> Result<(), CommandOutcome> {
     reject_floating(state)?;
-    let remapped = state.swayward.layout.restore_focused_split_layout();
-    remap_marks(state, remapped);
+    let Some(remapped) = state.swayward.layout.restore_focused_split_layout() else {
+        return Err(swayward_ipc::command::parse_error(
+            "Expected 'layout default|tabbed|stacking|splitv|splith' or 'layout toggle [split|all]' or 'layout toggle [split|tabbed|stacking|splitv|splith] [split|tabbed|stacking|splitv|splith]...'",
+        ));
+    };
+    remap_marks(state, Some(remapped));
     state.swayward.queue_redraw_all();
     Ok(())
 }

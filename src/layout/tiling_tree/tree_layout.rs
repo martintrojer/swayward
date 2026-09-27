@@ -319,13 +319,13 @@ impl<W: LayoutElement> TilingTree<W> {
         true
     }
 
-    pub fn restore_focused_split_layout(&mut self) -> Vec<(NodeId, NodeId)> {
+    pub fn restore_focused_split_layout(&mut self) -> Option<Vec<(NodeId, NodeId)>> {
         let (target, remapped) = self.focused_layout_target();
-        let Some(target) = target else {
-            return remapped;
-        };
-        self.restore_node_layout(target);
-        remapped
+        let target = target?;
+        self.previous_split_layouts.contains_key(&target).then(|| {
+            self.restore_node_layout(target);
+            remapped
+        })
     }
 
     pub fn restore_target_layout(&mut self, id: NodeId) -> bool {

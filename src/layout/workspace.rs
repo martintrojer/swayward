@@ -1834,9 +1834,9 @@ impl<W: LayoutElement> Workspace<W> {
         }
     }
 
-    pub fn restore_focused_split_layout(&mut self) -> Vec<(NodeId, NodeId)> {
+    pub fn restore_focused_split_layout(&mut self) -> Option<Vec<(NodeId, NodeId)>> {
         if self.floating_is_active.get() {
-            Vec::new()
+            None
         } else {
             self.tiling.restore_focused_split_layout()
         }
