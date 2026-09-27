@@ -407,6 +407,58 @@ window-rule {
 }
 
 #[test]
+fn sway_default_floating_rules_match_fixed_sizes_and_parents() {
+    for (name, min_size, max_size, has_parent, expected_floating) in [
+        ("fixed-width", (300, 100), (300, 200), false, true),
+        ("fixed-height-zero-width", (0, 200), (0, 200), false, false),
+        ("fixed-both", (300, 200), (300, 200), false, true),
+        ("dialog", (0, 0), (0, 0), true, true),
+    ] {
+        let mut f = Fixture::new();
+        f.add_output(1, (1280, 720));
+        let client = f.add_client();
+
+        let parent = has_parent.then(|| {
+            let parent = f.client(client).create_window();
+            let surface = parent.surface.clone();
+            let toplevel = parent.xdg_toplevel.clone();
+            parent.commit();
+            f.roundtrip(client);
+            let parent = f.client(client).window(&surface);
+            parent.attach_new_buffer();
+            parent.ack_last_and_commit();
+            f.double_roundtrip(client);
+            toplevel
+        });
+
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(name.into());
+        window.set_min_size(min_size.0, min_size.1);
+        window.set_max_size(max_size.0, max_size.1);
+        window.set_parent(parent.as_ref());
+        let surface = window.surface.clone();
+        window.commit();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+
+        let swayward = f.swayward();
+        let mapped = swayward.layout.focus().unwrap();
+        assert_eq!(
+            swayward
+                .layout
+                .active_workspace()
+                .unwrap()
+                .is_floating(&mapped.window),
+            expected_floating,
+            "default floating state for {name}"
+        );
+    }
+}
+
+#[test]
 fn sway_default_floating_border_applies_to_initial_floats() {
     let config = Config::parse_mem(
         r#"

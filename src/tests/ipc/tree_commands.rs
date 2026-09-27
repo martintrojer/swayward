@@ -1,4 +1,67 @@
 #[test]
+fn get_tree_reports_sway_default_floating_rules() {
+    let (mut f, socket) = ipc_fixture();
+    f.add_output(1, (1280, 720));
+    let client = f.add_client();
+
+    for (name, min_size, max_size, expected_floating) in [
+        ("fixed-width", (300, 100), (300, 200), true),
+        ("fixed-height-zero-width", (0, 200), (0, 200), false),
+        ("fixed-both", (300, 200), (300, 200), true),
+    ] {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(name.into());
+        window.set_min_size(min_size.0, min_size.1);
+        window.set_max_size(max_size.0, max_size.1);
+        let surface = window.surface.clone();
+        window.commit();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+
+        let mut stream = UnixStream::connect(&socket).unwrap();
+        let tree = query_ipc(&mut f, &mut stream, MessageType::GetTree);
+        let node = find_json_node_with_app_id(&tree, name).unwrap();
+        assert_eq!(
+            node["floating"],
+            if expected_floating { "user_on" } else { "auto_off" },
+            "GET_TREE floating state for {name}"
+        );
+    }
+
+    let parent = f.client(client).create_window();
+    parent.xdg_toplevel.set_app_id("parent".into());
+    let parent_surface = parent.surface.clone();
+    let parent_toplevel = parent.xdg_toplevel.clone();
+    parent.commit();
+    f.roundtrip(client);
+    let parent = f.client(client).window(&parent_surface);
+    parent.attach_new_buffer();
+    parent.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    let dialog = f.client(client).create_window();
+    dialog.xdg_toplevel.set_app_id("dialog".into());
+    dialog.set_parent(Some(&parent_toplevel));
+    let dialog_surface = dialog.surface.clone();
+    dialog.commit();
+    f.roundtrip(client);
+    let dialog = f.client(client).window(&dialog_surface);
+    dialog.attach_new_buffer();
+    dialog.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    let mut stream = UnixStream::connect(socket).unwrap();
+    let tree = query_ipc(&mut f, &mut stream, MessageType::GetTree);
+    assert_eq!(
+        find_json_node_with_app_id(&tree, "dialog").unwrap()["floating"],
+        "user_on"
+    );
+}
+
+#[test]
 fn live_ipc_descriptions_match_sway_schema_and_values() {
     let config = swayward_config::Config::parse_mem(
         "layout { gaps 0; outer-gaps { left 0; right 0; top 0; bottom 0; }; border { on; width 2; }; }",

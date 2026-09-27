@@ -1513,6 +1513,12 @@ why = "A long XDG_RUNTIME_DIR makes the Wayland Unix-socket path exceed SUN_LEN;
 
 [[edit]]
 migrated = false
+paths = ["src/window/mod.rs", "src/tests/window_opening.rs", "src/tests/ipc/tree_commands.rs", "docs/KNOWN_DEVIATIONS.md"]
+what = "match sway's default floating predicate for xdg parents and windows fixed on either axis, and document that xwayland-satellite forwards the corresponding X11 transient and size hints."
+why = "Sway requires both minimum dimensions to be nonzero and either axis to have equal minimum and maximum (`sway/desktop/xdg_shell.c:228-235`). The inherited niri predicate checked only fixed height, missing fixed-width windows and floating zero-width fixed-height windows that sway tiles."
+
+[[edit]]
+migrated = false
 paths = ["src/layout/tiling_tree/mod.rs", "src/layout/tiling_tree/movement.rs", "src/layout/tiling_tree/tests.rs", "src/tests/ipc/tree_commands.rs"]
 what = "preserve non-empty singleton split containers when a child window closes or moves to the scratchpad; only reap containers made empty by the removal, and resolve a one-window directional move's source parent after root compaction."
 why = "Sway's container detach path calls `container_reap_empty`, which removes empty ancestors but retains a split with one surviving child (`sway/tree/container.c`). Swayward instead collapsed every singleton ancestor and changed the IPC tree shape; after retaining it, the one-window move path could keep a stale pre-compaction parent ID and leave its actual parent empty."

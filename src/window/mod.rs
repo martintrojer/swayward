@@ -429,8 +429,9 @@ impl ResolvedWindowRules {
         });
         let (min_size, max_size) = self.apply_min_max_size(min_size, max_size);
 
-        // We open fixed-height windows as floating.
-        min_size.h > 0 && min_size.h == max_size.h
+        // Sway floats windows fixed on either axis, provided both minimum
+        // dimensions are set.
+        min_size.w > 0 && min_size.h > 0 && (min_size.w == max_size.w || min_size.h == max_size.h)
     }
 }
 
