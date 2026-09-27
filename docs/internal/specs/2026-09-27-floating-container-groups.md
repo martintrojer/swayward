@@ -1,6 +1,6 @@
 # Floating container groups
 
-Status: proposed design for pre-beta1
+Status: approved (option B), pre-beta1
 Date: 2026-09-27
 
 ## Why this is pre-beta1
