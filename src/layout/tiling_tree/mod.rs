@@ -665,7 +665,16 @@ impl<W: LayoutElement> TilingTree<W> {
         } else {
             self.set_focus_id(Some(id));
         }
-        if mapped_under_fullscreen && !pending_mode.is_fullscreen() {
+        if mapped_under_fullscreen
+            && !pending_mode.is_fullscreen()
+            && !matches!(
+                self.nodes.get(&parent).map(|node| &node.value),
+                Some(TreeNode::Split {
+                    layout: Layout::Tabbed | Layout::Stacked,
+                    ..
+                })
+            )
+        {
             self.mapped_under_fullscreen.insert(id);
         }
         if pending_mode.is_maximized() {

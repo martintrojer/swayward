@@ -2928,6 +2928,31 @@ fn mapping_under_fullscreen_preserves_focus_and_sibling_percents() {
 }
 
 #[test]
+fn mapping_under_fullscreen_tab_keeps_normal_ipc_state() {
+    let mut t = tree((1920., 1080.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.set_layout(t.root, Layout::Tabbed);
+    assert!(t.set_node_fullscreen(first, Some(FullscreenMode::Workspace)));
+
+    let mapped = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+
+    assert!(!t.mapped_under_fullscreen.contains(&mapped));
+    let IpcNode::Split { children, .. } = t.ipc_tree() else {
+        panic!("IPC root must be a split");
+    };
+    assert!(matches!(
+        &children[2],
+        IpcNode::Leaf {
+            percent: Some(1.),
+            mapped_under_fullscreen: false,
+            ..
+        }
+    ));
+    t.check_invariants();
+}
+
+#[test]
 fn mapping_fullscreen_window_replaces_existing_fullscreen() {
     let mut t = tree((1920., 1080.), 0.);
     let first_window = TestWindow::new(1);
