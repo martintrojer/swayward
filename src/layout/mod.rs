@@ -1,8 +1,8 @@
 //! Window, workspace, and output layout logic.
 //!
 //! Each output owns an ordered set of workspaces. Each workspace contains a nested
-//! [`tiling_tree::TilingTree`] and a [`floating::FloatingSpace`]. Empty inactive workspaces are
-//! destroyed unless configuration makes them persistent; every output still keeps an active
+//! [`tiling_tree::TilingTree`] and a [`floating_tree::FloatingLayout`]. Empty inactive workspaces
+//! are destroyed unless configuration makes them persistent; every output still keeps an active
 //! workspace. [`scrolling`] contains compatibility types from niri's removed scrolling engine,
 //! not the active layout model.
 //!
@@ -63,7 +63,6 @@ use crate::utils::{
 use crate::window::ResolvedWindowRules;
 
 pub mod closing_window;
-pub mod floating;
 pub mod floating_tree;
 pub mod focus_ring;
 pub mod insert_hint_element;

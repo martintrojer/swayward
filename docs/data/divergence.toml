@@ -1543,6 +1543,6 @@ why = "Sway's container detach path calls `container_reap_empty`, which removes 
 
 [[edit]]
 migrated = false
-paths = ["src/layout/workspace.rs"]
-what = "store a workspace's floating windows in swayward's owned `FloatingLayout` root model instead of niri's leaf-only `FloatingSpace`."
+paths = ["src/layout/mod.rs", "src/layout/workspace.rs", "src/ui/screenshot_ui.rs"]
+what = "store a workspace's floating windows in swayward's owned `FloatingLayout` root model instead of niri's leaf-only `FloatingSpace`, and route the shared directional-move constant through the owned module."
 why = "Sway workspaces store ordered floating container roots (`sway/tree/workspace.c:961-973`). The owned boundary preserves the current one-window behavior while allowing a later migration to resident nested trees without branching through inherited niri floating code."

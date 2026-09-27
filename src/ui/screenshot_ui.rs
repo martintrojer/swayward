@@ -22,7 +22,7 @@ use swayward_config::{Action, Config};
 use swayward_ipc::SizeChange;
 
 use crate::animation::{Animation, Clock};
-use crate::layout::floating::DIRECTIONAL_MOVE_PX;
+use crate::layout::floating_tree::DIRECTIONAL_MOVE_PX;
 use crate::render_helpers::primary_gpu_texture::PrimaryGpuTextureRenderElement;
 use crate::render_helpers::solid_color::{SolidColorBuffer, SolidColorRenderElement};
 use crate::render_helpers::texture::{TextureBuffer, TextureRenderElement};
