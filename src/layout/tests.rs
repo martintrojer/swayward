@@ -4864,3 +4864,32 @@ fn focus_parent_then_move_left_keeps_focus_on_a_live_node() {
         Op::MoveWindowInDirection(tiling_tree::Direction::Left),
     ]);
 }
+
+#[test]
+fn singleton_move_after_floating_close_keeps_the_parent_live() {
+    // CI 36310511080 shrank `random_operations_dont_panic` to this sequence
+    // (proptest cc 16b75ae3). A directional move of the only window read a
+    // parent node that an earlier layout change had already removed.
+    let mut floating = TestWindowParams::new(5);
+    floating.is_floating = true;
+    let mut options = Options::default();
+    options.layout.default_orientation = swayward_config::DefaultOrientation::Vertical;
+    check_ops_with_options(
+        options,
+        [
+            Op::AddWindow {
+                params: TestWindowParams::new(3),
+            },
+            Op::AddOutput(1),
+            Op::CenterWindow { id: None },
+            Op::AddWindow { params: floating },
+            Op::MoveFocusedToWorkspaceUp(false),
+            Op::ToggleWindowFloating { id: None },
+            Op::SwapWindowHorizontal(false),
+            Op::FocusParent,
+            Op::CloseWindow(5),
+            Op::SplitFocused(tiling_tree::Layout::SplitH),
+            Op::MoveWindowDown,
+        ],
+    );
+}

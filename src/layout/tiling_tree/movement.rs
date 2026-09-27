@@ -187,6 +187,17 @@ impl<W: LayoutElement> TilingTree<W> {
             };
             if !Self::layouts_parallel(root_layout, wanted_layout) {
                 self.set_layout(self.root, wanted_layout);
+                // `set_layout` compacts the tree, which squashes a singleton
+                // split. When the moved node was that split, continue with
+                // the one window that survives the compaction.
+                let Some(id) = self
+                    .nodes
+                    .contains_key(&id)
+                    .then_some(id)
+                    .or_else(|| self.windows().next().map(|(leaf, _)| leaf))
+                else {
+                    return false;
+                };
                 let old_parent = self.nodes[&id].parent;
                 if let Some(parent) = old_parent.filter(|parent| *parent != self.root) {
                     self.detach_subtree_only(id);
