@@ -226,9 +226,14 @@ RUN_SLOW_TESTS=1 PROPTEST_CASES=20000 cargo test --release -p swayward --lib ran
 ```
 
 `random_operations_dont_panic` searches fresh cases rather than replaying the
-checked-in seeds, so it finds defects a default run does not. Keep the seeds in
-`proptest-regressions/`: they reproduce in under a second what the search takes
-minutes to find.
+checked-in seeds, so it finds defects a default run does not. The randomized CI
+job uploads `proptest-regressions/` after a failure. Download its
+`proptest-regressions-<run>-<attempt>` artifact and copy the new `cc` line into
+the matching tracked seed file. Re-run the failing test to confirm the seed,
+then add a named regression test containing the shrunk operation sequence from
+the CI log. Commit both the seed and the regression test. The seed reproduces
+the generated case, while the named test records the minimal behavior that must
+remain fixed.
 
 ## Never reset a worktree that holds a live claim
 
