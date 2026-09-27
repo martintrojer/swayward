@@ -559,6 +559,14 @@ fn execute_one(
             first,
             second,
         } => {
+            if state
+                .swayward
+                .layout
+                .active_workspace()
+                .is_some_and(|workspace| workspace.is_workspace_focused())
+            {
+                return swayward_ipc::command::parse_error("Cannot resize nothing");
+            }
             let Some(target) = focused_target(state) else {
                 return swayward_ipc::command::parse_error("Cannot resize nothing");
             };
