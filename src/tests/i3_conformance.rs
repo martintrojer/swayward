@@ -221,6 +221,15 @@ const ALLOWED_REJECTIONS: &[AllowedRejection] = &[
                  assertions confirm that no floating group was created",
     },
     AllowedRejection {
+        test: "191-resize-levels.t",
+        command: "resize grow left 10px or 25ppt",
+        repeatable: false,
+        reason: "sway changes an ancestor branch but compares only the targeted \
+                 container's own fractions and therefore answers `Cannot resize any \
+                 further` (sway/sway/commands/resize.c:265-279); the test asserts \
+                 the ancestor proportions and they still match",
+    },
+    AllowedRejection {
         test: "189-floating-constraints.t",
         command: "resize grow up 10px or 10ppt",
         repeatable: false,

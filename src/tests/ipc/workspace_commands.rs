@@ -896,6 +896,23 @@ fn output_workspaces_and_move_replacements_use_next_free_numbers() {
 }
 
 #[test]
+fn rename_ignores_an_empty_inactive_source_sway_would_have_destroyed() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    for command in ["workspace 5", "open", "workspace 6", "open", "workspace 6"] {
+        let _ = crate::command::execute(f.niri_state(), command);
+    }
+
+    let outcome = crate::command::execute(f.niri_state(), "rename workspace 5 to 5: foo");
+    assert!(!outcome[0].success, "{outcome:?}");
+    assert_eq!(outcome[0].parse_error, Some(true));
+    assert_eq!(
+        outcome[0].error.as_deref(),
+        Some("There is no workspace with that name")
+    );
+}
+
+#[test]
 fn rename_workspace_updates_name_number_and_rejects_collisions() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));
@@ -912,6 +929,7 @@ fn rename_workspace_updates_name_number_and_rejects_collisions() {
     }
     let collision = crate::command::execute(f.niri_state(), "rename workspace mail to 7: web");
     assert!(!collision[0].success);
+    assert_eq!(collision[0].parse_error, Some(true));
     for command in [
         "rename workspace mail to chat",
         "rename workspace chat to CHAT",

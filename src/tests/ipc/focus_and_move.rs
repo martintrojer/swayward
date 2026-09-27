@@ -1567,7 +1567,9 @@ fn negative_and_unnumbered_workspace_names_report_minus_one_without_affecting_or
             crate::command::execute(f.niri_state(), &format!("workspace {workspace}"))[0].success
         );
     }
-    assert!(crate::command::execute(f.niri_state(), "rename workspace mail to inbox")[0].success);
+    let rename = crate::command::execute(f.niri_state(), "rename workspace mail to inbox");
+    assert!(!rename[0].success, "{rename:?}");
+    assert_eq!(rename[0].parse_error, Some(true));
     f.niri_state().ipc_refresh_layout();
 
     let swayward = f.swayward();

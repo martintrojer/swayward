@@ -147,7 +147,8 @@ impl<W: LayoutElement> TilingTree<W> {
             }
             SizeChange::SetFixed(_) | SizeChange::SetProportion(_) => return false,
         };
-        self.resize_adjacent(first, second, delta)
+        let changed = self.resize_adjacent(first, second, delta);
+        changed && first == id
     }
 
     pub fn set_node_size_sway(
@@ -391,7 +392,8 @@ impl<W: LayoutElement> TilingTree<W> {
                         ((parent_extent * value / 100.).trunc() - current) / available
                     }
                 };
-                return self.resize_across_siblings(parent_id, branch, delta);
+                let changed = self.resize_across_siblings(parent_id, branch, delta);
+                return changed && branch == id;
             }
             branch = parent_id;
             parent = *grandparent;

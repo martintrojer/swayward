@@ -3310,7 +3310,12 @@ impl<W: LayoutElement> Layout<W> {
         let id = match old {
             Some(ref target) => self
                 .workspaces()
-                .find(|(_, _, workspace)| workspace_matches_target(workspace, target))
+                .find(|(monitor, index, workspace)| {
+                    workspace_matches_target(workspace, target)
+                        && (workspace.has_windows()
+                            || monitor
+                                .is_none_or(|monitor| monitor.active_workspace_idx() == *index))
+                })
                 .map(|(_, _, workspace)| workspace.id()),
             None => self.active_workspace().map(Workspace::id),
         }

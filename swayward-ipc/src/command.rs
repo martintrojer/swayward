@@ -2177,8 +2177,16 @@ fn parse_rename(args: &[&str]) -> Result<Command, String> {
     if to + 1 == rest.len() {
         return Err(SYNTAX.into());
     }
+    let old = if rest[..to]
+        .first()
+        .is_some_and(|name| name.eq_ignore_ascii_case("number"))
+    {
+        parse_workspace(&rest[..to])?
+    } else {
+        WorkspaceTarget::Name(join_words(&rest[..to]))
+    };
     Ok(Command::RenameWorkspace {
-        old: Some(parse_workspace(&rest[..to])?),
+        old: Some(old),
         new_name: join_words(&rest[to + 1..]),
     })
 }

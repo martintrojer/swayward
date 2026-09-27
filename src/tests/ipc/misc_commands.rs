@@ -1086,6 +1086,7 @@ fn criteria_rename_workspace_fails_when_two_matched_workspaces_want_one_name() {
         outcome[0].error.as_deref(),
         Some("Workspace already exists")
     );
+    assert_eq!(outcome[0].parse_error, Some(true));
 
     // The first match was renamed before the clash, as in sway: the loop is not
     // transactional.

@@ -510,7 +510,7 @@ fn execute_one(
         }
         Command::RenameWorkspace { old, new_name } => {
             if let Err(error) = state.swayward.layout.rename_sway_workspace(old, new_name) {
-                return failure(error);
+                return swayward_ipc::command::parse_error(error);
             }
             state.swayward.queue_redraw_all();
             None
@@ -1474,7 +1474,7 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
                 },
             };
             if let Err(error) = resolved {
-                return failure(error);
+                return swayward_ipc::command::parse_error(error);
             }
             state.swayward.queue_redraw_all();
         }
@@ -2442,6 +2442,13 @@ mod tests {
             Command::RenameWorkspace {
                 old: Some(WorkspaceTarget::Number("5".into())),
                 new_name: "7: web".into(),
+            }
+        );
+        assert_eq!(
+            command("rename workspace 5 to 5: foo"),
+            Command::RenameWorkspace {
+                old: Some(WorkspaceTarget::Name("5".into())),
+                new_name: "5: foo".into(),
             }
         );
         assert_eq!(

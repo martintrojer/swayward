@@ -460,6 +460,38 @@ fn tiled_axis_resize_without_parallel_siblings_reports_failure() {
 }
 
 #[test]
+fn tiled_resize_that_only_changes_an_ancestor_reports_failure() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1280, 800));
+    let client = f.add_client();
+    assert!(crate::command::execute(f.niri_state(), "split v")[0].success);
+    for _ in 0..2 {
+        let window = f.client(client).create_window();
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+    assert!(crate::command::execute(f.niri_state(), "split h")[0].success);
+
+    let outcome = crate::command::execute(
+        f.niri_state(),
+        "resize grow up 10 px or 25 ppt",
+    );
+    assert_eq!(
+        outcome,
+        [swayward_ipc::CommandOutcome {
+            success: false,
+            error: Some("Cannot resize any further".into()),
+            parse_error: Some(true),
+        }]
+    );
+}
+
+#[test]
 fn tiled_grow_at_workspace_edge_reports_failure() {
     let mut f = Fixture::new();
     f.add_output(1, (1280, 800));

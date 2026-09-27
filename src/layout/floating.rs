@@ -974,7 +974,7 @@ impl<W: LayoutElement> FloatingSpace<W> {
             max_size,
         );
         win.request_size_once(win_size, animate);
-        current_tile != tile.tile_expected_or_current_size().w
+        current_window != win_size.w
     }
 
     pub fn set_window_outer_width(
@@ -1111,7 +1111,7 @@ impl<W: LayoutElement> FloatingSpace<W> {
             max_size,
         );
         win.request_size_once(win_size, animate);
-        current_tile != tile.tile_expected_or_current_size().h
+        current_window != win_size.h
     }
 
     fn focus_directional(
