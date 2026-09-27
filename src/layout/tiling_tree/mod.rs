@@ -283,6 +283,7 @@ pub struct TilingTree<W: LayoutElement> {
     view_size: Size<f64, Logical>,
     parent_area: Rectangle<f64, Logical>,
     gaps_to_edge: bool,
+    resident_root: bool,
     scale: f64,
     titlebar_height: f64,
     clock: Clock,
@@ -339,6 +340,7 @@ impl<W: LayoutElement> TilingTree<W> {
             view_size,
             parent_area,
             gaps_to_edge,
+            resident_root: false,
             scale,
             titlebar_height: super::titlebar::height(scale, &options.layout.titlebar),
             clock,
@@ -346,6 +348,42 @@ impl<W: LayoutElement> TilingTree<W> {
             options,
             preserved_auto_layout: None,
         }
+    }
+
+    pub fn from_detached_subtree(
+        view_size: Size<f64, Logical>,
+        parent_area: Rectangle<f64, Logical>,
+        scale: f64,
+        clock: Clock,
+        options: Rc<Options>,
+        subtree: DetachedSubtree<W>,
+    ) -> (Self, NodeId, Vec<(NodeId, NodeId)>) {
+        let mut tree = Self::new(view_size, parent_area, false, scale, clock, options);
+        tree.resident_root = true;
+        let focus_history = subtree.focus_history;
+        let mut remapped = Vec::new();
+        let id = tree.insert_detached_node(subtree.node, None, &mut remapped);
+        tree.insert_child(tree.root, id, None);
+        tree.restore_transferred_focus(focus_history);
+        tree.has_had_tile = true;
+        tree.request_window_sizes();
+        (tree, id, remapped)
+    }
+
+    pub fn resident_root(&self) -> Option<NodeId> {
+        if !self.resident_root {
+            return None;
+        }
+        let TreeNode::Split { children, .. } = &self.nodes[&self.root].value else {
+            unreachable!()
+        };
+        (children.len() == 1).then(|| children[0])
+    }
+
+    pub fn detach_resident_root(mut self, id: NodeId) -> Option<DetachedSubtree<W>> {
+        (self.resident_root()? == id)
+            .then(|| self.detach_subtree(id).map(|(subtree, _)| subtree))
+            .flatten()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -988,15 +1026,20 @@ impl<W: LayoutElement> TilingTree<W> {
                 title_format,
                 pending_mode,
             } => {
-                let id = self.alloc(Node {
-                    parent,
-                    value: TreeNode::Split {
-                        layout,
-                        children: Vec::new(),
-                        percents,
+                let id = self.insert_with_id(
+                    old_id,
+                    Node {
+                        parent,
+                        value: TreeNode::Split {
+                            layout,
+                            children: Vec::new(),
+                            percents,
+                        },
                     },
-                });
-                remapped.push((old_id, id));
+                );
+                if id != old_id {
+                    remapped.push((old_id, id));
+                }
                 let children = children
                     .into_iter()
                     .map(|child| self.insert_detached_node(child, Some(id), remapped))
@@ -1028,11 +1071,16 @@ impl<W: LayoutElement> TilingTree<W> {
                 mapped_under_fullscreen,
             } => {
                 tile.update_config(self.view_size, self.scale, self.options.clone());
-                let id = self.alloc(Node {
-                    parent,
-                    value: TreeNode::Leaf { tile },
-                });
-                remapped.push((old_id, id));
+                let id = self.insert_with_id(
+                    old_id,
+                    Node {
+                        parent,
+                        value: TreeNode::Leaf { tile },
+                    },
+                );
+                if id != old_id {
+                    remapped.push((old_id, id));
+                }
                 if let Some(mode) = pending_mode {
                     self.pending_modes.insert(id, mode);
                 }
@@ -1176,9 +1224,13 @@ impl<W: LayoutElement> TilingTree<W> {
             self.view_size,
             self.parent_area,
             self.scale,
-            self.options.layout.struts,
+            if self.resident_root {
+                Default::default()
+            } else {
+                self.options.layout.struts
+            },
             self.gaps,
-            self.options.layout.outer_gaps_configured,
+            self.options.layout.outer_gaps_configured || self.resident_root,
             self.gaps_to_edge,
             self.titlebar_height,
             &fullscreen,
@@ -1194,6 +1246,15 @@ impl<W: LayoutElement> TilingTree<W> {
         let id = NodeId(NODE_ID_COUNTER.next());
         self.nodes.insert(id, node);
         id
+    }
+
+    fn insert_with_id(&mut self, old_id: NodeId, node: Node<W>) -> NodeId {
+        if let std::collections::hash_map::Entry::Vacant(entry) = self.nodes.entry(old_id) {
+            entry.insert(node);
+            old_id
+        } else {
+            self.alloc(node)
+        }
     }
 
     fn consume(&mut self, id: NodeId, right: bool) -> bool {
@@ -1570,6 +1631,9 @@ impl<W: LayoutElement> TilingTree<W> {
         let Some(parent) = self.nodes.get(&id).and_then(|node| node.parent) else {
             return false;
         };
+        if self.resident_root && parent == self.root {
+            return false;
+        }
         let Some(TreeNode::Split {
             layout: parent_layout,
             ..

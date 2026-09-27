@@ -3634,6 +3634,89 @@ fn move_window_to_different_output() {
 }
 
 #[test]
+fn floating_tree_entry_routes_geometry_focus_hit_testing_and_lifecycle() {
+    let output = Output::new(
+        "output".into(),
+        PhysicalProperties {
+            size: Size::from((1280, 720)),
+            subpixel: Subpixel::Unknown,
+            make: String::new(),
+            model: String::new(),
+            serial_number: String::new(),
+        },
+    );
+    output.change_current_state(
+        Some(Mode {
+            size: Size::from((1280, 720)),
+            refresh: 60000,
+        }),
+        None,
+        None,
+        None,
+    );
+    output.user_data().insert_if_missing(|| OutputName {
+        connector: "output".into(),
+        make: None,
+        model: None,
+        serial: None,
+    });
+    let mut workspace = Workspace::new(
+        output,
+        Clock::with_time(Duration::ZERO),
+        Rc::new(Options::default()),
+    );
+    for id in 1..=2 {
+        let tile = workspace.make_tile(TestWindow::new(TestWindowParams::new(id)));
+        workspace.add_tile(
+            tile,
+            WorkspaceAddWindowTarget::Auto,
+            ActivateWindow::Yes,
+            TiledWidth::Proportion(0.5),
+            false,
+            false,
+            None,
+        );
+    }
+    let first = workspace.tiling().node_for_window(&1).unwrap();
+    workspace
+        .tiling_mut()
+        .set_layout(first, tiling_tree::Layout::SplitV);
+    workspace.tiling_mut().focus_root();
+    let root = workspace.tiling().focus().unwrap();
+    workspace.tiling_mut().set_focus(first);
+    let (subtree, old_parent) = workspace.detach_tiling_subtree(root).unwrap();
+    workspace.finish_tiling_subtree_detach(old_parent);
+    let rect = Rectangle::new((100., 120.).into(), (600., 450.).into());
+
+    let (root, remapped) = workspace.floating_mut().add_tree(subtree, rect);
+    assert!(remapped.is_empty());
+    assert_eq!(workspace.floating().tree(root).unwrap().parent_area(), rect);
+    assert_eq!(
+        workspace.floating().tree(root).unwrap().geometry(first),
+        Some(Rectangle::new((100., 120.).into(), (300., 450.).into()))
+    );
+    assert!(workspace
+        .floating_mut()
+        .tree_mut(root)
+        .unwrap()
+        .focus_parent());
+    let parent = workspace.floating().tree(root).unwrap().focus().unwrap();
+    assert_ne!(parent, first);
+    assert!(workspace
+        .floating()
+        .tree(root)
+        .unwrap()
+        .contains_node(root, parent));
+
+    let detached = workspace.floating_mut().remove_tree(root).unwrap();
+    let (restored, remapped) = workspace.attach_tiling_subtree(detached);
+    assert_eq!(restored, root);
+    assert!(remapped.is_empty());
+    assert_eq!(workspace.tiling().windows().count(), 2);
+    workspace.verify_invariants(None);
+}
+
+#[test]
 fn mixed_layer_selection_filters_one_global_focus_order() {
     let output = Output::new(
         "output".into(),

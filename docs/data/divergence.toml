@@ -1558,3 +1558,9 @@ migrated = false
 paths = ["src/layout/mod.rs", "src/layout/workspace.rs", "src/ui/screenshot_ui.rs"]
 what = "store a workspace's floating windows in swayward's owned `FloatingLayout` root model instead of niri's leaf-only `FloatingSpace`, and route the shared directional-move constant through the owned module."
 why = "Sway workspaces store ordered floating container roots (`sway/tree/workspace.c:961-973`). The owned boundary preserves the current one-window behavior while allowing a later migration to resident nested trees without branching through inherited niri floating code."
+
+[[edit]]
+migrated = false
+paths = ["src/layout/tiling_tree/mod.rs", "src/layout/tiling_tree/rendering.rs", "src/layout/tiling_tree/tests.rs", "src/layout/tests.rs", "src/layout/workspace.rs"]
+what = "allow detached nested container roots to reside in an arbitrary floating rectangle, preserving collision-free node IDs and recursive layout, focus, rendering, hit testing, resize, and lifecycle state."
+why = "Sway floats a split by moving the same recursive container root into the workspace floating list, rather than flattening it to leaves (`sway/tree/container.c:955-1050`; `sway/tree/workspace.c:961-973`)."

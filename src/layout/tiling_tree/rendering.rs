@@ -366,6 +366,14 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub fn refresh(&mut self, is_active: bool, is_focused: bool) {
+        self.refresh_with_floating(is_active, is_focused, false);
+    }
+
+    pub fn refresh_floating(&mut self, is_active: bool, is_focused: bool) {
+        self.refresh_with_floating(is_active, is_focused, true);
+    }
+
+    fn refresh_with_floating(&mut self, is_active: bool, is_focused: bool, floating: bool) {
         let focus = self.focus;
         let resize = self
             .interactive_resize
@@ -395,7 +403,7 @@ impl<W: LayoutElement> TilingTree<W> {
             let window = tile.window_mut();
             let focused = Some(*id) == focus;
             window.set_active_in_column(focused);
-            window.set_floating(false);
+            window.set_floating(floating);
             window.set_activated(
                 is_active && (!self.options.deactivate_unfocused_windows || focused && is_focused),
             );

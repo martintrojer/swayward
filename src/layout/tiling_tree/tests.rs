@@ -1665,6 +1665,87 @@ fn detached_subtree_attaches_with_shape_and_internal_focus() {
 }
 
 #[test]
+fn detached_subtree_keeps_node_ids_when_the_destination_has_no_collision() {
+    let mut source = tree((1200., 800.), 0.);
+    let first = source.add_tile(tile(1, source.view_size()), InsertTarget::Focused);
+    source.split(first, Layout::SplitV);
+    let second = source.add_tile(tile(2, source.view_size()), InsertTarget::Focused);
+    let subtree = source.nodes[&first].parent.unwrap();
+    let old_ids = [subtree, first, second];
+    let mut destination = tree((1200., 800.), 0.);
+    destination.add_tile(tile(3, destination.view_size()), InsertTarget::Focused);
+
+    let (detached, _) = source.detach_subtree(subtree).unwrap();
+    let (_, remapped) = destination.attach_subtree(detached);
+
+    assert!(remapped.is_empty());
+    assert!(old_ids.into_iter().all(|id| destination.contains(id)));
+    destination.check_invariants();
+}
+
+#[test]
+fn resident_subtree_uses_its_outer_rectangle_without_workspace_outer_gaps() {
+    let mut source = tree((1200., 800.), 0.);
+    let first = source.add_tile(tile(1, source.view_size()), InsertTarget::Focused);
+    source.split(first, Layout::SplitV);
+    source.add_tile(tile(2, source.view_size()), InsertTarget::Focused);
+    let subtree = source.nodes[&first].parent.unwrap();
+    let original_ids: HashSet<_> = source
+        .iter_depth_first()
+        .filter(|(id, _)| source.contains_node(subtree, *id))
+        .map(|(id, _)| id)
+        .collect();
+    let (detached, _) = source.detach_subtree(subtree).unwrap();
+    let rect = Rectangle::new((100., 200.).into(), (600., 450.).into());
+
+    let (resident, root, remapped) = TilingTree::from_detached_subtree(
+        (1200., 800.).into(),
+        rect,
+        1.,
+        Clock::with_time(Duration::ZERO),
+        Rc::new(Options::default()),
+        detached,
+    );
+
+    assert_eq!(resident.compute_geometry().ipc_nodes[&root], rect);
+    assert!(remapped.is_empty());
+    assert!(original_ids.into_iter().all(|id| resident.contains(id)));
+    assert_eq!(resident.windows().count(), 2);
+    resident.check_invariants();
+}
+
+#[test]
+fn resident_subtree_can_be_detached_with_its_ids_and_focus_history() {
+    let mut source = tree((1200., 800.), 0.);
+    let first = source.add_tile(tile(1, source.view_size()), InsertTarget::Focused);
+    source.split(first, Layout::Tabbed);
+    source.add_tile(tile(2, source.view_size()), InsertTarget::Focused);
+    let subtree = source.nodes[&first].parent.unwrap();
+    source.set_focus(first);
+    let (detached, _) = source.detach_subtree(subtree).unwrap();
+    let (resident, root, _) = TilingTree::from_detached_subtree(
+        (1200., 800.).into(),
+        Rectangle::new((100., 200.).into(), (600., 450.).into()),
+        1.,
+        Clock::with_time(Duration::ZERO),
+        Rc::new(Options::default()),
+        detached,
+    );
+
+    let detached = resident.detach_resident_root(root).unwrap();
+    let mut destination = tree((1200., 800.), 0.);
+    destination.add_tile(tile(3, destination.view_size()), InsertTarget::Focused);
+    let (attached, remapped) = destination.attach_subtree(detached);
+
+    assert_eq!(attached, root);
+    assert!(remapped.is_empty());
+    destination.set_focus(root);
+    assert!(destination.focus_child());
+    assert_eq!(destination.focus(), destination.node_for_window(&1));
+    destination.check_invariants();
+}
+
+#[test]
 fn attaching_subtree_to_empty_tree_restores_focus() {
     let mut source = tree((1200., 800.), 0.);
     let first = source.add_tile(tile(1, source.view_size()), InsertTarget::Focused);
@@ -4047,6 +4128,201 @@ proptest! {
             tree.check_invariants();
             if tree.fullscreen_node().is_none() {
                 check_geometry(&tree);
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+enum FloatingOp {
+    Add,
+    Split(usize, Layout),
+    Float(usize),
+    Unfloat,
+    Move(i16, i16),
+    OuterResize(u16, u16),
+    InternalResize(usize, usize, f64),
+    FocusParent,
+    FocusChild,
+    Close(usize),
+    CrossWorkspace,
+}
+
+fn floating_op_strategy() -> impl Strategy<Value = FloatingOp> {
+    prop_oneof![
+        Just(FloatingOp::Add),
+        (0..32usize, layout_strategy()).prop_map(|(id, layout)| FloatingOp::Split(id, layout)),
+        (0..32usize).prop_map(FloatingOp::Float),
+        Just(FloatingOp::Unfloat),
+        (any::<i16>(), any::<i16>()).prop_map(|(x, y)| FloatingOp::Move(x, y)),
+        (1..2000u16, 1..1200u16).prop_map(|(w, h)| FloatingOp::OuterResize(w, h)),
+        (0..32usize, 0..32usize, -0.9f64..0.9)
+            .prop_map(|(a, b, delta)| FloatingOp::InternalResize(a, b, delta)),
+        Just(FloatingOp::FocusParent),
+        Just(FloatingOp::FocusChild),
+        (0..32usize).prop_map(FloatingOp::Close),
+        Just(FloatingOp::CrossWorkspace),
+    ]
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig {
+        cases: tiling_tree_proptest_cases(),
+        ..ProptestConfig::default()
+    })]
+
+    #[test]
+    fn random_resident_tree_operations_preserve_invariants(
+        ops in prop::collection::vec(floating_op_strategy(), 0..100)
+    ) {
+        let view_size = Size::from((1920., 1080.));
+        let mut tiled = tree((1920., 1080.), 8.);
+        let mut resident: Option<(TilingTree<TestWindow>, NodeId)> = None;
+        let mut next_window = 0;
+        for op in ops {
+            match op {
+                FloatingOp::Add => {
+                    if let Some((tree, _)) = &mut resident {
+                        let parent = tree
+                            .focus()
+                            .filter(|id| tree.is_split(*id))
+                            .or_else(|| tree.windows().next().map(|(id, _)| id));
+                        if let Some(parent) = parent {
+                            tree.add_tile_to_subtree(
+                                parent,
+                                tile(next_window, tree.view_size()),
+                                true,
+                            );
+                        }
+                    } else {
+                        tiled.add_tile(
+                            tile(next_window, tiled.view_size()),
+                            InsertTarget::Focused,
+                        );
+                    }
+                    next_window += 1;
+                }
+                FloatingOp::Split(index, layout) => {
+                    let target = resident.as_mut().map(|(tree, _)| tree).unwrap_or(&mut tiled);
+                    let leaves: Vec<_> = target.windows().map(|(id, _)| id).collect();
+                    if let Some(id) = leaves.get(index % leaves.len().max(1)).copied() {
+                        target.split(id, layout);
+                    }
+                }
+                FloatingOp::Float(index) if resident.is_none() => {
+                    let nodes: Vec<_> = tiled
+                        .iter_depth_first()
+                        .filter_map(|(id, node)| {
+                            (id != tiled.root
+                                && matches!(node, TreeNode::Split { .. })
+                                && tiled.leaf_ids_in(id).len() > 1)
+                                .then_some(id)
+                        })
+                        .collect();
+                    if let Some(id) = nodes.get(index % nodes.len().max(1)).copied() {
+                        if tiled.leaf_ids_in(id).len() > 1 {
+                            if let Some((subtree, old_parent)) = tiled.detach_subtree(id) {
+                                tiled.finish_subtree_detach(old_parent);
+                                let rect = Rectangle::new((100., 100.).into(), (800., 600.).into());
+                                let (tree, root, _) = TilingTree::from_detached_subtree(
+                                    view_size,
+                                    rect,
+                                    1.,
+                                    Clock::with_time(Duration::ZERO),
+                                    Rc::new(Options::default()),
+                                    subtree,
+                                );
+                                resident = Some((tree, root));
+                            }
+                        }
+                    }
+                }
+                FloatingOp::Unfloat => {
+                    if let Some((tree, root)) = resident.take() {
+                        if let Some(subtree) = tree.detach_resident_root(root) {
+                            tiled.attach_subtree(subtree);
+                        }
+                    }
+                }
+                FloatingOp::Move(x, y) => {
+                    if let Some((tree, _)) = &mut resident {
+                        let old = tree.parent_area();
+                        tree.update_config(
+                            view_size,
+                            Rectangle::new((f64::from(x), f64::from(y)).into(), old.size),
+                            false,
+                            1.,
+                            Rc::new(Options::default()),
+                        );
+                    }
+                }
+                FloatingOp::OuterResize(w, h) => {
+                    if let Some((tree, _)) = &mut resident {
+                        let old = tree.parent_area();
+                        tree.update_config(
+                            view_size,
+                            Rectangle::new(old.loc, (f64::from(w), f64::from(h)).into()),
+                            false,
+                            1.,
+                            Rc::new(Options::default()),
+                        );
+                    }
+                }
+                FloatingOp::InternalResize(first, second, delta) => {
+                    if let Some((tree, _)) = &mut resident {
+                        let ids: Vec<_> = tree.windows().map(|(id, _)| id).collect();
+                        if !ids.is_empty() {
+                            tree.resize_adjacent(
+                                ids[first % ids.len()],
+                                ids[second % ids.len()],
+                                delta,
+                            );
+                        }
+                    }
+                }
+                FloatingOp::FocusParent => {
+                    if let Some((tree, _)) = &mut resident { tree.focus_parent(); }
+                }
+                FloatingOp::FocusChild => {
+                    if let Some((tree, _)) = &mut resident { tree.focus_child(); }
+                }
+                FloatingOp::Close(index) => {
+                    if let Some((tree, _)) = &mut resident {
+                        let ids: Vec<_> = tree.windows().map(|(id, _)| id).collect();
+                        if let Some(id) = ids.get(index % ids.len().max(1)).copied() {
+                            tree.remove_tile_node(id);
+                        }
+                    }
+                    if resident.as_ref().is_some_and(|(tree, _)| tree.is_empty()) {
+                        resident = None;
+                    }
+                }
+                FloatingOp::CrossWorkspace => {
+                    if let Some((tree, root)) = resident.take() {
+                        if let Some(subtree) = tree.detach_resident_root(root) {
+                            let rect = Rectangle::new((200., 150.).into(), (700., 500.).into());
+                            let (tree, root, _) = TilingTree::from_detached_subtree(
+                                view_size,
+                                rect,
+                                1.,
+                                Clock::with_time(Duration::ZERO),
+                                Rc::new(Options::default()),
+                                subtree,
+                            );
+                            resident = Some((tree, root));
+                        }
+                    }
+                }
+                FloatingOp::Float(_) => {}
+            }
+            tiled.check_invariants();
+            check_geometry(&tiled);
+            if let Some((tree, _)) = &resident {
+                tree.check_invariants();
+                assert!(!tree.is_empty());
+                check_geometry(tree);
+                let tiled_ids: HashSet<_> = tiled.iter_depth_first().map(|(id, _)| id).collect();
+                assert!(tree.iter_depth_first().all(|(id, _)| !tiled_ids.contains(&id)));
             }
         }
     }

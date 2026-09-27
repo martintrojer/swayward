@@ -9,7 +9,7 @@ use swayward_ipc::{PositionChange, SizeChange, WindowLayout};
 
 use super::closing_window::{ClosingWindow, ClosingWindowRenderElement};
 use super::tile::{Tile, TileRenderElement, TileRenderSnapshot};
-use super::tiling_tree::NodeId;
+use super::tiling_tree::{DetachedSubtree, NodeId, TilingTree, TilingTreeRenderElement};
 use super::titlebar::{self, Titlebar, TitlebarRenderer, TitlebarState};
 use super::workspace::{InteractiveResize, ResolvedSize};
 use super::{
@@ -60,6 +60,9 @@ pub struct FloatingLayout<W: LayoutElement> {
     /// Single-window root entries in top-to-bottom order.
     entries: Vec<FloatingEntry<W>>,
 
+    /// Nested container roots. Commands keep these internal until IPC serialization is complete.
+    tree_entries: Vec<FloatingTreeEntry<W>>,
+
     /// Id of the active window.
     ///
     /// The active window is not necessarily the topmost window. Focus-follows-mouse should
@@ -97,6 +100,7 @@ swayward_render_elements! {
         Tile = TileRenderElement<R>,
         ClosingWindow = ClosingWindowRenderElement,
         Titlebar = crate::render_helpers::primary_gpu_texture::PrimaryGpuTextureRenderElement,
+        Tree = TilingTreeRenderElement<R>,
     }
 }
 
@@ -105,6 +109,14 @@ swayward_render_elements! {
 struct FloatingEntry<W: LayoutElement> {
     tile: Tile<W>,
     data: Data,
+}
+
+/// A nested container root resident in the floating layer.
+#[derive(Debug)]
+struct FloatingTreeEntry<W: LayoutElement> {
+    tree: TilingTree<W>,
+    root: NodeId,
+    rect: Rectangle<f64, Logical>,
 }
 
 /// Root geometry for a floating entry.
@@ -293,6 +305,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
     ) -> Self {
         Self {
             entries: Vec::new(),
+            tree_entries: Vec::new(),
             active_window_id: None,
             interactive_resize: None,
             closing_windows: Vec::new(),
@@ -321,6 +334,11 @@ impl<W: LayoutElement> FloatingLayout<W> {
             data.update(tile);
             data.update_config(view_size, working_area);
         }
+        for entry in &mut self.tree_entries {
+            entry
+                .tree
+                .update_config(view_size, entry.rect, false, scale, options.clone());
+        }
 
         self.view_size = view_size;
         self.working_area = working_area;
@@ -332,11 +350,17 @@ impl<W: LayoutElement> FloatingLayout<W> {
         for entry in &mut self.entries {
             entry.tile.update_shaders();
         }
+        for entry in &mut self.tree_entries {
+            entry.tree.update_shaders();
+        }
     }
 
     pub fn advance_animations(&mut self) {
         for entry in &mut self.entries {
             entry.tile.advance_animations();
+        }
+        for entry in &mut self.tree_entries {
+            entry.tree.advance_animations();
         }
 
         self.closing_windows.retain_mut(|closing| {
@@ -349,6 +373,10 @@ impl<W: LayoutElement> FloatingLayout<W> {
         self.entries
             .iter()
             .any(|entry| entry.tile.are_animations_ongoing())
+            || self
+                .tree_entries
+                .iter()
+                .any(|entry| entry.tree.are_animations_ongoing())
             || !self.closing_windows.is_empty()
     }
 
@@ -356,6 +384,10 @@ impl<W: LayoutElement> FloatingLayout<W> {
         self.entries
             .iter()
             .any(|entry| entry.tile.are_transitions_ongoing())
+            || self
+                .tree_entries
+                .iter()
+                .any(|entry| entry.tree.are_transitions_ongoing())
             || !self.closing_windows.is_empty()
     }
 
@@ -365,6 +397,9 @@ impl<W: LayoutElement> FloatingLayout<W> {
         view_rect: Rectangle<f64, Logical>,
         layer: RenderLayer,
     ) {
+        for entry in &mut self.tree_entries {
+            entry.tree.update_render_elements(is_active, layer);
+        }
         let active = self.active_window_id.clone();
         for (tile, offset) in self.tiles_with_offsets_mut() {
             // Skip tiles belonging to a different render layer.
@@ -389,11 +424,19 @@ impl<W: LayoutElement> FloatingLayout<W> {
     }
 
     pub fn tiles(&self) -> impl Iterator<Item = &Tile<W>> + '_ {
-        self.entries.iter().map(|entry| &entry.tile)
+        self.entries.iter().map(|entry| &entry.tile).chain(
+            self.tree_entries
+                .iter()
+                .flat_map(|entry| entry.tree.tiles()),
+        )
     }
 
     pub fn tiles_mut(&mut self) -> impl Iterator<Item = &mut Tile<W>> + '_ {
-        self.entries.iter_mut().map(|entry| &mut entry.tile)
+        self.entries.iter_mut().map(|entry| &mut entry.tile).chain(
+            self.tree_entries
+                .iter_mut()
+                .flat_map(|entry| entry.tree.tiles_mut()),
+        )
     }
 
     pub fn tiles_with_offsets(&self) -> impl Iterator<Item = (&Tile<W>, Point<f64, Logical>)> + '_ {
@@ -502,6 +545,11 @@ impl<W: LayoutElement> FloatingLayout<W> {
     }
 
     pub fn window_under(&self, pos: Point<f64, Logical>) -> Option<(&W, super::HitType)> {
+        for entry in self.tree_entries.iter().rev() {
+            if let Some(hit) = entry.tree.window_under(pos) {
+                return Some(hit);
+            }
+        }
         for (tile, tile_pos) in self.tiles_with_render_positions() {
             if self
                 .titlebar_rect(tile, tile_pos, tile.animated_tile_size().w)
@@ -569,14 +617,90 @@ impl<W: LayoutElement> FloatingLayout<W> {
             .iter()
             .map(|entry| &entry.tile)
             .any(|tile| tile.window().id() == id)
+            || self
+                .tree_entries
+                .iter()
+                .any(|entry| entry.tree.node_for_window(id).is_some())
     }
 
     pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
+        self.entries.is_empty() && self.tree_entries.is_empty()
     }
 
     pub fn add_tile(&mut self, tile: Tile<W>, activate: bool) {
         self.add_tile_at(0, tile, activate);
+    }
+
+    pub fn add_tree(
+        &mut self,
+        subtree: DetachedSubtree<W>,
+        rect: Rectangle<f64, Logical>,
+    ) -> (NodeId, Vec<(NodeId, NodeId)>) {
+        let (tree, root, remapped) = TilingTree::from_detached_subtree(
+            self.view_size,
+            rect,
+            self.scale,
+            self.clock.clone(),
+            self.options.clone(),
+            subtree,
+        );
+        debug_assert!(!tree.is_empty());
+        debug_assert!(!self
+            .tree_entries
+            .iter()
+            .any(|entry| entry.tree.contains(root)));
+        self.tree_entries
+            .insert(0, FloatingTreeEntry { tree, root, rect });
+        (root, remapped)
+    }
+
+    pub fn remove_tree(&mut self, root: NodeId) -> Option<DetachedSubtree<W>> {
+        let index = self
+            .tree_entries
+            .iter()
+            .position(|entry| entry.root == root)?;
+        let subtree = self
+            .tree_entries
+            .remove(index)
+            .tree
+            .detach_resident_root(root);
+        if self.entries.is_empty() && self.tree_entries.is_empty() {
+            self.active_window_id = None;
+        }
+        subtree
+    }
+
+    pub fn tree(&self, root: NodeId) -> Option<&TilingTree<W>> {
+        self.tree_entries
+            .iter()
+            .find(|entry| entry.root == root)
+            .map(|entry| &entry.tree)
+    }
+
+    pub fn tree_mut(&mut self, root: NodeId) -> Option<&mut TilingTree<W>> {
+        self.tree_entries
+            .iter_mut()
+            .find(|entry| entry.root == root)
+            .map(|entry| &mut entry.tree)
+    }
+
+    pub fn move_tree(&mut self, root: NodeId, rect: Rectangle<f64, Logical>) -> bool {
+        let Some(entry) = self
+            .tree_entries
+            .iter_mut()
+            .find(|entry| entry.root == root)
+        else {
+            return false;
+        };
+        entry.rect = rect;
+        entry.tree.update_config(
+            self.view_size,
+            rect,
+            false,
+            self.scale,
+            self.options.clone(),
+        );
+        true
     }
 
     fn add_tile_at(&mut self, mut idx: usize, mut tile: Tile<W>, activate: bool) {
@@ -1383,6 +1507,13 @@ impl<W: LayoutElement> FloatingLayout<W> {
             }
         }
 
+        for entry in self.tree_entries.iter().rev() {
+            entry
+                .tree
+                .render(ctx.r(), xray_pos, focus_ring, layer, &mut |element| {
+                    push(element.into())
+                });
+        }
         let active = self.active_window_id.clone();
         let workspace_focused = focus_ring;
         self.titlebars
@@ -1523,6 +1654,9 @@ impl<W: LayoutElement> FloatingLayout<W> {
     }
 
     pub fn refresh(&mut self, is_active: bool, is_focused: bool) {
+        for entry in &mut self.tree_entries {
+            entry.tree.refresh_floating(is_active, is_focused);
+        }
         let active = self.active_window_id.clone();
         for entry in &mut self.entries {
             let win = entry.tile.window_mut();
@@ -1720,6 +1854,25 @@ impl<W: LayoutElement> FloatingLayout<W> {
     pub fn verify_invariants(&self) {
         assert!(self.scale > 0.);
         assert!(self.scale.is_finite());
+        for entry in &self.tree_entries {
+            assert_eq!(entry.tree.parent_area(), entry.rect);
+            assert!(
+                !entry.tree.is_empty(),
+                "floating tree entry must not be empty"
+            );
+            assert!(entry.tree.contains(entry.root));
+            entry.tree.verify_invariants();
+        }
+        let mut node_ids = std::collections::HashSet::new();
+        for entry in &self.tree_entries {
+            for (id, _) in entry.tree.iter_depth_first() {
+                assert!(
+                    node_ids.insert(id),
+                    "a node must belong to exactly one floating tree"
+                );
+            }
+        }
+
         for (i, (tile, data)) in self
             .entries
             .iter()
