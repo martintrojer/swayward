@@ -1020,10 +1020,8 @@ fn scratch_output(
     rect: Rect,
     marks: &std::collections::HashMap<MappedId, Vec<String>>,
 ) -> Node {
-    let mut scratchpad_windows = layout.scratchpad_windows().collect::<Vec<_>>();
-    scratchpad_windows.reverse();
-    let floating_nodes = scratchpad_windows
-        .into_iter()
+    let floating_nodes = layout
+        .scratchpad_windows()
         .map(|mapped| {
             let mut node = describe_window(
                 mapped,
@@ -1042,7 +1040,7 @@ fn scratch_output(
             node
         })
         .collect::<Vec<_>>();
-    let focus = floating_nodes.iter().map(|node| node.id).collect();
+    let focus = floating_nodes.iter().rev().map(|node| node.id).collect();
     let mut workspace = common_node(
         SCRATCH_WORKSPACE_ID,
         NodeType::Workspace,

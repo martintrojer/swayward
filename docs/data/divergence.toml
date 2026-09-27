@@ -1375,6 +1375,12 @@ why = "Sway appends workspaces to an output-owned list and stable-sorts that lis
 
 [[edit]]
 migrated = false
+paths = ["src/ipc/tree.rs", "src/tests/ipc/tree_commands.rs", "src/tests/ipc/workspace_commands.rs"]
+what = "serialize hidden scratchpad containers in insertion order while retaining newest-first focus order."
+why = "Sway appends containers to the scratchpad list and prepends each one to the seat focus stack (`sway/tree/root.c`, `sway/input/seat.c`), so GET_TREE reports oldest-first children and newest-first focus."
+
+[[edit]]
+migrated = false
 paths = ["src/layout/tiling_tree/movement.rs", "src/layout/tiling_tree/tests.rs"]
 what = "preserve focus history when a move-to-mark target is already the moved node's preceding sibling."
 why = "Sway leaves an already positioned container attached, so replaying move-to-mark does not reorder its focus stack (`sway/commands/move.c`)."

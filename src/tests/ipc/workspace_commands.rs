@@ -171,6 +171,7 @@ fn scratchpad_hides_focused_window_and_show_cycles_windows() {
         tree.nodes[0].nodes[0]
             .floating_nodes
             .iter()
+            .rev()
             .map(|node| node.id)
             .collect::<Vec<_>>()
     );

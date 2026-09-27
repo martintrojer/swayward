@@ -304,6 +304,39 @@ fn active_emptied_workspace_retains_its_layout_and_representation() {
 }
 
 #[test]
+fn scratchpad_tree_preserves_insertion_order() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1270, 1408));
+    let client = f.add_client();
+
+    for app_id in ["first", "second"] {
+        map_test_window(&mut f, client, app_id);
+        assert!(crate::command::execute(f.niri_state(), "move scratchpad")[0].success);
+    }
+
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &Default::default(),
+        &Default::default(),
+    ))
+    .unwrap();
+    let scratchpad = tree["nodes"][0]["nodes"][0]["floating_nodes"]
+        .as_array()
+        .unwrap();
+    let app_ids = scratchpad
+        .iter()
+        .map(|node| node["app_id"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(app_ids, ["first", "second"]);
+    assert_eq!(
+        tree["nodes"][0]["nodes"][0]["focus"],
+        serde_json::json!([scratchpad[1]["id"], scratchpad[0]["id"]])
+    );
+}
+
+#[test]
 fn workspace_rect_includes_outer_and_edge_gaps() {
     let mut config = swayward_config::Config::default();
     config.layout.gaps = 17.;
