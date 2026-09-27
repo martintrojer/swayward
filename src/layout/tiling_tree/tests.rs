@@ -2478,6 +2478,48 @@ fn directional_move_escapes_a_singleton_parallel_parent() {
 }
 
 #[test]
+fn directional_move_keeps_an_explicit_split_left_with_one_child() {
+    let mut t = tree((1200., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let moved = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.split(moved, Layout::SplitV);
+    let remaining = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+    t.set_focus(moved);
+
+    assert!(t.move_direction(moved, Direction::Down));
+    assert!(t.move_direction(moved, Direction::Down));
+
+    let IpcNode::Split {
+        layout, children, ..
+    } = t.ipc_tree()
+    else {
+        panic!("root must be a split");
+    };
+    assert_eq!(layout, Layout::SplitV);
+    assert!(matches!(
+        &children[..],
+        [
+            IpcNode::Split {
+                layout: Layout::SplitH,
+                children: horizontal,
+                ..
+            },
+            IpcNode::Leaf { id, .. },
+        ] if matches!(&horizontal[..], [
+            IpcNode::Leaf { id: left, .. },
+            IpcNode::Split {
+                layout: Layout::SplitV,
+                children: vertical,
+                ..
+            },
+        ] if *left == first
+            && matches!(&vertical[..], [IpcNode::Leaf { id, .. }] if *id == remaining))
+            && *id == moved
+    ));
+    t.check_invariants();
+}
+
+#[test]
 fn directional_move_squashes_after_reordering_siblings() {
     let mut t = tree((1200., 800.), 0.);
     let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
@@ -2903,6 +2945,35 @@ fn mapping_fullscreen_window_replaces_existing_fullscreen() {
     assert_eq!(t.fullscreen_mode(first), None);
     assert_eq!(t.fullscreen_mode(second), Some(FullscreenMode::Workspace));
     t.check_invariants();
+}
+
+#[test]
+fn moving_a_fullscreen_leaf_reveals_later_windows_in_the_source_tree() {
+    let mut source = tree((1920., 1080.), 0.);
+    let first = source.add_tile(tile(1, source.view_size()), InsertTarget::Focused);
+    let fullscreen = source.add_tile(tile(2, source.view_size()), InsertTarget::Focused);
+    assert!(source.set_node_fullscreen(fullscreen, Some(FullscreenMode::Workspace)));
+    let mapped = source.add_tile(tile(3, source.view_size()), InsertTarget::Focused);
+    source.remove_tile_node(fullscreen).unwrap();
+
+    let IpcNode::Split { children, .. } = source.ipc_tree() else {
+        panic!("root must be a split");
+    };
+    assert!(matches!(
+        &children[..],
+        [
+            IpcNode::Leaf {
+                id,
+                mapped_under_fullscreen: false,
+                ..
+            },
+            IpcNode::Leaf {
+                id: revealed,
+                mapped_under_fullscreen: false,
+                ..
+            },
+        ] if *id == first && *revealed == mapped
+    ));
 }
 
 #[test]

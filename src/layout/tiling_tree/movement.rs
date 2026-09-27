@@ -205,6 +205,7 @@ impl<W: LayoutElement> TilingTree<W> {
         let mut branch = id;
         let mut parent = self.nodes.get(&id).and_then(|node| node.parent);
         let mut exhausted_axis = false;
+        let mut vacated_explicit_split = false;
         while let Some(parent_id) = parent {
             let Some(Node {
                 parent: grandparent,
@@ -217,6 +218,7 @@ impl<W: LayoutElement> TilingTree<W> {
             };
             if Self::layouts_parallel(*layout, wanted_layout) {
                 exhausted_axis = true;
+                vacated_explicit_split |= branch == id && children.len() > 1;
                 let Some(index) = children.iter().position(|child| *child == branch) else {
                     return false;
                 };
@@ -271,7 +273,7 @@ impl<W: LayoutElement> TilingTree<W> {
             return false;
         };
         self.wrap_root_for_direction(id, direction);
-        if exhausted_axis {
+        if exhausted_axis && !vacated_explicit_split {
             self.collapse_from(old_parent);
         } else {
             self.reap_empty_from(old_parent);

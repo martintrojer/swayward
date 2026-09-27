@@ -786,6 +786,7 @@ impl<W: LayoutElement> TilingTree<W> {
             let parent = self.detach_subtree_only(id)?;
             Some(parent)
         };
+        let moved_fullscreen = self.fullscreen_node() == Some(id);
         let node = if id == self.root {
             let TreeNode::Split {
                 layout,
@@ -819,6 +820,9 @@ impl<W: LayoutElement> TilingTree<W> {
         } else {
             self.take_detached_node(id)?
         };
+        if moved_fullscreen {
+            self.mapped_under_fullscreen.clear();
+        }
         self.focus = self.focused_leaf_in(self.root);
         self.request_window_sizes();
         Some((
@@ -1039,7 +1043,11 @@ impl<W: LayoutElement> TilingTree<W> {
         ) {
             return None;
         }
+        let removed_fullscreen = self.fullscreen_node() == Some(id);
         let node = self.remove_node(id)?;
+        if removed_fullscreen {
+            self.mapped_under_fullscreen.clear();
+        }
         let TreeNode::Leaf { mut tile } = node.value else {
             unreachable!();
         };

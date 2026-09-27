@@ -600,6 +600,7 @@ fn initial_workspace_keeps_pre_mode_orientation_and_later_workspace_uses_configu
     f.add_output(1, (1280, 720));
     let client = f.add_client();
 
+    assert!(crate::command::execute(f.niri_state(), "workspace 1")[0].success);
     for (workspace, app_id) in [(None, "initial"), (Some("2"), "later")] {
         if let Some(workspace) = workspace {
             assert!(crate::command::execute(
