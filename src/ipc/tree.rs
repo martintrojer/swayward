@@ -657,10 +657,18 @@ fn apply_fullscreen_state(nodes: &mut [Node], workspace_visible: bool) -> bool {
         };
         for (index, node) in nodes.iter_mut().enumerate() {
             if index == fullscreen {
-                if set_full_percent {
+                let pending_tab_wrapper = node.fullscreen_mode == 0
+                    && node.percent == Some(0.)
+                    && matches!(node.layout, NodeLayout::Tabbed | NodeLayout::Stacked);
+                if set_full_percent && !pending_tab_wrapper {
                     node.percent = Some(1.);
                 }
                 if node.fullscreen_mode == 0 {
+                    if pending_tab_wrapper {
+                        for child in &mut node.nodes {
+                            child.percent = None;
+                        }
+                    }
                     apply(&mut node.nodes, workspace_visible, false);
                 } else {
                     set_windows_visible(node, workspace_visible);
@@ -831,12 +839,24 @@ pub(crate) fn describe_tiling<'a, I>(
                 border_width * i32::from(border_edges.contains(ResizeEdge::TOP))
             };
             let bottom = border_width * i32::from(border_edges.contains(ResizeEdge::BOTTOM));
-            node.window_rect = Rect {
-                x: left,
-                y: top,
-                width: (node.rect.width - left - right).max(0),
-                height: (node.rect.height - top - bottom).max(0),
-            };
+            if node.rect.width == 0
+                && node.rect.height == 0
+                && fullscreen_mode != 0
+                && percent.is_none()
+            {
+                node.window_rect = Rect {
+                    width: workspace_rect.width,
+                    height: workspace_rect.height,
+                    ..Rect::default()
+                };
+            } else {
+                node.window_rect = Rect {
+                    x: left,
+                    y: top,
+                    width: (node.rect.width - left - right).max(0),
+                    height: (node.rect.height - top - bottom).max(0),
+                };
+            }
             Some(node)
         }
     }

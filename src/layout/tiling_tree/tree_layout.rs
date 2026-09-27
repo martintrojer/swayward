@@ -178,7 +178,14 @@ impl<W: LayoutElement> TilingTree<W> {
             })
             && layout != root_layout
         {
-            self.wrap_root_children(layout);
+            let pre_layout_ipc_rects = self
+                .fullscreen_node()
+                .map(|_| self.compute_geometry().ipc_nodes);
+            let wrapper = self.wrap_root_children(layout);
+            if let Some(rects) = pre_layout_ipc_rects {
+                self.fullscreen_layout_wrappers.insert(wrapper);
+                self.pre_layout_ipc_rects.extend(rects);
+            }
             self.request_window_sizes();
         } else {
             self.set_layout_for_command(target, layout);

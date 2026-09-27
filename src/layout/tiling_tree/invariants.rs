@@ -48,6 +48,16 @@ impl<W: LayoutElement> TilingTree<W> {
                     .iter()
                     .map(|id| ("mapped_under_fullscreen", id)),
             )
+            .chain(
+                self.fullscreen_layout_wrappers
+                    .iter()
+                    .map(|id| ("fullscreen_layout_wrappers", id)),
+            )
+            .chain(
+                self.pre_layout_ipc_rects
+                    .keys()
+                    .map(|id| ("pre_layout_ipc_rects", id)),
+            )
             .chain(self.tab_indicators.keys().map(|id| ("tab_indicators", id)))
             .chain(self.tab_active.keys().map(|id| ("tab_active", id)))
         {

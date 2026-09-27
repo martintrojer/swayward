@@ -275,6 +275,8 @@ pub struct TilingTree<W: LayoutElement> {
     title_formats: HashMap<NodeId, String>,
     pending_modes: HashMap<NodeId, PendingMode>,
     mapped_under_fullscreen: HashSet<NodeId>,
+    fullscreen_layout_wrappers: HashSet<NodeId>,
+    pre_layout_ipc_rects: HashMap<NodeId, Rectangle<f64, Logical>>,
     interactive_resize: Option<InteractiveResize<W::Id>>,
     tab_indicators: HashMap<NodeId, TabIndicator>,
     titlebars: super::titlebar::TitlebarRenderer,
@@ -332,6 +334,8 @@ impl<W: LayoutElement> TilingTree<W> {
             title_formats: HashMap::new(),
             pending_modes: HashMap::new(),
             mapped_under_fullscreen: HashSet::new(),
+            fullscreen_layout_wrappers: HashSet::new(),
+            pre_layout_ipc_rects: HashMap::new(),
             interactive_resize: None,
             tab_indicators: HashMap::new(),
             titlebars: Default::default(),
@@ -664,6 +668,9 @@ impl<W: LayoutElement> TilingTree<W> {
         let mapped_under_fullscreen = self.fullscreen_node().is_some();
         let previous_focus = self.focus;
         let old_geometries = self.compute_geometry();
+        if !self.fullscreen_layout_wrappers.is_empty() {
+            self.pre_layout_ipc_rects.clear();
+        }
         let id = self.alloc(Node {
             parent: None,
             value: TreeNode::Leaf {
@@ -869,6 +876,8 @@ impl<W: LayoutElement> TilingTree<W> {
         };
         if moved_fullscreen {
             self.mapped_under_fullscreen.clear();
+            self.fullscreen_layout_wrappers.clear();
+            self.pre_layout_ipc_rects.clear();
         }
         self.focus = self.focused_leaf_in(self.root);
         self.request_window_sizes();
@@ -1142,6 +1151,8 @@ impl<W: LayoutElement> TilingTree<W> {
         self.title_formats.remove(&id);
         self.pending_modes.remove(&id);
         self.mapped_under_fullscreen.remove(&id);
+        self.fullscreen_layout_wrappers.remove(&id);
+        self.pre_layout_ipc_rects.remove(&id);
         self.tab_indicators.remove(&id);
         self.tab_active.remove(&id);
         self.tab_active.retain(|_, active| *active != id);
