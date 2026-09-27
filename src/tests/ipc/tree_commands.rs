@@ -729,6 +729,70 @@ fn layout_splitv_wraps_a_single_window_without_changing_the_workspace_axis() {
 }
 
 #[test]
+fn moving_a_single_window_in_its_split_direction_reaps_the_old_wrapper() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.xdg_toplevel.set_app_id("fixture-1".into());
+    let surface = window.surface.clone();
+    window.commit();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    assert!(crate::command::execute(f.niri_state(), "layout splitv")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "move down")[0].success);
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &Default::default(),
+        &Default::default(),
+    ))
+    .unwrap();
+    let workspace = &tree["nodes"][1]["nodes"][0];
+    assert_eq!(workspace["layout"], "splitv");
+    assert_eq!(workspace["representation"], "V[fixture-1]");
+    assert_eq!(workspace["nodes"][0]["layout"], "none");
+    assert_eq!(workspace["nodes"][0]["app_id"], "fixture-1");
+}
+
+#[test]
+fn moving_a_single_window_across_its_split_direction_rewraps_the_workspace_children() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.xdg_toplevel.set_app_id("fixture-1".into());
+    let surface = window.surface.clone();
+    window.commit();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    assert!(crate::command::execute(f.niri_state(), "layout splitv")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "move right")[0].success);
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &Default::default(),
+        &Default::default(),
+    ))
+    .unwrap();
+    let workspace = &tree["nodes"][1]["nodes"][0];
+    assert_eq!(workspace["layout"], "splith");
+    assert_eq!(workspace["representation"], "H[V[fixture-1]]");
+    assert_eq!(workspace["nodes"][0]["layout"], "splitv");
+    assert_eq!(workspace["nodes"][0]["nodes"][0]["app_id"], "fixture-1");
+}
+
+#[test]
 fn fullscreen_floating_window_keeps_sways_raw_focus() {
     let mut f = Fixture::new();
     f.add_output(1, (1280, 720));

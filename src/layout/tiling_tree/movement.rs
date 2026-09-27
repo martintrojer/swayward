@@ -180,9 +180,24 @@ impl<W: LayoutElement> TilingTree<W> {
             Direction::Left | Direction::Right => Layout::SplitH,
             Direction::Up | Direction::Down => Layout::SplitV,
         };
-        if self.windows().nth(1).is_none()
-            || self.split_len(self.root) == Some(1) && self.root_branch(id) == Some(id)
-        {
+        if self.windows().nth(1).is_none() {
+            let root_layout = match self.nodes[&self.root].value {
+                TreeNode::Split { layout, .. } => layout,
+                TreeNode::Leaf { .. } => unreachable!(),
+            };
+            if !Self::layouts_parallel(root_layout, wanted_layout) {
+                let old_parent = self.nodes[&id].parent;
+                self.set_layout(self.root, wanted_layout);
+                if let Some(parent) = old_parent.filter(|parent| *parent != self.root) {
+                    self.detach_subtree_only(id);
+                    self.insert_child_at(self.root, id, 0);
+                    self.reap_empty_from(parent);
+                    self.finish_directional_move(id);
+                }
+            }
+            return false;
+        }
+        if self.split_len(self.root) == Some(1) && self.root_branch(id) == Some(id) {
             self.set_layout(self.root, wanted_layout);
             return false;
         }
