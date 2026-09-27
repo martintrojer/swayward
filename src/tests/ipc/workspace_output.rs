@@ -349,7 +349,7 @@ fn workspace_back_and_forth_without_history_uses_sway_error() {
     let (_, reply) = read_ipc_reply(&mut f, &mut stream);
     assert_eq!(
         reply,
-        r#"[{"success":false,"error":"There is no previous workspace"}]"#
+        r#"[{"success":false,"error":"There is no previous workspace","parse_error":false}]"#
     );
 }
 

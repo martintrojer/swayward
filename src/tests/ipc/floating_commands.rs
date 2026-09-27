@@ -154,7 +154,7 @@ fn create_output_rejects_unsupported_backends_without_changing_output_state() {
         swayward_ipc::CommandOutcome {
             success: false,
             error: Some("Can only create outputs for Wayland, X11 or headless backends".into()),
-            parse_error: None,
+            parse_error: Some(false),
         }
     );
     assert_eq!(snapshot(&mut f), before);
@@ -1724,7 +1724,7 @@ fn focus_output_reports_sway_errors() {
         [swayward_ipc::CommandOutcome {
             success: false,
             error: Some("No focused workspace to base directions off of.".into()),
-            parse_error: None,
+            parse_error: Some(false),
         }]
     );
 }

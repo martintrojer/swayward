@@ -2418,16 +2418,12 @@ fn failure(error: impl Into<String>) -> CommandOutcome {
     CommandOutcome {
         success: false,
         error: Some(error.into()),
-        parse_error: None,
+        parse_error: Some(false),
     }
 }
 
 fn command_failure(error: impl Into<String>) -> CommandOutcome {
-    CommandOutcome {
-        success: false,
-        error: Some(error.into()),
-        parse_error: Some(false),
-    }
+    failure(error)
 }
 
 #[cfg(test)]

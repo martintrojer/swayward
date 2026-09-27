@@ -164,7 +164,7 @@ fn criteria_with_no_matches_returns_sway_failure() {
         [swayward_ipc::CommandOutcome {
             success: false,
             error: Some("No matching node.".into()),
-            parse_error: None,
+            parse_error: Some(false),
         }]
     );
 }
@@ -371,7 +371,7 @@ fn criteria_global_settings_require_matches_and_run_once_per_match() {
         [swayward_ipc::CommandOutcome {
             success: false,
             error: Some("No matching node.".into()),
-            parse_error: None,
+            parse_error: Some(false),
         }]
     );
     assert_eq!(
@@ -547,7 +547,7 @@ fn criteria_lifecycle_commands_fail_without_changing_state() {
                 Some(expected.as_str()),
                 "{input}"
             );
-            assert_eq!(outcome[0].parse_error, None, "{input}");
+            assert_eq!(outcome[0].parse_error, Some(false), "{input}");
             assert!(!fixture.swayward().shutdown_requested, "{input}");
             assert_eq!(fixture.swayward().config.borrow().layout, before, "{input}");
             assert_eq!(fixture.swayward().for_window.len(), for_window, "{input}");
@@ -907,7 +907,7 @@ fn reload_reports_malformed_config_in_the_command_reply() {
         [swayward_ipc::CommandOutcome {
             success: false,
             error: Some("Error(s) reloading config.".into()),
-            parse_error: None,
+            parse_error: Some(false),
         }]
     );
 

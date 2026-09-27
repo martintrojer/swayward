@@ -825,6 +825,34 @@ fn layout_splitv_wraps_a_single_window_without_changing_the_workspace_axis() {
 }
 
 #[test]
+fn splitting_a_focused_container_keeps_it_nested() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    assert!(crate::command::execute(f.niri_state(), "workspace resize-levels")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "split h")[0].success);
+    let client = f.add_client();
+    map_test_window(&mut f, client, "first");
+    map_test_window(&mut f, client, "second");
+    map_test_window(&mut f, client, "third");
+    map_test_window(&mut f, client, "fourth");
+    assert!(crate::command::execute(f.niri_state(), "focus parent")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "split h")[0].success);
+    map_test_window(&mut f, client, "fifth");
+
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &Default::default(),
+        &Default::default(),
+    ))
+    .unwrap();
+    let workspace = &tree["nodes"][1]["nodes"][0];
+    assert_eq!(workspace["representation"], "H[H[first second third fourth] fifth]");
+    assert_eq!(workspace["nodes"][0]["layout"], "splith");
+}
+
+#[test]
 fn removing_one_of_two_split_windows_preserves_the_wrapper() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));
@@ -1184,7 +1212,7 @@ fn split_none_flattens_only_a_singleton_parent_and_preserves_focus() {
         [swayward_ipc::CommandOutcome {
             success: false,
             error: Some("Can only flatten a child container with no siblings".into()),
-            parse_error: None,
+            parse_error: Some(false),
         }]
     );
     let workspace = f.swayward().layout.active_workspace().unwrap();

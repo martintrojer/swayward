@@ -1501,6 +1501,18 @@ why = "Sway rejects no-op resize adjustments with `Cannot resize any further` af
 
 [[edit]]
 migrated = false
+paths = ["src/layout/tiling_tree/tree_layout.rs", "src/tests/ipc/tree_commands.rs"]
+what = "preserve a focused nested split when `split` changes its pending child insertion axis instead of retargeting or compacting away the selected container."
+why = "Sway's `cmd_split` changes the selected container's pending layout, so the next child remains below that container (`sway/commands/split.c`); swayward previously changed the singleton parent and flattened the branch into the workspace."
+
+[[edit]]
+migrated = false
+paths = ["src/command/mod.rs", "src/tests/ipc/config_commands.rs", "src/tests/ipc/floating_commands.rs", "src/tests/ipc/tree_commands.rs", "src/tests/ipc/workspace_output.rs"]
+what = "include `parse_error = false` in every failed runtime command reply, reserving true for parser failures."
+why = "Sway serializes `parse_error` whenever a command result has an error (`sway/commands.c:509-523`); swayward's generic failure constructor omitted the field."
+
+[[edit]]
+migrated = false
 paths = ["src/ipc/server.rs", "src/tests/ipc/config_commands.rs"]
 what = "track a window's formatted title in IPC event state and emit one `window::title` event when the `title_format` command changes only compositor-rendered title text."
 why = "Sway emits `window::title` when `title_format` recomputes the container title (`sway/sway/commands/title_format.c:25-28`; `sway/sway/tree/view.c:1117-1138`). Swayward's event state tracked only the client's raw title, so the command produced no event."

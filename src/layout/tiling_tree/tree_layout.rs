@@ -66,6 +66,8 @@ impl<W: LayoutElement> TilingTree<W> {
                 {
                     *current = layout;
                 }
+            } else if siblings <= 1 && parent != self.root {
+                self.wrap_node(id, layout);
             } else if siblings <= 1 {
                 if let Some(Node {
                     value:
@@ -114,7 +116,6 @@ impl<W: LayoutElement> TilingTree<W> {
                         .fullscreen = Some(fullscreen);
                 }
             }
-            self.compact_tree();
             self.request_window_sizes();
         }
     }
