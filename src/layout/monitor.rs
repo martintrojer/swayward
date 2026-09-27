@@ -336,12 +336,9 @@ impl<W: LayoutElement> Monitor<W> {
         // trailing placeholder is an affordance of its scrolling strip.
         if workspaces.is_empty() {
             let mut ws = Workspace::new(output.clone(), clock.clone(), options.clone());
-            // Sway creates the compositor's first workspace from the first
-            // output's pre-configuration mode, then keeps that split when the
-            // configured mode is applied. Later outputs use their configured mode.
-            if preserve_initial_auto_layout {
-                ws.preserve_empty_auto_layout();
-            }
+            // Sway creates each output's initial workspace before applying the
+            // configured mode, then keeps that workspace's original split.
+            ws.preserve_empty_auto_layout();
             if let Some(name) = initial_workspace_name {
                 let (name, number) =
                     super::sway_workspace_identity(crate::command::WorkspaceTarget::Name(name))

@@ -1519,6 +1519,12 @@ why = "Sway's `cmd_border` error is `Expected 'border <none|normal|pixel|csd|tog
 
 [[edit]]
 migrated = false
+paths = ["src/layout/monitor.rs", "src/tests/ipc/workspace_output.rs"]
+what = "preserve every output's initial workspace split while its configured output mode is applied, rather than only preserving the first output's split."
+why = "Sway creates an initial workspace in output_enable before the configured mode takes effect (`sway/tree/output.c`); the 360-state oracle shows portrait secondary outputs retaining the pre-mode horizontal split."
+
+[[edit]]
+migrated = false
 paths = ["src/layout/mod.rs", "src/layout/workspace.rs", "src/layout/tiling_tree/fullscreen.rs", "src/tests/ipc/workspace_commands.rs"]
 what = "apply unscoped fullscreen only to the focused floating window when the floating layer is active, and retain structural focus when fullscreening an already focused tiling container."
 why = "Sway fullscreen targets the seat's raw focused node; applying it to both the active floating window and stale tiling focus left two fullscreen nodes, while descending a directly focused split changed GET_TREE focus metadata (`sway/commands/fullscreen.c`; `sway/tree/container.c`)."

@@ -336,6 +336,30 @@ fn move_no_auto_back_and_forth_changes_the_same_workspace_destination() {
 }
 
 #[test]
+fn initial_workspaces_keep_the_pre_config_output_orientation() {
+    let (mut f, socket) = ipc_fixture();
+    f.add_output(1, (1280, 720));
+    f.add_output(2, (1280, 720));
+    for output in [f.niri_output(1), f.niri_output(2)] {
+        let mode = smithay::output::Mode {
+            size: (1270, 1408).into(),
+            refresh: 60_000,
+        };
+        output.change_current_state(Some(mode), None, None, None);
+        f.swayward().layout.update_output_size(&output);
+    }
+
+    let mut stream = UnixStream::connect(socket).unwrap();
+    let workspaces = query_ipc(&mut f, &mut stream, MessageType::GetWorkspaces);
+    assert_eq!(workspaces.as_array().unwrap().len(), 2);
+    assert!(workspaces
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|workspace| workspace["layout"] == "splith"));
+}
+
+#[test]
 fn workspace_back_and_forth_without_history_uses_sway_error() {
     let (mut f, socket) = ipc_fixture();
     f.add_output(1, (1920, 1080));
