@@ -1,0 +1,488 @@
+use super::requests::dispatch;
+use super::*;
+
+struct EventStreamClient {
+    pub(super) events: Receiver<Event>,
+    pub(super) disconnect: Receiver<()>,
+    pub(super) read: Box<dyn AsyncRead + Unpin>,
+    pub(super) write: Box<dyn AsyncWrite + Unpin>,
+    pub(super) subscriptions: HashSet<String>,
+    pub(super) ctx: ClientCtx,
+}
+
+#[derive(Clone)]
+pub(super) struct ClientCtx {
+    pub(super) query_state: Rc<RefCell<QueryState>>,
+    pub(super) event_streams: Rc<RefCell<Vec<EventStreamSender>>>,
+    pub(super) commands: channel::Sender<CommandRequest>,
+}
+
+pub(super) struct EventStreamSender {
+    pub(super) events: Sender<Event>,
+    pub(super) disconnect: Sender<()>,
+}
+
+pub(super) struct CommandRequest {
+    pub(super) kind: RequestKind,
+    pub(super) reply: Sender<Vec<CommandOutcome>>,
+}
+
+pub(super) enum RequestKind {
+    Command(String),
+    /// Recompute the cached query replies from the live compositor state, so a
+    /// long-lived connection does not answer from its connect-time snapshot.
+    /// Sway builds every query reply at request time
+    /// (`sway/sway/ipc-server.c:815-823`).
+    RefreshQueryState,
+    /// Establish an event diff baseline immediately before subscribing.
+    RefreshEventState,
+}
+
+#[cfg(not(test))]
+pub(super) fn socket_dir() -> PathBuf {
+    socket_dir_from(BaseDirs::new().and_then(|dirs| dirs.runtime_dir().map(PathBuf::from)))
+}
+
+pub(super) fn socket_dir_from(runtime_dir: Option<PathBuf>) -> PathBuf {
+    runtime_dir.unwrap_or_else(env::temp_dir)
+}
+
+pub(super) fn default_socket_path(
+    dir: PathBuf,
+    wayland_socket_name: &OsStr,
+    pid: u32,
+    id: u64,
+) -> PathBuf {
+    dir.join(format!(
+        "swayward-ipc.{}.{pid}.{id}.sock",
+        wayland_socket_name.to_string_lossy()
+    ))
+}
+
+pub(super) fn select_socket_path(default: PathBuf, requested: Option<PathBuf>) -> PathBuf {
+    requested.filter(|path| !path.exists()).unwrap_or(default)
+}
+
+pub(super) fn bind_listener(path: &std::path::Path) -> anyhow::Result<UnixListener> {
+    match unlink(path) {
+        Ok(()) => (),
+        Err(Errno::NOENT) => (),
+        Err(error) => {
+            return Err(io::Error::from_raw_os_error(error.raw_os_error()))
+                .context("error removing stale IPC socket")
+        }
+    }
+    let listener = UnixListener::bind(path).context("error binding socket")?;
+    listener
+        .set_nonblocking(true)
+        .context("error setting socket to non-blocking")?;
+    Ok(listener)
+}
+
+pub(super) fn on_new_ipc_client(state: &mut State, stream: UnixStream) {
+    let stream = match state.swayward.event_loop.adapt_io(stream) {
+        Ok(stream) => stream,
+        Err(err) => {
+            warn!("error making IPC stream async: {err:?}");
+            return;
+        }
+    };
+
+    if state.swayward.ipc_server.is_none() {
+        return;
+    }
+    let Some(server) = &state.swayward.ipc_server else {
+        return;
+    };
+    let ctx = ClientCtx {
+        query_state: server.query_state.clone(),
+        event_streams: server.event_streams.clone(),
+        commands: server.commands.clone(),
+    };
+    let future = async move {
+        if let Err(err) = handle_client(ctx, stream).await {
+            warn!("error handling IPC client: {err:?}");
+        }
+    };
+    if let Err(err) = state.swayward.scheduler.schedule(future) {
+        warn!("error scheduling IPC stream future: {err:?}");
+    }
+}
+
+pub(super) async fn handle_client(
+    ctx: ClientCtx,
+    stream: Async<'static, UnixStream>,
+) -> anyhow::Result<()> {
+    let (mut read, mut write) = stream.split();
+    loop {
+        let mut header = [0; HEADER_SIZE];
+        match read.read_exact(&mut header).await {
+            Ok(_) => (),
+            Err(err) if err.kind() == io::ErrorKind::UnexpectedEof => return Ok(()),
+            Err(err) => return Err(err).context("error reading IPC header"),
+        }
+
+        if &header == CLOSE_SENTINEL {
+            return Ok(());
+        }
+        // Decode the frame before interpreting the type. A request type this
+        // build does not model must still get a reply: sway answers IPC_SYNC
+        // with {"success": false} (`sway/sway/ipc-server.c:919-924`) and keeps
+        // the connection open for anything else (`ipc-server.c:927-929`).
+        let (raw_type, payload_len) = decode_header_raw(&header).inspect_err(|_| {
+            warn!(
+                bytes = %header.iter().map(|byte| format!("{byte:02x}")).collect::<Vec<_>>().join(" "),
+                ascii = %String::from_utf8_lossy(&header),
+                "invalid IPC header"
+            );
+        })?;
+        let msg_type = MessageType::try_from(raw_type).ok();
+        trace!(?msg_type, raw_type, payload_len, "received IPC request");
+        if payload_len > MAX_PAYLOAD_SIZE {
+            anyhow::bail!("IPC payload exceeds {MAX_PAYLOAD_SIZE} bytes");
+        }
+        let mut payload = vec![0; payload_len as usize];
+        read.read_exact(&mut payload)
+            .await
+            .context("error reading IPC payload")?;
+
+        if msg_type == Some(MessageType::Subscribe) {
+            let msg_type = MessageType::Subscribe;
+            let Some(subscriptions) = parse_subscriptions(&payload) else {
+                write
+                    .write_all(&encode(msg_type, r#"{"success": false}"#))
+                    .await
+                    .context("error writing IPC reply")?;
+                continue;
+            };
+            refresh_event_state(&ctx).await;
+            let (events_tx, events_rx) = async_channel::bounded(4096);
+            let (disconnect_tx, disconnect_rx) = async_channel::bounded(1);
+            ctx.event_streams.borrow_mut().push(EventStreamSender {
+                events: events_tx,
+                disconnect: disconnect_tx,
+            });
+            write
+                .write_all(&encode(msg_type, r#"{"success": true}"#))
+                .await
+                .context("error writing IPC reply")?;
+
+            if subscriptions.iter().any(|event| event == "tick") {
+                write
+                    .write_all(&swayward_ipc::wire::encode_raw(
+                        (1 << 31) | 7,
+                        r#"{"first":true,"payload":""}"#,
+                    ))
+                    .await
+                    .context("error writing initial tick event")?;
+            }
+            return handle_event_stream_client(EventStreamClient {
+                events: events_rx,
+                disconnect: disconnect_rx,
+                read: Box::new(read),
+                write: Box::new(write),
+                subscriptions: subscriptions.into_iter().collect(),
+                ctx: ctx.clone(),
+            })
+            .await;
+        }
+
+        let reply = match msg_type {
+            Some(msg_type) => dispatch(&ctx, msg_type, &payload).await,
+            // IPC_SYNC, sway/include/ipc.h:20: sway decided not to support it
+            // and replies success:false rather than closing the socket.
+            None if raw_type == IPC_SYNC => r#"{"success": false}"#.to_owned(),
+            None => r#"{"success":false,"error":"not implemented"}"#.to_owned(),
+        };
+        write
+            .write_all(&encode_raw(raw_type, &reply))
+            .await
+            .context("error writing IPC reply")?;
+    }
+}
+
+/// `IPC_SYNC`, `sway/include/ipc.h:20`. Not a `MessageType`: sway never
+/// implemented it and only keeps the code reserved.
+const IPC_SYNC: u32 = 11;
+
+pub(super) async fn refresh_event_state(ctx: &ClientCtx) {
+    let (reply, receiver) = async_channel::bounded(1);
+    if ctx
+        .commands
+        .send(CommandRequest {
+            kind: RequestKind::RefreshEventState,
+            reply,
+        })
+        .is_ok()
+    {
+        let _ = receiver.recv().await;
+    }
+}
+
+pub(super) fn parse_subscriptions(payload: &[u8]) -> Option<Vec<String>> {
+    let subscriptions: Vec<String> = serde_json::from_slice(payload).ok()?;
+    subscriptions
+        .iter()
+        .all(|event| {
+            matches!(
+                event.as_str(),
+                "workspace"
+                    | "output"
+                    | "mode"
+                    | "shutdown"
+                    | "window"
+                    | "barconfig_update"
+                    | "binding"
+                    | "tick"
+                    | "input"
+            )
+        })
+        .then_some(subscriptions)
+}
+
+async fn handle_event_stream_client(client: EventStreamClient) -> anyhow::Result<()> {
+    let EventStreamClient {
+        events,
+        disconnect,
+        mut read,
+        mut write,
+        mut subscriptions,
+        ctx,
+    } = client;
+    let query_state = ctx.query_state.clone();
+
+    enum StreamInput {
+        Read(io::Result<usize>),
+        Event(Event),
+        Written(io::Result<usize>),
+    }
+
+    let mut write_buffer = Vec::new();
+    let mut write_buffer_size = INITIAL_WRITE_BUFFER_SIZE;
+    let mut header = [0; HEADER_SIZE];
+    let mut header_filled = 0;
+    loop {
+        let write_ready = if write_buffer.is_empty() {
+            futures_util::future::Either::Left(futures_util::future::pending())
+        } else {
+            futures_util::future::Either::Right(write.write(&write_buffer))
+        };
+        let input = select_biased! {
+            _ = disconnect.recv().fuse() => return Ok(()),
+            result = read.read(&mut header[header_filled..]).fuse() => StreamInput::Read(result),
+            result = write_ready.fuse() => StreamInput::Written(result),
+            result = events.recv().fuse() => match result {
+                Ok(event) => StreamInput::Event(event),
+                Err(_) => return Ok(()),
+            },
+        };
+        let event = match input {
+            StreamInput::Written(Ok(written)) => {
+                write_buffer.drain(..written);
+                continue;
+            }
+            StreamInput::Written(Err(error)) if error.kind() == io::ErrorKind::BrokenPipe => {
+                return Ok(());
+            }
+            StreamInput::Written(Err(error)) => {
+                return Err(error).context("error writing IPC event");
+            }
+            StreamInput::Read(Ok(0)) => return Ok(()),
+            StreamInput::Read(Ok(bytes_read)) => {
+                header_filled += bytes_read;
+                if header_filled < HEADER_SIZE {
+                    continue;
+                }
+                header_filled = 0;
+                if &header == CLOSE_SENTINEL {
+                    return Ok(());
+                }
+                let (raw_type, payload_len) = decode_header_raw(&header)?;
+                if payload_len > MAX_PAYLOAD_SIZE {
+                    anyhow::bail!("IPC payload exceeds {MAX_PAYLOAD_SIZE} bytes");
+                }
+                let mut payload = vec![0; payload_len as usize];
+                read.read_exact(&mut payload)
+                    .await
+                    .context("error reading IPC payload")?;
+                let msg_type = MessageType::try_from(raw_type).ok();
+                // A subscribed connection stays a normal IPC connection in
+                // sway: `IPC_SUBSCRIBE` only sets `subscribed_events` and the
+                // client keeps being served by `ipc_client_handle_command`
+                // (`sway/sway/ipc-server.c:730-784`). Answer queries and
+                // commands here rather than dropping the client.
+                let Some(MessageType::Subscribe) = msg_type else {
+                    let reply = match msg_type {
+                        Some(msg_type) => dispatch(&ctx, msg_type, &payload).await,
+                        None if raw_type == IPC_SYNC => r#"{"success": false}"#.to_owned(),
+                        None => r#"{"success":false,"error":"not implemented"}"#.to_owned(),
+                    };
+                    queue_ipc_message(
+                        &mut write_buffer,
+                        &mut write_buffer_size,
+                        &encode_raw(raw_type, &reply),
+                    )?;
+                    continue;
+                };
+                let msg_type = MessageType::Subscribe;
+                let Some(requested) = parse_subscriptions(&payload) else {
+                    // sway replies `{"success": false}` to an unparseable or
+                    // unsupported subscribe and keeps the client
+                    // (`sway/sway/ipc-server.c:733-765`).
+                    queue_ipc_message(
+                        &mut write_buffer,
+                        &mut write_buffer_size,
+                        &encode(msg_type, r#"{"success": false}"#),
+                    )?;
+                    continue;
+                };
+                refresh_event_state(&ctx).await;
+                let send_first_tick = requested.iter().any(|event| event == "tick");
+                subscriptions.extend(requested);
+                queue_ipc_message(
+                    &mut write_buffer,
+                    &mut write_buffer_size,
+                    &encode(msg_type, r#"{"success": true}"#),
+                )?;
+                if send_first_tick {
+                    queue_ipc_message(
+                        &mut write_buffer,
+                        &mut write_buffer_size,
+                        &encode_raw((1 << 31) | 7, r#"{"first":true,"payload":""}"#),
+                    )?;
+                }
+                continue;
+            }
+            StreamInput::Read(Err(error)) => {
+                return Err(error).context("error reading IPC event stream");
+            }
+            StreamInput::Event(event) => event,
+        };
+        let (msg_type, payload) = match event {
+            Event::OutputChanged if subscriptions.contains("output") => {
+                ((1 << 31) | 1, serde_json::json!({"change":"unspecified"}))
+            }
+            Event::SwayInputChanged { change, input } if subscriptions.contains("input") => (
+                (1 << 31) | 21,
+                serde_json::json!({"change":change,"input":input}),
+            ),
+            Event::WorkspaceEmptied { current } if subscriptions.contains("workspace") => (
+                1 << 31,
+                serde_json::json!({"change":"empty","old":null,"current":current}),
+            ),
+            Event::WorkspaceReloaded if subscriptions.contains("workspace") => (
+                1 << 31,
+                serde_json::json!({"change":"reload","old":null,"current":null}),
+            ),
+            Event::WorkspaceInitialized { current } if subscriptions.contains("workspace") => (
+                1 << 31,
+                serde_json::json!({"change":"init","old":null,"current":current}),
+            ),
+            Event::WorkspaceRenamed { current } if subscriptions.contains("workspace") => (
+                1 << 31,
+                serde_json::json!({"change":"rename","old":null,"current":current}),
+            ),
+            Event::WorkspaceMoved { current } if subscriptions.contains("workspace") => (
+                1 << 31,
+                serde_json::json!({"change":"move","old":null,"current":current}),
+            ),
+            Event::WorkspaceUrgencyChanged { current, .. }
+                if subscriptions.contains("workspace") =>
+            {
+                (
+                    1 << 31,
+                    serde_json::json!({"change":"urgent","old":null,"current":current}),
+                )
+            }
+            Event::WorkspaceFocusChanged { old, current }
+                if subscriptions.contains("workspace") =>
+            {
+                (
+                    1 << 31,
+                    serde_json::json!({"change":"focus","old":old,"current":current}),
+                )
+            }
+            Event::WorkspaceActiveWindowChanged { .. }
+            | Event::WorkspacesChanged { .. }
+            | Event::WorkspaceActivated { .. } => continue,
+            Event::Shutdown { reason } if subscriptions.contains("shutdown") => {
+                ((1 << 31) | 6, serde_json::json!({"change":reason}))
+            }
+            Event::Tick { payload, first } if subscriptions.contains("tick") => (
+                (1 << 31) | 7,
+                serde_json::json!({"first":first,"payload":payload}),
+            ),
+            Event::BindingModeChanged { mode, pango_markup } if subscriptions.contains("mode") => (
+                (1 << 31) | 2,
+                serde_json::json!({"change":mode,"pango_markup":pango_markup}),
+            ),
+            Event::SwayBinding {
+                command,
+                event_state_mask,
+                input_codes,
+                input_code,
+                symbols,
+                symbol,
+                input_type,
+            } if subscriptions.contains("binding") => (
+                (1 << 31) | 5,
+                serde_json::json!({
+                    "change":"run",
+                    "binding": {
+                        "command": command,
+                        "event_state_mask": event_state_mask,
+                        "input_codes": input_codes,
+                        "input_code": input_code,
+                        "symbols": symbols,
+                        "symbol": symbol,
+                        "input_type": input_type,
+                    }
+                }),
+            ),
+            Event::SwayWindowChanged { change, container } if subscriptions.contains("window") => (
+                (1 << 31) | 3,
+                serde_json::json!({"change":change,"container":container}),
+            ),
+            Event::WindowMoved { id } if subscriptions.contains("window") => {
+                let container =
+                    serde_json::from_str::<serde_json::Value>(&query_state.borrow().tree)
+                        .ok()
+                        .and_then(|tree| find_node_by_id(&tree, id).cloned());
+                (
+                    (1 << 31) | 3,
+                    serde_json::json!({"change":"move","container":container}),
+                )
+            }
+            Event::WindowsChanged { .. }
+            | Event::WindowOpenedOrChanged { .. }
+            | Event::WindowClosed { .. }
+            | Event::WindowFocusTimestampChanged { .. }
+            | Event::WindowUrgencyChanged { .. }
+            | Event::WindowLayoutsChanged { .. }
+            | Event::WindowFocusChanged { .. }
+                if subscriptions.contains("window") =>
+            {
+                continue
+            }
+            _ => continue,
+        };
+        let payload = serde_json::to_string(&payload).context("error formatting event")?;
+        let buf = swayward_ipc::wire::encode_raw(msg_type, &payload);
+        queue_ipc_message(&mut write_buffer, &mut write_buffer_size, &buf)?;
+    }
+}
+
+pub(super) fn queue_ipc_message(
+    buffer: &mut Vec<u8>,
+    buffer_size: &mut usize,
+    message: &[u8],
+) -> anyhow::Result<()> {
+    while buffer.len() + message.len() >= *buffer_size {
+        *buffer_size *= 2;
+    }
+    if *buffer_size > MAX_WRITE_BUFFER_SIZE {
+        anyhow::bail!("IPC client write buffer too big ({buffer_size}), disconnecting client");
+    }
+    buffer.extend_from_slice(message);
+    Ok(())
+}
