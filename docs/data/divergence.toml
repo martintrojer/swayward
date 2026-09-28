@@ -1387,6 +1387,12 @@ why = "Sway appends containers to the scratchpad list and prepends each one to t
 
 [[edit]]
 migrated = false
+paths = ["src/ipc/tree.rs"]
+what = "document why output-node serialization can require a matching flat output entry."
+why = "Both entries are derived in the same call from the same immutable layout monitor, so the lookup is an internal serialization invariant rather than independently mutable compositor state."
+
+[[edit]]
+migrated = false
 paths = ["src/layout/tiling_tree/movement.rs", "src/layout/tiling_tree/tests.rs"]
 what = "preserve focus history when a move-to-mark target is already the moved node's preceding sibling."
 why = "Sway leaves an already positioned container attached, so replaying move-to-mark does not reorder its focus stack (`sway/commands/move.c`)."

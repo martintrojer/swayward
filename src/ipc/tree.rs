@@ -402,10 +402,14 @@ fn describe_output_node(
         .map(|id| workspace_id(id.get()))
         .filter(|id| workspaces.iter().any(|workspace| workspace.id == *id))
         .collect();
+    // `describe_outputs` iterates this same immutable layout and emits exactly
+    // one entry for every monitor, copying `output_name` verbatim.
+    // `describe_outputs` iterates this same immutable layout and emits exactly
+    // one entry for every monitor, copying `output_name` verbatim.
     let output = describe_outputs(layout, global_space)
         .into_iter()
         .find(|output| output.name == *monitor.output_name())
-        .unwrap();
+        .expect("the described monitor must have a matching output entry");
     let mut node = common_node(CommonNodeContext {
         id: output.id,
         node_type: NodeType::Output,
