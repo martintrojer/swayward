@@ -1101,7 +1101,8 @@ impl Op {
                         }
 
                         if update {
-                            // FIXME: serial.
+                            // The model has no Wayland serial; `None` is the explicit synthetic
+                            // update used by this randomized layout test.
                             layout.update_window(&id, None);
                         }
                         return;
@@ -1138,7 +1139,8 @@ impl Op {
                 }
 
                 if update {
-                    // FIXME: serial.
+                    // The model has no Wayland serial; `None` is the explicit synthetic update
+                    // used by this randomized layout test.
                     layout.update_window(&id, None);
                 }
             }
