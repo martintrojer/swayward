@@ -2820,7 +2820,12 @@ fn large_max_size() {
     options.layout.border.off = false;
     options.layout.border.width = 1.;
 
-    check_ops_with_options(options, ops);
+    let layout = check_ops_with_options(options, ops);
+    let window = layout.windows().next().unwrap().1;
+    assert!(
+        window.0.requested_size.get().unwrap().w < i32::MAX,
+        "layout must request a finite usable width"
+    );
 }
 
 #[test]
@@ -2849,7 +2854,9 @@ fn workspace_cleanup_during_switch() {
         Op::CloseWindow(1),
     ];
 
-    check_ops(ops);
+    let layout = check_ops(ops);
+    assert_eq!(layout.windows().count(), 0);
+    assert_eq!(layout.workspaces().count(), 1);
 }
 
 #[test]
@@ -2870,7 +2877,11 @@ fn workspace_transfer_during_switch() {
         Op::AddOutput(1),
     ];
 
-    check_ops(ops);
+    let layout = check_ops(ops);
+    assert_eq!(layout.outputs().count(), 2);
+    assert_eq!(layout.windows().count(), 2);
+    assert!(layout.windows().any(|(_, window)| window.id() == &1));
+    assert!(layout.windows().any(|(_, window)| window.id() == &2));
 }
 
 #[test]
@@ -2886,7 +2897,10 @@ fn workspace_transfer_during_switch_from_last() {
         Op::AddOutput(1),
     ];
 
-    check_ops(ops);
+    let layout = check_ops(ops);
+    assert_eq!(layout.outputs().count(), 2);
+    assert_eq!(layout.windows().count(), 1);
+    assert!(layout.windows().any(|(_, window)| window.id() == &1));
 }
 
 #[test]
@@ -2903,7 +2917,10 @@ fn workspace_transfer_during_switch_gets_cleaned_up() {
         Op::AddOutput(1),
     ];
 
-    check_ops(ops);
+    let layout = check_ops(ops);
+    assert_eq!(layout.outputs().count(), 2);
+    assert_eq!(layout.windows().count(), 1);
+    assert!(layout.windows().any(|(_, window)| window.id() == &1));
 }
 
 #[test]
@@ -2970,7 +2987,7 @@ fn moving_the_only_workspace_replaces_it_before_reparenting() {
 fn move_to_named_target_index_preserves_addressable_workspace() {
     // Fuzzer seed: a numbered-but-unnamed workspace is addressable and must
     // survive a targeted move even though it has no windows.
-    check_ops([
+    let layout = check_ops([
         Op::AddNamedWorkspace {
             ws_name: 1,
             output_name: None,
@@ -2983,6 +3000,9 @@ fn move_to_named_target_index_preserves_addressable_workspace() {
             target_ws_idx: Some(1),
         },
     ]);
+    assert!(layout
+        .workspaces()
+        .any(|(_, _, workspace)| workspace.sway_name().as_deref() == Some("ws1")));
 }
 
 #[test]
@@ -2990,7 +3010,7 @@ fn unname_then_implicit_rename_preserves_workspace_invariants() {
     // CI shrank `random_operations_dont_panic` to this six-op sequence. Both
     // the move and rename use the implicit target (`None`), and the same output
     // is added twice.
-    check_ops([
+    let layout = check_ops([
         Op::UnnameWorkspace { ws_name: 1 },
         Op::AddOutput(1),
         Op::AddOutput(1),
@@ -3007,6 +3027,11 @@ fn unname_then_implicit_rename_preserves_workspace_invariants() {
             ws_name: None,
         },
     ]);
+    assert_eq!(
+        layout.active_workspace().unwrap().sway_name().as_deref(),
+        Some("ws1")
+    );
+    assert!(layout.active_workspace().unwrap().has_window(&1));
 }
 
 #[test]
@@ -4978,7 +5003,7 @@ proptest! {
 
 #[test]
 fn focus_parent_with_only_a_floating_window_preserves_tree_invariants() {
-    check_ops([
+    let layout = check_ops([
         Op::AddOutput(1),
         Op::AddWindow {
             params: TestWindowParams {
@@ -4988,6 +5013,7 @@ fn focus_parent_with_only_a_floating_window_preserves_tree_invariants() {
         },
         Op::FocusParent,
     ]);
+    assert_eq!(layout.focus().unwrap().id(), &1);
 }
 
 #[test]
@@ -5122,7 +5148,7 @@ fn focus_parent_then_move_left_keeps_focus_on_a_live_node() {
     // CI 35986895235 shrank `random_operations_dont_panic` to this sequence
     // (proptest cc acc67c75). Moving a focused parent container left after a
     // column move left the tree's focus pointing at a removed node.
-    check_ops([
+    let layout = check_ops([
         Op::AddWindow {
             params: TestWindowParams::new(2),
         },
@@ -5136,6 +5162,11 @@ fn focus_parent_then_move_left_keeps_focus_on_a_live_node() {
         Op::FocusParent,
         Op::MoveWindowInDirection(tiling_tree::Direction::Left),
     ]);
+    assert!(matches!(
+        layout.focus().map(|window| *window.id()),
+        Some(1 | 2)
+    ));
+    assert_eq!(layout.windows().count(), 2);
 }
 
 #[test]
