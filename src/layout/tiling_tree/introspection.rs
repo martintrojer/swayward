@@ -300,7 +300,8 @@ impl<W: LayoutElement> TilingTree<W> {
         }
 
         let geometries = self.compute_geometry();
-        snapshot(self, self.root, None, &geometries)
+        let root = self.resident_root().unwrap_or(self.root);
+        snapshot(self, root, None, &geometries)
     }
 
     /// Which decoration layers the tiling tree collects, front to back.
