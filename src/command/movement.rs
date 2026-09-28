@@ -117,6 +117,111 @@ pub(crate) fn clamp_pointer_position(
     position
 }
 
+type LogicalSize = smithay::utils::Size<f64, smithay::utils::Logical>;
+type LogicalPoint = smithay::utils::Point<f64, smithay::utils::Logical>;
+
+fn move_target_geometry(
+    state: &State,
+    window: Option<&smithay::desktop::Window>,
+) -> Option<(LogicalSize, LogicalPoint)> {
+    let id = window.or_else(|| state.swayward.layout.focus().map(|mapped| &mapped.window))?;
+    state
+        .swayward
+        .layout
+        .workspaces()
+        .find_map(|(monitor, _, workspace)| {
+            workspace
+                .tiles_with_ipc_layouts()
+                .find(|(tile, _)| &tile.window().window == id)
+                .map(|(tile, _)| {
+                    let output_origin = monitor.map_or_else(Default::default, |monitor| {
+                        monitor.output().current_location().to_f64()
+                    });
+                    (
+                        tile.tile_size(),
+                        output_origin + workspace.working_area().loc,
+                    )
+                })
+        })
+}
+
+fn coordinate(amount: ResizeAmount, extent: f64) -> f64 {
+    match amount.unit {
+        ResizeUnit::Default | ResizeUnit::Pixels => f64::from(amount.amount),
+        ResizeUnit::PercentagePoints => extent * f64::from(amount.amount) / 100.,
+    }
+}
+
+fn move_to_pointer(
+    state: &mut State,
+    window: Option<&smithay::desktop::Window>,
+) -> Result<(), &'static str> {
+    let pointer = state
+        .swayward
+        .seat
+        .get_pointer()
+        .ok_or("No cursor device")?
+        .current_location();
+    let id = window.cloned().or_else(|| {
+        state
+            .swayward
+            .layout
+            .focus()
+            .map(|mapped| mapped.window.clone())
+    });
+    let Some(id) = id else {
+        return Err("Only floating containers can be moved to an absolute position");
+    };
+    let Some((tile_size, workspace_origin)) = move_target_geometry(state, window) else {
+        return Err("Only floating containers can be moved to an absolute position");
+    };
+    let cursor_output = state
+        .swayward
+        .global_space
+        .output_under(pointer)
+        .next()
+        .cloned();
+    let output_geometry = cursor_output
+        .as_ref()
+        .and_then(|output| state.swayward.global_space.output_geometry(output));
+    let position = clamp_pointer_position(
+        pointer - tile_size.downscale(2.),
+        tile_size,
+        output_geometry.map(|output| output.to_f64()),
+    );
+    let window_output = state
+        .swayward
+        .layout
+        .windows()
+        .find_map(|(monitor, mapped)| {
+            (mapped.window == id)
+                .then(|| monitor.map(|monitor| monitor.output().clone()))
+                .flatten()
+        });
+    if let Some(output) = cursor_output
+        .as_ref()
+        .filter(|output| window_output.as_ref() != Some(*output))
+    {
+        state.swayward.layout.move_to_output(
+            Some(&id),
+            output,
+            None,
+            crate::layout::ActivateWindow::Yes,
+        );
+    }
+    let workspace_origin = output_geometry
+        .map(|output| output.loc.to_f64())
+        .unwrap_or(workspace_origin);
+    let position = position - workspace_origin;
+    state.swayward.layout.move_floating_window(
+        Some(&id),
+        PositionChange::SetFixed(position.x),
+        PositionChange::SetFixed(position.y),
+        true,
+    );
+    Ok(())
+}
+
 pub(super) fn move_position(
     state: &mut State,
     target: Option<crate::window::mapped::MappedId>,
@@ -152,29 +257,6 @@ pub(super) fn move_position(
     {
         return Err("Only floating containers can be moved to an absolute position");
     }
-    let target_geometry = || {
-        let id = window
-            .as_ref()
-            .or_else(|| state.swayward.layout.focus().map(|mapped| &mapped.window))?;
-        state
-            .swayward
-            .layout
-            .workspaces()
-            .find_map(|(monitor, _, workspace)| {
-                workspace
-                    .tiles_with_ipc_layouts()
-                    .find(|(tile, _)| &tile.window().window == id)
-                    .map(|(tile, _)| {
-                        let output_origin = monitor.map_or_else(Default::default, |monitor| {
-                            monitor.output().current_location().to_f64()
-                        });
-                        (
-                            tile.tile_size(),
-                            output_origin + workspace.working_area().loc,
-                        )
-                    })
-            })
-    };
     let (x, y) = match *position {
         MovePosition::Coordinates { x, y, absolute } => {
             if absolute
@@ -183,12 +265,9 @@ pub(super) fn move_position(
             {
                 return Err("Cannot move to absolute positions by ppt");
             }
-            let coordinate = |amount: ResizeAmount, extent: f64| match amount.unit {
-                ResizeUnit::Default | ResizeUnit::Pixels => f64::from(amount.amount),
-                ResizeUnit::PercentagePoints => extent * f64::from(amount.amount) / 100.,
-            };
-            let offset: smithay::utils::Point<f64, smithay::utils::Logical> = if absolute {
-                let Some((_, workspace_origin)) = target_geometry() else {
+            let offset: LogicalPoint = if absolute {
+                let Some((_, workspace_origin)) = move_target_geometry(state, window.as_ref())
+                else {
                     return Err("Only floating containers can be moved to an absolute position");
                 };
                 (-workspace_origin.x, -workspace_origin.y).into()
@@ -212,7 +291,8 @@ pub(super) fn move_position(
                 .filter_map(|output| state.swayward.global_space.output_geometry(output))
                 .reduce(|root, output| root.merge(output));
             let Some(root) = root else { return Ok(()) };
-            let Some((tile_size, workspace_origin)) = target_geometry() else {
+            let Some((tile_size, workspace_origin)) = move_target_geometry(state, window.as_ref())
+            else {
                 return Err("Only floating containers can be moved to an absolute position");
             };
             let root_center = crate::utils::center(root).to_f64();
@@ -222,71 +302,7 @@ pub(super) fn move_position(
                 PositionChange::SetFixed(position.y),
             )
         }
-        MovePosition::Pointer => {
-            let pointer = state
-                .swayward
-                .seat
-                .get_pointer()
-                .ok_or("No cursor device")?
-                .current_location();
-            let Some(id) = window.clone().or_else(|| {
-                state
-                    .swayward
-                    .layout
-                    .focus()
-                    .map(|mapped| mapped.window.clone())
-            }) else {
-                return Err("Only floating containers can be moved to an absolute position");
-            };
-            let Some((tile_size, workspace_origin)) = target_geometry() else {
-                return Err("Only floating containers can be moved to an absolute position");
-            };
-            let mut position = pointer - tile_size.downscale(2.);
-            let cursor_output = state
-                .swayward
-                .global_space
-                .output_under(pointer)
-                .next()
-                .cloned();
-            let output_geometry = cursor_output
-                .as_ref()
-                .and_then(|output| state.swayward.global_space.output_geometry(output))
-                .map(|output| output.to_f64());
-            position = clamp_pointer_position(position, tile_size, output_geometry);
-            let target_output_origin = cursor_output
-                .as_ref()
-                .and_then(|output| state.swayward.global_space.output_geometry(output))
-                .map(|output| output.loc.to_f64());
-            let window_output = state
-                .swayward
-                .layout
-                .windows()
-                .find_map(|(monitor, mapped)| {
-                    (mapped.window == id)
-                        .then(|| monitor.map(|monitor| monitor.output().clone()))
-                        .flatten()
-                });
-            if let Some(output) = cursor_output
-                .as_ref()
-                .filter(|output| window_output.as_ref() != Some(*output))
-            {
-                state.swayward.layout.move_to_output(
-                    Some(&id),
-                    output,
-                    None,
-                    crate::layout::ActivateWindow::Yes,
-                );
-            }
-            let workspace_origin = target_output_origin.unwrap_or(workspace_origin);
-            let position = position - workspace_origin;
-            state.swayward.layout.move_floating_window(
-                Some(&id),
-                PositionChange::SetFixed(position.x),
-                PositionChange::SetFixed(position.y),
-                true,
-            );
-            return Ok(());
-        }
+        MovePosition::Pointer => return move_to_pointer(state, window.as_ref()),
     };
     state
         .swayward
@@ -318,12 +334,11 @@ pub(super) fn select_resize_amount(
         .unwrap_or(first)
 }
 
-pub(super) fn move_workspace_to_output(
-    state: &mut State,
+fn workspace_to_move(
+    state: &State,
     target: Option<CommandTarget>,
-    output_target_name: &OutputTarget,
-) -> CommandOutcome {
-    let workspace_id = match target {
+) -> Result<Option<crate::layout::workspace::WorkspaceId>, CommandOutcome> {
+    Ok(match target {
         Some(CommandTarget::Window(target)) => {
             let Some((window, workspace)) = state
                 .swayward
@@ -346,10 +361,10 @@ pub(super) fn move_workspace_to_output(
                         .map(|mapped| (mapped.window.clone(), None))
                 })
             else {
-                return failure("No matching node.");
+                return Err(failure("No matching node."));
             };
             if state.swayward.layout.is_scratchpad_hidden(&window) {
-                return success();
+                return Ok(None);
             }
             workspace
         }
@@ -359,9 +374,18 @@ pub(super) fn move_workspace_to_output(
             .layout
             .active_workspace()
             .map(|workspace| workspace.id()),
-    };
-    let Some(workspace_id) = workspace_id else {
-        return failure("No workspace to move");
+    })
+}
+
+pub(super) fn move_workspace_to_output(
+    state: &mut State,
+    target: Option<CommandTarget>,
+    output_target_name: &OutputTarget,
+) -> CommandOutcome {
+    let workspace_id = match workspace_to_move(state, target) {
+        Ok(Some(workspace)) => workspace,
+        Ok(None) => return success(),
+        Err(error) => return error,
     };
     let Some(reference) = state
         .swayward
@@ -515,6 +539,75 @@ fn swap_destination(state: &State, target: &SwapTarget) -> Result<CommandTarget,
     destination.ok_or_else(|| failure(format!("Failed to find {kind} '{value}'")))
 }
 
+type TilingEndpoint = (
+    crate::layout::workspace::WorkspaceId,
+    crate::layout::tiling_tree::NodeId,
+);
+
+fn resolve_swap_endpoint(
+    state: &State,
+    target: CommandTarget,
+    source: bool,
+    missing: impl FnOnce() -> CommandOutcome,
+) -> Result<TilingEndpoint, CommandOutcome> {
+    match target {
+        CommandTarget::Container(workspace, node)
+            if if source {
+                state
+                    .swayward
+                    .layout
+                    .active_workspace()
+                    .is_some_and(|active| {
+                        active.id() == workspace && active.contains_tiling_node(node)
+                    })
+            } else {
+                state.swayward.layout.workspaces().any(|(_, _, candidate)| {
+                    candidate.id() == workspace && candidate.contains_tiling_node(node)
+                })
+            } =>
+        {
+            Ok((workspace, node))
+        }
+        CommandTarget::Container(_, _) => Err(missing()),
+        CommandTarget::Window(window) => {
+            let Some(mapped) = state
+                .swayward
+                .layout
+                .windows()
+                .find_map(|(_, mapped)| (mapped.id() == window).then(|| mapped.window.clone()))
+            else {
+                return Err(missing());
+            };
+            state
+                .swayward
+                .layout
+                .tiling_target_for_window(&mapped)
+                .ok_or_else(|| failure("Can only swap with containers and views"))
+        }
+    }
+}
+
+fn remap_container_marks(
+    state: &mut State,
+    source: crate::layout::workspace::WorkspaceId,
+    destination: crate::layout::workspace::WorkspaceId,
+    remapped: impl IntoIterator<
+        Item = (
+            crate::layout::tiling_tree::NodeId,
+            crate::layout::tiling_tree::NodeId,
+        ),
+    >,
+) {
+    for (old, new) in remapped {
+        if let Some(marks) = state.swayward.marks_by_container.remove(&(source, old)) {
+            state
+                .swayward
+                .marks_by_container
+                .insert((destination, new), marks);
+        }
+    }
+}
+
 pub(super) fn swap_target(
     state: &mut State,
     source: CommandTarget,
@@ -527,63 +620,20 @@ pub(super) fn swap_target(
     if source == destination {
         return failure("Cannot swap a container with itself");
     }
-    let (source_workspace, source_node) = match source {
-        CommandTarget::Container(workspace, node)
-            if state
-                .swayward
-                .layout
-                .active_workspace()
-                .is_some_and(|active| {
-                    active.id() == workspace && active.contains_tiling_node(node)
-                }) =>
-        {
-            (workspace, node)
-        }
-        CommandTarget::Container(_, _) => {
-            return failure("Can only swap with containers and views");
-        }
-        CommandTarget::Window(window) => {
-            let Some(mapped) = state
-                .swayward
-                .layout
-                .windows()
-                .find_map(|(_, mapped)| (mapped.id() == window).then(|| mapped.window.clone()))
-            else {
-                return failure("Can only swap with containers and views");
-            };
-            let Some(target) = state.swayward.layout.tiling_target_for_window(&mapped) else {
-                return failure("Can only swap with containers and views");
-            };
-            target
-        }
+    let (source_workspace, source_node) = match resolve_swap_endpoint(state, source, true, || {
+        failure("Can only swap with containers and views")
+    }) {
+        Ok(endpoint) => endpoint,
+        Err(error) => return error,
     };
-    let (destination_workspace, destination_node) = match destination {
-        CommandTarget::Container(workspace, node)
-            if state.swayward.layout.workspaces().any(|(_, _, candidate)| {
-                candidate.id() == workspace && candidate.contains_tiling_node(node)
-            }) =>
-        {
-            (workspace, node)
-        }
-        CommandTarget::Container(_, _) => {
-            return failure("Can only swap with containers and views");
-        }
-        CommandTarget::Window(window) => {
-            let Some(mapped) = state
-                .swayward
-                .layout
-                .windows()
-                .find_map(|(_, mapped)| (mapped.id() == window).then(|| mapped.window.clone()))
-            else {
-                let (kind, value) = swap_kind_value(target);
-                return failure(format!("Failed to find {kind} '{value}'"));
-            };
-            let Some(target) = state.swayward.layout.tiling_target_for_window(&mapped) else {
-                return failure("Can only swap with containers and views");
-            };
-            target
-        }
-    };
+    let (destination_workspace, destination_node) =
+        match resolve_swap_endpoint(state, destination, false, || {
+            let (kind, value) = swap_kind_value(target);
+            failure(format!("Failed to find {kind} '{value}'"))
+        }) {
+            Ok(endpoint) => endpoint,
+            Err(error) => return error,
+        };
     if state
         .swayward
         .layout
@@ -605,19 +655,18 @@ pub(super) fn swap_target(
             Ok(remapped) => remapped,
             Err(error) => return failure(error),
         };
-        for (workspace, destination, remapped) in [
-            (source_workspace, destination_workspace, remapped.first),
-            (destination_workspace, source_workspace, remapped.second),
-        ] {
-            for (old, new) in remapped {
-                if let Some(marks) = state.swayward.marks_by_container.remove(&(workspace, old)) {
-                    state
-                        .swayward
-                        .marks_by_container
-                        .insert((destination, new), marks);
-                }
-            }
-        }
+        remap_container_marks(
+            state,
+            source_workspace,
+            destination_workspace,
+            remapped.first,
+        );
+        remap_container_marks(
+            state,
+            destination_workspace,
+            source_workspace,
+            remapped.second,
+        );
     } else if let Err(error) =
         state
             .swayward
@@ -656,6 +705,89 @@ fn marked_target(state: &State, mark: &str) -> Option<CommandTarget> {
         })
 }
 
+enum MarkDestination {
+    Scratchpad,
+    Floating(crate::layout::workspace::WorkspaceId),
+    Tiling(TilingEndpoint),
+}
+
+fn mapped_window(
+    state: &State,
+    id: crate::window::mapped::MappedId,
+) -> Option<smithay::desktop::Window> {
+    state
+        .swayward
+        .layout
+        .windows()
+        .find_map(|(_, mapped)| (mapped.id() == id).then(|| mapped.window.clone()))
+}
+
+fn resolve_mark_destination(
+    state: &State,
+    destination: CommandTarget,
+) -> Result<MarkDestination, CommandOutcome> {
+    let CommandTarget::Window(window) = destination else {
+        let CommandTarget::Container(workspace, node) = destination else {
+            unreachable!()
+        };
+        return Ok(MarkDestination::Tiling((workspace, node)));
+    };
+    let mapped = mapped_window(state, window).or_else(|| {
+        state
+            .swayward
+            .layout
+            .scratchpad_windows()
+            .find_map(|mapped| (mapped.id() == window).then(|| mapped.window.clone()))
+    });
+    let Some(mapped) = mapped else {
+        return Err(failure("No matching node."));
+    };
+    if state.swayward.layout.is_scratchpad_hidden(&mapped) {
+        return Ok(MarkDestination::Scratchpad);
+    }
+    if let Some(target) = state.swayward.layout.tiling_target_for_window(&mapped) {
+        return Ok(MarkDestination::Tiling(target));
+    }
+    state
+        .swayward
+        .layout
+        .window_workspace_id(&mapped)
+        .map(MarkDestination::Floating)
+        .ok_or_else(|| failure("No matching node."))
+}
+
+fn move_window_to_mark_workspace(
+    state: &mut State,
+    source: CommandTarget,
+    workspace: Option<crate::layout::workspace::WorkspaceId>,
+) -> CommandOutcome {
+    let CommandTarget::Window(source) = source else {
+        return failure(if workspace.is_some() {
+            "moving container subtrees to floating marks is not implemented yet"
+        } else {
+            "moving container subtrees to scratchpad is not implemented yet"
+        });
+    };
+    let Some(source) = mapped_window(state, source) else {
+        return failure("No matching node.");
+    };
+    let result = match workspace {
+        Some(workspace) => state
+            .swayward
+            .layout
+            .move_window_to_workspace_id(&source, workspace),
+        None => {
+            state.swayward.layout.move_to_scratchpad(Some(&source));
+            Ok(())
+        }
+    };
+    if let Err(error) = result {
+        return failure(error);
+    }
+    state.swayward.queue_redraw_all();
+    success()
+}
+
 pub(super) fn move_target_to_mark(
     state: &mut State,
     source: CommandTarget,
@@ -664,78 +796,20 @@ pub(super) fn move_target_to_mark(
     let Some(destination) = marked_target(state, mark) else {
         return failure(format!("Mark '{mark}' not found"));
     };
-    let destination =
-        match destination {
-            CommandTarget::Container(workspace, node) => (workspace, node),
-            CommandTarget::Window(window) => {
-                let mapped =
-                    state.swayward.layout.windows().find_map(|(_, mapped)| {
-                        (mapped.id() == window).then(|| mapped.window.clone())
-                    });
-                let mapped = mapped.or_else(|| {
-                    state
-                        .swayward
-                        .layout
-                        .scratchpad_windows()
-                        .find_map(|mapped| (mapped.id() == window).then(|| mapped.window.clone()))
-                });
-                let Some(mapped) = mapped else {
-                    return failure("No matching node.");
-                };
-                if state.swayward.layout.is_scratchpad_hidden(&mapped) {
-                    let CommandTarget::Window(source) = source else {
-                        return failure(
-                            "moving container subtrees to scratchpad is not implemented yet",
-                        );
-                    };
-                    let source = state.swayward.layout.windows().find_map(|(_, mapped)| {
-                        (mapped.id() == source).then(|| mapped.window.clone())
-                    });
-                    let Some(source) = source else {
-                        return failure("No matching node.");
-                    };
-                    state.swayward.layout.move_to_scratchpad(Some(&source));
-                    state.swayward.queue_redraw_all();
-                    return success();
-                }
-                if let Some(target) = state.swayward.layout.tiling_target_for_window(&mapped) {
-                    target
-                } else {
-                    let Some(workspace) = state.swayward.layout.window_workspace_id(&mapped) else {
-                        return failure("No matching node.");
-                    };
-                    let CommandTarget::Window(source) = source else {
-                        return failure(
-                            "moving container subtrees to floating marks is not implemented yet",
-                        );
-                    };
-                    let source = state.swayward.layout.windows().find_map(|(_, mapped)| {
-                        (mapped.id() == source).then(|| mapped.window.clone())
-                    });
-                    let Some(source) = source else {
-                        return failure("No matching node.");
-                    };
-                    if let Err(error) = state
-                        .swayward
-                        .layout
-                        .move_window_to_workspace_id(&source, workspace)
-                    {
-                        return failure(error);
-                    }
-                    state.swayward.queue_redraw_all();
-                    return success();
-                }
-            }
-        };
+    let destination = match resolve_mark_destination(state, destination) {
+        Ok(MarkDestination::Scratchpad) => {
+            return move_window_to_mark_workspace(state, source, None)
+        }
+        Ok(MarkDestination::Floating(workspace)) => {
+            return move_window_to_mark_workspace(state, source, Some(workspace));
+        }
+        Ok(MarkDestination::Tiling(destination)) => destination,
+        Err(error) => return error,
+    };
     let source = match source {
         CommandTarget::Container(workspace, node) => (workspace, node),
         CommandTarget::Window(window) => {
-            let Some(mapped) = state
-                .swayward
-                .layout
-                .windows()
-                .find_map(|(_, mapped)| (mapped.id() == window).then(|| mapped.window.clone()))
-            else {
+            let Some(mapped) = mapped_window(state, window) else {
                 return failure("No matching node.");
             };
             if state
@@ -769,14 +843,7 @@ pub(super) fn move_target_to_mark(
         Ok(remapped) => remapped,
         Err(error) => return failure(error),
     };
-    for (old, new) in remapped {
-        if let Some(marks) = state.swayward.marks_by_container.remove(&(source.0, old)) {
-            state
-                .swayward
-                .marks_by_container
-                .insert((destination.0, new), marks);
-        }
-    }
+    remap_container_marks(state, source.0, destination.0, remapped);
     state.swayward.queue_redraw_all();
     success()
 }
