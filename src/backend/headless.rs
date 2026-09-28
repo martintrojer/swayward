@@ -73,6 +73,12 @@ impl Headless {
         self.add_output_at(swayward, n, size, None);
     }
 
+    pub fn add_startup_outputs(&mut self, swayward: &mut Swayward, count: u8) {
+        for n in (1..=count).rev() {
+            self.add_output(swayward, n, (1280, 720));
+        }
+    }
+
     pub fn create_output(&mut self, swayward: &mut Swayward) -> Result<(), &'static str> {
         let next = self
             .last_output_number
@@ -159,16 +165,22 @@ impl Headless {
         );
 
         if let Some((x, y)) = position {
-            swayward
-                .config
-                .borrow_mut()
+            let mut config = swayward.config.borrow_mut();
+            let position = Some(swayward_config::Position { x, y });
+            if let Some(output) = config
                 .outputs
                 .0
-                .push(swayward_config::Output {
+                .iter_mut()
+                .find(|output| output.name == connector)
+            {
+                output.position = position;
+            } else {
+                config.outputs.0.push(swayward_config::Output {
                     name: connector.clone(),
-                    position: Some(swayward_config::Position { x, y }),
+                    position,
                     ..Default::default()
                 });
+            }
         }
         self.outputs.push(output.clone());
         swayward.add_output(output, None, false);

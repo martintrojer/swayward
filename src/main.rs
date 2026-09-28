@@ -189,9 +189,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if let Some(count) = headless_outputs {
         let (backend, swayward) = (&mut state.backend, &mut state.swayward);
-        for n in 1..=count {
-            backend.headless().add_output(swayward, n, (1280, 720));
-        }
+        backend.headless().add_startup_outputs(swayward, count);
     }
 
     // Set WAYLAND_DISPLAY for children.

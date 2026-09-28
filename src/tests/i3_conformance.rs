@@ -1664,6 +1664,24 @@ fn rejection_allowlist_is_keyed_by_file_and_exact_command() {
 }
 
 #[test]
+fn headless_startup_outputs_follow_sways_backend_order() {
+    let mut fixture = Fixture::new();
+    let state = fixture.niri_state();
+    let swayward = &mut state.swayward;
+    state.backend.headless().add_startup_outputs(swayward, 3);
+
+    let swayward = fixture.swayward();
+    let actual = crate::ipc::tree::describe_outputs(&swayward.layout, &swayward.global_space);
+    assert_eq!(
+        actual
+            .iter()
+            .map(|output| output.name.as_str())
+            .collect::<Vec<_>>(),
+        ["headless-3", "headless-2", "headless-1"]
+    );
+}
+
+#[test]
 fn fake_outputs_create_real_outputs_with_requested_geometry() {
     let outputs = fake_outputs("font monospace\nfake-outputs 1024x768+0+0P,800x600+1024+20\n")
         .unwrap()
