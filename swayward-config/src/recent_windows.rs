@@ -332,8 +332,8 @@ where
             ));
         }
 
-        // FIXME: To support this, all the mods_with_mouse_binds()/mods_with_wheel_binds()/etc.
-        // will need to learn about recent-windows bindings.
+        // Recent-window bindings are keyboard-only. Supporting other triggers also requires
+        // indexing their held modifiers; tracked by mu task config-mru-pointer-bindings.
         if !matches!(key.trigger, Trigger::Keysym(_)) {
             ctx.emit_error(DecodeError::unexpected(
                 &node.node_name,
