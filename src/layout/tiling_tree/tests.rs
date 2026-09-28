@@ -6,7 +6,7 @@ use proptest::prelude::*;
 use smithay::output::{self, Output};
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Point, Serial, Transform};
-use swayward_ipc::command::BorderStyle;
+use swayward_ipc::command::{BorderStyle, LayoutToggle};
 
 use super::*;
 use crate::animation::Clock;
@@ -1839,6 +1839,43 @@ fn swapping_nodes_preserves_focus_history_and_rejects_ancestry() {
         t.swap_nodes(parent, second),
         Err("Cannot swap ancestor and descendant")
     );
+    t.check_invariants();
+}
+
+#[test]
+fn attaching_a_fullscreen_subtree_replaces_the_destinations_fullscreen() {
+    let mut source = tree((1200., 800.), 0.);
+    let source_leaf = source.add_tile(tile(1, source.view_size()), InsertTarget::Focused);
+    assert!(source.set_node_fullscreen(source_leaf, Some(FullscreenMode::Workspace)));
+    let mut destination = tree((1200., 800.), 0.);
+    let destination_leaf =
+        destination.add_tile(tile(2, destination.view_size()), InsertTarget::Focused);
+    assert!(destination.set_node_fullscreen(destination_leaf, Some(FullscreenMode::Workspace),));
+
+    let (subtree, old_parent) = source.detach_subtree(source_leaf).unwrap();
+    source.finish_subtree_detach(old_parent);
+    let (attached, _) = destination.attach_subtree(subtree);
+
+    assert_eq!(destination.fullscreen_node(), Some(attached));
+    destination.check_invariants();
+}
+
+#[test]
+fn swapping_a_maximized_leaf_with_a_split_keeps_maximize_on_a_leaf() {
+    let mut t = tree((1200., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let second = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.split(first, Layout::SplitV);
+    t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+    t.set_focus(second);
+    t.split(second, Layout::SplitV);
+    t.add_tile(tile(4, t.view_size()), InsertTarget::Focused);
+    let other_split = t.nodes[&second].parent.unwrap();
+    assert!(t.set_maximized(&1, true));
+
+    t.swap_nodes(first, other_split).unwrap();
+
+    assert!(t.is_pending_maximized(&1));
     t.check_invariants();
 }
 
@@ -3975,6 +4012,11 @@ enum Op {
     ResizeSession(usize, Direction, f64),
     Consume(usize, bool),
     Expel(usize, bool),
+    Swap(usize, usize),
+    ToggleLayout(usize),
+    Border(usize, BorderStyle),
+    Drop(usize, ResizeEdge),
+    Transfer(usize, bool),
 }
 
 fn layout_strategy() -> impl Strategy<Value = Layout> {
@@ -3992,6 +4034,25 @@ fn direction_strategy() -> impl Strategy<Value = Direction> {
         Just(Direction::Right),
         Just(Direction::Up),
         Just(Direction::Down),
+    ]
+}
+
+fn resize_edge_strategy() -> impl Strategy<Value = ResizeEdge> {
+    prop_oneof![
+        Just(ResizeEdge::LEFT),
+        Just(ResizeEdge::RIGHT),
+        Just(ResizeEdge::TOP),
+        Just(ResizeEdge::BOTTOM),
+        Just(ResizeEdge::empty()),
+    ]
+}
+
+fn border_style_strategy() -> impl Strategy<Value = BorderStyle> {
+    prop_oneof![
+        Just(BorderStyle::Normal),
+        Just(BorderStyle::Pixel),
+        Just(BorderStyle::None),
+        Just(BorderStyle::Toggle),
     ]
 }
 
@@ -4016,6 +4077,11 @@ fn op_strategy() -> impl Strategy<Value = Op> {
             .prop_map(|(id, direction, delta)| Op::ResizeSession(id, direction, delta)),
         (0..32usize, any::<bool>()).prop_map(|(id, right)| Op::Consume(id, right)),
         (0..32usize, any::<bool>()).prop_map(|(id, right)| Op::Expel(id, right)),
+        (0..32usize, 0..32usize).prop_map(|(first, second)| Op::Swap(first, second)),
+        (0..32usize).prop_map(Op::ToggleLayout),
+        (0..32usize, border_style_strategy()).prop_map(|(id, style)| Op::Border(id, style)),
+        (0..32usize, resize_edge_strategy()).prop_map(|(id, edge)| Op::Drop(id, edge)),
+        (0..32usize, any::<bool>()).prop_map(|(id, reverse)| Op::Transfer(id, reverse)),
     ]
 }
 
@@ -4095,6 +4161,7 @@ proptest! {
     #[test]
     fn random_operations_preserve_invariants(ops in prop::collection::vec(op_strategy(), 0..100)) {
         let mut tree = tree((1920., 1080.), 8.);
+        let mut peer = super::tests::tree((1280., 720.), 4.);
         let mut ids = Vec::new();
         let mut next_window = 0;
         for op in ops {
@@ -4122,14 +4189,17 @@ proptest! {
                 Op::Move(index, direction) => {
                     if !ids.is_empty() { tree.move_direction(ids[index % ids.len()], direction); }
                 }
-                Op::ReorderFirst(id) => {
-                    if !ids.is_empty() { tree.move_subtree_to_first(ids[id % ids.len()]); }
+                Op::ReorderFirst(index) => {
+                    let nodes: Vec<_> = tree.iter_depth_first().map(|(id, _)| id).collect();
+                    if let Some(id) = nodes.get(index).copied() { tree.move_subtree_to_first(id); }
                 }
                 Op::ReorderIndex(id, index) => {
-                    if !ids.is_empty() { tree.move_subtree_to_index(ids[id % ids.len()], index); }
+                    let nodes: Vec<_> = tree.iter_depth_first().map(|(id, _)| id).collect();
+                    if let Some(id) = nodes.get(id).copied() { tree.move_subtree_to_index(id, index); }
                 }
-                Op::ReorderLast(id) => {
-                    if !ids.is_empty() { tree.move_subtree_to_last(ids[id % ids.len()]); }
+                Op::ReorderLast(index) => {
+                    let nodes: Vec<_> = tree.iter_depth_first().map(|(id, _)| id).collect();
+                    if let Some(id) = nodes.get(index).copied() { tree.move_subtree_to_last(id); }
                 }
                 Op::Resize(first, second, delta) => {
                     if !ids.is_empty() {
@@ -4171,11 +4241,72 @@ proptest! {
                 Op::Expel(index, right) => {
                     if !ids.is_empty() { tree.expel(ids[index % ids.len()], right); }
                 }
+                Op::Swap(first, second) => {
+                    let nodes: Vec<_> = tree.iter_depth_first().map(|(id, _)| id).collect();
+                    let first = nodes
+                        .get(first)
+                        .copied()
+                        .unwrap_or(NodeId(u64::MAX - first as u64));
+                    let second = nodes
+                        .get(second)
+                        .copied()
+                        .unwrap_or(NodeId(u64::MAX - second as u64));
+                    let _ = tree.swap_nodes(first, second);
+                }
+                Op::ToggleLayout(index) => {
+                    let nodes: Vec<_> = tree.iter_depth_first().map(|(id, _)| id).collect();
+                    if !nodes.is_empty() {
+                        tree.toggle_node_layout(nodes[index % nodes.len()], &LayoutToggle::All);
+                    }
+                }
+                Op::Border(index, style) => {
+                    let windows: Vec<_> = tree.windows().map(|(_, window)| *window.id()).collect();
+                    if !windows.is_empty() {
+                        tree.set_window_border(&windows[index % windows.len()], style, Some(3));
+                    }
+                }
+                Op::Drop(index, edge) => {
+                    let nodes: Vec<_> = tree.windows().map(|(id, _)| id).collect();
+                    if !nodes.is_empty() {
+                        let target = nodes[index % nodes.len()];
+                        ids.push(tree.add_tile_at_drop(
+                            tile(next_window, tree.view_size()),
+                            target,
+                            edge,
+                            true,
+                        ));
+                        next_window += 1;
+                    }
+                }
+                Op::Transfer(index, reverse) => {
+                    let (source, destination) = if reverse {
+                        (&mut peer, &mut tree)
+                    } else {
+                        (&mut tree, &mut peer)
+                    };
+                    let nodes: Vec<_> = source
+                        .iter_depth_first()
+                        .map(|(id, _)| id)
+                        .filter(|id| *id != source.root)
+                        .collect();
+                    if let Some(id) = nodes.get(index % nodes.len().max(1)).copied() {
+                        if let Some((subtree, old_parent)) = source.detach_subtree(id) {
+                            source.finish_subtree_detach(old_parent);
+                            destination.attach_subtree(subtree);
+                        }
+                    }
+                }
             }
             sync_ids(&tree, &mut ids);
             tree.check_invariants();
+            peer.check_invariants();
+            let _ = tree.ipc_tree();
+            let _ = peer.ipc_tree();
             if tree.fullscreen_node().is_none() {
                 check_geometry(&tree);
+            }
+            if peer.fullscreen_node().is_none() {
+                check_geometry(&peer);
             }
         }
     }

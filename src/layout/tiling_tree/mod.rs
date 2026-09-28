@@ -903,6 +903,11 @@ impl<W: LayoutElement> TilingTree<W> {
         subtree: DetachedSubtree<W>,
         target: Option<NodeId>,
     ) -> (NodeId, Vec<(NodeId, NodeId)>) {
+        if subtree.has_fullscreen() {
+            if let Some(current) = self.fullscreen_node() {
+                self.replace_fullscreen_state(current, None);
+            }
+        }
         let focus_history = subtree.focus_history;
         let mut remapped = Vec::new();
         let node = if self.is_empty() {

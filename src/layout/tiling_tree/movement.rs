@@ -56,13 +56,26 @@ impl<W: LayoutElement> TilingTree<W> {
         }
         self.nodes.get_mut(&first).unwrap().parent = Some(second_parent);
         self.nodes.get_mut(&second).unwrap().parent = Some(first_parent);
-        let first_mode = self.pending_modes.remove(&first);
-        let second_mode = self.pending_modes.remove(&second);
-        if let Some(mode) = first_mode {
-            self.pending_modes.insert(second, mode);
-        }
-        if let Some(mode) = second_mode {
-            self.pending_modes.insert(first, mode);
+        let first_fullscreen = self
+            .pending_modes
+            .get(&first)
+            .and_then(|mode| mode.fullscreen);
+        let second_fullscreen = self
+            .pending_modes
+            .get(&second)
+            .and_then(|mode| mode.fullscreen);
+        for (id, fullscreen) in [(first, second_fullscreen), (second, first_fullscreen)] {
+            if let Some(mode) = self.pending_modes.get_mut(&id) {
+                mode.fullscreen = fullscreen;
+            } else if let Some(fullscreen) = fullscreen {
+                self.pending_modes.insert(
+                    id,
+                    PendingMode {
+                        fullscreen: Some(fullscreen),
+                        maximized: false,
+                    },
+                );
+            }
         }
         if self.focus != focus_after_swap {
             self.set_focus_id(focus_after_swap);
