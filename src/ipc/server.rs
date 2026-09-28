@@ -1985,11 +1985,10 @@ impl State {
         // Check for closed windows.
         let mut ipc_focused_id = None;
         for (id, ipc_win) in &state.windows {
-            if !seen.contains(id) {
+            let node_id = crate::ipc::tree::window_id_from_raw(*id);
+            if !seen.contains(id) && find_node_by_id(&current_tree, node_id).is_none() {
                 if let Some(mut container) = previous_tree
-                    .and_then(|tree| {
-                        find_node_by_id(tree, crate::ipc::tree::window_id_from_raw(*id))
-                    })
+                    .and_then(|tree| find_node_by_id(tree, node_id))
                     .cloned()
                 {
                     container["foreign_toplevel_identifier"] = serde_json::Value::Null;

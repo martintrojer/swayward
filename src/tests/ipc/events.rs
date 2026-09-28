@@ -743,24 +743,22 @@ fn floating_a_group_emits_one_recursive_floating_event() {
     assert!(crate::command::execute(fixture.niri_state(), "floating enable")[0].success);
     fixture.niri_state().ipc_refresh_layout();
 
-    let mut remainder = Vec::new();
-    let mut events = Vec::new();
-    for _ in 0..3 {
-        let ((event_type, payload), rest) =
-            read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder);
-        remainder = rest;
-        assert_eq!(event_type, (1 << 31) | 3);
-        events.push(serde_json::from_str::<Value>(&payload).unwrap());
-    }
-    let event = events
-        .iter()
-        .find(|payload| {
-            payload["change"] == "floating" && payload["container"]["type"] == "floating_con"
-        })
-        .unwrap_or_else(|| panic!("recursive floating event missing: {events:#?}"));
+    let ((event_type, payload), remainder) =
+        read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, Vec::new());
+    assert_eq!(event_type, (1 << 31) | 3);
+    let event = serde_json::from_str::<Value>(&payload).unwrap();
+    assert_eq!(event["change"], "floating");
     assert_eq!(event["container"]["type"], "floating_con");
     assert_eq!(event["container"]["floating"], "user_on");
     assert_eq!(event["container"]["nodes"].as_array().unwrap().len(), 2);
+    assert!(remainder.is_empty(), "unexpected leaf events were buffered");
+    subscriber.set_nonblocking(true).unwrap();
+    fixture.dispatch();
+    let mut byte = [0];
+    assert!(matches!(
+        subscriber.read(&mut byte),
+        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock
+    ));
 }
 
 #[test]
