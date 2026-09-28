@@ -190,7 +190,7 @@ def main():
     for name, reply in refused.items():
         require(reply.get("success") is False, f"{name} did not return a structured failure: {reply}")
     rejected_sub = i3ipc.Connection(socket_path=path)
-    reply = json.loads(rejected_sub._message(MessageType.SUBSCRIBE, '["barconfig_update"]'))
+    reply = json.loads(rejected_sub._message(MessageType.SUBSCRIBE, '["unsupported"]'))
     require(reply.get("success") is False, f"unsupported SUBSCRIBE did not fail: {reply}")
 
     listener = i3ipc.Connection(socket_path=path)

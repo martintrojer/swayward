@@ -108,7 +108,24 @@ def main():
         require(connection.command("mode default")[0].success, "could not emit the tall-container mode event")
         wait_for_layout(connection, "autotiling-tall", "splitv")
         print(f"PROBE PASS tall={width}x{height} resulting-layout=splitv")
-        require(autotiling.poll() is None, f"autotiling exited; see {log_path}")
+
+        for number in range(3, 20):
+            app_id = f"autotiling-stress-{number}"
+            feet.append(subprocess.Popen(["foot", f"--app-id={app_id}", "sh", "-c", "sleep 20"]))
+            find_window(connection, app_id)
+        require(autotiling.poll() is None, f"autotiling exited during 20-window run; see {log_path}")
+        print("PROBE PASS autotiling-window-events=20")
+
+        require(connection.command("focus parent")[0].success, "could not focus the split parent")
+        require(connection.command("floating enable")[0].success, "could not float the split group")
+        workspace = connection.get_tree().find_focused().workspace()
+        require(workspace.floating_nodes, "floating group missing from GET_TREE")
+        require(workspace.floating_nodes[0].nodes, "floating group was flattened in GET_TREE")
+        require(connection.command("move scratchpad")[0].success, "could not move floating group to scratchpad")
+        require(connection.command("scratchpad show")[0].success, "could not show floating group from scratchpad")
+        require(connection.command("floating toggle")[0].success, "could not toggle floating group")
+        require(autotiling.poll() is None, f"autotiling exited during floating-group commands; see {log_path}")
+        print("PROBE PASS floating-group=recursive focus-parent,scratchpad,floating-toggle")
         print(f"PROBE PASS autotiling=1.9.4 commit={COMMIT} sha256={SHA256}")
     finally:
         for foot in feet:
