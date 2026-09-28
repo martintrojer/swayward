@@ -1081,10 +1081,7 @@ fn execute_one(
                 .swayward
                 .layout
                 .active_workspace()
-                .is_some_and(|workspace| {
-                    workspace.is_workspace_focused()
-                        && workspace.ipc_tiling_tree().nodes().len() == 2
-                })
+                .is_some_and(|workspace| workspace.is_workspace_focused())
             {
                 return swayward_ipc::command::parse_error("Only containers can have marks");
             }

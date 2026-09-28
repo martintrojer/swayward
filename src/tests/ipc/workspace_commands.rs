@@ -1734,6 +1734,7 @@ fn live_ipc_move_to_an_empty_workspace_preserves_the_container_layout() {
         window.ack_last_and_commit();
         f.double_roundtrip(client);
     }
+    f.swayward().layout.nest_or_unnest_window_left(None);
     let mut stream = UnixStream::connect(socket).unwrap();
     for command in [
         "focus parent",
@@ -1755,11 +1756,16 @@ fn live_ipc_move_to_an_empty_workspace_preserves_the_container_layout() {
         .iter()
         .find(|workspace| workspace["name"] == "target")
         .unwrap();
-    assert_eq!(target["layout"], "splith");
-    assert_eq!(target["representation"], "H[first second]");
+    assert_eq!(target["layout"], "splitv");
+    assert_eq!(target["representation"], "V[second first]");
     assert_eq!(target["nodes"].as_array().unwrap().len(), 2);
-    assert_eq!(target["nodes"][0]["app_id"], "first");
-    assert_eq!(target["nodes"][1]["app_id"], "second");
+    let app_ids = target["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|node| node["app_id"].as_str().unwrap())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(app_ids, ["first", "second"].into());
 }
 
 #[test]
@@ -1779,6 +1785,7 @@ fn criteria_targeted_move_workspace_preserves_a_container_subtree() {
         window.ack_last_and_commit();
         f.double_roundtrip(client);
     }
+    f.swayward().layout.nest_or_unnest_window_left(None);
     assert!(crate::command::execute(f.niri_state(), r#"[app_id="first"] focus"#)[0].success);
     assert!(crate::command::execute(f.niri_state(), "focus parent")[0].success);
     assert!(crate::command::execute(f.niri_state(), "mark group")[0].success);

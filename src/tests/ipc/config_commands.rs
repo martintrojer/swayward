@@ -159,14 +159,16 @@ fn workspace_root_cannot_be_marked() {
     let mut fixture = Fixture::new();
     fixture.add_output(1, (1920, 1080));
     let client = fixture.add_client();
-    let window = fixture.client(client).create_window();
-    window.commit();
-    let surface = window.surface.clone();
-    fixture.roundtrip(client);
-    let window = fixture.client(client).window(&surface);
-    window.attach_new_buffer();
-    window.ack_last_and_commit();
-    fixture.double_roundtrip(client);
+    for _ in 0..2 {
+        let window = fixture.client(client).create_window();
+        window.commit();
+        let surface = window.surface.clone();
+        fixture.roundtrip(client);
+        let window = fixture.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        fixture.double_roundtrip(client);
+    }
     assert!(crate::command::execute(fixture.niri_state(), "focus parent")[0].success);
 
     assert_eq!(
