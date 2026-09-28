@@ -11,7 +11,7 @@ adapter substitutions.
 
 The project keeps two kinds of evidence:
 
-- The oracle's `i3/results/swayward.toml` and
+- The oracle's `i3/results/swayward-eb170906.toml` and
   `sway-ipc/results/swayward.toml` record the public pass, skip, fail, match,
   mismatch, and not-applicable figures.
 - `tests/i3/coverage.toml` records the faster in-process development run.
