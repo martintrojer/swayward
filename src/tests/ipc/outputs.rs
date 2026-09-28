@@ -176,6 +176,67 @@ fn output_runtime_commands_apply_named_state_and_wildcard_fanout() {
 }
 
 #[test]
+fn rapid_output_config_changes_report_sway_output_state() {
+    let mut fixture = Fixture::new();
+    fixture.add_named_output_at("left".into(), (800, 600), Some((0, 0)));
+    fixture.add_named_output_at("right".into(), (1024, 768), Some((800, 0)));
+    let client = fixture.add_client();
+
+    map_test_window(&mut fixture, client, "tiled");
+    map_test_window(&mut fixture, client, "floating");
+    assert!(crate::command::execute(fixture.niri_state(), "floating enable")[0].success);
+    assert!(crate::command::execute(fixture.niri_state(), "sticky enable")[0].success);
+    map_test_window(&mut fixture, client, "fullscreen");
+    assert!(crate::command::execute(fixture.niri_state(), "fullscreen enable")[0].success);
+
+    for command in [
+        "output left scale 1.25",
+        "output left transform 90",
+        "output left position 200 300",
+        "output left mode --custom 640x480@60Hz",
+        "output right disable",
+        "output left transform 270 scale 1.5 mode --custom 1280x720@75Hz",
+        "output left disable",
+        "output right enable transform 90 scale 1.25 mode --custom 600x800@60Hz",
+        "output left enable",
+        "output right disable",
+        "output right enable",
+        "output * power off",
+        "output * power on",
+    ] {
+        assert!(
+            crate::command::execute(fixture.niri_state(), command)[0].success,
+            "{command}"
+        );
+        fixture.niri_state().refresh_and_flush_clients();
+    }
+
+    let swayward = fixture.swayward();
+    let outputs = crate::ipc::tree::describe_outputs_with_power(
+        &swayward.layout,
+        &swayward.global_space,
+        &swayward.output_power,
+    );
+    let left = outputs.iter().find(|output| output.name == "left").unwrap();
+    let right = outputs.iter().find(|output| output.name == "right").unwrap();
+    assert_eq!(left.current_mode.width, 1280);
+    assert_eq!(left.current_mode.height, 720);
+    assert_eq!(left.scale, 1.5);
+    assert_eq!(left.scale_filter, "linear");
+    assert_eq!(left.transform, "270");
+    assert!(left.power);
+    assert!(left.dpms);
+    assert_eq!(right.current_mode.width, 600);
+    assert_eq!(right.current_mode.height, 800);
+    assert_eq!(right.scale, 1.25);
+    assert_eq!(right.scale_filter, "linear");
+    assert_eq!(right.transform, "90");
+    assert!(right.power);
+    assert!(right.dpms);
+    assert_eq!(swayward.layout.windows().count(), 3);
+}
+
+#[test]
 fn output_power_commands_update_get_outputs_state() {
     let (mut fixture, socket) = ipc_fixture();
     fixture.add_output(1, (800, 600));

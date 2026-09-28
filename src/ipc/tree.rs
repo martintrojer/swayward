@@ -254,11 +254,10 @@ pub fn describe_outputs_with_power(
     global_space: &Space<Window>,
     output_power: &std::collections::HashMap<String, bool>,
 ) -> Vec<Output> {
-    let root_width = layout
+    let root_rect = layout
         .monitors()
         .filter_map(|monitor| global_space.output_geometry(monitor.output()))
-        .reduce(|a, b| a.merge(b))
-        .map_or(0, |rect| rect.size.w);
+        .reduce(|a, b| a.merge(b));
     layout
         .monitors()
         .map(|monitor| {
@@ -286,8 +285,9 @@ pub fn describe_outputs_with_power(
             // This serializer receives the active layout, not backend connector
             // state. Therefore active is true and primary is false. Runtime
             // power state supplies sway's identical dpms and power fields.
-            // Swayward has no scale-filter setting and reports nearest. Backend
-            // adaptive-sync, tearing, HDR, and render-time capability/state do
+            // Like sway's default scale filter, integer scales use nearest and
+            // fractional scales use linear (`sway/config/output.c:650-665`).
+            // Backend adaptive-sync, tearing, HDR, and render-time capability/state do
             // not reach this query, so those fields conservatively report their
             // disabled defaults. Keep GET_OUTPUTS documented as Partial until
             // that state is plumbed in.
@@ -337,14 +337,22 @@ pub fn describe_outputs_with_power(
                 nodes: vec![],
                 non_desktop: false,
                 orientation: "none".into(),
-                percent: (root_width != 0).then(|| {
-                    f64::from(output_rect(global_space, output).width) / f64::from(root_width)
+                percent: root_rect.and_then(|root| {
+                    let root_area = i64::from(root.size.w) * i64::from(root.size.h);
+                    let rect = output_rect(global_space, output);
+                    let output_area = i64::from(rect.width) * i64::from(rect.height);
+                    (root_area != 0).then(|| output_area as f64 / root_area as f64)
                 }),
                 power: powered,
                 primary: false,
                 rect: output_rect(global_space, output),
                 scale: output.current_scale().fractional_scale(),
-                scale_filter: "nearest".into(),
+                scale_filter: if output.current_scale().fractional_scale().fract() == 0. {
+                    "nearest"
+                } else {
+                    "linear"
+                }
+                .into(),
                 scratchpad_state: None,
                 serial: physical.serial_number.clone(),
                 sticky: false,
@@ -443,8 +451,9 @@ fn describe_output_node(
             transform: output.transform,
         }),
     });
-    node.percent =
-        (root_rect.width != 0).then(|| f64::from(rect.width) / f64::from(root_rect.width));
+    let root_area = i64::from(root_rect.width) * i64::from(root_rect.height);
+    let output_area = i64::from(rect.width) * i64::from(rect.height);
+    node.percent = (root_area != 0).then(|| output_area as f64 / root_area as f64);
     node
 }
 
