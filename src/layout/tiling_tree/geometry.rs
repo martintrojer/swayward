@@ -211,10 +211,13 @@ pub(super) fn apply_struts(
         .loc
         .to_physical_precise_ceil(scale)
         .to_logical(scale);
-    let mut size_diff = (loc - working_area.loc).to_size();
+    let loc_delta = loc - working_area.loc;
+    let mut size_diff = Size::from((loc_delta.x.max(0.), loc_delta.y.max(0.)));
     size_diff.w = working_area.size.w.min(size_diff.w);
     size_diff.h = working_area.size.h.min(size_diff.h);
     working_area.size -= size_diff;
+    working_area.size.w = working_area.size.w.max(0.);
+    working_area.size.h = working_area.size.h.max(0.);
     working_area.loc = loc;
     working_area
 }

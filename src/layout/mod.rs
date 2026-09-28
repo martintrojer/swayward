@@ -5838,16 +5838,15 @@ impl<W: LayoutElement> Layout<W> {
                 .unwrap();
 
             let (mon_idx, ws_idx) = if let Some(window) = window {
-                monitors
-                    .iter()
-                    .enumerate()
-                    .find_map(|(mon_idx, mon)| {
-                        mon.workspaces
-                            .iter()
-                            .position(|ws| ws.has_window(window))
-                            .map(|ws_idx| (mon_idx, ws_idx))
-                    })
-                    .unwrap()
+                let Some(location) = monitors.iter().enumerate().find_map(|(mon_idx, mon)| {
+                    mon.workspaces
+                        .iter()
+                        .position(|ws| ws.has_window(window))
+                        .map(|ws_idx| (mon_idx, ws_idx))
+                }) else {
+                    return;
+                };
+                location
             } else {
                 let mon_idx = *active_monitor_idx;
                 let mon = &monitors[mon_idx];
@@ -6543,10 +6542,12 @@ impl<W: LayoutElement> Layout<W> {
         let zoom = mon.overview_zoom();
 
         let is_floating = ws.is_floating(&window_id);
-        let (tile, tile_offset, _visible) = ws
+        let Some((tile, tile_offset, _visible)) = ws
             .tiles_with_render_positions()
             .find(|(tile, _, _)| tile.window().id() == &window_id)
-            .unwrap();
+        else {
+            return false;
+        };
         let window_offset = tile.window_loc();
 
         let tile_pos = ws_geo.loc + tile_offset.upscale(zoom);
@@ -7664,13 +7665,15 @@ impl<W: LayoutElement> Layout<W> {
         } else if let Some(InteractiveMoveState::Starting { window_id, .. }) =
             &self.interactive_move
         {
-            ongoing_scrolling_dnd.get_or_insert_with(|| {
-                let (_, _, ws) = self
-                    .workspaces()
-                    .find(|(_, _, ws)| ws.has_window(window_id))
-                    .unwrap();
-                !ws.is_floating(window_id)
-            });
+            let floating = self
+                .workspaces()
+                .find(|(_, _, ws)| ws.has_window(window_id))
+                .map(|(_, _, ws)| ws.is_floating(window_id));
+            if let Some(floating) = floating {
+                ongoing_scrolling_dnd.get_or_insert(!floating);
+            } else {
+                self.interactive_move = None;
+            }
         }
 
         match &mut self.monitor_set {

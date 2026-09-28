@@ -660,6 +660,9 @@ enum Op {
         id: Option<usize>,
         floating: bool,
     },
+    ToggleFocusedContainerFloating,
+    MoveFocusedContainerToNextWorkspace,
+    MoveFocusedToScratchpad,
     FocusFloating,
     FocusTiling,
     SwitchFocusFloatingTiling,
@@ -1421,6 +1424,33 @@ impl Op {
                 let id = id.filter(|id| layout.has_window(id));
                 layout.set_window_floating(id.as_ref(), floating);
             }
+            Op::ToggleFocusedContainerFloating => {
+                let target = layout.active_workspace().and_then(|workspace| {
+                    workspace
+                        .focused_container_node()
+                        .map(|node| (workspace.id(), node, workspace.contains_tiling_node(node)))
+                });
+                if let Some((workspace, node, floating)) = target {
+                    layout.set_container_floating(workspace, node, floating);
+                }
+            }
+            Op::MoveFocusedContainerToNextWorkspace => {
+                let target = layout.active_workspace().and_then(|workspace| {
+                    workspace
+                        .focused_tiling_node()
+                        .map(|node| (workspace.id(), node))
+                });
+                if let Some((workspace, node)) = target {
+                    let _ = layout.move_tiling_subtree_to_sway_workspace(
+                        workspace,
+                        node,
+                        swayward_ipc::command::WorkspaceTarget::Next,
+                        false,
+                        false,
+                    );
+                }
+            }
+            Op::MoveFocusedToScratchpad => layout.move_to_scratchpad(None),
             Op::FocusFloating => {
                 layout.focus_floating();
             }
@@ -5501,6 +5531,269 @@ fn focus_parent_then_move_left_keeps_focus_on_a_live_node() {
         Some(1 | 2)
     ));
     assert_eq!(layout.windows().count(), 2);
+}
+
+#[test]
+fn refreshing_after_hiding_an_interactive_move_does_not_panic() {
+    check_ops([
+        Op::AddWindow {
+            params: TestWindowParams::new(5),
+        },
+        Op::AddOutput(2),
+        Op::InteractiveMoveBegin {
+            window: 5,
+            output_idx: 2,
+            px: 0.,
+            py: 0.,
+        },
+        Op::ToggleFocusedContainerFloating,
+        Op::MoveFocusedToScratchpad,
+        Op::Refresh { is_active: false },
+    ]);
+}
+
+#[test]
+fn unfloat_container_after_changing_its_layout_does_not_panic() {
+    check_ops([
+        Op::AddOutput(1),
+        Op::AddWindow {
+            params: TestWindowParams::new(1),
+        },
+        Op::ToggleFocusedContainerFloating,
+        Op::FocusParent,
+        Op::SetFocusedLayout(tiling_tree::Layout::Stacked),
+        Op::SetFocusedLayout(tiling_tree::Layout::SplitH),
+        Op::ToggleWindowFloating { id: None },
+    ]);
+}
+
+#[test]
+fn interactive_move_on_a_floating_container_does_not_panic() {
+    check_ops([
+        Op::AddOutput(5),
+        Op::AddWindow {
+            params: TestWindowParams::new(5),
+        },
+        Op::ToggleFocusedContainerFloating,
+        Op::InteractiveMoveBegin {
+            window: 5,
+            output_idx: 5,
+            px: 0.,
+            py: 0.,
+        },
+    ]);
+}
+
+#[test]
+fn adding_a_floating_window_next_to_a_floating_container_does_not_panic() {
+    let mut floating = TestWindowParams::new(3);
+    floating.is_floating = true;
+    check_ops([
+        Op::AddWindow {
+            params: TestWindowParams::new(2),
+        },
+        Op::AddOutput(1),
+        Op::ToggleFocusedContainerFloating,
+        Op::AddWindowNextTo {
+            params: floating,
+            next_to_id: 2,
+        },
+    ]);
+}
+
+#[test]
+fn interactive_resize_on_a_floating_container_does_not_panic() {
+    check_ops([
+        Op::AddOutput(1),
+        Op::AddWindow {
+            params: TestWindowParams::new(3),
+        },
+        Op::ToggleFocusedContainerFloating,
+        Op::InteractiveResizeBegin {
+            window: 3,
+            edges: ResizeEdge::RIGHT,
+        },
+    ]);
+}
+
+#[test]
+fn moving_a_floating_workspace_between_fractional_scales_does_not_panic() {
+    check_ops([
+        Op::AddWindow {
+            params: TestWindowParams::new(1),
+        },
+        Op::AddScaledOutput {
+            id: 2,
+            scale: 2.,
+            layout_config: None,
+        },
+        Op::ToggleFocusedContainerFloating,
+        Op::MoveWindowUpOrToWorkspaceUp,
+        Op::AddScaledOutput {
+            id: 1,
+            scale: 1.5,
+            layout_config: None,
+        },
+        Op::MoveWorkspaceToOutput(1),
+    ]);
+}
+
+#[test]
+fn moving_a_tiny_window_to_scratchpad_with_a_huge_border_does_not_panic() {
+    let mut layout = swayward_config::Layout::default();
+    layout.border.width = 29_707.;
+    check_ops_with_options(
+        Options {
+            layout,
+            ..Default::default()
+        },
+        vec![
+            Op::AddOutput(1),
+            Op::AddWindow {
+                params: TestWindowParams::new(1),
+            },
+            Op::MoveFocusedToScratchpad,
+        ],
+    );
+}
+
+#[test]
+fn hiding_the_active_floating_container_focuses_the_remaining_leaf() {
+    let mut floating = TestWindowParams::new(1);
+    floating.is_floating = true;
+    check_ops([
+        Op::AddOutput(1),
+        Op::AddWindow {
+            params: TestWindowParams::new(2),
+        },
+        Op::ToggleFocusedContainerFloating,
+        Op::AddWindow { params: floating },
+        Op::FocusWindowDown,
+        Op::MoveFocusedToScratchpad,
+    ]);
+}
+
+#[test]
+fn moving_a_hidden_scratchpad_window_to_an_output_does_not_panic() {
+    check_ops([
+        Op::AddOutput(1),
+        Op::AddWindow {
+            params: TestWindowParams::new(2),
+        },
+        Op::AddOutput(2),
+        Op::MoveFocusedToScratchpad,
+        Op::MoveWindowToOutput {
+            window_id: Some(2),
+            output_id: 1,
+            target_ws_idx: None,
+        },
+    ]);
+}
+
+#[test]
+fn centering_a_floating_container_does_not_panic() {
+    check_ops([
+        Op::AddOutput(1),
+        Op::AddWindow {
+            params: TestWindowParams::new(1),
+        },
+        Op::ToggleFocusedContainerFloating,
+        Op::CenterWindow { id: None },
+    ]);
+}
+
+#[test]
+fn moving_the_last_floating_leaf_keeps_a_resident_tree_active() {
+    let mut floating = TestWindowParams::new(1);
+    floating.is_floating = true;
+    check_ops([
+        Op::AddOutput(1),
+        Op::AddWindow {
+            params: TestWindowParams::new(3),
+        },
+        Op::ToggleFocusedContainerFloating,
+        Op::AddWindow { params: floating },
+        Op::MoveWindowToWorkspaceDown(false),
+    ]);
+}
+
+#[test]
+fn resizing_a_window_in_a_floating_container_does_not_panic() {
+    check_ops([
+        Op::AddOutput(1),
+        Op::AddWindow {
+            params: TestWindowParams::new(1),
+        },
+        Op::ToggleFocusedContainerFloating,
+        Op::SetFocusedWidth(SizeChange::SetFixed(0)),
+    ]);
+}
+
+#[test]
+fn directional_focus_with_one_floating_container_does_not_panic() {
+    check_ops([
+        Op::AddOutput(1),
+        Op::AddWindow {
+            params: TestWindowParams::new(1),
+        },
+        Op::ToggleFocusedContainerFloating,
+        Op::FocusLeft,
+    ]);
+}
+
+#[test]
+fn toggling_a_window_in_a_floating_container_unfloats_the_container() {
+    check_ops([
+        Op::AddOutput(1),
+        Op::AddWindow {
+            params: TestWindowParams::new(1),
+        },
+        Op::ToggleFocusedContainerFloating,
+        Op::ToggleWindowFloating { id: None },
+    ]);
+}
+
+#[test]
+fn preset_width_on_floating_container_does_not_panic() {
+    // The floating-group operation generator found this command dispatching to
+    // the leaf-only floating list for a resident tree (cc 7508638e).
+    check_ops([
+        Op::AddOutput(1),
+        Op::AddWindow {
+            params: TestWindowParams::new(1),
+        },
+        Op::ToggleFocusedContainerFloating,
+        Op::SwitchPresetTiledWidth,
+    ]);
+}
+
+#[test]
+fn unfloat_last_group_after_focusing_parent_deactivates_floating() {
+    // The deep proptest soak shrank this to a floating group whose parent had
+    // focus while its last member returned to tiling (cc e3487ca6).
+    let mut options = Options::default();
+    options.layout.default_orientation = swayward_config::DefaultOrientation::Vertical;
+    check_ops_with_options(
+        options,
+        [
+            Op::AddOutput(1),
+            Op::AddWindow {
+                params: TestWindowParams::new(3),
+            },
+            Op::AddWindow {
+                params: TestWindowParams::new(1),
+            },
+            Op::MoveFocusedToWorkspaceUp(false),
+            Op::UpdateConfig {
+                layout_config: Box::default(),
+            },
+            Op::FocusWindowTop,
+            Op::ToggleWindowFloating { id: None },
+            Op::FocusParent,
+            Op::ToggleWindowFloating { id: Some(3) },
+            Op::FocusChild,
+        ],
+    );
 }
 
 #[test]

@@ -2319,7 +2319,7 @@ impl<W: LayoutElement> Workspace<W> {
             min_size.h,
             max_size.h,
         );
-        tile.floating_window_size = Some(Size::from((window_width, window_height)));
+        tile.floating_window_size = Some(Size::from((window_width.max(1), window_height.max(1))));
 
         let tile_size = Size::from((
             tile.tile_width_for_window_width(f64::from(window_width)),
@@ -2345,6 +2345,11 @@ impl<W: LayoutElement> Workspace<W> {
             return;
         };
 
+        if let Some(root) = self.floating.tree_root_for_window(&id) {
+            self.set_container_floating(root, false);
+            return;
+        }
+
         let render_pos = self
             .tiles_with_render_positions()
             .find_map(|(tile, pos, _)| (*tile.window().id() == id).then_some(pos))
@@ -2369,7 +2374,7 @@ impl<W: LayoutElement> Workspace<W> {
             if let Some(rank) = rank {
                 self.tiling.restore_focus_rank(&id, rank);
             }
-            if target_is_active {
+            if target_is_active || self.floating.is_empty() {
                 self.floating_is_active = FloatingActive::No;
             }
         } else {
@@ -2586,7 +2591,11 @@ impl<W: LayoutElement> Workspace<W> {
     }
 
     pub fn take_sticky_trees(&mut self) -> Vec<RemovedFloatingTree<W>> {
-        self.floating.take_sticky_trees()
+        let removed = self.floating.take_sticky_trees();
+        if self.floating.is_empty() {
+            self.floating_is_active = FloatingActive::No;
+        }
+        removed
     }
 
     pub fn take_sticky_tiles(&mut self) -> Vec<RemovedTile<W>> {
@@ -2685,6 +2694,9 @@ impl<W: LayoutElement> Workspace<W> {
             }
             let subtree = self.floating.remove_tree(root).unwrap();
             let (root, _) = self.attach_tiling_subtree(subtree);
+            if self.floating.is_empty() {
+                self.floating_is_active = FloatingActive::No;
+            }
             return Some(root);
         }
         if !floating {

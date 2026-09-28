@@ -172,6 +172,11 @@ impl<W: LayoutElement> RemovedFloatingTree<W> {
     pub fn windows(&self) -> impl Iterator<Item = &W> {
         self.tree.windows().map(|(_, window)| window)
     }
+
+    pub fn into_subtree(self) -> Option<DetachedSubtree<W>> {
+        let root = self.tree.resident_root()?;
+        self.tree.detach_resident_root(root)
+    }
 }
 
 /// Root geometry for a floating entry.
@@ -784,9 +789,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
     }
 
     pub fn remove_tree(&mut self, root: NodeId) -> Option<DetachedSubtree<W>> {
-        self.remove_tree_for_transfer(root)?
-            .tree
-            .detach_resident_root(root)
+        self.remove_tree_for_transfer(root)?.into_subtree()
     }
 
     pub fn remove_tree_for_transfer(&mut self, root: NodeId) -> Option<RemovedFloatingTree<W>> {
@@ -795,13 +798,26 @@ impl<W: LayoutElement> FloatingLayout<W> {
             .iter()
             .position(|entry| entry.root == root)?;
         let entry = self.tree_entries.remove(index);
-        let window_ids = entry
+        let window_ids: Vec<_> = entry
             .tree
             .windows()
             .map(|(_, window)| window.id().clone())
             .collect();
-        if self.entries.is_empty() && self.tree_entries.is_empty() {
-            self.active_window_id = None;
+        if self
+            .active_window_id
+            .as_ref()
+            .is_some_and(|active| window_ids.contains(active))
+        {
+            self.active_window_id = self
+                .tree_entries
+                .first()
+                .and_then(|entry| entry.tree.active_window())
+                .map(|window| window.id().clone())
+                .or_else(|| {
+                    self.entries
+                        .first()
+                        .map(|entry| entry.tile.window().id().clone())
+                });
         }
         Some(RemovedFloatingTree {
             tree: entry.tree,
@@ -1122,12 +1138,23 @@ impl<W: LayoutElement> FloatingLayout<W> {
     }
 
     pub fn add_tile_above(&mut self, above: &W::Id, mut tile: Tile<W>, activate: bool) {
-        let idx = self.idx_of(above).unwrap();
+        let (idx, above_rect) = if let Some(idx) = self.idx_of(above) {
+            let data = self.entries[idx].data;
+            (idx, Rectangle::new(data.logical_pos, data.size))
+        } else if let Some((idx, entry)) = self
+            .tree_entries
+            .iter()
+            .enumerate()
+            .find(|(_, entry)| entry.tree.node_for_window(above).is_some())
+        {
+            (idx.min(self.entries.len()), entry.rect)
+        } else {
+            return;
+        };
 
-        let above_pos = self.entries[idx].data.logical_pos;
-        let above_size = self.entries[idx].data.size;
         let tile_size = tile.tile_size();
-        let pos = above_pos + (above_size.to_point() - tile_size.to_point()).downscale(2.);
+        let pos =
+            above_rect.loc + (above_rect.size.to_point() - tile_size.to_point()).downscale(2.);
         let pos = self.clamp_within_working_area(pos, tile_size);
         tile.floating_pos = Some(self.logical_to_size_frac(pos));
 
@@ -1216,11 +1243,17 @@ impl<W: LayoutElement> FloatingLayout<W> {
     fn remove_tile_by_idx(&mut self, idx: usize) -> RemovedTile<W> {
         let FloatingEntry { mut tile, data } = self.entries.remove(idx);
 
-        if self.entries.is_empty() {
-            self.active_window_id = None;
-        } else if Some(tile.window().id()) == self.active_window_id.as_ref() {
-            // The active tile was removed, make the topmost tile active.
-            self.active_window_id = Some(self.entries[0].tile.window().id().clone());
+        if Some(tile.window().id()) == self.active_window_id.as_ref() {
+            self.active_window_id = self
+                .entries
+                .first()
+                .map(|entry| entry.tile.window().id().clone())
+                .or_else(|| {
+                    self.tree_entries
+                        .first()
+                        .and_then(|entry| entry.tree.active_window())
+                        .map(|window| window.id().clone())
+                });
         }
 
         // Stop interactive resize.
@@ -1363,7 +1396,9 @@ impl<W: LayoutElement> FloatingLayout<W> {
         let Some(id) = id.or(self.active_window_id.as_ref()).cloned() else {
             return;
         };
-        let idx = self.idx_of(&id).unwrap();
+        let Some(idx) = self.idx_of(&id) else {
+            return;
+        };
 
         let available_size = self.working_area.size.w;
 
@@ -1429,7 +1464,9 @@ impl<W: LayoutElement> FloatingLayout<W> {
         let Some(id) = id.or(self.active_window_id.as_ref()).cloned() else {
             return;
         };
-        let idx = self.idx_of(&id).unwrap();
+        let Some(idx) = self.idx_of(&id) else {
+            return;
+        };
 
         let available_size = self.working_area.size.h;
 
@@ -1510,7 +1547,9 @@ impl<W: LayoutElement> FloatingLayout<W> {
         let Some(id) = id.or(self.active_window_id.as_ref()) else {
             return false;
         };
-        let idx = self.idx_of(id).unwrap();
+        let Some(idx) = self.idx_of(id) else {
+            return false;
+        };
 
         let tile = &mut self.entries[idx].tile;
         tile.floating_preset_width_idx = None;
@@ -1651,7 +1690,9 @@ impl<W: LayoutElement> FloatingLayout<W> {
         let Some(id) = id.or(self.active_window_id.as_ref()) else {
             return false;
         };
-        let idx = self.idx_of(id).unwrap();
+        let Some(idx) = self.idx_of(id) else {
+            return false;
+        };
 
         let tile = &mut self.entries[idx].tile;
         tile.floating_preset_height_idx = None;
@@ -1723,9 +1764,17 @@ impl<W: LayoutElement> FloatingLayout<W> {
         let candidates = || {
             self.entries
                 .iter()
-                .map(|entry| (&entry.tile, &entry.data))
-                .filter(|(tile, _)| tile.window().id() != active_id)
-                .map(|(tile, data)| (tile, distance(center, data.center())))
+                .map(|entry| (entry.tile.window().id(), entry.data.center()))
+                .chain(self.tree_entries.iter().filter_map(|entry| {
+                    entry.tree.active_window().map(|window| {
+                        (
+                            window.id(),
+                            entry.rect.loc + entry.rect.size.to_point().downscale(2.),
+                        )
+                    })
+                }))
+                .filter(|(id, _)| *id != active_id)
+                .map(|(id, other)| (id, distance(center, other)))
         };
         let result = candidates()
             .filter(|(_, dist)| *dist > 0.)
@@ -1735,8 +1784,8 @@ impl<W: LayoutElement> FloatingLayout<W> {
                     .filter(|(_, dist)| *dist <= 0.)
                     .min_by(|(_, dist_a), (_, dist_b)| f64::total_cmp(dist_a, dist_b))
             });
-        if let Some((tile, _)) = result {
-            let id = tile.window().id().clone();
+        if let Some((id, _)) = result {
+            let id = id.clone();
             self.activate_window(&id);
             true
         } else {
@@ -1902,7 +1951,26 @@ impl<W: LayoutElement> FloatingLayout<W> {
         let Some(id) = id.or(self.active_window_id.as_ref()).cloned() else {
             return;
         };
-        let idx = self.idx_of(&id).unwrap();
+        if let Some(entry) = self
+            .tree_entries
+            .iter_mut()
+            .find(|entry| entry.tree.node_for_window(&id).is_some())
+        {
+            entry.rect.loc = center_preferring_top_left_in_area(self.working_area, entry.rect.size);
+            entry.pos =
+                Data::logical_to_size_frac_in_working_area(self.working_area, entry.rect.loc);
+            entry.tree.update_config(
+                self.view_size,
+                entry.rect,
+                false,
+                self.scale,
+                self.options.clone(),
+            );
+            return;
+        }
+        let Some(idx) = self.idx_of(&id) else {
+            return;
+        };
 
         let new_pos =
             center_preferring_top_left_in_area(self.working_area, self.entries[idx].data.size);
@@ -2046,12 +2114,14 @@ impl<W: LayoutElement> FloatingLayout<W> {
             return false;
         }
 
-        let tile = self
+        let Some(tile) = self
             .entries
             .iter_mut()
             .map(|entry| &mut entry.tile)
             .find(|tile| tile.window().id() == &window)
-            .unwrap();
+        else {
+            return false;
+        };
 
         let original_window_size = tile.window_size();
 
