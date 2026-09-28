@@ -863,6 +863,7 @@ impl<W: LayoutElement> TilingTree<W> {
             else {
                 return None;
             };
+            self.empty_representation_layout = Some(Layout::SplitH);
             let children = children
                 .into_iter()
                 .map(|child| self.take_detached_node(child))

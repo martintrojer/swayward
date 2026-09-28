@@ -1747,7 +1747,9 @@ fn resident_subtree_can_be_detached_with_its_ids_and_focus_history() {
 
 #[test]
 fn detaching_the_full_root_resets_the_empty_workspace_layout() {
-    let mut source = tree((1200., 800.), 0.);
+    let mut source = tree((800., 1200.), 0.);
+    source.reset_empty_layout();
+    source.set_layout(source.root, Layout::SplitH);
     let first = source.add_tile(tile(1, source.view_size()), InsertTarget::Focused);
     source.split(first, Layout::SplitV);
     source.add_tile(tile(2, source.view_size()), InsertTarget::Focused);
