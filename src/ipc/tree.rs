@@ -1095,26 +1095,69 @@ fn scratch_output(
     rect: Rect,
     marks: &std::collections::HashMap<MappedId, Vec<String>>,
 ) -> Node {
-    let floating_nodes = layout
-        .scratchpad_windows()
-        .map(|mapped| {
-            let mut node = describe_window(WindowNodeContext {
-                mapped,
-                rect: Rect::default(),
-                node_type: NodeType::FloatingCon,
-                floating: "user_on",
-                parent: None,
+    let mut floating_nodes = layout
+        .scratchpad_trees()
+        .filter_map(|(tree, sticky)| {
+            let mut node = describe_tiling(
+                tree,
+                &|window| {
+                    layout
+                        .windows()
+                        .find(|(_, mapped)| mapped.window == *window)
+                        .map(|(_, mapped)| mapped)
+                },
+                Rect::default(),
                 marks,
-                in_scratchpad: true,
-                visible: false,
-            });
-            if let Some(border) = layout.window_border(&mapped.window) {
-                node.border = ipc_border(border.0);
-                node.current_border_width = i32::from(border.1);
-            }
-            node
+                &Default::default(),
+                crate::layout::workspace::WorkspaceId::specific(0),
+            )?;
+            node.node_type = NodeType::FloatingCon;
+            node.floating = Some("user_on".into());
+            node.scratchpad_state = Some("fresh".into());
+            node.sticky = sticky;
+            set_windows_visible(&mut node, false);
+            Some(node)
         })
         .collect::<Vec<_>>();
+    fn contains_id(node: &Node, id: i64) -> bool {
+        node.id == id
+            || node
+                .nodes
+                .iter()
+                .chain(&node.floating_nodes)
+                .any(|child| contains_id(child, id))
+    }
+    let tree_window_ids = layout
+        .scratchpad_windows()
+        .filter(|mapped| {
+            floating_nodes
+                .iter()
+                .any(|node| contains_id(node, window_id(mapped.id())))
+        })
+        .map(|mapped| mapped.id())
+        .collect::<Vec<_>>();
+    floating_nodes.extend(
+        layout
+            .scratchpad_windows()
+            .filter(|mapped| !tree_window_ids.contains(&mapped.id()))
+            .map(|mapped| {
+                let mut node = describe_window(WindowNodeContext {
+                    mapped,
+                    rect: Rect::default(),
+                    node_type: NodeType::FloatingCon,
+                    floating: "user_on",
+                    parent: None,
+                    marks,
+                    in_scratchpad: true,
+                    visible: false,
+                });
+                if let Some(border) = layout.window_border(&mapped.window) {
+                    node.border = ipc_border(border.0);
+                    node.current_border_width = i32::from(border.1);
+                }
+                node
+            }),
+    );
     let focus = floating_nodes.iter().rev().map(|node| node.id).collect();
     let mut workspace = common_node(CommonNodeContext {
         id: SCRATCH_WORKSPACE_ID,

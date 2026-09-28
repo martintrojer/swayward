@@ -153,6 +153,14 @@ pub struct RemovedFloatingTree<W: LayoutElement> {
 }
 
 impl<W: LayoutElement> RemovedFloatingTree<W> {
+    pub fn ipc_tree(&self) -> super::tiling_tree::IpcNode<W::Id> {
+        self.tree.ipc_tree()
+    }
+
+    pub fn is_sticky(&self) -> bool {
+        self.sticky
+    }
+
     pub fn contains_window(&self, window: &W::Id) -> bool {
         self.window_ids.contains(window)
     }

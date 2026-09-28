@@ -4320,6 +4320,14 @@ impl<W: LayoutElement> Layout<W> {
             )
     }
 
+    pub fn scratchpad_trees(
+        &self,
+    ) -> impl Iterator<Item = (tiling_tree::IpcNode<W::Id>, bool)> + '_ {
+        self.scratchpad_trees
+            .iter()
+            .map(|removed| (removed.ipc_tree(), removed.is_sticky()))
+    }
+
     pub fn scratchpad_is_empty(&self) -> bool {
         self.scratchpad_windows.is_empty()
     }
