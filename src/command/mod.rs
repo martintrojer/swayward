@@ -334,6 +334,11 @@ fn execute_one(
             None
         }
         Command::MoveScratchpad => {
+            let floating_root = state
+                .swayward
+                .layout
+                .active_workspace()
+                .and_then(crate::layout::workspace::Workspace::focused_floating_tree_root);
             let target = focused_target(state);
             if target.is_none() {
                 return swayward_ipc::command::parse_error(
@@ -349,6 +354,30 @@ fn execute_one(
             };
             state.ipc_order_scratchpad_events(crate::ipc::server::ScratchpadEventOrder::Hide);
             state.swayward.layout.move_to_scratchpad(window.as_ref());
+            if let Some(root) = floating_root {
+                state.ipc_refresh_layout();
+                if let Some(server) = &state.swayward.ipc_server {
+                    let tree = serde_json::to_value(crate::ipc::tree::describe_tree(
+                        &state.swayward.layout,
+                        &state.swayward.global_space,
+                        &state.swayward.marks_by_window,
+                        &state.swayward.marks_by_container,
+                    ))
+                    .unwrap_or_default();
+                    if let Some(mut container) = crate::ipc::server::find_node_by_id(
+                        &tree,
+                        crate::ipc::tree::container_id(root),
+                    )
+                    .cloned()
+                    {
+                        container.as_object_mut().unwrap().remove("visible");
+                        server.send_event(swayward_ipc::legacy::Event::SwayWindowChanged {
+                            change: "move".into(),
+                            container,
+                        });
+                    }
+                }
+            }
             state.swayward.queue_redraw_all();
             None
         }

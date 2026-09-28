@@ -1579,6 +1579,12 @@ why = "Sway fullscreen targets the focused container, including a split in the w
 
 [[edit]]
 migrated = false
+paths = ["src/command/mod.rs", "src/command/scratchpad.rs", "src/tests/ipc/events.rs"]
+what = "emit recursive root move events when a resident floating group enters or leaves the scratchpad, preceded by the focused leaf event when shown."
+why = "Sway moves the floating container root through the scratchpad and emits events for the actual affected nodes (`sway/tree/root.c:150-154`; `sway/sway/ipc-server.c`). Leaf iteration does not expose swayward's detached or resident floating roots, so the generic event diff emitted nothing."
+
+[[edit]]
+migrated = false
 paths = ["src/layout/mod.rs", "src/layout/workspace.rs", "src/ui/screenshot_ui.rs"]
 what = "store a workspace's floating windows in swayward's owned `FloatingLayout` root model instead of niri's leaf-only `FloatingSpace`, and route the shared directional-move constant through the owned module."
 why = "Sway workspaces store ordered floating container roots (`sway/tree/workspace.c:961-973`). The owned boundary preserves the current one-window behavior while allowing a later migration to resident nested trees without branching through inherited niri floating code."

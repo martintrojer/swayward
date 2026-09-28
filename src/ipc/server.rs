@@ -1396,7 +1396,11 @@ impl State {
                                 *container = hidden.clone();
                             }
                             container["focused"] = false.into();
-                            container["visible"] = false.into();
+                            if container["type"] == "floating_con" {
+                                container.as_object_mut().unwrap().remove("visible");
+                            } else {
+                                container["visible"] = false.into();
+                            }
                         }
                         _ => {}
                     }

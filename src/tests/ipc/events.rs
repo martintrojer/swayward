@@ -796,6 +796,57 @@ fn fullscreening_a_floating_group_emits_one_recursive_fullscreen_event() {
 }
 
 #[test]
+fn moving_a_floating_group_to_scratchpad_emits_one_recursive_move_event() {
+    let (mut fixture, socket) = ipc_fixture();
+    fixture.add_output(1, (1920, 1080));
+    let client = fixture.add_client();
+    map_test_window(&mut fixture, client, "group-first");
+    assert!(crate::command::execute(fixture.niri_state(), "splitv")[0].success);
+    map_test_window(&mut fixture, client, "group-second");
+    assert!(crate::command::execute(fixture.niri_state(), "focus parent")[0].success);
+    assert!(crate::command::execute(fixture.niri_state(), "floating enable")[0].success);
+    fixture.niri_state().ipc_refresh_layout();
+    let mut subscriber = subscribe_to_window_events(&mut fixture, &socket);
+
+    assert!(crate::command::execute(fixture.niri_state(), "move scratchpad")[0].success);
+    fixture.niri_state().ipc_refresh_layout();
+
+    let ((event_type, payload), remainder) =
+        read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, Vec::new());
+    assert_eq!(event_type, (1 << 31) | 3);
+    let event = serde_json::from_str::<Value>(&payload).unwrap();
+    assert_eq!(event["change"], "move");
+    assert_eq!(event["container"]["type"], "floating_con");
+    assert_eq!(event["container"]["scratchpad_state"], "fresh");
+    assert_eq!(event["container"]["nodes"].as_array().unwrap().len(), 2);
+    assert!(remainder.is_empty(), "unexpected leaf events were buffered");
+
+    assert!(crate::command::execute(fixture.niri_state(), "scratchpad show")[0].success);
+    fixture.niri_state().ipc_refresh_layout();
+    let ((event_type, payload), remainder) =
+        read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, Vec::new());
+    assert_eq!(event_type, (1 << 31) | 3);
+    let event = serde_json::from_str::<Value>(&payload).unwrap();
+    assert_eq!(event["change"], "focus");
+    assert_eq!(event["container"]["type"], "con");
+    assert!(event["container"]["focused"].as_bool().unwrap());
+    let ((event_type, payload), remainder) =
+        read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder);
+    assert_eq!(event_type, (1 << 31) | 3);
+    let event = serde_json::from_str::<Value>(&payload).unwrap();
+    assert_eq!(event["change"], "move");
+    assert_eq!(event["container"]["type"], "floating_con");
+    assert_eq!(event["container"]["scratchpad_state"], "fresh");
+    assert_eq!(event["container"]["nodes"].as_array().unwrap().len(), 2);
+    assert!(event["container"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|node| node["focused"] == true));
+    assert!(remainder.is_empty(), "unexpected leaf events were buffered");
+}
+
+#[test]
 fn captured_window_map_sequences_pin_focus_order_and_multiplicity() {
     for (fixture, expected) in [
         (

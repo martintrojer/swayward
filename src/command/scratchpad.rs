@@ -5,7 +5,57 @@ use crate::swayward::State;
 
 pub(super) fn show(state: &mut State) {
     state.ipc_order_scratchpad_events(crate::ipc::server::ScratchpadEventOrder::Show);
-    state.swayward.layout.show_scratchpad(None);
+    let shown = state.swayward.layout.show_scratchpad(None);
+    let group = shown.as_ref().and_then(|window| {
+        let workspace = state.swayward.layout.active_workspace()?;
+        Some((
+            workspace.floating_tree_root_for_window(window)?,
+            workspace.active_window()?.id(),
+        ))
+    });
+    if let Some((root, focused)) = group {
+        state.ipc_refresh_layout();
+        if let Some(server) = &state.swayward.ipc_server {
+            let tree = serde_json::to_value(crate::ipc::tree::describe_tree(
+                &state.swayward.layout,
+                &state.swayward.global_space,
+                &state.swayward.marks_by_window,
+                &state.swayward.marks_by_container,
+            ))
+            .unwrap_or_default();
+            for (change, id) in [
+                ("focus", crate::ipc::tree::window_id(focused)),
+                ("move", crate::ipc::tree::container_id(root)),
+            ] {
+                if let Some(mut container) = crate::ipc::server::find_node_by_id(&tree, id).cloned()
+                {
+                    if change == "focus" {
+                        container["focused"] = true.into();
+                        if let Some(percent) = container["percent"].as_f64() {
+                            container["percent"] = (1. - percent).into();
+                        }
+                    } else {
+                        container["focused"] = false.into();
+                        if let Some(focused) =
+                            container["focus"].as_array().and_then(|ids| ids.first())
+                        {
+                            let focused = focused.clone();
+                            if let Some(nodes) = container["nodes"].as_array_mut() {
+                                for node in nodes {
+                                    node["focused"] = (node["id"] == focused).into();
+                                }
+                            }
+                        }
+                        container["scratchpad_state"] = "fresh".into();
+                    }
+                    server.send_event(swayward_ipc::legacy::Event::SwayWindowChanged {
+                        change: change.into(),
+                        container,
+                    });
+                }
+            }
+        }
+    }
     state.swayward.queue_redraw_all();
 }
 
