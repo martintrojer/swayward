@@ -459,12 +459,16 @@ fn execute_one(
             let CommandTarget::Window(target) = target else {
                 return failure("Only views can be urgent");
             };
+            // `target` came from `layout.focus()` through `focused_target`, and
+            // no layout mutation occurs before this lookup. `Layout::windows`
+            // includes every focus source, including interactive moves and the
+            // scratchpad, so the focused ID must still be present here.
             let urgent = state
                 .swayward
                 .layout
                 .windows()
                 .find_map(|(_, window)| (window.id() == target).then(|| window.is_urgent()))
-                .expect("focused window must remain in the layout");
+                .expect("the focused window must be yielded by the same layout");
             let urgent = parse_boolean(&value, urgent);
             state.swayward.set_window_urgent(target, urgent);
             state.swayward.queue_redraw_all();
