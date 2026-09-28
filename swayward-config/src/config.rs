@@ -1,0 +1,68 @@
+use crate::*;
+
+#[derive(Debug, PartialEq)]
+pub struct Config {
+    pub input: Input,
+    pub outputs: Outputs,
+    pub spawn_at_startup: Vec<SpawnAtStartup>,
+    pub spawn_sh_at_startup: Vec<SpawnShAtStartup>,
+    pub layout: Layout,
+    pub prefer_no_csd: bool,
+    pub popup_during_fullscreen: PopupDuringFullscreen,
+    pub focus_on_window_activation: FocusOnWindowActivation,
+    pub urgent_timeout_ms: u32,
+    pub cursor: Cursor,
+    pub screenshot_path: ScreenshotPath,
+    pub clipboard: Clipboard,
+    pub hotkey_overlay: HotkeyOverlay,
+    pub config_notification: ConfigNotification,
+    pub animations: Animations,
+    pub blur: Blur,
+    pub gestures: Gestures,
+    pub overview: Overview,
+    pub environment: Environment,
+    pub xwayland_satellite: XwaylandSatellite,
+    pub window_rules: Vec<WindowRule>,
+    pub layer_rules: Vec<LayerRule>,
+    pub binds: Binds,
+    pub binding_modes: Vec<BindingMode>,
+    pub switch_events: SwitchBinds,
+    pub debug: Debug,
+    pub workspaces: Vec<Workspace>,
+    pub recent_windows: RecentWindows,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            input: Default::default(),
+            outputs: Default::default(),
+            spawn_at_startup: Default::default(),
+            spawn_sh_at_startup: Default::default(),
+            layout: Default::default(),
+            prefer_no_csd: Default::default(),
+            popup_during_fullscreen: Default::default(),
+            focus_on_window_activation: Default::default(),
+            urgent_timeout_ms: 500,
+            cursor: Default::default(),
+            screenshot_path: Default::default(),
+            clipboard: Default::default(),
+            hotkey_overlay: Default::default(),
+            config_notification: Default::default(),
+            animations: Default::default(),
+            blur: Default::default(),
+            gestures: Default::default(),
+            overview: Default::default(),
+            environment: Default::default(),
+            xwayland_satellite: Default::default(),
+            window_rules: Default::default(),
+            layer_rules: Default::default(),
+            binds: Default::default(),
+            binding_modes: Default::default(),
+            switch_events: Default::default(),
+            debug: Default::default(),
+            workspaces: Default::default(),
+            recent_windows: Default::default(),
+        }
+    }
+}
