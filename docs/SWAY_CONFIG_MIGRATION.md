@@ -106,6 +106,28 @@ Check these areas after bindings:
   directives; the translator retains each line as a manual-attention comment
   with that distinction and source citation.
 
+## Real-world corpus check
+
+A September 2026 audit translated 30 public personal and distribution sway
+configs, including Waybar setups, old i3-derived configs, multi-output configs,
+large `for_window` rule sets, modular includes, and SwayFX effects. After fixing
+two KDL scalar-format bugs found by the audit, all 30 translations validated,
+started in a capped nested swayward session, reloaded successfully through
+`swaymsg`, and remained responsive. Every one of the 787 unsupported active
+source directives appeared in both standard error and the generated KDL; none
+was silently dropped.
+
+The most frequent manual-attention categories were unsupported top-level or
+block syntax (308), binding modifiers that swayward cannot represent (156),
+`for_window` commands without equivalent rule properties (63), `exec_always`
+reload semantics (59), X11-only `class` criteria (55), and device-specific
+input selectors (37). Bars accounted for 23 more items. These are compatibility
+boundaries, not parse failures: preserve or replace them by hand rather than
+removing their comments. The pinned 12-entry reproducible audit remains in
+`docs/internal/sway-to-kdl-corpus-audit.md`;
+the larger one-time sample was kept outside the repository because many source
+repositories declare no reusable license.
+
 Read [Differences from sway](https://github.com/martintrojer/swayward/wiki/Differences-from-Sway)
 before switching sessions.
 
