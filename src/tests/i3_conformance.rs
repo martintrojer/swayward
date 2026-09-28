@@ -1,6 +1,7 @@
 //! Runner for unmodified layout tests from i3's Perl testsuite.
 
 use std::any::Any;
+use std::collections::HashSet;
 use std::io::{BufRead as _, BufReader, Write as _};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
@@ -553,17 +554,6 @@ fn create_window(fixture: &mut Fixture, client: super::client::ClientId, request
     let fullscreen_output = request["fullscreen_output"]
         .as_str()
         .map(|name| fixture.client(client).output(name));
-    if request["initial_floating"].as_bool() == Some(true) {
-        fixture
-            .swayward()
-            .config
-            .borrow_mut()
-            .window_rules
-            .push(swayward_config::WindowRule {
-                open_floating: Some(true),
-                ..Default::default()
-            });
-    }
     let window = fixture.client(client).create_window();
     if let Some(app_id) = request["app_id"].as_str() {
         window.xdg_toplevel.set_app_id(app_id.to_owned());
@@ -585,7 +575,19 @@ fn map_window(
     client: super::client::ClientId,
     surface_id: u32,
     requested_size: Option<(u16, u16)>,
+    initial_floating: bool,
 ) -> i64 {
+    if initial_floating {
+        fixture
+            .swayward()
+            .config
+            .borrow_mut()
+            .window_rules
+            .push(swayward_config::WindowRule {
+                open_floating: Some(true),
+                ..Default::default()
+            });
+    }
     let surface = fixture
         .client(client)
         .state
@@ -606,6 +608,9 @@ fn map_window(
     fixture.double_roundtrip(client);
     if requested_size.is_some() {
         settle_configures(fixture, client);
+    }
+    if initial_floating {
+        fixture.swayward().config.borrow_mut().window_rules.pop();
     }
     fixture
         .swayward()
@@ -939,6 +944,7 @@ fn handle_control(
     client: super::client::ClientId,
     loaded_config_source: &mut Option<String>,
     scratch: &mut Vec<PathBuf>,
+    initially_floating: &mut HashSet<u32>,
     stream: UnixStream,
 ) {
     let mut request = String::new();
@@ -1010,19 +1016,37 @@ fn handle_control(
             Ok(()) => json!({ "success": true }),
             Err(error) => json!({ "success": false, "error": error }),
         },
-        "create" => json!({ "handle": create_window(fixture, client, &request) }),
+        "create" => {
+            let handle = create_window(fixture, client, &request);
+            if request["initial_floating"].as_bool() == Some(true) {
+                initially_floating.insert(handle);
+            }
+            json!({ "handle": handle })
+        }
         "open" => {
             let handle = create_window(fixture, client, &request);
-            json!({ "id": map_window(fixture, client, handle, requested_size(&request)) })
+            json!({
+                "id": map_window(
+                    fixture,
+                    client,
+                    handle,
+                    requested_size(&request),
+                    request["initial_floating"].as_bool() == Some(true),
+                )
+            })
         }
-        "map" => json!({
-            "id": map_window(
-                fixture,
-                client,
-                request["handle"].as_u64().unwrap() as u32,
-                requested_size(&request),
-            )
-        }),
+        "map" => {
+            let handle = request["handle"].as_u64().unwrap() as u32;
+            json!({
+                "id": map_window(
+                    fixture,
+                    client,
+                    handle,
+                    requested_size(&request),
+                    initially_floating.remove(&handle),
+                )
+            })
+        }
         "fullscreen" => {
             let surface_id = request["handle"].as_u64().unwrap() as u32;
             let surface = fixture
@@ -1342,6 +1366,7 @@ fn run_i3_test(test: &str) {
     // genuinely hung test still fails, just later.
     let deadline = started + Duration::from_secs(180);
     let mut loaded_config_source = None;
+    let mut initially_floating = HashSet::new();
     loop {
         fixture.dispatch();
         match control.accept() {
@@ -1350,6 +1375,7 @@ fn run_i3_test(test: &str) {
                 client,
                 &mut loaded_config_source,
                 &mut scratch.files,
+                &mut initially_floating,
                 stream,
             ),
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
@@ -1998,6 +2024,21 @@ fn documented_green_ceiling_matches_the_manifest() {
 }
 
 #[test]
+fn initial_floating_applies_only_to_the_requested_window() {
+    let mut fixture = Fixture::new();
+    fixture.add_output(1, (1280, 800));
+    let client = fixture.add_client();
+
+    let floating = create_window(&mut fixture, client, &json!({ "initial_floating": true }));
+    map_window(&mut fixture, client, floating, None, true);
+    assert!(fixture.swayward().layout.focus().unwrap().is_floating());
+
+    let tiled = create_window(&mut fixture, client, &json!({}));
+    map_window(&mut fixture, client, tiled, None, false);
+    assert!(!fixture.swayward().layout.focus().unwrap().is_floating());
+}
+
+#[test]
 fn settling_configures_does_not_ack_an_already_acked_configure() {
     let mut config =
         prepare_test_config("font monospace\nno_focus [app_id=\"^notme$\"]\n").unwrap();
@@ -2006,9 +2047,9 @@ fn settling_configures_does_not_ack_an_already_acked_configure() {
     fixture.add_output(1, (1280, 800));
     let client = fixture.add_client();
     let first = create_window(&mut fixture, client, &json!({}));
-    map_window(&mut fixture, client, first, None);
+    map_window(&mut fixture, client, first, None, false);
     let second = create_window(&mut fixture, client, &json!({ "app_id": "notme" }));
-    map_window(&mut fixture, client, second, None);
+    map_window(&mut fixture, client, second, None, false);
     settle_configures(&mut fixture, client);
 }
 
