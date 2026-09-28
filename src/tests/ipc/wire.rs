@@ -1,4 +1,67 @@
 #[test]
+fn run_command_wire_covers_representative_command_families() {
+    let (mut fixture, socket) = ipc_fixture();
+    fixture.add_output(1, (1920, 1080));
+    let client = fixture.add_client();
+    for app_id in ["first", "second"] {
+        let window = fixture.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        fixture.roundtrip(client);
+        let window = fixture.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        fixture.double_roundtrip(client);
+    }
+
+    let mut stream = UnixStream::connect(socket).unwrap();
+    for command in [
+        "workspace wire-smoke",
+        "workspace back_and_forth; split vertical",
+        "layout tabbed",
+        r#"[app_id="first"] focus"#,
+        "move right",
+        "floating enable",
+        "floating disable",
+        "fullscreen enable",
+        "fullscreen disable",
+        "mark wire-smoke",
+    ] {
+        let outcomes = query_ipc_with_payload(
+            &mut fixture,
+            &mut stream,
+            MessageType::RunCommand,
+            command,
+        );
+        assert!(
+            outcomes
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|outcome| outcome["success"] == true),
+            "command failed over IPC: {command}: {outcomes}"
+        );
+    }
+
+    let tree = query_ipc(&mut fixture, &mut stream, MessageType::GetTree);
+    assert!(find_json_node_with_app_id(&tree, "first").is_some());
+    assert_eq!(
+        find_json_node_with_mark(&tree, "wire-smoke").unwrap()["app_id"],
+        "first"
+    );
+    assert_eq!(
+        fixture
+            .swayward()
+            .layout
+            .active_workspace()
+            .unwrap()
+            .sway_name(),
+        Some("1".into())
+    );
+}
+
+#[test]
 fn ipc_refresh_without_a_seat_keyboard_does_not_panic() {
     let (mut fixture, _) = ipc_fixture();
     fixture.swayward().seat.remove_keyboard();
