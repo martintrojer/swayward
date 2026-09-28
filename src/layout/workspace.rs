@@ -1383,6 +1383,9 @@ impl<W: LayoutElement> Workspace<W> {
 
     pub fn focus_parent(&mut self) -> bool {
         if self.floating_is_active.get() {
+            if self.floating.focus_parent() {
+                return true;
+            }
             if self.tiling.is_empty() {
                 return false;
             }
@@ -1409,11 +1412,15 @@ impl<W: LayoutElement> Workspace<W> {
     }
 
     pub fn focus_child(&mut self) -> bool {
-        if self.is_workspace_focused() && self.floating_is_active == FloatingActive::NoButRaised {
+        if self.floating_is_active.get() {
+            self.floating.focus_child()
+        } else if self.is_workspace_focused()
+            && self.floating_is_active == FloatingActive::NoButRaised
+        {
             self.floating_is_active = FloatingActive::Yes;
             true
         } else {
-            !self.floating_is_active.get() && self.tiling.focus_child()
+            self.tiling.focus_child()
         }
     }
 
@@ -2616,8 +2623,22 @@ impl<W: LayoutElement> Workspace<W> {
         self.tiling.ipc_decoration_rect(window)
     }
 
-    pub fn float_tiling_subtree(&mut self, node: NodeId) -> Option<NodeId> {
-        let (subtree, old_parent) = self.detach_tiling_subtree(node)?;
+    pub fn set_container_floating(&mut self, node: NodeId, floating: bool) -> bool {
+        if let Some(root) = self.floating.tree_root_for_node(node) {
+            if floating {
+                return true;
+            }
+            let subtree = self.floating.remove_tree(root).unwrap();
+            let (_, remapped) = self.attach_tiling_subtree(subtree);
+            debug_assert!(remapped.is_empty());
+            return true;
+        }
+        if !floating {
+            return self.tiling.contains(node);
+        }
+        let Some((subtree, old_parent)) = self.detach_tiling_subtree(node) else {
+            return false;
+        };
         self.finish_tiling_subtree_detach(old_parent);
         let size = Size::from((
             self.working_area.size.w * 0.5,
@@ -2628,10 +2649,10 @@ impl<W: LayoutElement> Workspace<W> {
                 + (self.working_area.size.to_point() - size.to_point()).downscale(2.),
             size,
         );
-        let (root, remapped) = self.floating.add_tree(subtree, rect);
+        let (_, remapped) = self.floating.add_tree(subtree, rect);
         debug_assert!(remapped.is_empty());
         self.floating_is_active = FloatingActive::Yes;
-        Some(root)
+        true
     }
 
     pub fn tiles_with_ipc_layouts(&self) -> impl Iterator<Item = (&Tile<W>, WindowLayout)> {

@@ -272,40 +272,21 @@ fn floating_group_command_serializes_one_recursive_root() {
 }
 
 #[test]
-fn criteria_targeted_floating_group_commands_fail_without_changing_state() {
+fn criteria_targeted_floating_group_commands_operate_on_the_root() {
+    let mut fixture = nested_split_fixture();
+    assert!(crate::command::execute(fixture.niri_state(), "mark floating-group")[0].success);
+    assert!(crate::command::execute(fixture.niri_state(), "focus child")[0].success);
+
     for command in [
-        "floating enable",
-        "floating toggle",
-        "move scratchpad",
-        "sticky enable",
+        r#"[con_mark="floating-group"] floating enable"#,
+        r#"[con_mark="floating-group"] sticky enable"#,
+        r#"[con_mark="floating-group"] move scratchpad"#,
     ] {
-        let mut fixture = nested_split_fixture();
-        assert!(crate::command::execute(fixture.niri_state(), "mark floating-group")[0].success);
-        assert!(crate::command::execute(fixture.niri_state(), "focus child")[0].success);
-        let before_tree = command_tree(&mut fixture);
-        let before_scratchpad = fixture.swayward().layout.scratchpad_windows().count();
-        let command = format!(r#"[con_mark="floating-group"] {command}"#);
-
-        let outcomes = crate::command::execute(fixture.niri_state(), &command);
-
+        let outcomes = crate::command::execute(fixture.niri_state(), command);
         assert_eq!(outcomes.len(), 1, "{command}: {outcomes:?}");
-        assert!(!outcomes[0].success, "{command}: {outcomes:?}");
-        assert_eq!(
-            outcomes[0].error.as_deref(),
-            Some("floating container groups are not supported"),
-            "{command}"
-        );
-        assert_eq!(
-            command_tree(&mut fixture),
-            before_tree,
-            "{command} changed tree geometry, floating state, sticky state or focus"
-        );
-        assert_eq!(
-            fixture.swayward().layout.scratchpad_windows().count(),
-            before_scratchpad,
-            "{command} changed scratchpad membership"
-        );
+        assert!(outcomes[0].success, "{command}: {outcomes:?}");
     }
+    assert_eq!(fixture.swayward().layout.scratchpad_windows().count(), 2);
 }
 
 #[test]

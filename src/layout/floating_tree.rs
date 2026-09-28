@@ -847,6 +847,36 @@ impl<W: LayoutElement> FloatingLayout<W> {
         entry.tree.focus().filter(|node| entry.tree.is_split(*node))
     }
 
+    pub fn window_in_node(&self, node: NodeId) -> Option<&W::Id> {
+        self.tree_entries.iter().find_map(|entry| {
+            entry
+                .tree
+                .windows()
+                .find(|(leaf, _)| entry.tree.contains_node(node, *leaf))
+                .map(|(_, window)| window.id())
+        })
+    }
+
+    pub fn focus_parent(&mut self) -> bool {
+        let Some(active) = self.active_window_id.as_ref() else {
+            return false;
+        };
+        self.tree_entries
+            .iter_mut()
+            .find(|entry| entry.tree.node_for_window(active).is_some())
+            .is_some_and(|entry| entry.tree.focus_parent())
+    }
+
+    pub fn focus_child(&mut self) -> bool {
+        let Some(active) = self.active_window_id.as_ref() else {
+            return false;
+        };
+        self.tree_entries
+            .iter_mut()
+            .find(|entry| entry.tree.node_for_window(active).is_some())
+            .is_some_and(|entry| entry.tree.focus_child())
+    }
+
     pub fn tree_window_ids(&self, root: NodeId) -> Option<Vec<W::Id>> {
         self.tree(root).map(|tree| {
             tree.windows()
@@ -1656,6 +1686,23 @@ impl<W: LayoutElement> FloatingLayout<W> {
         let Some(active_id) = &self.active_window_id else {
             return;
         };
+        if let Some(entry) = self
+            .tree_entries
+            .iter_mut()
+            .find(|entry| entry.tree.node_for_window(active_id).is_some())
+        {
+            entry.rect.loc += amount;
+            entry.pos =
+                Data::logical_to_size_frac_in_working_area(self.working_area, entry.rect.loc);
+            entry.tree.update_config(
+                self.view_size,
+                entry.rect,
+                false,
+                self.scale,
+                self.options.clone(),
+            );
+            return;
+        }
         let idx = self.idx_of(active_id).unwrap();
 
         let new_pos = self.entries[idx].data.logical_pos + amount;
@@ -1688,6 +1735,27 @@ impl<W: LayoutElement> FloatingLayout<W> {
         let Some(id) = id.or(self.active_window_id.as_ref()) else {
             return;
         };
+        if let Some(entry) = self
+            .tree_entries
+            .iter_mut()
+            .find(|entry| entry.tree.node_for_window(id).is_some())
+        {
+            let mut pos = entry.rect.loc;
+            pos.x =
+                apply_position_change(pos.x, x, self.working_area.size.w, self.working_area.loc.x);
+            pos.y =
+                apply_position_change(pos.y, y, self.working_area.size.h, self.working_area.loc.y);
+            entry.rect.loc = pos;
+            entry.pos = Data::logical_to_size_frac_in_working_area(self.working_area, pos);
+            entry.tree.update_config(
+                self.view_size,
+                entry.rect,
+                false,
+                self.scale,
+                self.options.clone(),
+            );
+            return;
+        }
         let idx = self.idx_of(id).unwrap();
 
         let mut pos = self.entries[idx].data.logical_pos;

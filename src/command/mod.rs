@@ -333,10 +333,16 @@ fn execute_one(
                     "Can't move an empty workspace to the scratchpad",
                 );
             }
-            if matches!(target, Some(CommandTarget::Container(_, _))) {
-                return failure("floating container groups are not supported");
-            }
-            scratchpad::move_focused(state);
+            let window = match target {
+                Some(CommandTarget::Container(workspace, node)) => {
+                    state.swayward.layout.window_in_node(workspace, node)
+                }
+                Some(CommandTarget::Window(_)) => None,
+                None => unreachable!(),
+            };
+            state.ipc_order_scratchpad_events(crate::ipc::server::ScratchpadEventOrder::Hide);
+            state.swayward.layout.move_to_scratchpad(window.as_ref());
+            state.swayward.queue_redraw_all();
             None
         }
         Command::ScratchpadShow => {
@@ -393,15 +399,21 @@ fn execute_one(
             None
         }
         Command::Sticky(value) => {
-            if matches!(focused_target(state), Some(CommandTarget::Container(_, _))) {
-                return failure("floating container groups are not supported");
-            }
-            let Some(window) = state
-                .swayward
-                .layout
-                .focus()
-                .map(|mapped| mapped.window.clone())
-            else {
+            let target = focused_target(state);
+            let container_window = match target {
+                Some(CommandTarget::Container(workspace, node)) => {
+                    state.swayward.layout.window_in_node(workspace, node)
+                }
+                _ => None,
+            };
+            let window = container_window.or_else(|| {
+                state
+                    .swayward
+                    .layout
+                    .focus()
+                    .map(|mapped| mapped.window.clone())
+            });
+            let Some(window) = window else {
                 return command_failure("No current container");
             };
             if state.swayward.layout.is_scratchpad_hidden(&window) {
@@ -424,8 +436,19 @@ fn execute_one(
         }
         Command::Floating(mode) => {
             if let Some(CommandTarget::Container(workspace, node)) = focused_target(state) {
-                if mode != Toggle::Disable
-                    && !state.swayward.layout.float_tiling_subtree(workspace, node)
+                let floating = match mode {
+                    Toggle::Enable => true,
+                    Toggle::Disable => false,
+                    Toggle::Toggle => state
+                        .swayward
+                        .layout
+                        .active_workspace()
+                        .is_some_and(|workspace| !workspace.contains_tiling_node(node)),
+                };
+                if !state
+                    .swayward
+                    .layout
+                    .set_container_floating(workspace, node, floating)
                 {
                     return failure("No matching node.");
                 }
@@ -1824,16 +1847,22 @@ fn matching_targets(state: &State, criteria: &criteria::Criteria) -> Vec<Command
         targets.truncate(1);
     }
     for (_, _, workspace) in state.swayward.layout.workspaces() {
-        for (node, value) in workspace.ipc_tiling_tree().nodes() {
-            if matches!(value, crate::layout::tiling_tree::IpcNodeKind::Split) {
-                let marks = state
-                    .swayward
-                    .marks_by_container
-                    .get(&(workspace.id(), node))
-                    .map(Vec::as_slice)
-                    .unwrap_or(&[]);
-                if criteria.matches_container(crate::ipc::tree::container_id(node) as u64, marks) {
-                    targets.push(CommandTarget::Container(workspace.id(), node));
+        let trees = std::iter::once(workspace.ipc_tiling_tree())
+            .chain(workspace.ipc_floating_trees().map(|(_, tree, _)| tree));
+        for tree in trees {
+            for (node, value) in tree.nodes() {
+                if matches!(value, crate::layout::tiling_tree::IpcNodeKind::Split) {
+                    let marks = state
+                        .swayward
+                        .marks_by_container
+                        .get(&(workspace.id(), node))
+                        .map(Vec::as_slice)
+                        .unwrap_or(&[]);
+                    if criteria
+                        .matches_container(crate::ipc::tree::container_id(node) as u64, marks)
+                    {
+                        targets.push(CommandTarget::Container(workspace.id(), node));
+                    }
                 }
             }
         }

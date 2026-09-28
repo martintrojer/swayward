@@ -3,12 +3,6 @@ use swayward_ipc::CommandOutcome;
 use super::{failure, CommandTarget};
 use crate::swayward::State;
 
-pub(super) fn move_focused(state: &mut State) {
-    state.ipc_order_scratchpad_events(crate::ipc::server::ScratchpadEventOrder::Hide);
-    state.swayward.layout.move_to_scratchpad(None);
-    state.swayward.queue_redraw_all();
-}
-
 pub(super) fn show(state: &mut State) {
     state.ipc_order_scratchpad_events(crate::ipc::server::ScratchpadEventOrder::Show);
     state.swayward.layout.show_scratchpad(None);
@@ -49,13 +43,17 @@ fn target_window(
     state: &State,
     target: CommandTarget,
 ) -> Result<smithay::desktop::Window, CommandOutcome> {
-    let CommandTarget::Window(target) = target else {
-        return Err(failure("floating container groups are not supported"));
-    };
-    state
-        .swayward
-        .layout
-        .windows()
-        .find_map(|(_, mapped)| (mapped.id() == target).then(|| mapped.window.clone()))
-        .ok_or_else(|| failure("No matching node."))
+    match target {
+        CommandTarget::Container(workspace, node) => state
+            .swayward
+            .layout
+            .window_in_node(workspace, node)
+            .ok_or_else(|| failure("No matching node.")),
+        CommandTarget::Window(target) => state
+            .swayward
+            .layout
+            .windows()
+            .find_map(|(_, mapped)| (mapped.id() == target).then(|| mapped.window.clone()))
+            .ok_or_else(|| failure("No matching node.")),
+    }
 }

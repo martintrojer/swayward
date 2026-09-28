@@ -27,7 +27,14 @@ pub(super) fn sticky(
     target: CommandTarget,
     value: &str,
 ) -> Result<(), CommandOutcome> {
-    let window = target_window(state, target, "floating container groups are not supported")?;
+    let window = match target {
+        CommandTarget::Container(workspace, node) => state
+            .swayward
+            .layout
+            .window_in_node(workspace, node)
+            .ok_or_else(|| failure("No matching node."))?,
+        CommandTarget::Window(_) => target_window(state, target, "No matching node.")?,
+    };
     if state.swayward.layout.is_scratchpad_hidden(&window) {
         return Ok(());
     }
@@ -92,14 +99,27 @@ pub(super) fn floating(
     target: CommandTarget,
     mode: &Toggle,
 ) -> Result<(), CommandOutcome> {
-    if matches!(target, CommandTarget::Container(_, _)) {
-        return if *mode == Toggle::Disable {
-            Ok(())
-        } else {
-            Err(failure("floating container groups are not supported"))
+    if let CommandTarget::Container(workspace, node) = target {
+        let floating = match mode {
+            Toggle::Enable => true,
+            Toggle::Disable => false,
+            Toggle::Toggle => state
+                .swayward
+                .layout
+                .active_workspace()
+                .is_some_and(|workspace| !workspace.contains_tiling_node(node)),
         };
+        if !state
+            .swayward
+            .layout
+            .set_container_floating(workspace, node, floating)
+        {
+            return Err(failure("No matching node."));
+        }
+        state.swayward.queue_redraw_all();
+        return Ok(());
     }
-    let window = target_window(state, target, "floating container groups are not supported")?;
+    let window = target_window(state, target, "No matching node.")?;
     if state.swayward.layout.is_scratchpad_hidden(&window) {
         return Err(failure(
             "Can't change floating on hidden scratchpad container",

@@ -4524,10 +4524,26 @@ impl<W: LayoutElement> Layout<W> {
             .is_some_and(|workspace| workspace.set_tiling_node_title_format(node, format))
     }
 
-    pub fn float_tiling_subtree(&mut self, workspace_id: WorkspaceId, node: NodeId) -> bool {
+    pub fn set_container_floating(
+        &mut self,
+        workspace_id: WorkspaceId,
+        node: NodeId,
+        floating: bool,
+    ) -> bool {
         self.workspaces_mut()
             .find(|workspace| workspace.id() == workspace_id)
-            .is_some_and(|workspace| workspace.float_tiling_subtree(node).is_some())
+            .is_some_and(|workspace| workspace.set_container_floating(node, floating))
+    }
+
+    pub fn window_in_node(&self, workspace_id: WorkspaceId, node: NodeId) -> Option<W::Id> {
+        let workspace = self
+            .workspaces()
+            .find(|(_, _, workspace)| workspace.id() == workspace_id)?
+            .2;
+        workspace
+            .tiling_node_windows(node)
+            .and_then(|windows| windows.into_iter().next())
+            .or_else(|| workspace.floating().window_in_node(node).cloned())
     }
 
     pub fn tiling_node_windows(

@@ -196,30 +196,12 @@ const ALLOWED_REJECTIONS: &[AllowedRejection] = &[
     },
     AllowedRejection {
         test: "184-regress-float-split-resize.t",
-        command: "floating toggle",
-        repeatable: false,
-        reason: "sway floats the focused split as one unit \
-                 (sway/sway/commands/floating.c:23-55), but swayward has no \
-                 floating-group representation and refuses rather than reporting \
-                 success without creating one",
-    },
-    AllowedRejection {
-        test: "184-regress-float-split-resize.t",
         command: "resize grow up 10 px or 10 ppt",
         repeatable: false,
         reason: "the test only checks that the compositor remains live; floating \
                  split containers are a documented compatibility gap, and sway \
                  answers `Cannot resize any further` when the resulting tiled resize \
                  changes neither size fraction (sway/sway/commands/resize.c:273-279)",
-    },
-    AllowedRejection {
-        test: "303-regress-move-floating.t",
-        command: "split v, focus parent, floating toggle, focus child, move right",
-        repeatable: false,
-        reason: "the command chain requires sway to float the selected split as one \
-                 group (sway/sway/commands/floating.c:23-55); swayward refuses \
-                 because it has no floating-group representation, and the test's \
-                 assertions confirm that no floating group was created",
     },
     AllowedRejection {
         test: "191-resize-levels.t",
