@@ -62,7 +62,7 @@ impl<W: LayoutElement> Workspace<W> {
     }
 
     pub fn is_floating_visible(&self) -> bool {
-        // If the focus is on a fullscreen scrolling window, hide the floating windows.
+        // If focus is on a fullscreen tiled window, hide the floating windows.
         matches!(
             self.floating_is_active,
             FloatingActive::Yes | FloatingActive::NoButRaised

@@ -69,8 +69,8 @@ impl<W: LayoutElement> Monitor<W> {
         // Draw in passes for correct Z ordering during window movement between workspaces:
         // - floating windows moving between workspaces
         // - normal floating windows
-        // - scrolling windows moving between workspaces
-        // - normal scrolling windows
+        // - tiled windows moving between workspaces
+        // - normal tiled windows
         for pass in 0..4 {
             // Don't cull when drawing windows moving between workspaces so that windows moving to
             // workspaces off-screen will still render.
@@ -90,7 +90,7 @@ impl<W: LayoutElement> Monitor<W> {
             // Also, check cull here to avoid cropping windows moving between workspaces.
             //
             // FIXME: for cull=true, it might be better visually to crop to a workspace-high region
-            // anchored to the window/column as it moves between workspaces, to prevent overflowing
+            // anchored to the window as it moves between workspaces, to prevent overflowing
             // windows from appearing and disappearing.
             let crop_bounds =
                 if cull && (self.workspace_switch.is_some() || self.overview_progress.is_some()) {

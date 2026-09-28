@@ -45,13 +45,13 @@ use crate::window::ResolvedWindowRules;
 
 #[derive(Debug)]
 pub struct Workspace<W: LayoutElement> {
-    /// The scrollable-tiling layout.
+    /// The nested tiling layout.
     tiling: TilingTree<W>,
 
     /// The floating layout.
     floating: FloatingLayout<W>,
 
-    /// Whether the floating layout is active instead of the scrolling layout.
+    /// Whether the floating layout is active instead of the tiling layout.
     floating_is_active: FloatingActive,
 
     /// The original output of this workspace.
@@ -183,10 +183,10 @@ pub enum ResolvedSize {
 /// Whether the floating space is active.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FloatingActive {
-    /// The scrolling space is active.
+    /// The tiling space is active.
     No,
-    /// The scrolling space is active, but the floating space should render on top, even if the
-    /// active scrolling window is fullscreen.
+    /// The tiling space is active, but the floating space should render on top, even if the active
+    /// tiled window is fullscreen.
     ///
     /// This is necessary for focus-follows-mouse that activates but doesn't raise the window to
     /// avoid being annoying.
@@ -982,8 +982,8 @@ impl<W: LayoutElement> Workspace<W> {
                 // Don't steal focus from an active fullscreen window.
                 let activate = activate.map_smart(|| !self.is_active_pending_fullscreen());
 
-                // If the tile is pending maximized or fullscreen, open it in the scrolling layout
-                // where it can do that.
+                // If the tile is pending maximized or fullscreen, open it in the tiling layout,
+                // where it can enter those states.
                 if is_floating && tile.window().pending_sizing_mode().is_normal() {
                     self.floating.add_tile(tile, activate);
 
@@ -1116,8 +1116,8 @@ impl<W: LayoutElement> Workspace<W> {
         self.floating_is_active = match (floating, tiling) {
             // No floating window carries a focus timestamp, which happens when
             // one has never been focused. Falling straight to No breaks the
-            // invariant that floating must be active when the scrolling space
-            // is empty but the floating space is not, so check for that case
+            // invariant that floating must be active when the tiling space is
+            // empty but the floating space is not, so check for that case
             // before deciding on timestamps.
             (None, _) if self.tiling.is_empty() && !self.floating.is_empty() => FloatingActive::Yes,
             (None, _) => FloatingActive::No,
@@ -2174,7 +2174,7 @@ impl<W: LayoutElement> Workspace<W> {
                 return;
             }
         } else if !is_fullscreen {
-            // The window is in the scrolling layout and we're requesting an unfullscreen. If it is
+            // The window is tiled and we're requesting an unfullscreen. If it is
             // indeed fullscreen (i.e. this isn't a duplicate unfullscreen request), then we may
             // need to unfullscreen into floating.
             // When going from fullscreen to maximized, don't consider restore_to_floating yet.
@@ -2245,7 +2245,7 @@ impl<W: LayoutElement> Workspace<W> {
                 return;
             }
         } else if !maximize {
-            // The window is in the scrolling layout and we're requesting to unmaximize. If it is
+            // The window is tiled and we're requesting to unmaximize. If it is
             // indeed maximized (i.e. this isn't a duplicate unmaximize request), then we may
             // need to unmaximize into floating.
             let tile = self
@@ -2511,10 +2511,10 @@ impl<W: LayoutElement> Workspace<W> {
 
     pub fn switch_focus_floating_tiling(&mut self) {
         if self.floating.is_empty() {
-            // If floating is empty, keep focus on scrolling.
+            // If floating is empty, keep focus on tiling.
             return;
         } else if self.tiling.is_empty() {
-            // If floating isn't empty but scrolling is, keep focus on floating.
+            // If floating isn't empty but tiling is, keep focus on floating.
             return;
         }
 

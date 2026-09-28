@@ -3,8 +3,8 @@
 //! Each output owns an ordered set of workspaces. Each workspace contains a nested
 //! [`tiling_tree::TilingTree`] and a [`floating_tree::FloatingLayout`]. Empty inactive workspaces
 //! are destroyed unless configuration makes them persistent; every output still keeps an active
-//! workspace. [`scrolling`] contains compatibility types from niri's removed scrolling engine,
-//! not the active layout model.
+//! workspace. Some public names still use column and scrolling terminology for compatibility with
+//! the inherited configuration and legacy IPC schemas; the active layout model is the tiling tree.
 //!
 //! One output is designated as primary. When one of several outputs disappears, workspaces with
 //! non-sticky windows are appended to the primary output. Workspaces without non-sticky windows
@@ -84,7 +84,7 @@ pub const RESIZE_ANIMATION_THRESHOLD: f64 = 10.;
 /// Pointer needs to move this far to pull a window from the layout.
 const INTERACTIVE_MOVE_START_THRESHOLD: f64 = 256. * 256.;
 
-/// Opacity of interactively moved tiles targeting the scrolling layout.
+/// Opacity of interactively moved tiles targeting the tiling layout.
 const INTERACTIVE_MOVE_ALPHA: f64 = 0.75;
 
 /// Amount of touchpad movement to toggle the overview.
@@ -478,9 +478,9 @@ struct InteractiveMoveData<W: LayoutElement> {
     pub(self) output: Output,
     /// Current pointer position within output.
     pub(self) pointer_pos_within_output: Point<f64, Logical>,
-    /// Window column width.
+    /// Tiled window width.
     pub(self) width: TiledWidth,
-    /// Whether the window column was full-width.
+    /// Whether the tiled window was full-width.
     pub(self) is_full_width: bool,
     /// Whether the window targets the floating layout.
     pub(self) is_floating: bool,
@@ -547,9 +547,9 @@ pub enum ConfigureIntent {
 #[derive(Debug)]
 pub struct RemovedTile<W: LayoutElement> {
     tile: Tile<W>,
-    /// Width of the column the tile was in.
+    /// Width of the tiled window.
     width: TiledWidth,
-    /// Whether the column the tile was in was full-width.
+    /// Whether the tiled window was full-width.
     is_full_width: bool,
     /// Whether the tile was floating.
     is_floating: bool,
@@ -2108,8 +2108,8 @@ impl<W: LayoutElement> Layout<W> {
     pub fn popup_target_rect(&self, window: &W::Id) -> Rectangle<f64, Logical> {
         if let Some(InteractiveMoveState::Moving(move_)) = &self.interactive_move {
             if move_.tile.window().id() == window {
-                // Follow the scrolling layout logic and fit the popup horizontally within the
-                // window geometry.
+                // Follow the tiling-layout logic and fit the popup horizontally within the window
+                // geometry.
                 let width = move_.tile.window_size().w;
                 let height = output_size(&move_.output).h;
                 let mut target = Rectangle::from_size(Size::from((width, height)));
@@ -5065,18 +5065,9 @@ impl<W: LayoutElement> Layout<W> {
 
                 let has_view_offset_gesture = workspace.tiling().has_view_offset_gesture();
                 if self.dnd.is_some() || self.interactive_move.is_some() {
-                    // We'd like to check that all workspaces have the gesture here, furthermore we
-                    // want to check that they have the gesture only if the interactive move
-                    // targets the scrolling layout. However, we cannot do that because we start
-                    // and stop the gesture lazily. Otherwise the gesture code would pollute a lot
-                    // of places like adding new workspaces, implicitly moving windows between
-                    // floating and tiling on fullscreen, etc.
-                    //
-                    // assert!(
-                    //     has_view_offset_gesture,
-                    //     "during an interactive move in the scrolling layout, \
-                    //      all workspaces should be in a view offset gesture"
-                    // );
+                    // We would like to check that all workspaces have the gesture here, and only
+                    // while an interactive move targets the tiling layout. The gesture starts and
+                    // stops lazily, so that invariant does not hold at this boundary.
                 } else if saw_view_offset_gesture {
                     assert!(
                         !has_view_offset_gesture,

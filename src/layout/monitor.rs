@@ -174,7 +174,7 @@ pub enum MonitorAddWindowTarget<'a, W: LayoutElement> {
     Workspace {
         /// Id of the target workspace.
         id: WorkspaceId,
-        /// Override where the window will open as a new column.
+        /// Override the tiled insertion index.
         column_idx: Option<usize>,
     },
     /// Next to this existing window.
