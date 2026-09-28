@@ -1077,6 +1077,17 @@ fn execute_one(
             toggle,
             identifier,
         } => {
+            if state
+                .swayward
+                .layout
+                .active_workspace()
+                .is_some_and(|workspace| {
+                    workspace.is_workspace_focused()
+                        && workspace.ipc_tiling_tree().nodes().len() == 2
+                })
+            {
+                return swayward_ipc::command::parse_error("Only containers can have marks");
+            }
             let Some(target) = focused_target(state) else {
                 return swayward_ipc::command::parse_error("Only containers can have marks");
             };
