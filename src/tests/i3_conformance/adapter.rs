@@ -412,6 +412,65 @@ fn reload_loaded_test_config(fixture: &mut Fixture, source: Option<&str>) -> Res
     reload_test_config(fixture, source)
 }
 
+fn reset_config(fixture: &mut Fixture) -> Value {
+    let mut config = swayward_config::Config::default();
+    config.gestures.hot_corners.off = true;
+    fixture.niri_state().reload_config(Ok(config));
+    json!({ "success": true })
+}
+
+fn load_config(
+    fixture: &mut Fixture,
+    client: super::client::ClientId,
+    loaded_config_source: &mut Option<String>,
+    scratch: &mut Vec<PathBuf>,
+    request: &Value,
+) -> Value {
+    let source = request["config"].as_str().unwrap();
+    let test = std::env::var("SWAYWARD_I3_TEST").unwrap_or_default();
+    let (outputs, path, mut config) = match (fake_outputs(source), translate_config_file(&test, source)) {
+        (Ok(outputs), Ok((path, config))) => (outputs, path, config),
+        (Err(error), _) | (_, Err(error)) => return json!({ "success": false, "error": error }),
+    };
+    scratch.push(path.clone());
+    if let Some(server) = &fixture.swayward().ipc_server {
+        server.set_loaded_config_file_name(path.to_string_lossy().into_owned());
+    }
+    if !source.lines().any(|line| line.trim_start().to_ascii_lowercase().starts_with("gaps inner ")) {
+        config.layout.gaps = 0.;
+    }
+    config.layout.border.off = false;
+    if let Ok(test) = std::env::var("SWAYWARD_I3_TEST") {
+        configure_client_state_oracle(&mut config, &test);
+    }
+    if !source.lines().any(|line| {
+        line.split_whitespace()
+            .next()
+            .is_some_and(|word| word.eq_ignore_ascii_case("focus_follows_mouse"))
+    }) {
+        config.input.focus_follows_mouse.get_or_insert(
+            swayward_config::input::FocusFollowsMouse {
+                mode: swayward_config::input::FocusFollowsMouseMode::Yes,
+                max_scroll_amount: None,
+            },
+        );
+    }
+    fixture.swayward().layout.initialize_workspaces_from_bindings(&config);
+    fixture.swayward().for_window.clear();
+    fixture.niri_state().reload_config(Ok(config));
+    crate::utils::watcher::setup(
+        fixture.niri_state(),
+        &swayward_config::ConfigPath::Explicit(path),
+        Vec::new(),
+    );
+    if let Some(outputs) = outputs {
+        fixture.replace_outputs(outputs);
+        fixture.double_roundtrip(client);
+    }
+    *loaded_config_source = Some(source.to_owned());
+    json!({ "success": true })
+}
+
 fn handle_control(
     fixture: &mut Fixture,
     client: super::client::ClientId,
@@ -426,65 +485,8 @@ fn handle_control(
         .unwrap();
     let request: Value = serde_json::from_str(&request).unwrap();
     let reply = match request["action"].as_str().unwrap() {
-        "config_default" => {
-            let mut config = swayward_config::Config::default();
-            config.gestures.hot_corners.off = true;
-            fixture.niri_state().reload_config(Ok(config));
-            json!({ "success": true })
-        }
-        "config" => {
-            let source = request["config"].as_str().unwrap();
-            let test = std::env::var("SWAYWARD_I3_TEST").unwrap_or_default();
-            match (fake_outputs(source), translate_config_file(&test, source)) {
-                (Ok(outputs), Ok((path, mut config))) => {
-                    scratch.push(path.clone());
-                    if let Some(server) = &fixture.swayward().ipc_server {
-                        server.set_loaded_config_file_name(path.to_string_lossy().into_owned());
-                    }
-                    if !source.lines().any(|line| {
-                        line.trim_start()
-                            .to_ascii_lowercase()
-                            .starts_with("gaps inner ")
-                    }) {
-                        config.layout.gaps = 0.;
-                    }
-                    config.layout.border.off = false;
-                    if let Ok(test) = std::env::var("SWAYWARD_I3_TEST") {
-                        configure_client_state_oracle(&mut config, &test);
-                    }
-                    if !source.lines().any(|line| {
-                        line.split_whitespace()
-                            .next()
-                            .is_some_and(|word| word.eq_ignore_ascii_case("focus_follows_mouse"))
-                    }) {
-                        config.input.focus_follows_mouse.get_or_insert(
-                            swayward_config::input::FocusFollowsMouse {
-                                mode: swayward_config::input::FocusFollowsMouseMode::Yes,
-                                max_scroll_amount: None,
-                            },
-                        );
-                    }
-                    fixture
-                        .swayward()
-                        .layout
-                        .initialize_workspaces_from_bindings(&config);
-                    fixture.swayward().for_window.clear();
-                    fixture.niri_state().reload_config(Ok(config));
-                    crate::utils::watcher::setup(
-                        fixture.niri_state(),
-                        &swayward_config::ConfigPath::Explicit(path),
-                        Vec::new(),
-                    );
-                    if let Some(outputs) = outputs {
-                        fixture.replace_outputs(outputs);
-                        fixture.double_roundtrip(client);
-                    }
-                    *loaded_config_source = Some(source.to_owned());
-                    json!({ "success": true })
-                }
-                (Err(error), _) | (_, Err(error)) => json!({ "success": false, "error": error }),
-            }
-        }
+        "config_default" => reset_config(fixture),
+        "config" => load_config(fixture, client, loaded_config_source, scratch, &request),
         "reload" => match reload_loaded_test_config(fixture, loaded_config_source.as_deref()) {
             Ok(()) => json!({ "success": true }),
             Err(error) => json!({ "success": false, "error": error }),
