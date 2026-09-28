@@ -57,7 +57,15 @@ pub(super) fn toggle(state: &mut State, cycle: &LayoutToggle) -> Result<(), Comm
 }
 
 pub(super) fn set(state: &mut State, layout: Layout) -> Result<(), CommandOutcome> {
-    reject_floating(state)?;
+    let floating_group = state
+        .swayward
+        .layout
+        .active_workspace()
+        .and_then(|workspace| workspace.focused_container_node())
+        .is_some();
+    if !floating_group {
+        reject_floating(state)?;
+    }
     let remapped = match layout {
         Layout::SplitH => state
             .swayward

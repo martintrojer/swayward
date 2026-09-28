@@ -1837,7 +1837,16 @@ impl<W: LayoutElement> Workspace<W> {
         layout: crate::layout::tiling_tree::Layout,
     ) -> Vec<(NodeId, NodeId)> {
         if self.floating_is_active.get() {
-            Vec::new()
+            let Some(node) = self.floating.focused_container_node() else {
+                return Vec::new();
+            };
+            let Some(root) = self.floating.tree_root_for_node(node) else {
+                return Vec::new();
+            };
+            self.floating
+                .tree_mut(root)
+                .map(|tree| tree.set_focused_layout(layout))
+                .unwrap_or_default()
         } else {
             self.tiling.set_focused_layout(layout)
         }

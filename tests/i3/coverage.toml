@@ -4016,9 +4016,20 @@ citation = "sway/sway/commands/swap.c:13-14,37-49"
 [files."303-regress-move-floating.t"]
 assertions = 3
 tap_plan = 3
-pass = 3
+pass = 1
+reason = "i3_only_semantics"
+reason_verified = true
+note = "The liveness assertion passes after the grouped float and child move. The other assertions require i3's historical no-op result, while sway creates a floating split container."
+[[files."303-regress-move-floating.t".skip]]
+n = 2
+desc = "i3 leaves no floating nodes after moving the only child of a floating container"
+reason = "Sway keeps the selected parent as a floating container; floating enable converts a non-floating container with more than one child into a floating container."
 citation = "sway/sway/commands/floating.c:23-55"
-note = "The command chain requires sway to float the selected split as one group. Swayward explicitly refuses that unsupported group creation; all three assertions remain green and confirm that no floating group was created: the workspace has no floating nodes and retains its two tiled nodes."
+[[files."303-regress-move-floating.t".skip]]
+n = 3
+desc = "i3 leaves both windows tiled after moving the only child of a floating container"
+reason = "Sway keeps the selected parent and its child in the floating layer rather than restoring both windows to the workspace tiling tree."
+citation = "sway/sway/commands/floating.c:23-55"
 
 [files."304-ipc-workspace-init.t"]
 assertions = 9
