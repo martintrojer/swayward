@@ -3007,10 +3007,13 @@ impl<W: LayoutElement> Layout<W> {
 
         let monitor = if let Some(window) = window {
             match &mut self.monitor_set {
-                MonitorSet::Normal { monitors, .. } => monitors
-                    .iter_mut()
-                    .find(|mon| mon.has_window(window))
-                    .unwrap(),
+                MonitorSet::Normal { monitors, .. } => {
+                    let Some(monitor) = monitors.iter_mut().find(|mon| mon.has_window(window))
+                    else {
+                        return;
+                    };
+                    monitor
+                }
                 MonitorSet::NoOutputs { .. } => {
                     return;
                 }
@@ -4745,7 +4748,7 @@ impl<W: LayoutElement> Layout<W> {
     }
 
     #[cfg(test)]
-    fn verify_invariants(&self) {
+    pub(crate) fn verify_invariants(&self) {
         use std::collections::HashSet;
 
         use approx::assert_abs_diff_eq;

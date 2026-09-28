@@ -528,7 +528,20 @@ pub(super) fn swap_target(
         return failure("Cannot swap a container with itself");
     }
     let (source_workspace, source_node) = match source {
-        CommandTarget::Container(workspace, node) => (workspace, node),
+        CommandTarget::Container(workspace, node)
+            if state
+                .swayward
+                .layout
+                .active_workspace()
+                .is_some_and(|active| {
+                    active.id() == workspace && active.contains_tiling_node(node)
+                }) =>
+        {
+            (workspace, node)
+        }
+        CommandTarget::Container(_, _) => {
+            return failure("Can only swap with containers and views");
+        }
         CommandTarget::Window(window) => {
             let Some(mapped) = state
                 .swayward
@@ -545,7 +558,16 @@ pub(super) fn swap_target(
         }
     };
     let (destination_workspace, destination_node) = match destination {
-        CommandTarget::Container(workspace, node) => (workspace, node),
+        CommandTarget::Container(workspace, node)
+            if state.swayward.layout.workspaces().any(|(_, _, candidate)| {
+                candidate.id() == workspace && candidate.contains_tiling_node(node)
+            }) =>
+        {
+            (workspace, node)
+        }
+        CommandTarget::Container(_, _) => {
+            return failure("Can only swap with containers and views");
+        }
         CommandTarget::Window(window) => {
             let Some(mapped) = state
                 .swayward

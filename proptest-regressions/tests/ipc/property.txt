@@ -1,0 +1,15 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 452d78fcc7e6924fc954908e7a86cb635eb46b411a804626f249aa151db045ac # shrinks to ops = [ConIdCommand(0, "move scratchpad"), ConIdCommand(5, "move scratchpad"), Command("focus right"), ConIdCommand(0, "move workspace 1")]
+cc 0da79fb47c80027d73d00472db99f853f108b1a1e74bbfd762e092fa6db39b0d # shrinks to ops = [Command("layout tabbed"), Command("layout splith")]
+cc 61902f5f6f943d4f09becea3c47e7bffaa211649837e9b1a10c793da18379c2d # shrinks to ops = [Command("floating toggle"), Command("sticky toggle"), Command("move workspace 2"), Command("workspace 2"), Command("workspace named")]
+cc 216f2f61319060cd1547d0f1f213be2b44faa05b236b49e185be64fa03ceb33c # shrinks to ops = [Command("focus parent"), Command("focus right"), Close(0), Command("mark alpha"), Command("move scratchpad"), Command("[con_mark=alpha] focus")]
+cc 30b31e3d352b8bff9f38101e17d5c972dab1eef439de2a3fd97b1cb6f27499cd # shrinks to ops = [Command("move workspace 2"), Command("focus parent"), Command("move workspace 2"), Open(2), Command("focus parent"), Command("floating toggle")]
+cc ba7e723fd4eae291647dd1a46e0cbadabb3c83daa9b6e7c3843a11eee0491d17 # shrinks to ops = [Command("focus parent"), Command("floating toggle"), ConIdCommand(0, "kill"), ConIdCommand(0, "move scratchpad"), Command("focus left"), Command("scratchpad show"), Command("layout tabbed")]
+cc 837bb32654f860e1103663217981a529d98c858795bd593d370ecd1d6ebf410b # shrinks to ops = [Command("focus left"), Command("focus left"), Command("focus left"), Command("focus left"), Open(2), Command("focus parent"), Command("floating toggle"), Command("sticky toggle"), Command("workspace named")]
+cc 964f6d02612f67cfb7f6dc618233d6a344b3da49f47bb5da0f5a7ed5da133ff7 # shrinks to ops = [Command("focus left"), Command("focus parent"), Command("floating toggle"), Command("layout tabbed"), Command("layout splith")]
+cc 5a96e9333a7672872c902c6f9b1dad25c82021a2c5e4e289def45a9a6cc6ca8f # shrinks to ops = [Open(2), ConIdCommand(1, "move scratchpad"), ConIdCommand(2, "floating toggle"), Command("focus left"), Command("focus left"), Command("floating toggle"), Command("focus up"), Open(3), Command("layout splitv"), Command("focus parent"), Command("mark alpha"), Command("floating toggle"), Command("[app_id=app-0] focus"), Command("swap container with mark alpha")]

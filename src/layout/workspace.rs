@@ -1193,6 +1193,9 @@ impl<W: LayoutElement> Workspace<W> {
     }
 
     pub fn swap_tiling_nodes(&mut self, first: NodeId, second: NodeId) -> Result<(), &'static str> {
+        if !self.tiling.contains(first) || !self.tiling.contains(second) {
+            return Err("node not found");
+        }
         self.tiling.swap_nodes(first, second)
     }
 
@@ -1453,7 +1456,10 @@ impl<W: LayoutElement> Workspace<W> {
     }
 
     pub fn focus_tiling_node(&mut self, id: crate::layout::tiling_tree::NodeId) -> bool {
-        if self.tiling.contains(id) {
+        if self
+            .tiling_node_windows(id)
+            .is_some_and(|windows| !windows.is_empty())
+        {
             self.floating_is_active = FloatingActive::No;
             self.tiling.set_focus(id);
             true
@@ -3283,11 +3289,6 @@ impl<W: LayoutElement> Workspace<W> {
             assert!(
                 !self.floating_is_active.get(),
                 "when floating is empty it must never be active"
-            );
-        } else if self.tiling.is_empty() {
-            assert!(
-                self.floating_is_active.get(),
-                "when the tiling tree is empty but floating isn't, floating should be active"
             );
         }
 

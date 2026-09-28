@@ -1690,3 +1690,9 @@ migrated = false
 paths = ["src/swayward.rs", "src/tests/ipc/wire.rs"]
 what = "skip keyboard-focus updates when the seat has no keyboard, and soak input IPC across repeated keyboard and pointer hotplug cycles."
 why = "A keyboard may disappear between compositor refreshes; live-session focus refresh must not panic while GET_INPUTS, GET_SEATS, and input commands continue returning structured replies."
+
+[[edit]]
+migrated = false
+paths = ["src/ipc/tree.rs", "src/layout/mod.rs", "src/layout/monitor.rs", "src/layout/tiling_tree/mod.rs", "src/layout/workspace.rs", "src/tests/ipc/mod.rs", "src/tests/ipc/property.rs"]
+what = "exercise random sway command, window-map, and window-unmap sequences through the real headless compositor fixture; keep targeted commands for scratchpad windows safe and preserve floating focus when sticky windows follow workspace switches."
+why = "Sway commands can target hidden scratchpad containers, which are not attached to a monitor, and a workspace containing only sticky floating windows must retain a live focused container as it follows the active workspace."

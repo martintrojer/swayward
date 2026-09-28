@@ -30,3 +30,5 @@ include!("focus_and_move.rs");
 include!("workspace_output.rs");
 include!("floating_commands.rs");
 include!("misc_commands.rs");
+
+mod property;
