@@ -2559,6 +2559,11 @@ impl<W: LayoutElement> Workspace<W> {
         self.floating.tree_root_for_window(window)
     }
 
+    pub fn focused_floating_tree_root(&self) -> Option<NodeId> {
+        self.active_window()
+            .and_then(|window| self.floating.tree_root_for_window(window.id()))
+    }
+
     pub fn is_window_sticky(&self, window: &W::Id) -> bool {
         self.floating
             .tree_root_for_window(window)

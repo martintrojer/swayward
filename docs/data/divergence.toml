@@ -1573,6 +1573,12 @@ why = "Sway's container detach path calls `container_reap_empty`, which removes 
 
 [[edit]]
 migrated = false
+paths = ["src/command/layout.rs", "src/layout/floating_tree.rs", "src/layout/workspace.rs", "src/tests/ipc/events.rs"]
+what = "fullscreen a resident floating container tree as one recursive root and emit the root's `window::fullscreen_mode` event instead of passing one descendant through the inherited leaf-only floating toggle."
+why = "Sway fullscreen targets the focused container, including a split in the workspace floating list, and emits one recursive event for that container (`sway/commands/fullscreen.c`; `sway/sway/ipc-server.c`). The inherited leaf path could not find resident-tree descendants and panicked."
+
+[[edit]]
+migrated = false
 paths = ["src/layout/mod.rs", "src/layout/workspace.rs", "src/ui/screenshot_ui.rs"]
 what = "store a workspace's floating windows in swayward's owned `FloatingLayout` root model instead of niri's leaf-only `FloatingSpace`, and route the shared directional-move constant through the owned module."
 why = "Sway workspaces store ordered floating container roots (`sway/tree/workspace.c:961-973`). The owned boundary preserves the current one-window behavior while allowing a later migration to resident nested trees without branching through inherited niri floating code."

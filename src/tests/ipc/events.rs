@@ -762,6 +762,40 @@ fn floating_a_group_emits_one_recursive_floating_event() {
 }
 
 #[test]
+fn fullscreening_a_floating_group_emits_one_recursive_fullscreen_event() {
+    let (mut fixture, socket) = ipc_fixture();
+    fixture.add_output(1, (1920, 1080));
+    let client = fixture.add_client();
+    map_test_window(&mut fixture, client, "group-first");
+    assert!(crate::command::execute(fixture.niri_state(), "splitv")[0].success);
+    map_test_window(&mut fixture, client, "group-second");
+    assert!(crate::command::execute(fixture.niri_state(), "focus parent")[0].success);
+    assert!(crate::command::execute(fixture.niri_state(), "floating enable")[0].success);
+    fixture.niri_state().ipc_refresh_layout();
+    assert!(fixture
+        .swayward()
+        .layout
+        .active_workspace()
+        .unwrap()
+        .focused_container_node()
+        .is_some());
+    let mut subscriber = subscribe_to_window_events(&mut fixture, &socket);
+
+    assert!(crate::command::execute(fixture.niri_state(), "fullscreen enable")[0].success);
+    fixture.niri_state().ipc_refresh_layout();
+
+    let ((event_type, payload), remainder) =
+        read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, Vec::new());
+    assert_eq!(event_type, (1 << 31) | 3);
+    let event = serde_json::from_str::<Value>(&payload).unwrap();
+    assert_eq!(event["change"], "fullscreen_mode");
+    assert_eq!(event["container"]["type"], "floating_con");
+    assert_eq!(event["container"]["fullscreen_mode"], 1);
+    assert_eq!(event["container"]["nodes"].as_array().unwrap().len(), 2);
+    assert!(remainder.is_empty(), "unexpected leaf events were buffered");
+}
+
+#[test]
 fn captured_window_map_sequences_pin_focus_order_and_multiplicity() {
     for (fixture, expected) in [
         (

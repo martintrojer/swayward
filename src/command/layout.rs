@@ -160,6 +160,11 @@ pub(super) fn split_targeted(
 }
 
 pub(super) fn fullscreen(state: &mut State, mode: Toggle, global: bool) {
+    let floating_root = state
+        .swayward
+        .layout
+        .active_workspace()
+        .and_then(crate::layout::workspace::Workspace::focused_floating_tree_root);
     let current = state.swayward.layout.focused_fullscreen_mode();
     let enabled = match mode {
         Toggle::Enable => true,
@@ -175,6 +180,27 @@ pub(super) fn fullscreen(state: &mut State, mode: Toggle, global: bool) {
         .swayward
         .layout
         .set_focused_fullscreen_mode(fullscreen);
+    if let Some(root) = floating_root {
+        state.ipc_refresh_layout();
+        if let Some(server) = &state.swayward.ipc_server {
+            let tree = serde_json::to_value(crate::ipc::tree::describe_tree(
+                &state.swayward.layout,
+                &state.swayward.global_space,
+                &state.swayward.marks_by_window,
+                &state.swayward.marks_by_container,
+            ))
+            .unwrap_or_default();
+            if let Some(container) =
+                crate::ipc::server::find_node_by_id(&tree, crate::ipc::tree::container_id(root))
+                    .cloned()
+            {
+                server.send_event(swayward_ipc::legacy::Event::SwayWindowChanged {
+                    change: "fullscreen_mode".into(),
+                    container,
+                });
+            }
+        }
+    }
     state.swayward.queue_redraw_all();
 }
 
