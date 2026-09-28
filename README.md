@@ -4,20 +4,26 @@
 
 > sway, gone its own way.
 
+Keep your sway tools while changing the compositor underneath them. The tested
+parts of Waybar's sway modules, `swaymsg`, i3ipc-python, autotiling, Quickshell's
+I3 model, and DankMaterialShell run unmodified. The
+[client coverage matrix](docs/SWAY_IPC_ECOSYSTEM.md) says exactly what each
+probe exercises. No interpretive dance around the word "compatible."
+
 Swayward gives you i3's fully nested container tree on a modern Wayland
 compositor: splits inside splits, tabbed and stacked containers, marks,
-criteria, the scratchpad, and sway's IPC protocol on `SWAYSOCK` for compatible
-clients and scripts. It is a very serious amount of engineering in service of
-putting one rectangle beside another rectangle, but correctly.
+criteria, the scratchpad, and sway's IPC protocol on `SWAYSOCK`. It is a very
+serious amount of engineering in service of putting one rectangle beside
+another rectangle, but correctly.
 
-**Status: beta.** The compositor runs live sessions,
-speaks sway's IPC to real clients. The external oracle currently records 1,427
-passes, 800 skips, and 1,084 failures or unreached assertions from i3's suite. It is
-also somebody's desktop now: the maintainer's two work machines run it every
-day, both Fedora 44, one a single-monitor sway setup with Waybar and kanshi,
-the other two monitors running DankMaterialShell with its outputs set in
-`config.kdl`. No spare laptop, no fallback session doing the real work. That is
-still two desks, not a hardware survey, and no stranger has installed it yet.
+**Status: beta.** The [oracle's published snapshot
+table](https://github.com/martintrojer/sway-ipc-oracle) reports passes, skips,
+failures or unreached assertions, and unstable assertions together. It is also
+somebody's desktop now: the maintainer's two work machines run it every day,
+both Fedora 44, one a single-monitor setup with Waybar and kanshi, the other
+two monitors running DankMaterialShell with its outputs set in `config.kdl`.
+No spare laptop, no fallback session doing the real work. That is still two
+desks, not a hardware survey, and no stranger has installed it yet.
 
 ![Four windows tiled by swayward over a wallpaper, with Waybar across the top: a terminal on the left, and on the right a tabbed container whose visible tab splits a terminal above Yazi](docs/wiki/_assets/shots/readme-desktop-v2.png)
 
@@ -51,17 +57,15 @@ whole session. It's branded beta for this reason.
 
 ## Developed with AI assistance
 
-Not a feature, nor hidden. AI agents are a tool we use to make swayward
-better, that's it. If this is a deal-breaker for you, we understand. Thanks
-for reading this far.
+Swayward was built largely with AI assistance. A human reviews every change
+and is responsible for it, following the Linux kernel's rule that
+[AI does not sign off](https://www.kernel.org/doc/html/next/process/coding-assistants.html).
 
-Don't trust us, check us: swayward is tested against i3's own test suite,
-vendored unmodified. [Testing and conformance](https://github.com/martintrojer/swayward/wiki/Testing-and-Conformance)
-explains the evidence, and every intentional
-difference from sway is [recorded](https://github.com/martintrojer/swayward/wiki/Differences-from-Sway) with a
-citation into sway's source. We follow the Linux kernel's rule that
-[AI does not sign off](https://www.kernel.org/doc/html/next/process/coding-assistants.html):
-a human reviews every change and is responsible for it.
+The tokens went into checks, not just features. [Testing and
+conformance](https://github.com/martintrojer/swayward/wiki/Testing-and-Conformance)
+explains the unmodified i3 suite, and every intentional difference from sway is
+[recorded](https://github.com/martintrojer/swayward/wiki/Differences-from-Sway)
+with a citation into sway's source.
 
 ## Why the i3/sway model
 
@@ -202,15 +206,15 @@ See [Migrate a sway config](docs/SWAY_CONFIG_MIGRATION.md).
 
 The independent [sway IPC oracle](https://github.com/martintrojer/sway-ipc-oracle)
 runs i3's unchanged tests and sway IPC scenarios against i3, sway, and
-swayward. Its black-box swayward results record **1,427 passes, 800 skips, and
-1,084 failures or unreached assertions** for the i3 suite, plus **90 matches,
-3 not-applicable scenarios, and 0 mismatches** for the sway IPC suite. Results
-live in `i3/results/swayward.toml` and `sway-ipc/results/swayward.toml` in the
-oracle repository.
+swayward. Its snapshot table publishes passes, skips, failures or unreached
+assertions, and unstable assertions together for the i3 suite, plus matches,
+not-applicable scenarios, and mismatches for the sway IPC suite. The underlying
+results live in `i3/results/swayward.toml` and
+`sway-ipc/results/swayward.toml` in the oracle repository.
 
 Swayward also keeps a faster in-process development harness. Its
-`tests/i3/coverage.toml` ledger remains at 2,305 passes, 780 documented skips,
-30 failures, and 56 unreached assertions. Differences between that harness and
+`tests/i3/coverage.toml` ledger records **2,218 passes, 867 documented skips,
+30 failures, and 56 unreached assertions**. Differences between that harness and
 the public black-box run are filed in the oracle's
 `i3/results/swayward-black-box-findings.tsv`.
 

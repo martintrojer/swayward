@@ -18,18 +18,10 @@ Those are reasons to be curious, not evidence that sway made the wrong choices.
 
 ### Is this AI slop?
 
-Fair question. swayward was built largely with AI assistance. That is stated
-plainly because hiding it would be dishonest, not because it is a feature.
-
-The answer is executable evidence: i3's test files are pinned in sway-ipc-oracle without edits
-to their assertions, sway compatibility claims cite sway's C source, generated
-tree operations search for broken invariants, and release packages must install
-and run in clean distro containers. The Linux kernel's rule applies here too:
+Fair question. swayward was built largely with AI assistance. A human reviews
+every change and is responsible for it, following the Linux kernel's rule that
 [AI does not sign off](https://www.kernel.org/doc/html/next/process/coding-assistants.html).
-A human reviews the work and is responsible for it.
-
-Do not trust us because we say the process was careful. Check the evidence.
-“The agents seemed very confident” is not one of the checks.
+The [testing and conformance evidence](Testing-and-Conformance.md) is public.
 
 ### How can I trust a new compositor?
 

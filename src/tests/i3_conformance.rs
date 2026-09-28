@@ -1470,6 +1470,7 @@ fn run_i3_test(test: &str) {
 /// invariant asserting it against the other.
 const COVERAGE: &str = include_str!("../../tests/i3/coverage.toml");
 const COVERAGE_README: &str = include_str!("../../tests/i3/README.md");
+const PROJECT_README: &str = include_str!("../../README.md");
 const HARNESS: &str = include_str!("../../tests/i3/lib/i3test.pm");
 
 #[test]
@@ -1790,8 +1791,10 @@ struct Coverage {
     file: &'static str,
     assertions: usize,
     passing: usize,
+    failing: usize,
+    unreached: usize,
+    documented_skip_count: usize,
     plan_unknown: bool,
-    documented_skips: bool,
 }
 
 fn coverage_entries() -> Vec<Coverage> {
@@ -1811,8 +1814,10 @@ fn coverage_entries() -> Vec<Coverage> {
                 file,
                 assertions: 0,
                 passing: 0,
+                failing: 0,
+                unreached: 0,
+                documented_skip_count: 0,
                 plan_unknown: false,
-                documented_skips: false,
             });
             continue;
         }
@@ -1833,17 +1838,19 @@ fn coverage_entries() -> Vec<Coverage> {
             entry.assertions = read(value);
         } else if let Some(value) = line.strip_prefix("pass = ") {
             entry.passing = read(value);
+        } else if let Some(value) = line.strip_prefix("fail = ") {
+            entry.failing = read(value);
+        } else if let Some(value) = line.strip_prefix("unreached = ") {
+            entry.unreached = read(value);
         } else if line.starts_with("plan_unknown = true") {
             entry.plan_unknown = true;
-        } else if line.starts_with("skip = [")
-            || line.starts_with(&format!("[[files.\"{}\".skip]]", entry.file))
-        {
-            // A documented skip is permanent: it records that the assertion is
-            // wrong about sway, with a citation. A file carrying one can never
-            // be fully green no matter how much swayward improves. The data
-            // spells it both as an inline array and as a table array, so read
-            // both rather than silently seeing half of them.
-            entry.documented_skips = true;
+        } else if line.starts_with("{ n = ") {
+            // Inline skips have one item per line. Table-array skips have one
+            // heading per assertion. Count both spellings so the README census
+            // follows the same source as contrib/coverage-report.
+            entry.documented_skip_count += 1;
+        } else if line.starts_with(&format!("[[files.\"{}\".skip]]", entry.file)) {
+            entry.documented_skip_count += 1;
         }
     }
     if let Some(done) = current {
@@ -1870,6 +1877,40 @@ fn passing_tests() -> impl Iterator<Item = &'static str> {
         .into_iter()
 }
 
+/// Keep the public in-process census tied to coverage.toml. Publishing passes
+/// alone hid the documented skips, failures, and assertions that the harness
+/// never reached, so the README must state all four figures together.
+#[test]
+fn project_readme_census_figures_match_the_manifest() {
+    let entries = coverage_entries();
+    let pass = entries.iter().map(|entry| entry.passing).sum::<usize>();
+    let skip = entries
+        .iter()
+        .map(|entry| entry.documented_skip_count)
+        .sum::<usize>();
+    let fail = entries.iter().map(|entry| entry.failing).sum::<usize>();
+    let unreached = entries.iter().map(|entry| entry.unreached).sum::<usize>();
+    let count = |n: usize| {
+        if n < 1_000 {
+            n.to_string()
+        } else {
+            format!("{},{:03}", n / 1_000, n % 1_000)
+        }
+    };
+    let claim = format!(
+        "**{} passes, {} documented skips,\n{} failures, and {} unreached assertions**",
+        count(pass),
+        count(skip),
+        count(fail),
+        count(unreached),
+    );
+    assert_eq!(
+        PROJECT_README.matches(&claim).count(),
+        1,
+        "README.md must state the coverage.toml pass/skip/fail/unreached census exactly once"
+    );
+}
+
 /// The files that are not green and carry no documented skip: every one of
 /// their non-passing assertions is swayward's own backlog, so closing it would
 /// make the file green.
@@ -1887,7 +1928,7 @@ fn gap_only_tests() -> Vec<&'static str> {
             entry.assertions > 0
                 && !entry.plan_unknown
                 && entry.passing != entry.assertions
-                && !entry.documented_skips
+                && entry.documented_skip_count == 0
         })
         .map(|entry| entry.file)
         .collect()

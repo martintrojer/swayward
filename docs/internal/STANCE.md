@@ -1,8 +1,7 @@
 # The swayward stance
 
-What this project is, who it is for, and how it asks to be judged. Every
-public surface derives from this page: the README, the wiki, release notes,
-the launch posts, and any reply to criticism.
+What this project is, who it is for, and how it asks to be judged. The README,
+the wiki, release notes, and launch posts use this page as their shared source.
 
 This is the project's position, written for the people building it. Public
 pages restate it in their own words rather than copying it.
