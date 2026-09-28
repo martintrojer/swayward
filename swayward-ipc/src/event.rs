@@ -2,10 +2,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// A sway IPC event payload.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum Event {
     Workspace(WorkspaceEvent),
+    Output(OutputEvent),
     Window(WindowEvent),
     Mode(ModeEvent),
     BarconfigUpdate(BarconfigUpdateEvent),
@@ -26,6 +27,7 @@ macro_rules! event_payload {
 
 event_payload!(
     WorkspaceEvent,
+    OutputEvent,
     WindowEvent,
     ModeEvent,
     BarconfigUpdateEvent,

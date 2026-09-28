@@ -28,6 +28,10 @@ pub enum SwayError {
     Io(io::Error),
     /// The server framed a reply we could not parse.
     Wire(crate::wire::WireError),
+    /// The reply body was not valid JSON.
+    Json(serde_json::Error),
+    /// The frame carried an event type this crate does not model.
+    UnknownEventType(u32),
     /// The reply carried a different message type than the request.
     Mismatch {
         sent: u32,
@@ -40,6 +44,8 @@ impl fmt::Display for SwayError {
         match self {
             Self::Io(err) => write!(f, "{err}"),
             Self::Wire(err) => write!(f, "{err}"),
+            Self::Json(err) => write!(f, "{err}"),
+            Self::UnknownEventType(value) => write!(f, "unknown IPC event type {value}"),
             Self::Mismatch { sent, got } => {
                 write!(f, "replied to message type {got}, expected {sent}")
             }
@@ -113,6 +119,29 @@ impl SwaySocket {
         let mut body = vec![0u8; len as usize];
         self.stream.read_exact(&mut body)?;
         Ok((msg_type, String::from_utf8_lossy(&body).into_owned()))
+    }
+
+    /// Reads and classifies one event using its wire type.
+    pub fn read_typed_event(&mut self) -> Result<crate::Event, SwayError> {
+        let (msg_type, body) = self.read_event()?;
+        let payload = serde_json::from_str(&body).map_err(SwayError::Json)?;
+        match msg_type & !(1 << 31) {
+            0 => Ok(crate::Event::Workspace(crate::WorkspaceEvent(payload))),
+            1 => Ok(crate::Event::Output(crate::OutputEvent(payload))),
+            2 => Ok(crate::Event::Mode(crate::ModeEvent(payload))),
+            3 => Ok(crate::Event::Window(crate::WindowEvent(payload))),
+            4 => Ok(crate::Event::BarconfigUpdate(crate::BarconfigUpdateEvent(
+                payload,
+            ))),
+            5 => Ok(crate::Event::Binding(crate::BindingEvent(payload))),
+            6 => Ok(crate::Event::Shutdown(crate::ShutdownEvent(payload))),
+            7 => Ok(crate::Event::Tick(crate::TickEvent(payload))),
+            20 => Ok(crate::Event::BarStateUpdate(crate::BarStateUpdateEvent(
+                payload,
+            ))),
+            21 => Ok(crate::Event::Input(crate::InputEvent(payload))),
+            _ => Err(SwayError::UnknownEventType(msg_type)),
+        }
     }
 }
 
@@ -190,5 +219,58 @@ mod tests {
             sock.read_event().unwrap(),
             (window_event, r#"{"change":"focus"}"#.to_owned())
         );
+    }
+
+    #[test]
+    fn typed_events_use_the_frame_type_instead_of_payload_shape() {
+        let (mut server, client) = UnixStream::pair().unwrap();
+        let mut sock = SwaySocket { stream: client };
+        for event_type in [0, 1, 2, 3, 4, 5, 6, 7, 20, 21] {
+            server
+                .write_all(&encode_raw((1u32 << 31) | event_type, "{}"))
+                .unwrap();
+        }
+        server.flush().unwrap();
+
+        assert!(matches!(
+            sock.read_typed_event().unwrap(),
+            crate::Event::Workspace(_)
+        ));
+        assert!(matches!(
+            sock.read_typed_event().unwrap(),
+            crate::Event::Output(_)
+        ));
+        assert!(matches!(
+            sock.read_typed_event().unwrap(),
+            crate::Event::Mode(_)
+        ));
+        assert!(matches!(
+            sock.read_typed_event().unwrap(),
+            crate::Event::Window(_)
+        ));
+        assert!(matches!(
+            sock.read_typed_event().unwrap(),
+            crate::Event::BarconfigUpdate(_)
+        ));
+        assert!(matches!(
+            sock.read_typed_event().unwrap(),
+            crate::Event::Binding(_)
+        ));
+        assert!(matches!(
+            sock.read_typed_event().unwrap(),
+            crate::Event::Shutdown(_)
+        ));
+        assert!(matches!(
+            sock.read_typed_event().unwrap(),
+            crate::Event::Tick(_)
+        ));
+        assert!(matches!(
+            sock.read_typed_event().unwrap(),
+            crate::Event::BarStateUpdate(_)
+        ));
+        assert!(matches!(
+            sock.read_typed_event().unwrap(),
+            crate::Event::Input(_)
+        ));
     }
 }
