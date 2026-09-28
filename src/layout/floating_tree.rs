@@ -32,6 +32,26 @@ use crate::window::ResolvedWindowRules;
 /// By how many logical pixels the directional move commands move floating windows.
 pub const DIRECTIONAL_MOVE_PX: f64 = 50.;
 
+fn remap_rect_center(
+    rect: Rectangle<f64, Logical>,
+    old_area: Rectangle<f64, Logical>,
+    new_area: Rectangle<f64, Logical>,
+) -> Rectangle<f64, Logical> {
+    if old_area.size.w <= 0. || old_area.size.h <= 0. {
+        return Rectangle::new(
+            new_area.loc + (new_area.size.to_point() - rect.size.to_point()).downscale(2.),
+            rect.size,
+        );
+    }
+    let old_center = rect.loc + rect.size.downscale(2.);
+    let relative = old_center - old_area.loc;
+    let new_center = Point::from((
+        new_area.loc.x + relative.x * new_area.size.w / old_area.size.w,
+        new_area.loc.y + relative.y * new_area.size.h / old_area.size.h,
+    ));
+    Rectangle::new(new_center - rect.size.downscale(2.), rect.size)
+}
+
 pub(super) fn apply_position_change(
     current: f64,
     change: PositionChange,
@@ -117,6 +137,32 @@ struct FloatingTreeEntry<W: LayoutElement> {
     tree: TilingTree<W>,
     root: NodeId,
     rect: Rectangle<f64, Logical>,
+    sticky: bool,
+}
+
+/// A nested floating root detached for scratchpad or workspace transfer.
+#[derive(Debug)]
+pub struct RemovedFloatingTree<W: LayoutElement> {
+    pub(super) tree: TilingTree<W>,
+    root: NodeId,
+    window_ids: Vec<W::Id>,
+    rect: Rectangle<f64, Logical>,
+    working_area: Rectangle<f64, Logical>,
+    sticky: bool,
+}
+
+impl<W: LayoutElement> RemovedFloatingTree<W> {
+    pub fn contains_window(&self, window: &W::Id) -> bool {
+        self.window_ids.contains(window)
+    }
+
+    pub fn window_ids(&self) -> &[W::Id] {
+        &self.window_ids
+    }
+
+    pub fn windows(&self) -> impl Iterator<Item = &W> {
+        self.tree.windows().map(|(_, window)| window)
+    }
 }
 
 /// Root geometry for a floating entry.
@@ -649,25 +695,122 @@ impl<W: LayoutElement> FloatingLayout<W> {
             .tree_entries
             .iter()
             .any(|entry| entry.tree.contains(root)));
-        self.tree_entries
-            .insert(0, FloatingTreeEntry { tree, root, rect });
+        self.tree_entries.insert(
+            0,
+            FloatingTreeEntry {
+                tree,
+                root,
+                rect,
+                sticky: false,
+            },
+        );
         (root, remapped)
     }
 
+    pub fn add_removed_tree(
+        &mut self,
+        removed: RemovedFloatingTree<W>,
+        remap_position: bool,
+    ) -> (NodeId, Vec<(NodeId, NodeId)>) {
+        let rect = if remap_position {
+            remap_rect_center(removed.rect, removed.working_area, self.working_area)
+        } else {
+            removed.rect
+        };
+        let mut tree = removed.tree;
+        tree.update_config(
+            self.view_size,
+            rect,
+            false,
+            self.scale,
+            self.options.clone(),
+        );
+        let root = removed.root;
+        self.tree_entries.insert(
+            0,
+            FloatingTreeEntry {
+                tree,
+                root,
+                rect,
+                sticky: removed.sticky,
+            },
+        );
+        (root, Vec::new())
+    }
+
     pub fn remove_tree(&mut self, root: NodeId) -> Option<DetachedSubtree<W>> {
+        self.remove_tree_for_transfer(root)?
+            .tree
+            .detach_resident_root(root)
+    }
+
+    pub fn remove_tree_for_transfer(&mut self, root: NodeId) -> Option<RemovedFloatingTree<W>> {
         let index = self
             .tree_entries
             .iter()
             .position(|entry| entry.root == root)?;
-        let subtree = self
-            .tree_entries
-            .remove(index)
+        let entry = self.tree_entries.remove(index);
+        let window_ids = entry
             .tree
-            .detach_resident_root(root);
+            .windows()
+            .map(|(_, window)| window.id().clone())
+            .collect();
         if self.entries.is_empty() && self.tree_entries.is_empty() {
             self.active_window_id = None;
         }
-        subtree
+        Some(RemovedFloatingTree {
+            tree: entry.tree,
+            root,
+            window_ids,
+            rect: entry.rect,
+            working_area: self.working_area,
+            sticky: entry.sticky,
+        })
+    }
+
+    pub fn tree_rect(&self, root: NodeId) -> Option<Rectangle<f64, Logical>> {
+        self.tree_entries
+            .iter()
+            .find(|entry| entry.root == root)
+            .map(|entry| entry.rect)
+    }
+
+    pub fn tree_root_for_window(&self, window: &W::Id) -> Option<NodeId> {
+        self.tree_entries
+            .iter()
+            .find(|entry| entry.tree.node_for_window(window).is_some())
+            .map(|entry| entry.root)
+    }
+
+    pub fn tree_roots(&self) -> impl Iterator<Item = NodeId> + '_ {
+        self.tree_entries.iter().map(|entry| entry.root)
+    }
+
+    pub fn tree_window_ids(&self, root: NodeId) -> Option<Vec<W::Id>> {
+        self.tree(root).map(|tree| {
+            tree.windows()
+                .map(|(_, window)| window.id().clone())
+                .collect()
+        })
+    }
+
+    pub fn tree_is_sticky(&self, root: NodeId) -> bool {
+        self.tree_entries
+            .iter()
+            .find(|entry| entry.root == root)
+            .is_some_and(|entry| entry.sticky)
+    }
+
+    pub fn set_tree_sticky(&mut self, root: NodeId, sticky: bool) -> bool {
+        let Some(entry) = self
+            .tree_entries
+            .iter_mut()
+            .find(|entry| entry.root == root)
+        else {
+            return false;
+        };
+        entry.sticky = sticky;
+        true
     }
 
     pub fn tree(&self, root: NodeId) -> Option<&TilingTree<W>> {
@@ -682,6 +825,19 @@ impl<W: LayoutElement> FloatingLayout<W> {
             .iter_mut()
             .find(|entry| entry.root == root)
             .map(|entry| &mut entry.tree)
+    }
+
+    pub fn take_sticky_trees(&mut self) -> Vec<RemovedFloatingTree<W>> {
+        let roots = self
+            .tree_entries
+            .iter()
+            .filter(|entry| entry.sticky)
+            .map(|entry| entry.root)
+            .collect::<Vec<_>>();
+        roots
+            .into_iter()
+            .filter_map(|root| self.remove_tree_for_transfer(root))
+            .collect()
     }
 
     pub fn move_tree(&mut self, root: NodeId, rect: Rectangle<f64, Logical>) -> bool {

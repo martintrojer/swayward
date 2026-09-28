@@ -794,9 +794,13 @@ impl<W: LayoutElement> Monitor<W> {
         if old_idx == self.active_workspace_idx {
             return;
         }
+        let sticky_trees = self.workspaces[old_idx].take_sticky_trees();
         let sticky = self.workspaces[old_idx].take_sticky_tiles();
         let target = &mut self.workspaces[self.active_workspace_idx];
         let target_was_empty = !target.has_windows();
+        for removed in sticky_trees {
+            target.add_floating_tree(removed, false);
+        }
         for removed in sticky {
             target.add_tile(
                 removed.tile,
@@ -1069,6 +1073,34 @@ impl<W: LayoutElement> Monitor<W> {
         let activate = activate.map_smart(|| {
             window.is_none_or(|win| self.active_window().map(|win| win.id()) == Some(win))
         });
+
+        let tree_root = window
+            .and_then(|window| {
+                self.workspaces[source_workspace_idx].floating_tree_root_for_window(window)
+            })
+            .or_else(|| {
+                window
+                    .is_none()
+                    .then(|| {
+                        self.workspaces[source_workspace_idx]
+                            .active_window()
+                            .and_then(|window| {
+                                self.workspaces[source_workspace_idx]
+                                    .floating_tree_root_for_window(window.id())
+                            })
+                    })
+                    .flatten()
+            });
+        if let Some(root) = tree_root {
+            let removed = self.workspaces[source_workspace_idx]
+                .remove_floating_tree(root)
+                .unwrap();
+            self.workspaces[new_idx].add_floating_tree(removed, false);
+            if self.workspace_switch.is_none() {
+                self.consider_destroy_workspace(source_id);
+            }
+            return;
+        }
 
         let workspace = &mut self.workspaces[source_workspace_idx];
         let Some(window) = window.or_else(|| workspace.active_window().map(|win| win.id())) else {

@@ -2589,6 +2589,41 @@ fn making_window_sticky_moves_before_cleaning_source_workspace() {
 }
 
 #[test]
+fn sticky_floating_tree_follows_workspace_focus() {
+    let mut layout = Layout::default();
+    Op::AddOutput(1).apply(&mut layout);
+    for id in 1..=2 {
+        Op::AddWindow {
+            params: TestWindowParams::new(id),
+        }
+        .apply(&mut layout);
+    }
+    let source = layout.active_workspace().unwrap().id();
+    let workspace = layout.active_workspace_mut().unwrap();
+    workspace.tiling_mut().focus_root();
+    let root = workspace.tiling().focus().unwrap();
+    let focused = workspace.tiling().node_for_window(&1).unwrap();
+    workspace.tiling_mut().set_focus(focused);
+    let (subtree, old_parent) = workspace.detach_tiling_subtree(root).unwrap();
+    workspace.finish_tiling_subtree_detach(old_parent);
+    workspace.floating_mut().add_tree(
+        subtree,
+        Rectangle::new((100., 120.).into(), (600., 450.).into()),
+    );
+    assert!(layout.set_window_sticky(&1, "enable"));
+
+    layout
+        .activate_sway_workspace(crate::command::WorkspaceTarget::Name("target".into()))
+        .unwrap();
+
+    let target = layout.active_workspace().unwrap();
+    assert_eq!(target.floating_tree_root_for_window(&1), Some(root));
+    assert_eq!(target.floating_tree_root_for_window(&2), Some(root));
+    assert_eq!(target.floating().tree(root).unwrap().focus(), Some(focused));
+    assert_ne!(target.id(), source);
+}
+
+#[test]
 fn tiled_window_restores_natural_size_when_first_floated() {
     let mut options = Options::default();
     options.layout.border.off = true;
@@ -3714,6 +3749,161 @@ fn floating_tree_entry_routes_geometry_focus_hit_testing_and_lifecycle() {
     assert!(remapped.is_empty());
     assert_eq!(workspace.tiling().windows().count(), 2);
     workspace.verify_invariants(None);
+}
+
+#[test]
+fn floating_tree_root_survives_workspace_and_output_moves() {
+    let output = Output::new(
+        "output".into(),
+        PhysicalProperties {
+            size: Size::from((1280, 720)),
+            subpixel: Subpixel::Unknown,
+            make: String::new(),
+            model: String::new(),
+            serial_number: String::new(),
+        },
+    );
+    output.change_current_state(
+        Some(Mode {
+            size: Size::from((1280, 720)),
+            refresh: 60000,
+        }),
+        None,
+        None,
+        None,
+    );
+    output.user_data().insert_if_missing(|| OutputName {
+        connector: "output".into(),
+        make: None,
+        model: None,
+        serial: None,
+    });
+    let mut source = Workspace::new(
+        output.clone(),
+        Clock::with_time(Duration::ZERO),
+        Rc::new(Options::default()),
+    );
+    for id in 1..=2 {
+        let tile = source.make_tile(TestWindow::new(TestWindowParams::new(id)));
+        source.add_tile(
+            tile,
+            WorkspaceAddWindowTarget::Auto,
+            ActivateWindow::Yes,
+            TiledWidth::Proportion(0.5),
+            false,
+            false,
+            None,
+        );
+    }
+    let first = source.tiling().node_for_window(&1).unwrap();
+    source.tiling_mut().focus_root();
+    let root = source.tiling().focus().unwrap();
+    source.tiling_mut().set_focus(first);
+    let (subtree, old_parent) = source.detach_tiling_subtree(root).unwrap();
+    source.finish_tiling_subtree_detach(old_parent);
+    let old_rect = Rectangle::new((100., 120.).into(), (600., 450.).into());
+    let (root, _) = source.floating_mut().add_tree(subtree, old_rect);
+    source
+        .floating_mut()
+        .tree_mut(root)
+        .unwrap()
+        .set_fullscreen(&1, true);
+    source.floating_mut().set_tree_sticky(root, true);
+    let node_ids = source
+        .floating()
+        .tree(root)
+        .unwrap()
+        .iter_depth_first()
+        .map(|(id, _)| id)
+        .collect::<Vec<_>>();
+
+    let removed = source.remove_floating_tree(root).unwrap();
+    assert!(source.floating().is_empty());
+
+    let target_output = Output::new(
+        "target".into(),
+        PhysicalProperties {
+            size: Size::from((2560, 1440)),
+            subpixel: Subpixel::Unknown,
+            make: String::new(),
+            model: String::new(),
+            serial_number: String::new(),
+        },
+    );
+    target_output.change_current_state(
+        Some(Mode {
+            size: Size::from((2560, 1440)),
+            refresh: 60000,
+        }),
+        None,
+        None,
+        None,
+    );
+    target_output.user_data().insert_if_missing(|| OutputName {
+        connector: "target".into(),
+        make: None,
+        model: None,
+        serial: None,
+    });
+    let mut target = Workspace::new(
+        target_output,
+        Clock::with_time(Duration::ZERO),
+        Rc::new(Options::default()),
+    );
+    let restored = target.add_floating_tree(removed, true);
+    let tree = target.floating().tree(restored).unwrap();
+
+    assert_eq!(restored, root);
+    assert_eq!(tree.focus(), Some(first));
+    assert_eq!(
+        tree.iter_depth_first()
+            .map(|(id, _)| id)
+            .collect::<Vec<_>>(),
+        node_ids
+    );
+    assert_eq!(tree.fullscreen_node(), tree.node_for_window(&1));
+    assert!(target.floating().tree_is_sticky(restored));
+    assert_eq!(
+        target.floating().tree_rect(restored),
+        Some(Rectangle::new((500., 465.).into(), (600., 450.).into()))
+    );
+    target.verify_invariants(None);
+}
+
+#[test]
+fn floating_tree_scratchpad_moves_the_whole_root() {
+    let mut layout = Layout::default();
+    Op::AddOutput(1).apply(&mut layout);
+    for id in 1..=2 {
+        Op::AddWindow {
+            params: TestWindowParams::new(id),
+        }
+        .apply(&mut layout);
+    }
+    let workspace = layout.active_workspace_mut().unwrap();
+    workspace.tiling_mut().focus_root();
+    let root = workspace.tiling().focus().unwrap();
+    let focused = workspace.tiling().node_for_window(&1).unwrap();
+    workspace.tiling_mut().set_focus(focused);
+    let (subtree, old_parent) = workspace.detach_tiling_subtree(root).unwrap();
+    workspace.finish_tiling_subtree_detach(old_parent);
+    let rect = Rectangle::new((100., 120.).into(), (600., 450.).into());
+    let (root, _) = workspace.floating_mut().add_tree(subtree, rect);
+
+    layout.move_to_scratchpad(Some(&1));
+    assert!(layout.is_scratchpad_hidden(&1));
+    assert!(layout.is_scratchpad_hidden(&2));
+    assert_eq!(layout.scratchpad_windows().count(), 2);
+
+    assert_eq!(layout.show_scratchpad(Some(&2)), Some(1));
+    let workspace = layout.active_workspace().unwrap();
+    assert_eq!(workspace.floating_tree_root_for_window(&1), Some(root));
+    assert_eq!(workspace.floating_tree_root_for_window(&2), Some(root));
+    assert_eq!(
+        workspace.floating().tree(root).unwrap().focus(),
+        Some(focused)
+    );
+    layout.verify_invariants();
 }
 
 #[test]

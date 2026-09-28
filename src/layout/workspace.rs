@@ -15,7 +15,9 @@ use swayward_config::utils::MergeWith as _;
 use swayward_config::{CornerRadius, OutputName, PresetSize, Workspace as WorkspaceConfig};
 use swayward_ipc::{ColumnDisplay, PositionChange, SizeChange, WindowLayout};
 
-use super::floating_tree::{apply_position_change, FloatingLayout, FloatingLayoutRenderElement};
+use super::floating_tree::{
+    apply_position_change, FloatingLayout, FloatingLayoutRenderElement, RemovedFloatingTree,
+};
 use super::shadow::Shadow;
 use super::tile::{Tile, TileRenderSnapshot};
 use super::tiling_tree::{
@@ -1212,6 +1214,40 @@ impl<W: LayoutElement> Workspace<W> {
 
     pub fn finish_tiling_subtree_detach(&mut self, old_parent: Option<NodeId>) {
         self.tiling.finish_subtree_detach(old_parent);
+    }
+
+    pub fn clear_floating_tree_fullscreen(&mut self, root: NodeId) {
+        let tree = self.floating.tree_mut(root).unwrap();
+        if let Some(fullscreen) = tree.fullscreen_node() {
+            tree.set_node_fullscreen(fullscreen, None);
+        }
+    }
+
+    pub fn remove_floating_tree(&mut self, root: NodeId) -> Option<RemovedFloatingTree<W>> {
+        let removed = self.floating.remove_tree_for_transfer(root)?;
+        if let Some(output) = &self.output {
+            for (_, window) in removed.tree.windows() {
+                window.output_leave(output);
+            }
+        }
+        self.update_focus_floating_tiling_after_removing(true);
+        Some(removed)
+    }
+
+    pub fn add_floating_tree(
+        &mut self,
+        removed: RemovedFloatingTree<W>,
+        remap_position: bool,
+    ) -> NodeId {
+        if let Some(output) = &self.output {
+            for (_, window) in removed.tree.windows() {
+                window.output_enter(output);
+            }
+        }
+        let (root, remapped) = self.floating.add_removed_tree(removed, remap_position);
+        debug_assert!(remapped.is_empty());
+        self.floating_is_active = FloatingActive::Yes;
+        root
     }
 
     pub fn remove_active_tiling_tile(&mut self) -> Option<Tile<W>> {
@@ -2452,21 +2488,41 @@ impl<W: LayoutElement> Workspace<W> {
     }
 
     pub fn has_non_sticky_windows(&self) -> bool {
-        !self.tiling.is_empty() || self.floating.tiles().any(|tile| !tile.is_sticky)
+        !self.tiling.is_empty()
+            || self.floating.tiles().any(|tile| !tile.is_sticky)
+            || self
+                .floating
+                .tree_roots()
+                .any(|root| !self.floating.tree_is_sticky(root))
+    }
+
+    pub fn floating_tree_root_for_window(&self, window: &W::Id) -> Option<NodeId> {
+        self.floating.tree_root_for_window(window)
     }
 
     pub fn is_window_sticky(&self, window: &W::Id) -> bool {
-        self.tiles()
-            .find(|tile| tile.window().id() == window)
-            .is_some_and(|tile| tile.is_sticky)
+        self.floating
+            .tree_root_for_window(window)
+            .is_some_and(|root| self.floating.tree_is_sticky(root))
+            || self
+                .tiles()
+                .find(|tile| tile.window().id() == window)
+                .is_some_and(|tile| tile.is_sticky)
     }
 
     pub fn set_window_sticky(&mut self, window: &W::Id, sticky: bool) -> bool {
+        if let Some(root) = self.floating.tree_root_for_window(window) {
+            return self.floating.set_tree_sticky(root, sticky);
+        }
         let Some(tile) = self.tiles_mut().find(|tile| tile.window().id() == window) else {
             return false;
         };
         tile.is_sticky = sticky;
         true
+    }
+
+    pub fn take_sticky_trees(&mut self) -> Vec<RemovedFloatingTree<W>> {
+        self.floating.take_sticky_trees()
     }
 
     pub fn take_sticky_tiles(&mut self) -> Vec<RemovedTile<W>> {
