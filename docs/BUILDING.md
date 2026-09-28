@@ -44,7 +44,7 @@ container instead:
 
 ```sh
 ./contrib/dev-container.sh
-distrobox enter swayward-dev -- bash -lc 'cd "$PWD" && cargo build --release'
+distrobox enter swayward-dev -- env CARGO_BUILD_JOBS=4 cargo build --release
 ```
 
 The script creates `swayward-dev` from `fedora-toolbox:44` and installs the
@@ -87,17 +87,20 @@ log with that output when reducing a crash or `ERROR`.
 ## Install as a login session
 
 `contrib/install-session.sh` installs swayward as a selectable session without
-copying anything into `/usr`:
+copying the binaries into `/usr`. Run it on the host, not from inside the build
+container:
 
 ```sh
-cargo build --release
 contrib/install-session.sh --config sway   # also converts ~/.config/sway/config
 ```
 
-The binary and launcher go under `~/.local`; the config and portal selection go
-under `~/.config`. One root-owned desktop file is unavoidable, because a
-display manager only reads `/usr/share/wayland-sessions`. The script prints the
-exact `sudo install` command and never runs it for you.
+The script builds the release binaries in `swayward-dev`.
+
+The binaries, config translator, and launcher go under `~/.local`; the config
+and portal selection go under `~/.config`. One root-owned desktop file is
+unavoidable because display managers do not read per-user session entries. The
+script prints the exact `sudo install` command and never runs it for you. Run
+that command, then log out and select **Swayward (dev)** from the session list.
 
 Before you log in to swayward for the first time:
 
