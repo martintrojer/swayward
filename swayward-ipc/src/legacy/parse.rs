@@ -285,6 +285,74 @@ macro_rules! ensure {
     };
 }
 
+fn validate_horizontal_modeline(
+    display: u16,
+    sync_start: u16,
+    sync_end: u16,
+    total: u16,
+) -> Result<(), String> {
+    ensure!(
+        display < sync_start,
+        "hdisplay {} must be < hsync_start {}",
+        display,
+        sync_start
+    );
+    ensure!(
+        sync_start < sync_end,
+        "hsync_start {} must be < hsync_end {}",
+        sync_start,
+        sync_end
+    );
+    ensure!(
+        sync_end < total,
+        "hsync_end {} must be < htotal {}",
+        sync_end,
+        total
+    );
+    ensure!(0 < total, "htotal {} must be > 0", total);
+    Ok(())
+}
+
+fn validate_vertical_modeline(
+    display: u16,
+    sync_start: u16,
+    sync_end: u16,
+    total: u16,
+) -> Result<(), String> {
+    ensure!(
+        display < sync_start,
+        "vdisplay {} must be < vsync_start {}",
+        display,
+        sync_start
+    );
+    ensure!(
+        sync_start < sync_end,
+        "vsync_start {} must be < vsync_end {}",
+        sync_start,
+        sync_end
+    );
+    ensure!(
+        sync_end < total,
+        "vsync_end {} must be < vtotal {}",
+        sync_end,
+        total
+    );
+    ensure!(0 < total, "vtotal {} must be > 0", total);
+    Ok(())
+}
+
+impl ConfiguredMode {
+    fn validate_custom(&self) -> Result<(), String> {
+        let Some(refresh) = self.refresh else {
+            return Err("refresh rate is required for custom modes".to_string());
+        };
+        if refresh <= 0. {
+            return Err(format!("custom mode refresh rate {refresh} must be > 0"));
+        }
+        Ok(())
+    }
+}
+
 impl OutputAction {
     /// Validates some required constraints on the modeline and custom mode.
     pub fn validate(&self) -> Result<(), String> {
@@ -300,59 +368,10 @@ impl OutputAction {
                 vtotal,
                 ..
             } => {
-                ensure!(
-                    hdisplay < hsync_start,
-                    "hdisplay {} must be < hsync_start {}",
-                    hdisplay,
-                    hsync_start
-                );
-                ensure!(
-                    hsync_start < hsync_end,
-                    "hsync_start {} must be < hsync_end {}",
-                    hsync_start,
-                    hsync_end
-                );
-                ensure!(
-                    hsync_end < htotal,
-                    "hsync_end {} must be < htotal {}",
-                    hsync_end,
-                    htotal
-                );
-                ensure!(0 < *htotal, "htotal {} must be > 0", htotal);
-                ensure!(
-                    vdisplay < vsync_start,
-                    "vdisplay {} must be < vsync_start {}",
-                    vdisplay,
-                    vsync_start
-                );
-                ensure!(
-                    vsync_start < vsync_end,
-                    "vsync_start {} must be < vsync_end {}",
-                    vsync_start,
-                    vsync_end
-                );
-                ensure!(
-                    vsync_end < vtotal,
-                    "vsync_end {} must be < vtotal {}",
-                    vsync_end,
-                    vtotal
-                );
-                ensure!(0 < *vtotal, "vtotal {} must be > 0", vtotal);
-                Ok(())
+                validate_horizontal_modeline(*hdisplay, *hsync_start, *hsync_end, *htotal)?;
+                validate_vertical_modeline(*vdisplay, *vsync_start, *vsync_end, *vtotal)
             }
-            OutputAction::CustomMode {
-                mode: ConfiguredMode { refresh, .. },
-            } => {
-                if refresh.is_none() {
-                    return Err("refresh rate is required for custom modes".to_string());
-                }
-                if let Some(refresh) = refresh {
-                    if *refresh <= 0. {
-                        return Err(format!("custom mode refresh rate {refresh} must be > 0"));
-                    }
-                }
-                Ok(())
-            }
+            OutputAction::CustomMode { mode } => mode.validate_custom(),
             _ => Ok(()),
         }
     }
