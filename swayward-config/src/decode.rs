@@ -48,8 +48,6 @@ where
         let _span = tracy_client::span!("decode config file");
 
         let config = ctx.get::<Rc<RefCell<Config>>>().unwrap().clone();
-        let includes = ctx.get::<Rc<RefCell<Includes>>>().unwrap().clone();
-        let include_errors = ctx.get::<Rc<RefCell<IncludeErrors>>>().unwrap().clone();
         let recursion = ctx.get::<Recursion>().unwrap().0;
         let saw_mru_binds = ctx.get::<SawMruBinds>().unwrap().0.clone();
 
@@ -117,56 +115,8 @@ where
                 "spawn-sh-at-startup" => m_push!(spawn_sh_at_startup),
                 "window-rule" => m_push!(window_rules),
                 "layer-rule" => m_push!(layer_rules),
-                "workspace" => {
-                    let workspace = Workspace::decode_node(node, ctx)?;
-                    if workspace
-                        .sway_output_assignment
-                        .as_ref()
-                        .is_some_and(Vec::is_empty)
-                    {
-                        ctx.emit_error(DecodeError::unexpected(
-                            node,
-                            "workspace",
-                            "sway-output-assignment requires at least one output",
-                        ));
-                    }
-                    if workspace.sway_output_assignment.is_some()
-                        && workspace.open_on_output.is_some()
-                    {
-                        ctx.emit_error(DecodeError::unexpected(
-                            node,
-                            "workspace",
-                            "sway-output-assignment and open-on-output are mutually exclusive",
-                        ));
-                    }
-                    config.borrow_mut().workspaces.push(workspace);
-                }
-                "mode" => {
-                    let part = BindingMode::decode_node(node, ctx)?;
-                    if part.name.is_empty() {
-                        ctx.emit_error(DecodeError::unexpected(
-                            &node.node_name,
-                            "mode",
-                            "mode name must not be empty",
-                        ));
-                        continue;
-                    }
-                    let mut config = config.borrow_mut();
-                    let binds = if part.name == "default" {
-                        &mut config.binds
-                    } else if let Some(mode) = config
-                        .binding_modes
-                        .iter_mut()
-                        .find(|mode| mode.name == part.name)
-                    {
-                        mode.pango_markup |= part.pango_markup;
-                        &mut mode.binds
-                    } else {
-                        config.binding_modes.push(part);
-                        continue;
-                    };
-                    binds.merge(part.binds);
-                }
+                "workspace" => decode_workspace(node, ctx, &config)?,
+                "mode" => decode_mode(node, ctx, &config)?,
 
                 // Single-part sections.
                 "binds" => {
@@ -204,221 +154,11 @@ where
                     config.borrow_mut().screenshot_path = part;
                 }
 
-                "layout" => {
-                    let mut part = LayoutPart::decode_node(node, ctx)?;
+                "layout" => decode_layout(node, ctx, &config, recursion)?,
 
-                    // Preserve the behavior we'd always had for the border section:
-                    // - `layout {}` gives border = off
-                    // - `layout { border {} }` gives border = on
-                    // - `layout { border { off } }` gives border = off
-                    //
-                    // This behavior is inconsistent with the rest of the config where adding an
-                    // empty section generally doesn't change the outcome. Particularly, shadows
-                    // are also disabled by default (like borders), and they always had an `on`
-                    // instead of an `off` for this reason, so that writing `layout { shadow {} }`
-                    // still results in shadow = off, as it should.
-                    //
-                    // Unfortunately, the default config has always had wording that heavily
-                    // implies that `layout { border {} }` enables the borders. This wording is
-                    // sure to be present in a lot of users' configs by now, which we can't change.
-                    //
-                    // Another way to make things consistent would be to default borders to on.
-                    // However, that is annoying because it would mean changing many tests that
-                    // rely on borders being off by default. This would also contradict the
-                    // intended default borders value (off).
-                    //
-                    // So, let's just work around the problem here, preserving the original
-                    // behavior.
-                    if recursion == 0 {
-                        if let Some(border) = part.border.as_mut() {
-                            if !border.on && !border.off {
-                                border.on = true;
-                            }
-                        }
-                    }
+                "recent-windows" => decode_recent_windows(node, ctx, &config, &saw_mru_binds)?,
 
-                    if let Some(titlebar) = &part.titlebar {
-                        let mut merged = config.borrow().layout.titlebar.clone();
-                        merged.merge_with(titlebar);
-                        if merged.horizontal_padding.min(merged.vertical_padding)
-                            < f64::from(merged.border_thickness)
-                        {
-                            ctx.emit_error(DecodeError::unexpected(
-                                node,
-                                "layout",
-                                "titlebar padding cannot be smaller than border thickness",
-                            ));
-                        }
-                    }
-
-                    config.borrow_mut().layout.merge_with(&part);
-                }
-
-                "recent-windows" => {
-                    let part = RecentWindowsPart::decode_node(node, ctx)?;
-
-                    let mut config = config.borrow_mut();
-
-                    // When an MRU binds section is encountered for the first time, clear out the
-                    // default MRU binds.
-                    if !saw_mru_binds.get() && part.binds.is_some() {
-                        saw_mru_binds.set(true);
-                        config.recent_windows.binds.clear();
-                    }
-
-                    config.recent_windows.merge_with(&part);
-                }
-
-                "include" => {
-                    // Parse the path argument
-                    let mut iter_args = node.arguments.iter();
-                    let path_val = iter_args.next().ok_or_else(|| {
-                        DecodeError::missing(
-                            node,
-                            "additional argument for include path is required",
-                        )
-                    })?;
-                    let path: PathBuf = knuffel::traits::DecodeScalar::decode(path_val, ctx)?;
-
-                    // Check for extra arguments
-                    if let Some(val) = iter_args.next() {
-                        ctx.emit_error(DecodeError::unexpected(
-                            &val.literal,
-                            "argument",
-                            "unexpected argument",
-                        ));
-                    }
-
-                    // Parse the optional property
-                    let mut optional = false;
-                    for (name, val) in &node.properties {
-                        match &***name {
-                            "optional" => {
-                                optional = knuffel::traits::DecodeScalar::decode(val, ctx)?;
-                            }
-                            name_str => {
-                                ctx.emit_error(DecodeError::unexpected(
-                                    name,
-                                    "property",
-                                    format!("unexpected property `{}`", name_str.escape_default()),
-                                ));
-                            }
-                        }
-                    }
-
-                    // Check for unexpected children
-                    for child in node.children() {
-                        ctx.emit_error(DecodeError::unexpected(
-                            child,
-                            "node",
-                            format!("unexpected node `{}`", child.node_name.escape_default()),
-                        ));
-                    }
-
-                    // We use DecodeError::Missing throughout this block because it results in the
-                    // least confusing error messages while still allowing to provide a span.
-
-                    // Expand ~ into the home dir
-                    let path = if let Ok(rest) = path.strip_prefix("~") {
-                        let Some(home) = std::env::home_dir() else {
-                            ctx.emit_error(DecodeError::missing(
-                                node,
-                                format!("error retrieving home directory to expand {path:?}"),
-                            ));
-                            continue;
-                        };
-
-                        home.join(rest)
-                    } else {
-                        // Otherwise, use the current include base dir
-                        let base = ctx.get::<BasePath>().unwrap();
-                        base.0.join(path)
-                    };
-
-                    let recursion = ctx.get::<Recursion>().unwrap().0 + 1;
-                    if recursion == RECURSION_LIMIT {
-                        ctx.emit_error(DecodeError::missing(
-                            node,
-                            format!(
-                                "reached the recursion limit; \
-                                 includes cannot be {RECURSION_LIMIT} levels deep"
-                            ),
-                        ));
-                        continue;
-                    }
-
-                    let Some(filename) = path.file_name().and_then(OsStr::to_str) else {
-                        ctx.emit_error(DecodeError::missing(
-                            node,
-                            "include path doesn't have a valid file name",
-                        ));
-                        continue;
-                    };
-                    let base = path.parent().map(Path::to_path_buf).unwrap_or_default();
-
-                    // Check for recursive include for a nicer error message.
-                    let mut include_stack = ctx.get::<IncludeStack>().unwrap().0.clone();
-                    if !include_stack.insert(path.to_path_buf()) {
-                        ctx.emit_error(DecodeError::missing(
-                            node,
-                            "recursive include (file includes itself)",
-                        ));
-                        continue;
-                    }
-
-                    // Store even if the include fails to read or parse, so it gets watched.
-                    includes.borrow_mut().0.push(path.to_path_buf());
-
-                    match fs::read_to_string(&path) {
-                        Ok(text) => {
-                            // Try to get filename relative to the root base config folder for
-                            // clearer error messages.
-                            let root_base = &ctx.get::<RootBase>().unwrap().0;
-                            // Failing to strip prefix usually means absolute path; show it in full.
-                            let relative_path = path.strip_prefix(root_base).ok().unwrap_or(&path);
-                            let filename = relative_path.to_str().unwrap_or(filename);
-
-                            let part = knuffel::parse_with_context::<
-                                ConfigPart,
-                                knuffel::span::Span,
-                                _,
-                            >(filename, &text, |ctx| {
-                                ctx.set(BasePath(base));
-                                ctx.set(RootBase(root_base.clone()));
-                                ctx.set(Recursion(recursion));
-                                ctx.set(includes.clone());
-                                ctx.set(include_errors.clone());
-                                ctx.set(IncludeStack(include_stack));
-                                ctx.set(SawMruBinds(saw_mru_binds.clone()));
-                                ctx.set(config.clone());
-                            });
-
-                            match part {
-                                Ok(_) => {}
-                                Err(err) => {
-                                    include_errors.borrow_mut().0.push(err);
-
-                                    ctx.emit_error(DecodeError::missing(
-                                        node,
-                                        "failed to parse included config",
-                                    ));
-                                }
-                            }
-                        }
-                        Err(err) => {
-                            if optional && err.kind() == std::io::ErrorKind::NotFound {
-                                // Warn about missing optional includes
-                                warn!("optional include not found: {path:?}");
-                            } else {
-                                // Report all other errors normally
-                                ctx.emit_error(DecodeError::missing(
-                                    node,
-                                    format!("failed to read included config from {path:?}: {err}"),
-                                ));
-                            }
-                        }
-                    }
-                }
+                "include" => decode_include(node, ctx)?,
 
                 name => {
                     ctx.emit_error(DecodeError::unexpected(
@@ -432,6 +172,263 @@ where
 
         Ok(Self)
     }
+}
+
+fn decode_workspace<S>(
+    node: &knuffel::ast::SpannedNode<S>,
+    ctx: &mut knuffel::decode::Context<S>,
+    config: &RefCell<Config>,
+) -> Result<(), DecodeError<S>>
+where
+    S: knuffel::traits::ErrorSpan,
+{
+    let workspace = Workspace::decode_node(node, ctx)?;
+    if workspace
+        .sway_output_assignment
+        .as_ref()
+        .is_some_and(Vec::is_empty)
+    {
+        ctx.emit_error(DecodeError::unexpected(
+            node,
+            "workspace",
+            "sway-output-assignment requires at least one output",
+        ));
+    }
+    if workspace.sway_output_assignment.is_some() && workspace.open_on_output.is_some() {
+        ctx.emit_error(DecodeError::unexpected(
+            node,
+            "workspace",
+            "sway-output-assignment and open-on-output are mutually exclusive",
+        ));
+    }
+    config.borrow_mut().workspaces.push(workspace);
+    Ok(())
+}
+
+fn decode_mode<S>(
+    node: &knuffel::ast::SpannedNode<S>,
+    ctx: &mut knuffel::decode::Context<S>,
+    config: &RefCell<Config>,
+) -> Result<(), DecodeError<S>>
+where
+    S: knuffel::traits::ErrorSpan,
+{
+    let part = BindingMode::decode_node(node, ctx)?;
+    if part.name.is_empty() {
+        ctx.emit_error(DecodeError::unexpected(
+            &node.node_name,
+            "mode",
+            "mode name must not be empty",
+        ));
+        return Ok(());
+    }
+
+    let mut config = config.borrow_mut();
+    let binds = if part.name == "default" {
+        &mut config.binds
+    } else if let Some(mode) = config
+        .binding_modes
+        .iter_mut()
+        .find(|mode| mode.name == part.name)
+    {
+        mode.pango_markup |= part.pango_markup;
+        &mut mode.binds
+    } else {
+        config.binding_modes.push(part);
+        return Ok(());
+    };
+    binds.merge(part.binds);
+    Ok(())
+}
+
+fn decode_layout<S>(
+    node: &knuffel::ast::SpannedNode<S>,
+    ctx: &mut knuffel::decode::Context<S>,
+    config: &RefCell<Config>,
+    recursion: u8,
+) -> Result<(), DecodeError<S>>
+where
+    S: knuffel::traits::ErrorSpan,
+{
+    let mut part = LayoutPart::decode_node(node, ctx)?;
+
+    // Preserve the historical behavior where an empty top-level border section enables borders.
+    if recursion == 0 {
+        if let Some(border) = part.border.as_mut() {
+            if !border.on && !border.off {
+                border.on = true;
+            }
+        }
+    }
+
+    if let Some(titlebar) = &part.titlebar {
+        let mut merged = config.borrow().layout.titlebar.clone();
+        merged.merge_with(titlebar);
+        if merged.horizontal_padding.min(merged.vertical_padding)
+            < f64::from(merged.border_thickness)
+        {
+            ctx.emit_error(DecodeError::unexpected(
+                node,
+                "layout",
+                "titlebar padding cannot be smaller than border thickness",
+            ));
+        }
+    }
+
+    config.borrow_mut().layout.merge_with(&part);
+    Ok(())
+}
+
+fn decode_recent_windows<S>(
+    node: &knuffel::ast::SpannedNode<S>,
+    ctx: &mut knuffel::decode::Context<S>,
+    config: &RefCell<Config>,
+    saw_mru_binds: &Cell<bool>,
+) -> Result<(), DecodeError<S>>
+where
+    S: knuffel::traits::ErrorSpan,
+{
+    let part = RecentWindowsPart::decode_node(node, ctx)?;
+    let mut config = config.borrow_mut();
+
+    // The first explicit MRU binds section replaces the defaults; later sections merge into it.
+    if !saw_mru_binds.get() && part.binds.is_some() {
+        saw_mru_binds.set(true);
+        config.recent_windows.binds.clear();
+    }
+
+    config.recent_windows.merge_with(&part);
+    Ok(())
+}
+
+fn decode_include<S>(
+    node: &knuffel::ast::SpannedNode<S>,
+    ctx: &mut knuffel::decode::Context<S>,
+) -> Result<(), DecodeError<S>>
+where
+    S: knuffel::traits::ErrorSpan,
+{
+    let mut iter_args = node.arguments.iter();
+    let path_val = iter_args.next().ok_or_else(|| {
+        DecodeError::missing(node, "additional argument for include path is required")
+    })?;
+    let path: PathBuf = knuffel::traits::DecodeScalar::decode(path_val, ctx)?;
+
+    if let Some(val) = iter_args.next() {
+        ctx.emit_error(DecodeError::unexpected(
+            &val.literal,
+            "argument",
+            "unexpected argument",
+        ));
+    }
+
+    let mut optional = false;
+    for (name, val) in &node.properties {
+        match &***name {
+            "optional" => optional = knuffel::traits::DecodeScalar::decode(val, ctx)?,
+            name_str => ctx.emit_error(DecodeError::unexpected(
+                name,
+                "property",
+                format!("unexpected property `{}`", name_str.escape_default()),
+            )),
+        }
+    }
+
+    for child in node.children() {
+        ctx.emit_error(DecodeError::unexpected(
+            child,
+            "node",
+            format!("unexpected node `{}`", child.node_name.escape_default()),
+        ));
+    }
+
+    let path = if let Ok(rest) = path.strip_prefix("~") {
+        let Some(home) = std::env::home_dir() else {
+            ctx.emit_error(DecodeError::missing(
+                node,
+                format!("error retrieving home directory to expand {path:?}"),
+            ));
+            return Ok(());
+        };
+        home.join(rest)
+    } else {
+        ctx.get::<BasePath>().unwrap().0.join(path)
+    };
+
+    let recursion = ctx.get::<Recursion>().unwrap().0 + 1;
+    if recursion == RECURSION_LIMIT {
+        ctx.emit_error(DecodeError::missing(
+            node,
+            format!(
+                "reached the recursion limit; includes cannot be {RECURSION_LIMIT} levels deep"
+            ),
+        ));
+        return Ok(());
+    }
+
+    let Some(filename) = path.file_name().and_then(OsStr::to_str) else {
+        ctx.emit_error(DecodeError::missing(
+            node,
+            "include path doesn't have a valid file name",
+        ));
+        return Ok(());
+    };
+    let base = path.parent().map(Path::to_path_buf).unwrap_or_default();
+
+    let mut include_stack = ctx.get::<IncludeStack>().unwrap().0.clone();
+    if !include_stack.insert(path.to_path_buf()) {
+        ctx.emit_error(DecodeError::missing(
+            node,
+            "recursive include (file includes itself)",
+        ));
+        return Ok(());
+    }
+
+    let includes = ctx.get::<Rc<RefCell<Includes>>>().unwrap().clone();
+    includes.borrow_mut().0.push(path.to_path_buf());
+    let include_errors = ctx.get::<Rc<RefCell<IncludeErrors>>>().unwrap().clone();
+    let saw_mru_binds = ctx.get::<SawMruBinds>().unwrap().0.clone();
+    let config = ctx.get::<Rc<RefCell<Config>>>().unwrap().clone();
+
+    match fs::read_to_string(&path) {
+        Ok(text) => {
+            let root_base = &ctx.get::<RootBase>().unwrap().0;
+            let relative_path = path.strip_prefix(root_base).ok().unwrap_or(&path);
+            let filename = relative_path.to_str().unwrap_or(filename);
+
+            let part = knuffel::parse_with_context::<ConfigPart, knuffel::span::Span, _>(
+                filename,
+                &text,
+                |ctx| {
+                    ctx.set(BasePath(base));
+                    ctx.set(RootBase(root_base.clone()));
+                    ctx.set(Recursion(recursion));
+                    ctx.set(includes);
+                    ctx.set(include_errors.clone());
+                    ctx.set(IncludeStack(include_stack));
+                    ctx.set(SawMruBinds(saw_mru_binds));
+                    ctx.set(config);
+                },
+            );
+
+            if let Err(err) = part {
+                include_errors.borrow_mut().0.push(err);
+                ctx.emit_error(DecodeError::missing(
+                    node,
+                    "failed to parse included config",
+                ));
+            }
+        }
+        Err(err) if optional && err.kind() == std::io::ErrorKind::NotFound => {
+            warn!("optional include not found: {path:?}");
+        }
+        Err(err) => ctx.emit_error(DecodeError::missing(
+            node,
+            format!("failed to read included config from {path:?}: {err}"),
+        )),
+    }
+
+    Ok(())
 }
 
 impl Config {
