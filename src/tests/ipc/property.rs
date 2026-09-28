@@ -243,6 +243,28 @@ fn check_ops(ops: Vec<Op>) {
 }
 
 #[test]
+fn repeated_property_fixtures_release_keymap_file_descriptors() {
+    check_ops(vec![Op::Command("focus left")]);
+    let keymap_fd_count = || {
+        std::fs::read_dir("/proc/self/fd")
+            .unwrap()
+            .flatten()
+            .filter_map(|entry| std::fs::read_link(entry.path()).ok())
+            .filter(|target| target.to_string_lossy().contains("smithay-keymap"))
+            .count()
+    };
+    let keymaps_before = keymap_fd_count();
+    for _ in 0..200 {
+        check_ops(vec![Op::Command("focus left")]);
+    }
+    let leaked_keymaps = keymap_fd_count().saturating_sub(keymaps_before);
+    assert!(
+        leaked_keymaps <= 32,
+        "leaked {leaked_keymaps} keymap memfds"
+    );
+}
+
+#[test]
 fn swapping_with_a_marked_floating_container_is_rejected_safely() {
     check_ops(vec![
         Op::Open(2),

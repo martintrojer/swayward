@@ -2647,19 +2647,26 @@ impl Swayward {
                 } else {
                     warn!("error adding keyboard: {err:?}");
                 }
-                seat.add_keyboard(
+                match seat.add_keyboard(
                     Default::default(),
                     config_.input.keyboard.repeat_delay.into(),
                     config_.input.keyboard.repeat_rate.into(),
-                )
-                .unwrap()
+                ) {
+                    Ok(keyboard) => Some(keyboard),
+                    Err(err) => {
+                        error!("error adding keyboard with the default keymap: {err:?}");
+                        None
+                    }
+                }
             }
-            Ok(keyboard) => keyboard,
+            Ok(keyboard) => Some(keyboard),
         };
         if config_.input.keyboard.numlock {
-            let mut modifier_state = keyboard.modifier_state();
-            modifier_state.num_lock = true;
-            keyboard.set_modifier_state(modifier_state);
+            if let Some(keyboard) = keyboard {
+                let mut modifier_state = keyboard.modifier_state();
+                modifier_state.num_lock = true;
+                keyboard.set_modifier_state(modifier_state);
+            }
         }
         seat.add_pointer();
 

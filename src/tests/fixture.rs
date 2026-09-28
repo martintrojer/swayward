@@ -196,3 +196,10 @@ impl State {
         self.clients.iter_mut().find(|c| c.id == id).unwrap()
     }
 }
+
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        self.state.server.state.swayward.seat.remove_keyboard();
+        self.state.clients.clear();
+    }
+}
