@@ -24,6 +24,12 @@ SWAYWARD_BUILD_DIR="$HOME/build" contrib/install-session.sh --debug --no-build >
 PORTAL="$HOME/.config/xdg-desktop-portal/swayward-portals.conf"
 cmp resources/swayward-portals.conf "$PORTAL"
 test -x "$HOME/.local/bin/start-swayward"
+test -x "$HOME/.local/bin/swayward-sway-to-kdl"
+
+mkdir -p "$HOME/.config/sway"
+printf 'output * bg /wallpaper fill\n' > "$HOME/.config/sway/config"
+converted=$(SWAYWARD_BUILD_DIR="$HOME/build" contrib/install-session.sh --debug --no-build --config sway)
+printf '%s\n' "$converted" | grep -q '1 directives need manual attention:'
 
 # Swayward deliberately defaults to the GNOME backend for its integrated
 # window picker and dynamic cast targets. wlr remains an optional fallback,
@@ -37,5 +43,6 @@ fi
 
 contrib/install-session.sh --uninstall >/dev/null
 test ! -e "$PORTAL"
+test ! -e "$HOME/.local/bin/swayward-sway-to-kdl"
 
-echo "install-session: portal selection installed and removed"
+echo "install-session: portal selection and config translator installed and removed"

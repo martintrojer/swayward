@@ -47,8 +47,8 @@ while [ $# -gt 0 ]; do
 done
 
 if [ "$UNINSTALL" = 1 ]; then
-	rm -f "$BIN" "$BINDIR/swaywardmsg" "$LAUNCHER" "$PORTALCONF"
-	echo "removed $BIN, $BINDIR/swaywardmsg, $LAUNCHER and $PORTALCONF"
+	rm -f "$BIN" "$BINDIR/swaywardmsg" "$BINDIR/swayward-sway-to-kdl" "$LAUNCHER" "$PORTALCONF"
+	echo "removed $BIN, $BINDIR/swaywardmsg, $BINDIR/swayward-sway-to-kdl, $LAUNCHER and $PORTALCONF"
 	if [ -e "$DESKTOP" ]; then
 		echo "the desktop entry is root-owned; remove it with:"
 		echo "  sudo rm $DESKTOP"
@@ -106,6 +106,7 @@ fi
 mkdir -p "$BINDIR" "$CONFDIR" "$PORTALDIR"
 install -m755 "$SRCBIN" "$BIN"
 install -m755 "$SRCMSG" "$BINDIR/swaywardmsg"
+install -m755 contrib/sway-to-kdl "$BINDIR/swayward-sway-to-kdl"
 install -m644 resources/swayward-portals.conf "$PORTALCONF"
 
 # Mirror the hardware quirks and environment.d handling from the host's own
@@ -169,7 +170,7 @@ if [ -n "$CONVERT" ]; then
 	}
 	mv "$OUT.new" "$OUT"
 	echo "converted $SRC -> $OUT"
-	W=$(grep -c ': ' "$CONFDIR/translation-warnings.txt" || true)
+	W=$(grep -c '^  .*:.*: ' "$CONFDIR/translation-warnings.txt" || true)
 	[ "$W" -gt 0 ] && echo "$W directives need manual attention: $CONFDIR/translation-warnings.txt"
 fi
 
