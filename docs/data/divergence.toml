@@ -1,5 +1,5 @@
 # This count records the entries migrated from docs/DIVERGENCE.md.
-migrated_entries = 205
+migrated_entries = 206
 
 [[edit]]
 migrated = true
@@ -1014,6 +1014,12 @@ migrated = true
 paths = ["contrib/sway-to-kdl"]
 what = "translate sway's grouped `set`, binding, execution, and `for_window` syntax; accept case-insensitive compatibility modifiers and map default-XKB `Mod5`; and convert map-time no-focus, opacity, fixed-size, and shortcut-inhibitor actions."
 why = "Reduce manual config migration without weakening or silently dropping source semantics."
+
+[[edit]]
+migrated = true
+paths = ["contrib/sway-to-kdl", "docs/KNOWN_DEVIATIONS.md", "docs/SWAY_CONFIG_MIGRATION.md", "src/tests/i3_conformance.rs"]
+what = "give common manual-attention warnings direct migration guidance for swaybar, device-specific input settings, and X11-only window criteria."
+why = "These runtime limits cannot be translated faithfully, so the generated config points users to the exact replacement or explanation instead of leaving an unactionable warning."
 
 [[edit]]
 migrated = true

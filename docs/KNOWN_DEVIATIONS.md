@@ -544,6 +544,10 @@ command loop and its targeted clear operation
 (`sway/sway/commands/unmark.c:24-54`). Assertions 14, 15, and 17 in i3's
 `210-mark-unmark.t` expect i3's multi-target `mark` rejection and are excluded.
 
+### X11 window identity
+
+**Infrastructure gap.**
+
 X11 applications run through `xwayland-satellite`. Swayward does not include
 sway's in-process Xwayland window manager. The satellite presents X11 clients as
 ordinary `xdg_toplevel` surfaces and forwards `WM_TRANSIENT_FOR` as an xdg

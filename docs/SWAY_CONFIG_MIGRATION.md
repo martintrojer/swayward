@@ -70,13 +70,29 @@ before replacing or retaining a command by hand.
 
 Check these areas after bindings:
 
-- **Bars:** `bar {}` is not supported. Configure waybar separately. Waybar 0.15.0
-  has passed a manual smoke test against swayward, but that test is not automated.
-- **Inputs:** generic `type:keyboard`, `type:pointer`, `type:touchpad`,
-  `type:tablet_tool`, and `type:touch` selectors are translated in block and
-  single-line forms. A `*` selector is translated for global XKB and repeat
-  settings. Device-specific selectors and other settings on `*` need manual
-  conversion.
+### Replace swaybar
+
+Swayward does not ship swaybar or read `bar {}` blocks. Configure Waybar in its
+own JSON or JSONC and CSS files, then start it with:
+
+```kdl
+spawn-at-startup "waybar"
+```
+
+Do not copy `status_command`, `colors`, or other swaybar settings into KDL;
+convert them to the corresponding Waybar modules and style. Waybar 0.15.0 has
+passed a manual smoke test against swayward, but that test is not automated.
+
+### Convert device-specific inputs
+
+Generic `type:keyboard`, `type:pointer`, `type:touchpad`, `type:tablet_tool`, and
+`type:touch` selectors are translated in block and single-line forms. A `*`
+selector is translated for global XKB and repeat settings. Swayward cannot
+configure an individual device by sway's `vendor:product:name` identifier;
+input settings apply to every device of a class. Move settings from an
+`input "<identifier>" {}` block to the matching `keyboard`, `mouse`, `touchpad`,
+`tablet`, or `touch` KDL section only if applying them to the whole class is
+acceptable. Otherwise keep the generated manual-attention comment.
 - **Gesture bindings:** `bindgesture` and `unbindgesture` are reported. Swayward
   keeps its additive four-finger overview swipe and forwards pinch and hold
   gestures to clients, but cannot bind swipe, pinch, or hold gestures to sway
@@ -123,10 +139,14 @@ X11-only `class` criteria, 37 device-specific input selectors, and 23 bars. A
 translator follow-up reduced the total from 787 to 393. Grouped `set`, binding,
 `exec`, and `for_window` blocks now translate, as do case-insensitive modifier
 names, `Mod5`, `nofocus`, opacity, fixed-size, and shortcut-inhibitor window
-rules. The remaining items describe runtime gaps or source that cannot be
-converted without changing its meaning. Preserve or replace those items by
-hand rather than removing their comments. The pinned 12-entry reproducible audit remains in
-`docs/internal/sway-to-kdl-corpus-audit.md`;
+rules. The remaining common categories are deliberate compatibility limits:
+`exec_always` keeps its startup effect but cannot run again on reload;
+device-specific input policy cannot be narrowed below a device class; swaybar
+configuration belongs in Waybar; and X11 `class` is unavailable through
+xwayland-satellite. [X11 window identity](KNOWN_DEVIATIONS.md#x11-window-identity)
+describes the last limit. Preserve or replace these items by hand rather than
+removing their comments. The pinned 12-entry reproducible audit remains in
+the repository's internal migration audit;
 the larger one-time sample was kept outside the repository because many source
 repositories declare no reusable license.
 

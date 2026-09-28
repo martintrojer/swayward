@@ -807,7 +807,7 @@ fn only_ignorable_translation_warnings(test: &str, stderr: &str) -> bool {
     let warnings = lines.collect::<Vec<_>>();
     warnings.len() == count
         && warnings.iter().all(|line| {
-            line.contains(": bar blocks are unsupported; use waybar: bar ")
+            line.contains(": bar blocks are unsupported; use waybar ")
                 || (test == "271-for_window_tilingfloating.t"
                     && (line.contains(": i3-only provenance criterion tiling_from ")
                         || line.contains(": i3-only provenance criterion floating_from ")))
@@ -1728,7 +1728,7 @@ fn i3_config_translation_ignores_only_unsupported_bar_blocks() {
     ));
     assert!(!only_ignorable_translation_warnings(
         "316-drag-container.t",
-        "manual attention: 2 directive(s)\n  config:2: bar blocks are unsupported; use waybar: bar { | }\n"
+        "manual attention: 2 directive(s)\n  config:2: bar blocks are unsupported; use waybar (docs/SWAY_CONFIG_MIGRATION.md#replace-swaybar): bar { | }\n"
     ));
 
     let error = translate_config("bar { output primary }\nmystery value\n").unwrap_err();

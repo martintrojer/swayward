@@ -68,7 +68,11 @@ bindsym $missing+x nop
         self.assertIn("open-floating true", result.stdout)
         self.assertIn('match app-id="^mail$"', result.stdout)
         self.assertIn('open-on-workspace "2: mail"', result.stdout)
-        self.assertIn("bar blocks are unsupported; use waybar", result.stdout)
+        self.assertIn(
+            "bar blocks are unsupported; use waybar "
+            "(docs/SWAY_CONFIG_MIGRATION.md#replace-swaybar)",
+            result.stdout,
+        )
         self.assertIn("SwayFX blur -> swayward blur", result.stdout)
         self.assertIn("SwayFX corner_radius -> window-rule geometry-corner-radius", result.stdout)
         self.assertIn("SwayFX shadows; tune remaining shadow controls", result.stdout)
@@ -243,7 +247,10 @@ bindsym Mod5+q workspace 1
         )
         self.assertNotIn("        numlock\n", result.stdout)
         self.assertIn(
-            "device-specific input selectors require manual conversion", result.stdout
+            "device-specific input selectors cannot be preserved; swayward input "
+            "settings apply by device class "
+            "(docs/SWAY_CONFIG_MIGRATION.md#convert-device-specific-inputs)",
+            result.stdout,
         )
         self.assertIn("manual attention: 1 directive(s)", result.stderr)
 
@@ -908,6 +915,9 @@ bindsym Mod5+q workspace 1
         )
         self.assertNotIn("window-rule {", result.stdout)
         self.assertIn("X11-only criterion class", result.stdout)
+        self.assertIn(
+            "docs/KNOWN_DEVIATIONS.md#x11-window-identity", result.stdout
+        )
         self.assertIn('^special$', result.stdout)
         self.assertIn("manual attention: 1 directive(s)", result.stderr)
 

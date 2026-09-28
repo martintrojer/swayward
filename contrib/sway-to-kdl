@@ -135,7 +135,8 @@ class Translator:
                     path,
                     line_no,
                     " | ".join(block),
-                    "bar blocks are unsupported; use waybar",
+                    "bar blocks are unsupported; use waybar "
+                    "(docs/SWAY_CONFIG_MIGRATION.md#replace-swaybar)",
                 )
             elif match := re.match(
                 r'mode\s+(--pango_markup\s+)?("[^"]+"|\S+)\s*\{', text
@@ -1058,7 +1059,8 @@ class Translator:
                     line,
                     f"{directive} {criteria}",
                     f"X11-only criterion {key} matches only Xwayland windows in "
-                    f"sway; whole directive dropped rather than widened",
+                    f"sway; whole directive dropped rather than widened "
+                    f"(docs/KNOWN_DEVIATIONS.md#x11-window-identity)",
                 )
                 return None
             if key == "workspace":
@@ -1425,7 +1427,9 @@ class Translator:
                 source,
                 line,
                 f"input {selector} {{ ... }}",
-                "device-specific input selectors require manual conversion",
+                "device-specific input selectors cannot be preserved; swayward input "
+                "settings apply by device class "
+                "(docs/SWAY_CONFIG_MIGRATION.md#convert-device-specific-inputs)",
             )
             return
         mappings = {
