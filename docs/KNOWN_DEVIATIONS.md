@@ -574,6 +574,15 @@ ordinary `xdg_toplevel` surfaces and forwards `WM_TRANSIENT_FOR` as an xdg
 parent and fixed `WM_NORMAL_HINTS` as minimum and maximum sizes. Dialogs and
 fixed-size X11 windows therefore float by default like sway.
 
+A resizable `_NET_WM_WINDOW_TYPE_UTILITY` window remains an ordinary
+`xdg_toplevel`. In xwayland-satellite 0.8.2, the utility type becomes a popup
+only when Motif disables decorations and `WM_NORMAL_HINTS` fixes the size
+(`src/xstate/mod.rs:1172-1196` at tag `v0.8.2`). The satellite does not expose
+the utility type to swayward. It also accepts the compositor's first tiled
+configure before swayward can observe the X11 create size. A later `floating
+enable` therefore cannot restore that size. This differs from sway's in-process
+Xwayland handling for resizable utility windows.
+
 The xdg-shell protocol exposes one `app_id` and one title, but no separate X11
 class, instance, `WM_WINDOW_ROLE`, window type, or window ID values
 (`xdg-shell.xml`, `xdg_toplevel.set_app_id`). Except for the satellite's own

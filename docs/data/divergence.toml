@@ -1591,6 +1591,12 @@ why = "Sway requires both minimum dimensions to be nonzero and either axis to ha
 
 [[edit]]
 migrated = false
+paths = ["docs/KNOWN_DEVIATIONS.md"]
+what = "document why resizable X11 utility windows cannot preserve their initial size when xwayland-satellite presents them as ordinary xdg toplevels."
+why = "xwayland-satellite 0.8.2 does not forward the utility type, and its ordinary toplevel accepts swayward's first tiled configure before a later floating command; sway's in-process Xwayland path retains the X11 create size."
+
+[[edit]]
+migrated = false
 paths = ["src/layout/tiling_tree/mod.rs", "src/layout/tiling_tree/movement.rs", "src/layout/tiling_tree/tests.rs", "src/tests/ipc/tree_commands.rs"]
 what = "preserve non-empty singleton split containers when a child window closes, moves to the scratchpad, or is vacated by an outward directional move; only reap containers made empty by the removal, and resolve a one-window directional move's source parent after root compaction."
 why = "Sway's container detach path calls `container_reap_empty`, which removes empty ancestors but retains a split with one surviving child (`sway/tree/container.c`). Swayward instead collapsed every singleton ancestor and changed the IPC tree shape; after retaining it, the one-window move path could keep a stale pre-compaction parent ID and leave its actual parent empty."
