@@ -28,6 +28,8 @@ pub enum SwayError {
     Io(io::Error),
     /// The server framed a reply we could not parse.
     Wire(crate::wire::WireError),
+    /// The reply body was not valid UTF-8.
+    InvalidUtf8(std::string::FromUtf8Error),
     /// The reply body was not valid JSON.
     Json(serde_json::Error),
     /// The frame carried an event type this crate does not model.
@@ -44,6 +46,7 @@ impl fmt::Display for SwayError {
         match self {
             Self::Io(err) => write!(f, "{err}"),
             Self::Wire(err) => write!(f, "{err}"),
+            Self::InvalidUtf8(err) => write!(f, "{err}"),
             Self::Json(err) => write!(f, "{err}"),
             Self::UnknownEventType(value) => write!(f, "unknown IPC event type {value}"),
             Self::Mismatch { sent, got } => {
@@ -107,7 +110,7 @@ impl SwaySocket {
 
         let mut body = vec![0u8; len as usize];
         self.stream.read_exact(&mut body)?;
-        Ok(String::from_utf8_lossy(&body).into_owned())
+        String::from_utf8(body).map_err(SwayError::InvalidUtf8)
     }
 
     /// Reads one further reply, for a subscription that streams events.
@@ -118,7 +121,10 @@ impl SwaySocket {
         validate_payload_length(len)?;
         let mut body = vec![0u8; len as usize];
         self.stream.read_exact(&mut body)?;
-        Ok((msg_type, String::from_utf8_lossy(&body).into_owned()))
+        Ok((
+            msg_type,
+            String::from_utf8(body).map_err(SwayError::InvalidUtf8)?,
+        ))
     }
 
     /// Reads and classifies one event using its wire type.
@@ -219,6 +225,30 @@ mod tests {
             sock.read_event().unwrap(),
             (window_event, r#"{"change":"focus"}"#.to_owned())
         );
+    }
+
+    #[test]
+    fn invalid_utf8_in_replies_and_events_is_reported() {
+        for event in [false, true] {
+            let (mut server, client) = UnixStream::pair().unwrap();
+            let mut sock = SwaySocket { stream: client };
+            let msg_type = if event {
+                (1u32 << 31) | 7
+            } else {
+                MessageType::GetVersion as u32
+            };
+            let mut frame = encode_raw(msg_type, "x");
+            *frame.last_mut().unwrap() = 0xff;
+            server.write_all(&frame).unwrap();
+            server.flush().unwrap();
+
+            let error = if event {
+                sock.read_event().unwrap_err()
+            } else {
+                sock.send(MessageType::GetVersion, "").unwrap_err()
+            };
+            assert!(matches!(error, SwayError::InvalidUtf8(_)));
+        }
     }
 
     #[test]
