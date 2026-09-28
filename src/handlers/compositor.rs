@@ -438,19 +438,10 @@ impl State {
 
                     self.swayward.queue_redraw(&output);
                 }
-                // Re-resolve the rules now that the window is in the
-                // layout, so a `tiling` or `floating` criterion sees the
-                // window's real state. Sway orders it this way too: a view
-                // is floated in view_map (sway/sway/tree/view.c:911) before
-                // the criteria run at :942. The rules captured at initial
-                // configure predate compute_open_floating, so every window
-                // still looked tiled and both rules behaved identically.
-                // Mapped::is_floating is still false here, because the
-                // layout sets it after add_window. Force it to the decision
-                // already made above so a `tiling` or `floating` criterion
-                // sees the window's real state. Sway orders it the same way:
-                // a view floats in view_map (sway/sway/tree/view.c:911)
-                // before the criteria run at :942.
+                // Re-resolve rules after insertion so `tiling` and `floating` criteria see the
+                // chosen state. `Mapped::is_floating` is not updated until after add_window, so
+                // expose that decision first. Sway likewise floats a view before running criteria
+                // (sway/sway/tree/view.c:912,942).
                 let commands = {
                     if let Some(output) = rules_output.as_ref() {
                         if let Some(mapped) = self
