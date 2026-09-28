@@ -774,9 +774,20 @@ impl KeyboardFocus {
     }
 }
 
+#[cfg(test)]
+pub(crate) static LIVE_STATE_COUNT: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
 pub struct State {
     pub backend: Backend,
     pub swayward: Swayward,
+}
+
+#[cfg(test)]
+impl Drop for State {
+    fn drop(&mut self) {
+        LIVE_STATE_COUNT.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 impl State {
@@ -821,6 +832,8 @@ impl State {
         backend.init(&mut swayward);
 
         let mut state = Self { backend, swayward };
+        #[cfg(test)]
+        LIVE_STATE_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         // Load the xkb_file config option if set by the user.
         state.load_xkb_file();
@@ -2501,8 +2514,12 @@ impl Swayward {
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let _span = tracy_client::span!("Swayward::new");
 
-        let (executor, scheduler) = calloop::futures::executor().unwrap();
-        event_loop.insert_source(executor, |_, _, _| ()).unwrap();
+        let (executor, scheduler) =
+            calloop::futures::executor().context("error creating the async executor")?;
+        event_loop
+            .insert_source(executor, |_, _, _| ())
+            .map_err(|error| anyhow::anyhow!(error.error))
+            .context("error registering the async executor")?;
 
         let display_handle = display.handle();
         let config_ = config.borrow();
@@ -2626,7 +2643,8 @@ impl Swayward {
                     TimeoutAction::ToDuration(XDG_ACTIVATION_TOKEN_TIMEOUT)
                 },
             )
-            .unwrap();
+            .map_err(|error| anyhow::anyhow!(error.error))
+            .context("error registering the activation token timer")?;
 
         let mutter_x11_interop_state =
             MutterX11InteropManagerState::new::<State, _>(&display_handle, move |_| true);
@@ -2745,7 +2763,8 @@ impl Swayward {
                 }
                 Ok(PostAction::Continue)
             })
-            .unwrap();
+            .map_err(|error| anyhow::anyhow!(error.error))
+            .context("error registering the Wayland display")?;
 
         event_loop
             .insert_source(
@@ -2758,7 +2777,8 @@ impl Swayward {
                     TimeoutAction::Drop
                 },
             )
-            .unwrap();
+            .map_err(|error| anyhow::anyhow!(error.error))
+            .context("error registering the startup timer")?;
 
         drop(config_);
         let mut swayward = Self {

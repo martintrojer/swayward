@@ -13,9 +13,9 @@ use super::server::Server;
 use crate::swayward::{NewClient, SecurityContextMetadata, Swayward};
 
 pub struct Fixture {
-    pub event_loop: EventLoop<'static, State>,
-    pub handle: LoopHandle<'static, State>,
     pub state: State,
+    pub handle: LoopHandle<'static, State>,
+    pub event_loop: EventLoop<'static, State>,
 }
 
 pub struct State {
@@ -201,5 +201,8 @@ impl Drop for Fixture {
     fn drop(&mut self) {
         self.state.server.state.swayward.seat.remove_keyboard();
         self.state.clients.clear();
+        for _ in 0..4 {
+            self.dispatch();
+        }
     }
 }

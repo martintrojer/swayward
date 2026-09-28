@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::sync::atomic::Ordering;
 
 use proptest::prelude::*;
 use swayward_ipc::{Node, NodeProperties};
@@ -240,6 +241,8 @@ fn check_ops(ops: Vec<Op>) {
         }
         assert_state(&mut fixture);
     }
+
+    drop(fixture);
 }
 
 #[test]
@@ -254,10 +257,22 @@ fn repeated_property_fixtures_release_keymap_file_descriptors() {
             .count()
     };
     let keymaps_before = keymap_fd_count();
+    let states_before = crate::swayward::LIVE_STATE_COUNT.load(Ordering::Relaxed);
+    let fds_before = std::fs::read_dir("/proc/self/fd").unwrap().count();
     for _ in 0..200 {
         check_ops(vec![Op::Command("focus left")]);
     }
     let leaked_keymaps = keymap_fd_count().saturating_sub(keymaps_before);
+    let live_states = crate::swayward::LIVE_STATE_COUNT.load(Ordering::Relaxed);
+    let leaked_fds = std::fs::read_dir("/proc/self/fd")
+        .unwrap()
+        .count()
+        .saturating_sub(fds_before);
+    assert!(
+        live_states <= states_before + 32,
+        "fixture State instances grow without bound: before={states_before}, after={live_states}"
+    );
+    assert!(leaked_fds <= 128, "leaked {leaked_fds} file descriptors");
     assert!(
         leaked_keymaps <= 32,
         "leaked {leaked_keymaps} keymap memfds"
