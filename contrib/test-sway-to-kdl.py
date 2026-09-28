@@ -44,6 +44,7 @@ blur enable
 corner_radius 8
 shadows enable
 dim_inactive 0.5
+default_dim_inactive 0.0
 layer_effects "waybar" blur enable
 mystery value
 bindsym $missing+x nop
@@ -76,6 +77,7 @@ bindsym $missing+x nop
         self.assertIn("blur true", result.stdout)
         self.assertIn("dim_inactive -> unfocused window opacity", result.stdout)
         self.assertIn("opacity 0.5", result.stdout)
+        self.assertIn("opacity 1.0", result.stdout)
         self.assertIn("unhandled: mystery value", result.stdout)
         self.assertNotIn("undefined variable", result.stdout)
         self.assertIn("manual attention:", result.stderr)

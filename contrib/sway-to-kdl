@@ -818,6 +818,11 @@ class Translator:
         return "+".join({**MODIFIER_ALIASES, **aliases}.get(part, part) for part in parts)
 
     @staticmethod
+    def kdl_float(value: float) -> str:
+        rendered = f"{value:g}"
+        return rendered if "." in rendered or "e" in rendered.lower() else rendered + ".0"
+
+    @staticmethod
     def strip_outer_quotes(command: str) -> str:
         if command[:1] in {"\"", "'"} and command[-1:] == command[0]:
             return command[1:-1]
@@ -1112,7 +1117,7 @@ class Translator:
             }:
                 effects.append(f"    sway-for-window-command {self.quote(directive)}")
             elif words[:1] == ["dim_inactive"] and len(words) == 2:
-                effects.append(f"    opacity {1.0 - float(words[1]):g}")
+                effects.append(f"    opacity {self.kdl_float(1.0 - float(words[1]))}")
             elif words[:1] == ["corner_radius"] and len(words) == 2:
                 effects += [
                     f"    geometry-corner-radius {words[1]}",
@@ -1531,7 +1536,7 @@ class Translator:
                 "// SwayFX dim_inactive -> unfocused window opacity",
                 "window-rule {",
                 "    match is-focused=false",
-                f"    opacity {opacity:g}",
+                f"    opacity {self.kdl_float(opacity)}",
                 "}",
             ]
         elif name == "layer_effects":
