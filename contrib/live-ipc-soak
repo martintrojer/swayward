@@ -8,7 +8,6 @@ from pathlib import Path
 import random
 import socket
 import struct
-import subprocess
 import time
 
 MAGIC = b"i3-ipc"
@@ -124,10 +123,46 @@ def exercise_wire(sock_path, case):
         pass
 
 
-def parsed_tree(sock_path, label):
+def checked_tree(sock_path, label, expected_apps=()):
     tree = ipc(sock_path, "get_tree")
     if not isinstance(tree, dict) or tree.get("type") != "root":
         raise RuntimeError(f"{label}: malformed GET_TREE")
+
+    app_counts = {app_id: 0 for app_id in expected_apps}
+
+    def visit(node):
+        if not isinstance(node, dict) or not isinstance(node.get("id"), int):
+            raise RuntimeError(f"{label}: malformed tree node")
+        app_id = node.get("app_id")
+        if app_id in app_counts:
+            app_counts[app_id] += 1
+        children = node.get("nodes", []) + node.get("floating_nodes", [])
+        child_ids = {child.get("id") for child in children if isinstance(child, dict)}
+        if not set(node.get("focus", ())).issubset(child_ids):
+            raise RuntimeError(f"{label}: focus references a non-child node")
+        for child in children:
+            visit(child)
+
+    visit(tree)
+    missing_or_duplicate = {
+        app_id: count for app_id, count in app_counts.items() if count != 1
+    }
+    if missing_or_duplicate:
+        raise RuntimeError(
+            f"{label}: expected each soak window once, got {missing_or_duplicate}"
+        )
+    return tree
+
+
+def run_command(sock_path, command, label, expected_apps):
+    reply = ipc(sock_path, "command", command)
+    if not isinstance(reply, list):
+        raise RuntimeError(f"{label}: malformed command reply: {reply!r}")
+    checked_tree(sock_path, f"{label} command={command!r}", expected_apps)
+
+
+def active_outputs(sock_path):
+    return [output for output in ipc(sock_path, "get_outputs") if output.get("active")]
 
 
 def main():
@@ -135,13 +170,22 @@ def main():
     parser.add_argument("--commands", type=int, default=50_000)
     parser.add_argument("--seed", type=int, default=30_000)
     parser.add_argument("--expected-outputs", type=int)
+    parser.add_argument("--hotplug-every", type=int, default=25)
     parser.add_argument("--skip-fuzz", action="store_true")
     args = parser.parse_args()
     sock_path = Path(os.environ["SWAYSOCK"])
 
-    outputs = ipc(sock_path, "get_outputs")
+    outputs = active_outputs(sock_path)
     if args.expected_outputs is not None and len(outputs) != args.expected_outputs:
         raise RuntimeError(f"expected {args.expected_outputs} outputs, got {len(outputs)}")
+    if not outputs:
+        raise RuntimeError("the soak needs at least one active output")
+    if len(outputs) == 1:
+        run_command(sock_path, "create_output", "adding hotplug output", ())
+        outputs = active_outputs(sock_path)
+    if len(outputs) < 2:
+        raise RuntimeError("the backend did not create a second output")
+    hotplug_output = outputs[-1]["name"]
 
     if not args.skip_fuzz:
         print("command fuzz: seeds 10000..10199", flush=True)
@@ -158,16 +202,35 @@ def main():
                 exercise_wire(sock_path, case)
                 healthy(sock_path, f"wire seed={seed}")
 
-    for number in range(1, 6):
+    expected_apps = tuple(f"soak-{number}" for number in range(1, 6))
+    for app_id in expected_apps:
         reply = ipc(
             sock_path,
             "command",
-            f"exec foot --app-id=soak-{number} --title=soak-{number} sh -c 'sleep 1200'",
+            f"exec foot --app-id={app_id} --title={app_id} sh -c 'sleep 1200'",
         )
         if not isinstance(reply, list):
-            raise RuntimeError(f"opening window {number}: malformed reply")
-    time.sleep(2)
-    parsed_tree(sock_path, "after opening clients")
+            raise RuntimeError(f"opening {app_id}: malformed reply")
+    deadline = time.monotonic() + 10
+    while True:
+        try:
+            checked_tree(sock_path, "after opening clients", expected_apps)
+            break
+        except RuntimeError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.05)
+
+    setup = (
+        f'[app_id="soak-1"] move container to output {hotplug_output}',
+        f'[app_id="soak-2"] move container to output {hotplug_output}',
+        f'[app_id="soak-3"] move container to output {hotplug_output}',
+        '[app_id="soak-1"] floating enable, sticky enable',
+        '[app_id="soak-2"] focus, focus parent, floating enable',
+        '[app_id="soak-3"] fullscreen enable',
+    )
+    for number, command in enumerate(setup, 1):
+        run_command(sock_path, command, f"setup step={number}", expected_apps)
 
     commands = (
         "focus parent", "focus child", "focus left", "focus right",
@@ -177,6 +240,7 @@ def main():
         "move left", "move right", "move container to workspace 1",
         "move container to workspace 2", "workspace 1", "workspace 2",
         "move container to output left", "move container to output right",
+        "move workspace to output left", "move workspace to output right",
     )
     rng = random.Random(args.seed)
     print(
@@ -184,17 +248,29 @@ def main():
         f"{len(outputs)} outputs",
         flush=True,
     )
+    hotplug_enabled = True
+    hotplug_commands = 0
     for step in range(1, args.commands + 1):
         command = rng.choice(commands)
         try:
-            reply = ipc(sock_path, "command", command)
-            if not isinstance(reply, list):
-                raise RuntimeError(f"malformed command reply: {reply!r}")
-            parsed_tree(sock_path, f"step={step} command={command!r}")
+            run_command(sock_path, command, f"seed={args.seed} step={step}", expected_apps)
+            if args.hotplug_every > 0 and step % args.hotplug_every == 0:
+                hotplug_enabled = not hotplug_enabled
+                state = "enable" if hotplug_enabled else "disable"
+                run_command(
+                    sock_path,
+                    f"output {hotplug_output} {state}",
+                    f"seed={args.seed} hotplug step={step}",
+                    expected_apps,
+                )
+                active_names = {output["name"] for output in active_outputs(sock_path)}
+                if (hotplug_output in active_names) != hotplug_enabled:
+                    raise RuntimeError(
+                        f"output {hotplug_output} did not become {state}d"
+                    )
+                hotplug_commands += 1
         except (ValueError, RuntimeError, OSError, socket.timeout) as error:
-            raise RuntimeError(
-                f"seed={args.seed} step={step} command={command!r}: {error}"
-            ) from error
+            raise RuntimeError(f"seed={args.seed} step={step}: {error}") from error
         if step % 1000 == 0:
             print(f"random commands complete: {step}/{args.commands}", flush=True)
 
@@ -202,7 +278,7 @@ def main():
     print(
         f"SOAK_OK command_cases={0 if args.skip_fuzz else 9600} "
         f"wire_cases={0 if args.skip_fuzz else 3200} random_commands={args.commands} "
-        f"outputs={len(outputs)}",
+        f"hotplug_commands={hotplug_commands} outputs={len(outputs)}",
         flush=True,
     )
 

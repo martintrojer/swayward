@@ -892,6 +892,8 @@ impl<W: LayoutElement> Monitor<W> {
         ws.update_config(self.options.clone());
 
         idx = idx.min(self.workspaces.len());
+        self.sway_workspace_order
+            .retain(|candidate| *candidate != ws.id());
         let order_index = self
             .workspaces
             .get(idx)
