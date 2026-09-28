@@ -422,6 +422,7 @@ impl<S: ErrorSpan> Decode<S> for Modeline {
         }
 
         m_required!(clock, clock_value);
+        let clock: f64 = clock;
         m_required!(hdisplay, hdisplay_value);
         m_required!(hsync_start, hsync_start_value);
         m_required!(hsync_end, hsync_end_value);
@@ -448,6 +449,13 @@ impl<S: ErrorSpan> Decode<S> for Modeline {
                 }
             })?;
 
+        ensure!(
+            clock.is_finite() && clock > 0.,
+            ctx,
+            clock_value,
+            "clock {} must be finite and > 0",
+            clock
+        );
         ensure!(
             hdisplay < hsync_start,
             ctx,

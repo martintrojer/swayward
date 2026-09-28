@@ -1846,3 +1846,9 @@ migrated = false
 paths = ["swayward-config/src/misc.rs", "swayward-config/src/recent_windows.rs", "swayward-config/src/tests/decode.rs"]
 what = "reject zero overview zoom and recent-window preview scale during configuration decoding."
 why = "Both values size visible compositor UI and must be positive; zero previously produced a silently clamped overview or degenerate invisible previews."
+
+[[edit]]
+migrated = false
+paths = ["swayward-config/src/output.rs", "swayward-config/src/tests/decode.rs"]
+what = "reject non-finite and non-positive modeline pixel clocks during configuration decoding."
+why = "A modeline requires a positive finite clock to derive a DRM mode and refresh rate; accepting zero or negative clocks defers a clear configuration error into output setup and can lose sign during integer conversion."

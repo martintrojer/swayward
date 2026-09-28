@@ -68,6 +68,19 @@ fn output_scale_rejects_values_outside_the_supported_range() {
 }
 
 #[test]
+fn modeline_rejects_non_positive_clocks() {
+    for clock in ["0.0", "-1.0"] {
+        let source = format!(
+            "output \"DP-1\" {{ modeline {clock} 1920 2048 2248 2576 1080 1083 1088 1120 \"-hsync\" \"+vsync\"; }}"
+        );
+        assert!(
+            Config::parse_mem(&source).is_err(),
+            "accepted clock {clock}"
+        );
+    }
+}
+
+#[test]
 fn visual_scales_reject_zero() {
     for source in [
         "overview { zoom 0; }",
