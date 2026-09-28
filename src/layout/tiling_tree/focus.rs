@@ -270,9 +270,13 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     fn focus_direction_inner(&mut self, dir: Direction, allow_wrap: bool) -> bool {
-        let Some(mut current) = self.focus else {
-            return false;
-        };
+        let next = self.directional_focus_target(dir, allow_wrap);
+        self.set_focus_id(next.or(self.focus));
+        next.is_some()
+    }
+
+    fn directional_focus_target(&self, dir: Direction, allow_wrap: bool) -> Option<NodeId> {
+        let mut current = self.focus?;
         let barrier = self.fullscreen_node();
         let direction_layout = match dir {
             Direction::Left | Direction::Right => Layout::SplitH,
@@ -289,21 +293,17 @@ impl<W: LayoutElement> TilingTree<W> {
                 layout, children, ..
             } = &self.nodes[&parent].value
             else {
-                return false;
+                return None;
             };
             if Self::layouts_parallel(*layout, direction_layout) {
-                let Some(index) = children.iter().position(|child| *child == current) else {
-                    return false;
-                };
+                let index = children.iter().position(|child| *child == current)?;
                 let desired = if backwards {
                     index.checked_sub(1)
                 } else {
                     children.get(index + 1).map(|_| index + 1)
                 };
                 if let Some(desired) = desired {
-                    let next = self.focused_leaf_in(children[desired]);
-                    self.set_focus_id(next);
-                    return next.is_some();
+                    return self.focused_leaf_in(children[desired]);
                 }
                 if allow_wrap
                     && self.options.layout.focus_wrapping != swayward_config::FocusWrapping::No
@@ -315,9 +315,7 @@ impl<W: LayoutElement> TilingTree<W> {
                         children.first().copied()
                     };
                     if self.options.layout.focus_wrapping == swayward_config::FocusWrapping::Force {
-                        let next = candidate.and_then(|id| self.focused_leaf_in(id));
-                        self.set_focus_id(next.or(self.focus));
-                        return next.is_some();
+                        return candidate.and_then(|id| self.focused_leaf_in(id));
                     }
                     wrap.get_or_insert(candidate.unwrap());
                 }
@@ -328,9 +326,7 @@ impl<W: LayoutElement> TilingTree<W> {
             current = parent;
         }
 
-        let next = wrap.and_then(|id| self.focused_leaf_in(id));
-        self.set_focus_id(next.or(self.focus));
-        next.is_some()
+        wrap.and_then(|id| self.focused_leaf_in(id))
     }
 
     pub fn tiles(&self) -> impl Iterator<Item = &Tile<W>> {
