@@ -1746,6 +1746,19 @@ fn resident_subtree_can_be_detached_with_its_ids_and_focus_history() {
 }
 
 #[test]
+fn detaching_the_full_root_resets_the_empty_workspace_layout() {
+    let mut source = tree((1200., 800.), 0.);
+    let first = source.add_tile(tile(1, source.view_size()), InsertTarget::Focused);
+    source.split(first, Layout::SplitV);
+    source.add_tile(tile(2, source.view_size()), InsertTarget::Focused);
+
+    source.detach_subtree(source.root).unwrap();
+
+    assert_eq!(source.representation_layout(), Layout::SplitH);
+    source.check_invariants();
+}
+
+#[test]
 fn attaching_split_to_empty_tree_preserves_root_state() {
     for layout in [Layout::SplitV, Layout::Tabbed] {
         let mut source = tree((1200., 800.), 0.);

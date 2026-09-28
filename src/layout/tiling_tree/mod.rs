@@ -863,7 +863,6 @@ impl<W: LayoutElement> TilingTree<W> {
             else {
                 return None;
             };
-            self.set_layout(self.root, layout);
             let children = children
                 .into_iter()
                 .map(|child| self.take_detached_node(child))
