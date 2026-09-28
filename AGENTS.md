@@ -235,6 +235,12 @@ at least
 RUN_SLOW_TESTS=1 PROPTEST_CASES=20000 cargo test --release -p swayward --lib random_operations_dont_panic
 ```
 
+The nightly `live-soak.yml` workflow runs the fixed-seed live IPC soak against
+release builds with one and two headless outputs. It is scheduled rather than a
+per-push gate because each matrix job includes the command and wire fuzz sweeps
+plus 10,000 layout commands. Failed jobs upload the probe and compositor logs;
+a compositor `ERROR` or panic fails the job.
+
 `random_operations_dont_panic` searches fresh cases rather than replaying the
 checked-in seeds, so it finds defects a default run does not. The randomized CI
 job uploads `proptest-regressions/` after a failure. Download its

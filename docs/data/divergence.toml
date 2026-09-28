@@ -1894,3 +1894,9 @@ migrated = false
 paths = ["src/ipc/tree.rs", "src/layout/mod.rs", "src/tests/ipc/workspace_commands/scratchpad.rs"]
 what = "retain and report a window's sticky state while it is hidden on the synthetic scratchpad workspace."
 why = "Sway stores sticky state on the container independently of scratchpad visibility (`cmd_sticky`, sway/commands/sticky.c:15-44); moving a shown sticky window back to scratchpad must not serialize it as non-sticky."
+
+[[edit]]
+migrated = false
+paths = [".github/workflows/live-soak.yml", "AGENTS.md"]
+what = "run the live IPC soak nightly and on manual dispatch against release builds with one and two headless outputs, retain failure logs, and reject compositor errors and panics."
+why = "The live soak found event-loop and Wayland-client failures that unit tests and layout proptests missed, but its runtime is too long for the per-push gate."

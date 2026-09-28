@@ -1,0 +1,90 @@
+name: Nightly live IPC soak
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  live-ipc-soak:
+    name: ${{ matrix.outputs }} headless output(s)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        outputs: [1, 2]
+    env:
+      DEPS_APT: curl gcc clang libudev-dev libgbm-dev libxkbcommon-dev libegl1-mesa-dev libwayland-dev libinput-dev libdbus-1-dev libsystemd-dev libseat-dev libpipewire-0.3-dev libpango1.0-dev libdisplay-info-dev foot
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          show-progress: false
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y ${{ env.DEPS_APT }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release
+      - name: Run live IPC soak
+        env:
+          WLR_HEADLESS_OUTPUTS: ${{ matrix.outputs }}
+        run: |
+          set -uo pipefail
+          runtime="$RUNNER_TEMP/swayward-runtime-${{ matrix.outputs }}"
+          mkdir -m 700 "$runtime"
+          export XDG_RUNTIME_DIR="$runtime"
+          unset DISPLAY WAYLAND_DISPLAY WAYLAND_SOCKET SWAYSOCK I3SOCK
+          grep -v 'spawn-at-startup' resources/default-config.kdl > "$runtime/config.kdl"
+
+          unit="swayward-soak-${GITHUB_RUN_ID}-${{ matrix.outputs }}"
+          # The runner shell owns the log; sudo only creates the capped scope.
+          # shellcheck disable=SC2024
+          sudo systemd-run --scope --quiet --wait --collect --unit="$unit" \
+            --uid="$(id -u)" -p MemoryMax=2G -p MemorySwapMax=0 \
+            timeout --signal=TERM --kill-after=5s 1800s \
+            target/release/swayward -c "$runtime/config.kdl" \
+            >"$runtime/compositor.log" 2>&1 &
+          compositor=$!
+          cleanup() {
+            sudo systemctl stop "$unit.scope" 2>/dev/null || true
+            wait "$compositor" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          socket=
+          for _ in $(seq 1 120); do
+            socket=$(find "$runtime" -maxdepth 1 -type s \
+              -name 'swayward-ipc.*.sock' -print -quit)
+            [ -n "$socket" ] && break
+            kill -0 "$compositor" 2>/dev/null || break
+            sleep 0.25
+          done
+          if [ -z "$socket" ]; then
+            echo 'no IPC socket appeared' | tee "$runtime/soak.log"
+            exit 1
+          fi
+
+          set +e
+          SWAYSOCK="$socket" contrib/live-ipc-soak \
+            --commands 10000 --expected-outputs "${{ matrix.outputs }}" \
+            2>&1 | tee "$runtime/soak.log"
+          status=${PIPESTATUS[0]}
+          set -e
+
+          cleanup
+          trap - EXIT
+          if grep -E '(^|[^[:alpha:]])ERROR([^[:alpha:]]|$)|panicked at|thread .* panicked' \
+              "$runtime/compositor.log"; then
+            echo 'compositor log contains an ERROR or panic' >&2
+            status=1
+          fi
+          exit "$status"
+      - name: Upload failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-ipc-soak-${{ matrix.outputs }}-outputs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/swayward-runtime-${{ matrix.outputs }}/*.log
+          if-no-files-found: warn
