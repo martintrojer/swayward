@@ -20,7 +20,8 @@ pub trait EventStreamStatePart {
     /// Applies the event to this state.
     ///
     /// Returns `None` after applying the event, and `Some(event)` if the event is ignored by this
-    /// part of the state.
+    /// part of the state. Updates and removals for unknown object ids are consumed as no-ops, since
+    /// event delivery can start between an object's initial snapshot and its next update.
     fn apply(&mut self, event: Event) -> Option<Event>;
 }
 
@@ -151,18 +152,16 @@ impl EventStreamStatePart for WorkspacesState {
                 }
             }
             Event::WorkspaceActivated { id, focused } => {
-                let ws = self.workspaces.get(&id);
-                let ws = ws.expect("activated workspace was missing from the map");
-                let output = ws.output.clone();
+                if let Some(output) = self.workspaces.get(&id).map(|ws| ws.output.clone()) {
+                    for ws in self.workspaces.values_mut() {
+                        let got_activated = ws.id == id;
+                        if ws.output == output {
+                            ws.is_active = got_activated;
+                        }
 
-                for ws in self.workspaces.values_mut() {
-                    let got_activated = ws.id == id;
-                    if ws.output == output {
-                        ws.is_active = got_activated;
-                    }
-
-                    if focused {
-                        ws.is_focused = got_activated;
+                        if focused {
+                            ws.is_focused = got_activated;
+                        }
                     }
                 }
             }
@@ -170,9 +169,9 @@ impl EventStreamStatePart for WorkspacesState {
                 workspace_id,
                 active_window_id,
             } => {
-                let ws = self.workspaces.get_mut(&workspace_id);
-                let ws = ws.expect("changed workspace was missing from the map");
-                ws.active_window_id = active_window_id;
+                if let Some(ws) = self.workspaces.get_mut(&workspace_id) {
+                    ws.active_window_id = active_window_id;
+                }
             }
             event => return Some(event),
         }
@@ -214,8 +213,7 @@ impl EventStreamStatePart for WindowsState {
                 }
             }
             Event::WindowClosed { id } => {
-                let win = self.windows.remove(&id);
-                win.expect("closed window was missing from the map");
+                self.windows.remove(&id);
             }
             Event::WindowFocusChanged { id } => {
                 for win in self.windows.values_mut() {
@@ -243,9 +241,9 @@ impl EventStreamStatePart for WindowsState {
             }
             Event::WindowLayoutsChanged { changes } => {
                 for (id, update) in changes {
-                    let win = self.windows.get_mut(&id);
-                    let win = win.expect("changed window was missing from the map");
-                    win.layout = update;
+                    if let Some(win) = self.windows.get_mut(&id) {
+                        win.layout = update;
+                    }
                 }
             }
             event => return Some(event),
@@ -269,8 +267,9 @@ impl EventStreamStatePart for KeyboardLayoutsState {
                 self.keyboard_layouts = Some(keyboard_layouts);
             }
             Event::KeyboardLayoutSwitched { idx } => {
-                let kb = self.keyboard_layouts.as_mut();
-                let kb = kb.expect("keyboard layouts must be set before a layout can be switched");
+                let Some(kb) = self.keyboard_layouts.as_mut() else {
+                    return Some(Event::KeyboardLayoutSwitched { idx });
+                };
                 kb.current_idx = idx;
             }
             event => return Some(event),
@@ -330,8 +329,7 @@ impl EventStreamStatePart for CastsState {
                 self.casts.insert(cast.stream_id, cast);
             }
             Event::CastStopped { stream_id } => {
-                let cast = self.casts.remove(&stream_id);
-                cast.expect("stopped cast was missing from the map");
+                self.casts.remove(&stream_id);
             }
             event => return Some(event),
         }
@@ -342,6 +340,68 @@ impl EventStreamStatePart for CastsState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn workspace_updates_before_the_snapshot_are_consumed_without_panicking() {
+        let mut state = WorkspacesState::default();
+
+        assert!(state
+            .apply(Event::WorkspaceActivated {
+                id: 42,
+                focused: true,
+            })
+            .is_none());
+        assert!(state
+            .apply(Event::WorkspaceActiveWindowChanged {
+                workspace_id: 42,
+                active_window_id: Some(7),
+            })
+            .is_none());
+        assert!(state.workspaces.is_empty());
+    }
+
+    #[test]
+    fn unknown_window_updates_are_idempotent() {
+        let mut state = WindowsState::default();
+
+        assert!(state.apply(Event::WindowClosed { id: 42 }).is_none());
+        assert!(state.apply(Event::WindowClosed { id: 42 }).is_none());
+        assert!(state
+            .apply(Event::WindowLayoutsChanged {
+                changes: vec![(
+                    42,
+                    crate::WindowLayout {
+                        pos_in_scrolling_layout: None,
+                        tile_size: (100., 100.),
+                        window_size: (100, 100),
+                        tile_pos_in_workspace_view: None,
+                        window_offset_in_tile: (0., 0.),
+                    },
+                )],
+            })
+            .is_none());
+        assert!(state.windows.is_empty());
+    }
+
+    #[test]
+    fn a_layout_switch_before_the_snapshot_is_left_unconsumed() {
+        let mut state = KeyboardLayoutsState::default();
+
+        assert!(matches!(
+            state.apply(Event::KeyboardLayoutSwitched { idx: 1 }),
+            Some(Event::KeyboardLayoutSwitched { idx: 1 })
+        ));
+        assert!(state.keyboard_layouts.is_none());
+    }
+
+    #[test]
+    fn duplicate_cast_stops_are_idempotent() {
+        let mut state = CastsState::default();
+
+        assert!(state.apply(Event::CastStopped { stream_id: 42 }).is_none());
+        assert!(state.apply(Event::CastStopped { stream_id: 42 }).is_none());
+        assert!(state.casts.is_empty());
+    }
 
     /// The active layout index used to be narrowed to `u8` on the way out of
     /// the compositor, so a keymap with more than 256 layouts reported the
