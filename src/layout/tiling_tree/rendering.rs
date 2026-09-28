@@ -381,21 +381,7 @@ impl<W: LayoutElement> TilingTree<W> {
             .map(|resize| (resize.window.clone(), resize.data));
         let individual =
             self.options.disable_transactions || self.options.disable_resize_throttling;
-        let shared_intent = if individual {
-            ConfigureIntent::CanSend
-        } else {
-            self.tiles()
-                .fold(ConfigureIntent::NotNeeded, |intent, tile| {
-                    match (intent, tile.window().configure_intent()) {
-                        (_, ConfigureIntent::ShouldSend) => ConfigureIntent::ShouldSend,
-                        (ConfigureIntent::NotNeeded, next) => next,
-                        (ConfigureIntent::CanSend, ConfigureIntent::Throttled) => {
-                            ConfigureIntent::Throttled
-                        }
-                        (intent, _) => intent,
-                    }
-                })
-        };
+        let shared_intent = self.shared_configure_intent(individual);
         for (id, node) in &mut self.nodes {
             let TreeNode::Leaf { tile } = &mut node.value else {
                 continue;
@@ -436,6 +422,23 @@ impl<W: LayoutElement> TilingTree<W> {
             }
             window.refresh();
         }
+    }
+
+    fn shared_configure_intent(&self, individual: bool) -> ConfigureIntent {
+        if individual {
+            return ConfigureIntent::CanSend;
+        }
+        self.tiles()
+            .fold(ConfigureIntent::NotNeeded, |intent, tile| {
+                match (intent, tile.window().configure_intent()) {
+                    (_, ConfigureIntent::ShouldSend) => ConfigureIntent::ShouldSend,
+                    (ConfigureIntent::NotNeeded, next) => next,
+                    (ConfigureIntent::CanSend, ConfigureIntent::Throttled) => {
+                        ConfigureIntent::Throttled
+                    }
+                    (intent, _) => intent,
+                }
+            })
     }
 
     pub fn view_offset_gesture_begin(&mut self, _is_touchpad: bool) {}
@@ -538,15 +541,7 @@ impl<W: LayoutElement> TilingTree<W> {
             let Some((area, _)) = self.tab_area(id, geometries) else {
                 continue;
             };
-            let active = self
-                .focus
-                .and_then(|focus| {
-                    children
-                        .iter()
-                        .find(|child| self.contains_node(**child, focus))
-                })
-                .copied()
-                .or_else(|| children.first().copied());
+            let active = self.active_tab(&children);
             if self.tab_active.get(&id).copied() != active {
                 let movement = self.options.animations.window_movement.0;
                 let previous = self.tab_active.insert(id, active.unwrap_or(id));
@@ -601,5 +596,16 @@ impl<W: LayoutElement> TilingTree<W> {
                 self.scale,
             );
         }
+    }
+
+    fn active_tab(&self, children: &[NodeId]) -> Option<NodeId> {
+        self.focus
+            .and_then(|focus| {
+                children
+                    .iter()
+                    .find(|child| self.contains_node(**child, focus))
+            })
+            .copied()
+            .or_else(|| children.first().copied())
     }
 }
