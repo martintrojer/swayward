@@ -228,22 +228,18 @@ fn refresh_toplevel(
             let data = entry.into_mut();
 
             let mut new_title = None;
-            if data.title != role.title {
-                data.title.clone_from(&role.title);
-                new_title = role.title.as_deref();
-
-                if new_title.is_none() {
-                    error!("toplevel title changed to None");
+            if let Some(title) = role.title.as_deref() {
+                if data.title.as_deref() != Some(title) {
+                    data.title.clone_from(&role.title);
+                    new_title = Some(title);
                 }
             }
 
             let mut new_app_id = None;
-            if data.app_id != role.app_id {
-                data.app_id.clone_from(&role.app_id);
-                new_app_id = role.app_id.as_deref();
-
-                if new_app_id.is_none() {
-                    error!("toplevel app_id changed to None");
+            if let Some(app_id) = role.app_id.as_deref() {
+                if data.app_id.as_deref() != Some(app_id) {
+                    data.app_id.clone_from(&role.app_id);
+                    new_app_id = Some(app_id);
                 }
             }
 

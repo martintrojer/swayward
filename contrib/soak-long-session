@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+# Exercise a capped nested session long enough to expose resource leaks.
+# Run through contrib/dev-run.sh so the compositor is capped and reaped:
+#
+#   SOAK_OUTPUT=$PWD/soak.csv contrib/dev-run.sh --timeout 7260 \
+#     --run contrib/soak-long-session
+#
+# SOAK_DURATION, SOAK_SAMPLE_INTERVAL and SOAK_CYCLE_DELAY are seconds.
+set -euo pipefail
+
+cd "$(dirname "$(readlink -f "$0")")/.." || exit
+
+DURATION=${SOAK_DURATION:-7200}
+SAMPLE_INTERVAL=${SOAK_SAMPLE_INTERVAL:-60}
+CYCLE_DELAY=${SOAK_CYCLE_DELAY:-10}
+OUTPUT=${SOAK_OUTPUT:-long-session-soak.csv}
+MSG=./target/debug/swaywardmsg
+SOCKET=${SWAYSOCK:-}
+
+fail() {
+    echo "SOAK FAIL: $*" >&2
+    exit 1
+}
+
+[ -x "$MSG" ] || fail "build swaywardmsg first"
+[ -S "$SOCKET" ] || fail "SWAYSOCK must name dev-run.sh's private socket"
+case $(basename "$SOCKET") in
+swayward-ipc.*) ;;
+*) fail "refusing non-swayward socket: $SOCKET" ;;
+esac
+
+COMPOSITOR_PID=$(basename "$SOCKET" | cut -d. -f3)
+[[ $COMPOSITOR_PID =~ ^[0-9]+$ ]] || fail "cannot read compositor pid from $SOCKET"
+kill -0 "$COMPOSITOR_PID" 2>/dev/null || fail "compositor pid $COMPOSITOR_PID is not alive"
+
+mkdir -p "$(dirname "$OUTPUT")"
+printf 'elapsed_seconds,rss_kib,fd_count,socket_fd_count,cycles\n' >"$OUTPUT"
+
+subscribers=()
+feet=()
+cleanup() {
+    if [ ${#subscribers[@]} -gt 0 ]; then
+        kill "${subscribers[@]}" 2>/dev/null || true
+        wait "${subscribers[@]}" 2>/dev/null || true
+    fi
+    if [ ${#feet[@]} -gt 0 ]; then
+        kill "${feet[@]}" 2>/dev/null || true
+        wait "${feet[@]}" 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT
+
+command() {
+    "$MSG" -s "$SOCKET" "$*" >/dev/null
+}
+
+query() {
+    if [ $# -eq 1 ]; then
+        "$MSG" -s "$SOCKET" -t "$1" >/dev/null
+    else
+        "$MSG" -s "$SOCKET" -t "$1" "$2" >/dev/null
+    fi
+}
+
+sample() {
+    local elapsed=$1 cycles=$2 rss fds socket_fds fd
+    rss=$(awk '/^VmRSS:/ { print $2 }' "/proc/$COMPOSITOR_PID/status")
+    fds=$(find "/proc/$COMPOSITOR_PID/fd" -mindepth 1 -maxdepth 1 -printf . | wc -c)
+    socket_fds=0
+    for fd in "/proc/$COMPOSITOR_PID"/fd/*; do
+        [[ $(readlink "$fd" 2>/dev/null || true) == socket:* ]] && socket_fds=$((socket_fds + 1))
+    done
+    printf '%s,%s,%s,%s,%s\n' "$elapsed" "$rss" "$fds" "$socket_fds" "$cycles" | tee -a "$OUTPUT"
+}
+
+start=$SECONDS
+next_sample=$SAMPLE_INTERVAL
+cycles=0
+sample 0 0
+
+while (( SECONDS - start < DURATION )); do
+    tag="swayward-soak-$cycles"
+    feet=()
+    for n in $(seq 1 10); do
+        WAYLAND_DISPLAY="$WAYLAND_DISPLAY" foot --app-id "$tag-$n" --title "$tag-$n" \
+            sh -c 'exec sleep 7200' >/dev/null 2>&1 &
+        feet+=("$!")
+    done
+
+    subscribers=()
+    for _ in 1 2 3; do
+        timeout 3 "$MSG" -s "$SOCKET" -m -t subscribe '["workspace","window","tick"]' >/dev/null &
+        subscribers+=("$!")
+    done
+
+    sleep 0.5
+    command workspace number 2
+    command workspace number 3
+    command workspace number 1
+    command "[app_id=\"$tag-1\"]" floating enable
+    command "[app_id=\"$tag-2\"]" floating enable
+    command "[app_id=\"$tag-1\"]" mark --replace soak
+    command "[app_id=\"$tag-1\"]" move scratchpad
+    command scratchpad show
+    command scratchpad show
+    query send_tick "$tag"
+    query get_tree
+    query get_workspaces
+    query get_outputs
+
+    kill "${subscribers[@]}" 2>/dev/null || true
+    wait "${subscribers[@]}" 2>/dev/null || true
+    subscribers=()
+    command "[app_id=\"^$tag-\"]" kill || true
+    wait "${feet[@]}" 2>/dev/null || true
+    feet=()
+
+    cycles=$((cycles + 1))
+    elapsed=$((SECONDS - start))
+    if (( elapsed >= next_sample )); then
+        sample "$elapsed" "$cycles"
+        next_sample=$((next_sample + SAMPLE_INTERVAL))
+    fi
+    sleep "$CYCLE_DELAY"
+done
+
+sample "$((SECONDS - start))" "$cycles"
+echo "SOAK PASS duration=${DURATION}s cycles=$cycles samples=$OUTPUT"
