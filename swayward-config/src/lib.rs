@@ -47,7 +47,7 @@ pub use crate::layout::*;
 pub use crate::misc::*;
 pub use crate::output::{Output, OutputName, Outputs, Position, Vrr};
 pub use crate::recent_windows::{MruDirection, MruFilter, MruPreviews, MruScope, RecentWindows};
-pub use crate::utils::FloatOrInt;
+pub use crate::utils::{FloatOrInt, PositiveFloatOrInt};
 pub use crate::window_rule::{
     FloatingPosition, OnXdgActivate, PopupsRule, RelativeTo, ResolvedPopupsRules,
     SwayWindowBorderStyle, WindowRule,

@@ -1834,3 +1834,9 @@ migrated = false
 paths = ["swayward-config/src/utils.rs"]
 what = "reject non-finite and negative percentage strings before they reach configuration consumers."
 why = "Rust accepts `NaN` and infinity as floating-point values, but comparisons involving them can silently bypass configured thresholds; a negative percentage is outside the documented non-negative amount domain."
+
+[[edit]]
+migrated = false
+paths = ["swayward-config/src/lib.rs", "swayward-config/src/output.rs", "swayward-config/src/utils.rs", "swayward-config/src/tests/decode.rs", "swayward-config/src/tests/full_config.rs"]
+what = "decode output scale as a strictly positive value no greater than 10 instead of accepting zero and silently clamping it at runtime."
+why = "An output scale is a divisor and must be positive; accepting zero as valid configuration hides an operator error because the compositor later substitutes 0.1."

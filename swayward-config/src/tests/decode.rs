@@ -57,6 +57,17 @@ fn sway_nodes_decode_non_default_values() {
 }
 
 #[test]
+fn output_scale_rejects_values_outside_the_supported_range() {
+    for scale in ["0", "-1", "10.1"] {
+        let source = format!("output \"DP-1\" {{ scale {scale}; }}");
+        assert!(
+            Config::parse_mem(&source).is_err(),
+            "accepted scale {scale}"
+        );
+    }
+}
+
+#[test]
 fn workspace_parses_ordered_output_fallbacks() {
     let config =
         Config::parse_mem("workspace \"web\" { sway-output-assignment \"missing\" \"HDMI-A-1\"; }")

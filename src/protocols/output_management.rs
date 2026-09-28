@@ -13,7 +13,7 @@ use smithay::reexports::wayland_server::{
     Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource, WEnum,
 };
 use smithay::wayland::{Dispatch2, GlobalDispatch2};
-use swayward_config::{FloatOrInt, OutputName, Vrr};
+use swayward_config::{OutputName, PositiveFloatOrInt, Vrr};
 use swayward_ipc::Transform;
 use zwlr_output_configuration_head_v1::ZwlrOutputConfigurationHeadV1;
 use zwlr_output_configuration_v1::ZwlrOutputConfigurationV1;
@@ -696,7 +696,7 @@ where
                     );
                     return;
                 }
-                new_config.scale = Some(FloatOrInt(scale));
+                new_config.scale = Some(PositiveFloatOrInt(scale));
             }
             zwlr_output_configuration_head_v1::Request::SetAdaptiveSync { state } => {
                 let vrr = match state {

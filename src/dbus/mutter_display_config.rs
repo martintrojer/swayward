@@ -197,7 +197,7 @@ impl DisplayConfig {
                     Some(swayward_config::Output {
                         off: false,
                         name: connector,
-                        scale: Some(swayward_config::FloatOrInt(requested_config.scale)),
+                        scale: Some(swayward_config::PositiveFloatOrInt(requested_config.scale)),
                         transform: match requested_config.transform {
                             0 => swayward_ipc::Transform::Normal,
                             1 => swayward_ipc::Transform::_90,

@@ -510,7 +510,7 @@ fn parse() {
                         off: false,
                         name: "eDP-1",
                         scale: Some(
-                            FloatOrInt(
+                            PositiveFloatOrInt(
                                 2.0,
                             ),
                         ),

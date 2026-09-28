@@ -14,6 +14,9 @@ pub struct Percent(pub f64);
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct FloatOrInt<const MIN: i32, const MAX: i32>(pub f64);
 
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub struct PositiveFloatOrInt<const MAX: i32>(pub f64);
+
 /// Flag, with an optional explicit value.
 ///
 /// Intended to be used as an `Option<MaybeBool>` field, as a tri-state:
@@ -66,6 +69,12 @@ impl FromStr for Percent {
 
 impl<const MIN: i32, const MAX: i32> MergeWith<FloatOrInt<MIN, MAX>> for f64 {
     fn merge_with(&mut self, part: &FloatOrInt<MIN, MAX>) {
+        *self = part.0;
+    }
+}
+
+impl<const MAX: i32> MergeWith<PositiveFloatOrInt<MAX>> for f64 {
+    fn merge_with(&mut self, part: &PositiveFloatOrInt<MAX>) {
         *self = part.0;
     }
 }
@@ -138,6 +147,33 @@ impl<S: knuffel::traits::ErrorSpan, const MIN: i32, const MAX: i32> knuffel::Dec
                 ));
                 Ok(FloatOrInt::default())
             }
+        }
+    }
+}
+
+impl<S: knuffel::traits::ErrorSpan, const MAX: i32> knuffel::DecodeScalar<S>
+    for PositiveFloatOrInt<MAX>
+{
+    fn type_check(
+        type_name: &Option<knuffel::span::Spanned<knuffel::ast::TypeName, S>>,
+        ctx: &mut knuffel::decode::Context<S>,
+    ) {
+        FloatOrInt::<0, MAX>::type_check(type_name, ctx);
+    }
+
+    fn raw_decode(
+        val: &knuffel::span::Spanned<knuffel::ast::Literal, S>,
+        ctx: &mut knuffel::decode::Context<S>,
+    ) -> Result<Self, DecodeError<S>> {
+        let value = FloatOrInt::<0, MAX>::raw_decode(val, ctx)?.0;
+        if value > 0. {
+            Ok(Self(value))
+        } else {
+            ctx.emit_error(DecodeError::conversion(
+                val,
+                format!("value must be greater than 0 and at most {MAX}"),
+            ));
+            Ok(Self::default())
         }
     }
 }

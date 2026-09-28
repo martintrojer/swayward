@@ -8,7 +8,7 @@ use knuffel::Decode;
 use swayward_ipc::{ConfiguredMode, HSyncPolarity, Transform, VSyncPolarity};
 
 use crate::gestures::HotCorners;
-use crate::{Color, FloatOrInt, LayoutPart};
+use crate::{Color, LayoutPart, PositiveFloatOrInt};
 
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Outputs(pub Vec<Output>);
@@ -54,7 +54,7 @@ pub struct Output {
     #[knuffel(argument)]
     pub name: String,
     #[knuffel(child, unwrap(argument))]
-    pub scale: Option<FloatOrInt<0, 10>>,
+    pub scale: Option<PositiveFloatOrInt<10>>,
     #[knuffel(child, unwrap(argument, str), default = Transform::Normal)]
     pub transform: Transform,
     #[knuffel(child)]

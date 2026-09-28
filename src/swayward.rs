@@ -117,8 +117,8 @@ use smithay::wayland::xdg_toplevel_tag::XdgToplevelTagManager;
 use swayward_config::debug::PreviewRender;
 use swayward_config::output::MaxBpc;
 use swayward_config::{
-    Bind, Config, FloatOrInt, Key, Modifiers, OutputName, TrackLayout, WarpMouseToFocusMode,
-    WorkspaceReference, Xkb,
+    Bind, Config, Key, Modifiers, OutputName, PositiveFloatOrInt, TrackLayout,
+    WarpMouseToFocusMode, WorkspaceReference, Xkb,
 };
 use wayland_server::protocol::wl_output::WlOutput;
 

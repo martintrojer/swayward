@@ -598,7 +598,9 @@ impl State {
                     swayward_ipc::OutputAction::Scale { scale } => {
                         config.scale = match scale {
                             swayward_ipc::ScaleToSet::Automatic => None,
-                            swayward_ipc::ScaleToSet::Specific(scale) => Some(FloatOrInt(scale)),
+                            swayward_ipc::ScaleToSet::Specific(scale) => {
+                                Some(PositiveFloatOrInt(scale))
+                            }
                         }
                     }
                     swayward_ipc::OutputAction::Transform { transform } => {
