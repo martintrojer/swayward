@@ -847,6 +847,74 @@ fn moving_a_floating_group_to_scratchpad_emits_one_recursive_move_event() {
 }
 
 #[test]
+fn criteria_can_focus_a_resident_floating_group_leaf() {
+    let mut fixture = nested_split_fixture();
+    assert!(crate::command::execute(fixture.niri_state(), "floating enable")[0].success);
+
+    let target = {
+        let workspace = fixture.swayward().layout.active_workspace().unwrap();
+        workspace
+            .windows()
+            .find(|window| {
+                workspace
+                    .floating_tree_root_for_window(&window.window)
+                    .is_some()
+            })
+            .unwrap()
+            .id()
+    };
+    let outcome = crate::command::execute(
+        fixture.niri_state(),
+        &format!("[con_id={}] focus", crate::ipc::tree::window_id(target)),
+    );
+
+    assert!(outcome[0].success, "{outcome:?}");
+    assert_eq!(fixture.swayward().layout.focus().unwrap().id(), target);
+}
+
+#[test]
+fn focusing_a_resident_floating_group_leaf_emits_focus() {
+    let (mut fixture, socket) = ipc_fixture();
+    fixture.add_output(1, (1920, 1080));
+    let client = fixture.add_client();
+    for _ in 0..2 {
+        map_test_window(&mut fixture, client, "group");
+    }
+    fixture.swayward().layout.nest_or_unnest_window_left(None);
+    assert!(crate::command::execute(fixture.niri_state(), "focus parent")[0].success);
+    assert!(crate::command::execute(fixture.niri_state(), "floating enable")[0].success);
+    let target = {
+        let workspace = fixture.swayward().layout.active_workspace().unwrap();
+        workspace
+            .windows()
+            .find(|window| {
+                workspace
+                    .floating_tree_root_for_window(&window.window)
+                    .is_some()
+            })
+            .unwrap()
+            .id()
+    };
+    fixture.niri_state().ipc_refresh_layout();
+    let mut subscriber = subscribe_to_window_events(&mut fixture, &socket);
+
+    let outcome = crate::command::execute(
+        fixture.niri_state(),
+        &format!("[con_id={}] focus", crate::ipc::tree::window_id(target)),
+    );
+    assert!(outcome[0].success, "{outcome:?}");
+    fixture.niri_state().ipc_refresh_layout();
+
+    let ((event_type, payload), remainder) =
+        read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, Vec::new());
+    assert_eq!(event_type, (1 << 31) | 3);
+    let event = serde_json::from_str::<Value>(&payload).unwrap();
+    assert_eq!(event["change"], "focus");
+    assert_eq!(event["container"]["id"], crate::ipc::tree::window_id(target));
+    assert!(remainder.is_empty(), "unexpected events were buffered");
+}
+
+#[test]
 fn moving_a_floating_group_to_new_workspace_emits_empty_init() {
     let (mut fixture, socket) = ipc_fixture();
     fixture.add_output(1, (1920, 1080));

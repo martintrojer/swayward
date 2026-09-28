@@ -1591,6 +1591,18 @@ why = "Sway fullscreen targets the focused container, including a split in the w
 
 [[edit]]
 migrated = false
+paths = ["src/command/mod.rs", "src/command/focus.rs", "src/layout/tiling_tree/mod.rs", "src/tests/ipc/events.rs"]
+what = "match command criteria against resident floating-tree leaves and emit their focus event explicitly when criteria focus raises the group."
+why = "Sway evaluates criteria against every view and emits `window::focus` after focusing a matched view (`sway/criteria.c`; `sway/input/seat.c:1177-1198`). Swayward's general event iterator omits resident-tree leaves, so criteria matching and the resulting event need the recursive tree path."
+
+[[edit]]
+migrated = false
+paths = ["src/command/mod.rs", "src/layout/tiling_tree/mod.rs", "src/tests/ipc/events.rs"]
+what = "include resident floating-tree leaves in command criteria matching without changing window event iteration."
+why = "Sway evaluates criteria against every view, including views nested below a floating split (`sway/criteria.c`; `sway/commands/focus.c`). Swayward's general window iterator omits resident-tree leaves to preserve event semantics, so criteria need to read those leaves from the recursive IPC tree separately."
+
+[[edit]]
+migrated = false
 paths = ["src/command/mod.rs", "src/command/scratchpad.rs", "src/tests/ipc/events.rs"]
 what = "emit recursive root move events when a resident floating group enters or leaves the scratchpad, preceded by the focused leaf event when shown."
 why = "Sway moves the floating container root through the scratchpad and emits events for the actual affected nodes (`sway/tree/root.c:150-154`; `sway/sway/ipc-server.c`). Leaf iteration does not expose swayward's detached or resident floating roots, so the generic event diff emitted nothing."

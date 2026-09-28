@@ -1908,11 +1908,41 @@ fn matching_targets(state: &State, criteria: &criteria::Criteria) -> Vec<Command
         targets.truncate(1);
     }
     for (_, _, workspace) in state.swayward.layout.workspaces() {
-        let trees = std::iter::once(workspace.ipc_tiling_tree())
-            .chain(workspace.ipc_floating_trees().map(|(_, tree, _)| tree));
-        for tree in trees {
+        let trees = std::iter::once((workspace.ipc_tiling_tree(), false)).chain(
+            workspace
+                .ipc_floating_trees()
+                .map(|(_, tree, _)| (tree, true)),
+        );
+        for (tree, floating) in trees {
             for (node, value) in tree.nodes() {
-                if matches!(value, crate::layout::tiling_tree::IpcNodeKind::Split) {
+                if matches!(value, crate::layout::tiling_tree::IpcNodeKind::Leaf) {
+                    if floating {
+                        let window = tree.window_for_node(node).unwrap();
+                        let mapped = workspace
+                            .windows()
+                            .find(|mapped| mapped.window == *window)
+                            .unwrap();
+                        let (title, app_id) = with_toplevel_role(mapped.toplevel(), |role| {
+                            (role.title.clone(), role.app_id.clone())
+                        });
+                        let snapshot = (
+                            mapped.id(),
+                            title,
+                            app_id,
+                            workspace.sway_name(),
+                            true,
+                            mapped.urgent_since(),
+                            mapped.credentials().map(|c| c.pid),
+                            mapped.security_context().cloned(),
+                            mapped.tag(),
+                        );
+                        if criteria.matches(&snapshot_info(state, &snapshot), &focused_info)
+                            && !targets.contains(&CommandTarget::Window(mapped.id()))
+                        {
+                            targets.push(CommandTarget::Window(mapped.id()));
+                        }
+                    }
+                } else {
                     let marks = state
                         .swayward
                         .marks_by_container

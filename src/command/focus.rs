@@ -132,7 +132,37 @@ pub(super) fn targeted(state: &mut State, target: CommandTarget) -> Result<(), C
             if state.swayward.layout.is_scratchpad_hidden(&window) {
                 state.swayward.layout.show_scratchpad(Some(&window));
             } else {
+                let in_floating_group =
+                    state.swayward.layout.workspaces().any(|(_, _, workspace)| {
+                        workspace.floating_tree_root_for_window(&window).is_some()
+                    });
                 state.swayward.layout.activate_window(&window);
+                if in_floating_group {
+                    state.ipc_refresh_layout();
+                    if let Some(server) = &state.swayward.ipc_server {
+                        let tree = serde_json::to_value(crate::ipc::tree::describe_tree(
+                            &state.swayward.layout,
+                            &state.swayward.global_space,
+                            &state.swayward.marks_by_window,
+                            &state.swayward.marks_by_container,
+                        ))
+                        .unwrap_or_default();
+                        if let Some(mut container) = crate::ipc::server::find_node_by_id(
+                            &tree,
+                            crate::ipc::tree::window_id(target),
+                        )
+                        .cloned()
+                        {
+                            if let Some(percent) = container["percent"].as_f64() {
+                                container["percent"] = (1. - percent).into();
+                            }
+                            server.send_event(swayward_ipc::legacy::Event::SwayWindowChanged {
+                                change: "focus".into(),
+                                container,
+                            });
+                        }
+                    }
+                }
             }
         }
         CommandTarget::Container(workspace, node) => {

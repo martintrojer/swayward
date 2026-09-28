@@ -185,6 +185,15 @@ pub enum IpcNode<I> {
 }
 
 impl<I> IpcNode<I> {
+    pub fn window_for_node(&self, wanted: NodeId) -> Option<&I> {
+        match self {
+            IpcNode::Leaf { id, window, .. } => (*id == wanted).then_some(window),
+            IpcNode::Split { children, .. } => children
+                .iter()
+                .find_map(|child| child.window_for_node(wanted)),
+        }
+    }
+
     pub fn nodes(&self) -> Vec<(NodeId, IpcNodeKind)> {
         fn collect<I>(node: &IpcNode<I>, nodes: &mut Vec<(NodeId, IpcNodeKind)>) {
             match node {
