@@ -53,11 +53,15 @@ pub(super) fn output_target(
         OutputTarget::Name(name) => state.swayward.output_by_name_match(name).cloned(),
         OutputTarget::Direction(direction) => match (direction, reference) {
             (direction, Some(output)) => {
-                let reference = reference_point.unwrap_or_else(|| {
-                    crate::utils::center(
-                        state.swayward.global_space.output_geometry(output).unwrap(),
-                    )
-                });
+                let reference = match reference_point {
+                    Some(point) => point,
+                    None => state
+                        .swayward
+                        .global_space
+                        .output_geometry(output)
+                        .map(crate::utils::center)
+                        .ok_or("Reference output has no geometry")?,
+                };
                 let (horizontal, positive) = match direction {
                     Direction::Left => (true, false),
                     Direction::Right => (true, true),

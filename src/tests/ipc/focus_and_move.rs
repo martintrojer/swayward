@@ -948,6 +948,24 @@ fn unscoped_move_output_wraps_from_the_edge() {
 }
 
 #[test]
+fn moving_a_workspace_from_an_output_without_geometry_returns_a_failure() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1280, 720));
+    f.add_output(2, (1280, 720));
+    let reference = f.swayward().layout.active_output().unwrap().clone();
+    f.swayward().global_space.unmap_output(&reference);
+
+    let outcome = crate::command::execute(f.niri_state(), "move workspace output right");
+
+    assert_eq!(outcome.len(), 1);
+    assert!(!outcome[0].success);
+    assert_eq!(
+        outcome[0].error.as_deref(),
+        Some("Reference output has no geometry")
+    );
+}
+
+#[test]
 fn move_output_accepts_direction_name_current_and_workspace_forms() {
     let mut f = Fixture::new();
     f.add_output(1, (1280, 720));
