@@ -246,37 +246,35 @@ fn check_ops(ops: Vec<Op>) {
 }
 
 #[test]
-fn repeated_property_fixtures_release_keymap_file_descriptors() {
+fn repeated_property_fixtures_release_file_descriptors() {
+    const CHILD_ENV: &str = "SWAYWARD_FD_REGRESSION_CHILD";
+    if std::env::var_os(CHILD_ENV).is_none() {
+        let status = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "tests::ipc::property::repeated_property_fixtures_release_file_descriptors",
+                "--nocapture",
+            ])
+            .env(CHILD_ENV, "1")
+            .status()
+            .unwrap();
+        assert!(status.success(), "isolated fixture fd regression failed");
+        return;
+    }
+
     check_ops(vec![Op::Command("focus left")]);
-    let keymap_fd_count = || {
-        std::fs::read_dir("/proc/self/fd")
-            .unwrap()
-            .flatten()
-            .filter_map(|entry| std::fs::read_link(entry.path()).ok())
-            .filter(|target| target.to_string_lossy().contains("smithay-keymap"))
-            .count()
-    };
-    let keymaps_before = keymap_fd_count();
     let states_before = crate::swayward::LIVE_STATE_COUNT.load(Ordering::Relaxed);
     let fds_before = std::fs::read_dir("/proc/self/fd").unwrap().count();
     for _ in 0..200 {
         check_ops(vec![Op::Command("focus left")]);
     }
-    let leaked_keymaps = keymap_fd_count().saturating_sub(keymaps_before);
     let live_states = crate::swayward::LIVE_STATE_COUNT.load(Ordering::Relaxed);
     let leaked_fds = std::fs::read_dir("/proc/self/fd")
         .unwrap()
         .count()
         .saturating_sub(fds_before);
-    assert!(
-        live_states <= states_before + 32,
-        "fixture State instances grow without bound: before={states_before}, after={live_states}"
-    );
-    assert!(leaked_fds <= 128, "leaked {leaked_fds} file descriptors");
-    assert!(
-        leaked_keymaps <= 32,
-        "leaked {leaked_keymaps} keymap memfds"
-    );
+    assert_eq!(live_states, states_before, "fixture State instances leaked");
+    assert!(leaked_fds <= 8, "leaked {leaked_fds} file descriptors");
 }
 
 #[test]
