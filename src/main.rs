@@ -36,7 +36,7 @@ const DEFAULT_LOG_FILTER: &str = "swayward=debug,smithay::backend::renderer::gle
 static GLOBAL: tracy_client::ProfiledAllocator<std::alloc::System> =
     tracy_client::ProfiledAllocator::new(std::alloc::System, 100);
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn init_process() {
     // Set backtrace defaults if not set.
     if env::var_os("RUST_BACKTRACE").is_none() {
         env::set_var("RUST_BACKTRACE", "1");
@@ -65,45 +65,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
              Are you sure you did not forget to set `--features systemd`?"
         );
     }
+}
 
-    let cli = Cli::parse();
-    let headless_outputs = headless_output_count(env::var_os("WLR_HEADLESS_OUTPUTS").as_deref())?;
-
-    if cli.session {
-        // If we're starting as a session, assume that the intention is to start on a TTY unless
-        // this is a WSL environment. Remove DISPLAY, WAYLAND_DISPLAY or WAYLAND_SOCKET from our
-        // environment if they are set, since they will cause the winit backend to be selected
-        // instead.
-        if env::var_os("WSL_DISTRO_NAME").is_none() {
-            if env::var_os("DISPLAY").is_some() {
-                warn!("running as a session but DISPLAY is set, removing it");
-                env::remove_var("DISPLAY");
-            }
-            if env::var_os("WAYLAND_DISPLAY").is_some() {
-                warn!("running as a session but WAYLAND_DISPLAY is set, removing it");
-                env::remove_var("WAYLAND_DISPLAY");
-            }
-            if env::var_os("WAYLAND_SOCKET").is_some() {
-                warn!("running as a session but WAYLAND_SOCKET is set, removing it");
-                env::remove_var("WAYLAND_SOCKET");
-            }
-        }
-
-        // Set the current desktop for xdg-desktop-portal.
-        env::set_var("XDG_CURRENT_DESKTOP", "swayward");
-        // Ensure the session type is set to Wayland for xdg-autostart and Qt apps.
-        env::set_var("XDG_SESSION_TYPE", "wayland");
-    }
-
-    // Handle subcommands.
-    if let Some(subcommand) = cli.subcommand {
+fn run_subcommand(subcommand: Option<Sub>) -> Result<bool, Box<dyn std::error::Error>> {
+    if let Some(subcommand) = subcommand {
         match subcommand {
             Sub::Validate { config } => {
                 tracy_client::Client::start();
 
                 config_path(config).load().config?;
                 info!("config is valid");
-                return Ok(());
+                return Ok(true);
             }
             Sub::Msg { .. } => {
                 return Err("the legacy msg client was removed; use swaymsg".into());
@@ -129,9 +101,85 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         );
                     }
                 }
-                return Ok(());
+                return Ok(true);
             }
         }
+    }
+    Ok(false)
+}
+
+fn configure_session_environment(session: bool) {
+    if session {
+        // If we're starting as a session, assume that the intention is to start on a TTY unless
+        // this is a WSL environment. Remove DISPLAY, WAYLAND_DISPLAY or WAYLAND_SOCKET from our
+        // environment if they are set, since they will cause the winit backend to be selected
+        // instead.
+        if env::var_os("WSL_DISTRO_NAME").is_none() {
+            if env::var_os("DISPLAY").is_some() {
+                warn!("running as a session but DISPLAY is set, removing it");
+                env::remove_var("DISPLAY");
+            }
+            if env::var_os("WAYLAND_DISPLAY").is_some() {
+                warn!("running as a session but WAYLAND_DISPLAY is set, removing it");
+                env::remove_var("WAYLAND_DISPLAY");
+            }
+            if env::var_os("WAYLAND_SOCKET").is_some() {
+                warn!("running as a session but WAYLAND_SOCKET is set, removing it");
+                env::remove_var("WAYLAND_SOCKET");
+            }
+        }
+
+        // Set the current desktop for xdg-desktop-portal.
+        env::set_var("XDG_CURRENT_DESKTOP", "swayward");
+        // Ensure the session type is set to Wayland for xdg-autostart and Qt apps.
+        env::set_var("XDG_SESSION_TYPE", "wayland");
+    }
+}
+
+fn publish_environment(state: &mut State) {
+    // Set WAYLAND_DISPLAY for children.
+    let socket_name = state.swayward.socket_name.as_deref().unwrap();
+    env::set_var("WAYLAND_DISPLAY", socket_name);
+    info!(
+        "listening on Wayland socket: {}",
+        socket_name.to_string_lossy()
+    );
+
+    // Set sway-compatible IPC socket variables for children.
+    if let Some(ipc) = &state.swayward.ipc_server {
+        let socket_path = ipc.socket_path.as_deref().unwrap();
+        for (name, value) in ipc_socket_environment(socket_path) {
+            env::set_var(name, value);
+        }
+        info!("IPC listening on: {}", socket_path.to_string_lossy());
+    }
+
+    // Setup xwayland-satellite integration.
+    xwayland::satellite::setup(state);
+    if let Some(satellite) = &state.swayward.satellite {
+        let name = satellite.display_name();
+        *CHILD_DISPLAY.write().unwrap() = Some(name.to_owned());
+        env::set_var("DISPLAY", name);
+        info!("listening on X11 socket: {name}");
+    } else {
+        // Avoid spawning children in the host X11.
+        env::remove_var("DISPLAY");
+    }
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    init_process();
+    run()
+}
+
+fn run() -> Result<(), Box<dyn std::error::Error>> {
+    let cli = Cli::parse();
+    let headless_outputs = headless_output_count(env::var_os("WLR_HEADLESS_OUTPUTS").as_deref())?;
+
+    configure_session_environment(cli.session);
+
+    if run_subcommand(cli.subcommand)? {
+        return Ok(());
     }
 
     // Needs to be done before starting Tracy, so that it applies to Tracy's threads.
@@ -192,34 +240,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         backend.headless().add_startup_outputs(swayward, count);
     }
 
-    // Set WAYLAND_DISPLAY for children.
-    let socket_name = state.swayward.socket_name.as_deref().unwrap();
-    env::set_var("WAYLAND_DISPLAY", socket_name);
-    info!(
-        "listening on Wayland socket: {}",
-        socket_name.to_string_lossy()
-    );
-
-    // Set sway-compatible IPC socket variables for children.
-    if let Some(ipc) = &state.swayward.ipc_server {
-        let socket_path = ipc.socket_path.as_deref().unwrap();
-        for (name, value) in ipc_socket_environment(socket_path) {
-            env::set_var(name, value);
-        }
-        info!("IPC listening on: {}", socket_path.to_string_lossy());
-    }
-
-    // Setup xwayland-satellite integration.
-    xwayland::satellite::setup(&mut state);
-    if let Some(satellite) = &state.swayward.satellite {
-        let name = satellite.display_name();
-        *CHILD_DISPLAY.write().unwrap() = Some(name.to_owned());
-        env::set_var("DISPLAY", name);
-        info!("listening on X11 socket: {name}");
-    } else {
-        // Avoid spawning children in the host X11.
-        env::remove_var("DISPLAY");
-    }
+    publish_environment(&mut state);
 
     if cli.session {
         // We're starting as a session. Import our variables.
