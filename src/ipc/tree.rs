@@ -506,52 +506,71 @@ fn describe_workspace_node(context: WorkspaceNodeContext<'_>) -> Node {
         .then(|| workspace.active_window().map(|window| window.id()))
         .flatten();
     let mut floating_nodes = workspace
-        .tiles_with_ipc_layouts()
-        .filter(|(tile, _)| workspace.is_floating_for_ipc(&tile.window().window))
-        .map(|(tile, layout)| {
-            let (x, y) = layout.tile_pos_in_workspace_view.unwrap_or_default();
-            let outer_rect = offset_rect(
-                Rectangle::new(
-                    (x, y).into(),
-                    (layout.tile_size.0, layout.tile_size.1).into(),
-                ),
+        .ipc_floating_trees()
+        .filter_map(|(_, tree, sticky)| {
+            let mut node = describe_tiling(
+                tree,
+                &|window| workspace.windows().find(|mapped| mapped.window == *window),
                 output_origin,
-            );
-            let mut node = describe_window(WindowNodeContext {
-                mapped: tile.window(),
-                rect: outer_rect,
-                node_type: NodeType::FloatingCon,
-                floating: "user_on",
-                parent: Some(rect),
                 marks,
-                in_scratchpad: compositor_layout.is_scratchpad_window(&tile.window().window),
-                visible: true,
-            });
-            node.focused = active_window == Some(tile.window().id());
-            let border = tile.sway_border();
-            node.border = ipc_border(border.0);
-            node.current_border_width = i32::from(border.1);
-            let deco_rect = workspace.floating().ipc_decoration_rect(tile, &layout);
-            let has_titlebar = deco_rect.is_some();
-            node.deco_rect =
-                deco_rect.map_or_else(Rect::default, |rect| offset_rect(rect, output_origin));
-            let border_width = match (node.border, has_titlebar) {
-                (NodeBorder::Normal | NodeBorder::Pixel, true) | (NodeBorder::Pixel, false) => {
-                    node.current_border_width
-                }
-                _ => 0,
-            };
-            let top = if has_titlebar { 0 } else { border_width };
-            node.rect = outer_rect;
-            node.window_rect = Rect {
-                x: border_width,
-                y: top,
-                width: (outer_rect.width - border_width * 2).max(0),
-                height: (outer_rect.height - border_width - top).max(0),
-            };
-            node.sticky = workspace.is_window_sticky(&tile.window().window);
-            node
+                container_marks,
+                workspace.id(),
+            )?;
+            node.node_type = NodeType::FloatingCon;
+            node.floating = Some("user_on".into());
+            node.scratchpad_state = Some("none".into());
+            node.sticky = sticky;
+            Some(node)
         })
+        .chain(
+            workspace
+                .tiles_with_ipc_layouts()
+                .filter(|(tile, _)| workspace.is_floating_for_ipc(&tile.window().window))
+                .map(|(tile, layout)| {
+                    let (x, y) = layout.tile_pos_in_workspace_view.unwrap_or_default();
+                    let outer_rect = offset_rect(
+                        Rectangle::new(
+                            (x, y).into(),
+                            (layout.tile_size.0, layout.tile_size.1).into(),
+                        ),
+                        output_origin,
+                    );
+                    let mut node = describe_window(WindowNodeContext {
+                        mapped: tile.window(),
+                        rect: outer_rect,
+                        node_type: NodeType::FloatingCon,
+                        floating: "user_on",
+                        parent: Some(rect),
+                        marks,
+                        in_scratchpad: compositor_layout
+                            .is_scratchpad_window(&tile.window().window),
+                        visible: true,
+                    });
+                    node.focused = active_window == Some(tile.window().id());
+                    let border = tile.sway_border();
+                    node.border = ipc_border(border.0);
+                    node.current_border_width = i32::from(border.1);
+                    let deco_rect = workspace.floating().ipc_decoration_rect(tile, &layout);
+                    let has_titlebar = deco_rect.is_some();
+                    node.deco_rect = deco_rect
+                        .map_or_else(Rect::default, |rect| offset_rect(rect, output_origin));
+                    let border_width = match (node.border, has_titlebar) {
+                        (NodeBorder::Normal | NodeBorder::Pixel, true)
+                        | (NodeBorder::Pixel, false) => node.current_border_width,
+                        _ => 0,
+                    };
+                    let top = if has_titlebar { 0 } else { border_width };
+                    node.rect = outer_rect;
+                    node.window_rect = Rect {
+                        x: border_width,
+                        y: top,
+                        width: (outer_rect.width - border_width * 2).max(0),
+                        height: (outer_rect.height - border_width - top).max(0),
+                    };
+                    node.sticky = workspace.is_window_sticky(&tile.window().window);
+                    node
+                }),
+        )
         .collect::<Vec<_>>();
     floating_nodes.reverse();
     let floating_focus = floating_nodes.iter().rev().map(|node| node.id);

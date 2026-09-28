@@ -1434,7 +1434,9 @@ impl<W: LayoutElement> Workspace<W> {
     }
 
     pub fn focused_container_node(&self) -> Option<crate::layout::tiling_tree::NodeId> {
-        if self.floating_is_active == FloatingActive::NoButRaised {
+        if self.floating_is_active.get() {
+            self.floating.focused_container_node()
+        } else if self.floating_is_active == FloatingActive::NoButRaised {
             self.tiling.focus().filter(|id| self.tiling.is_root(*id))
         } else {
             self.focused_tiling_node()
@@ -2587,6 +2589,11 @@ impl<W: LayoutElement> Workspace<W> {
 
     pub fn is_tiling_split(&self, id: crate::layout::tiling_tree::NodeId) -> bool {
         self.tiling.is_split(id)
+            || self
+                .floating
+                .tree_root_for_node(id)
+                .and_then(|root| self.floating.tree(root))
+                .is_some_and(|tree| tree.is_split(id))
     }
 
     pub fn tab_indicator_focus_target(&self, window: &W::Id) -> Option<&W> {
@@ -2599,8 +2606,32 @@ impl<W: LayoutElement> Workspace<W> {
         tree
     }
 
+    pub fn ipc_floating_trees(
+        &self,
+    ) -> impl Iterator<Item = (NodeId, super::tiling_tree::IpcNode<W::Id>, bool)> + '_ {
+        self.floating.ipc_trees()
+    }
+
     pub fn ipc_decoration_rect(&self, window: &W::Id) -> Option<Rectangle<f64, Logical>> {
         self.tiling.ipc_decoration_rect(window)
+    }
+
+    pub fn float_tiling_subtree(&mut self, node: NodeId) -> Option<NodeId> {
+        let (subtree, old_parent) = self.detach_tiling_subtree(node)?;
+        self.finish_tiling_subtree_detach(old_parent);
+        let size = Size::from((
+            self.working_area.size.w * 0.5,
+            self.working_area.size.h * 0.75,
+        ));
+        let rect = Rectangle::new(
+            self.working_area.loc
+                + (self.working_area.size.to_point() - size.to_point()).downscale(2.),
+            size,
+        );
+        let (root, remapped) = self.floating.add_tree(subtree, rect);
+        debug_assert!(remapped.is_empty());
+        self.floating_is_active = FloatingActive::Yes;
+        Some(root)
     }
 
     pub fn tiles_with_ipc_layouts(&self) -> impl Iterator<Item = (&Tile<W>, WindowLayout)> {

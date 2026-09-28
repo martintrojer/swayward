@@ -234,51 +234,41 @@ fn command_tree(fixture: &mut Fixture) -> Value {
 }
 
 #[test]
-fn floating_group_commands_fail_without_changing_state() {
-    // Disabling floating on an already tiled split is an exact no-op and does
-    // not need the missing model.
+fn floating_group_command_serializes_one_recursive_root() {
     let mut fixture = nested_split_fixture();
-    let before = command_tree(&mut fixture);
-    let outcome = crate::command::execute(fixture.niri_state(), "floating disable");
-    assert!(outcome[0].success, "{outcome:?}");
-    assert_eq!(command_tree(&mut fixture), before);
 
-    // Sway applies these commands to the selected split container, and
-    // floating/move-scratchpad create or preserve one floating subtree
-    // (`commands/floating.c:23-55`, `commands/move.c:925-946`, and
-    // `commands/sticky.c:20-42`). Swayward has no
-    // floating-subtree representation, so it must refuse instead of reporting
-    // success after acting on only the focused leaf.
-    for command in [
-        "floating enable",
-        "floating toggle",
-        "move scratchpad",
-        "sticky enable",
-    ] {
-        let mut fixture = nested_split_fixture();
-        let before_tree = command_tree(&mut fixture);
-        let before_scratchpad = fixture.swayward().layout.scratchpad_windows().count();
+    let outcomes = crate::command::execute(fixture.niri_state(), "floating enable");
 
-        let outcomes = crate::command::execute(fixture.niri_state(), command);
-
-        assert_eq!(outcomes.len(), 1, "{command}: {outcomes:?}");
-        assert!(!outcomes[0].success, "{command}: {outcomes:?}");
-        assert_eq!(
-            outcomes[0].error.as_deref(),
-            Some("floating container groups are not supported"),
-            "{command}"
-        );
-        assert_eq!(
-            command_tree(&mut fixture),
-            before_tree,
-            "{command} changed tree geometry, floating state or sticky state"
-        );
-        assert_eq!(
-            fixture.swayward().layout.scratchpad_windows().count(),
-            before_scratchpad,
-            "{command} changed scratchpad membership"
-        );
+    assert_eq!(outcomes.len(), 1, "{outcomes:?}");
+    assert!(outcomes[0].success, "{outcomes:?}");
+    let tree = command_tree(&mut fixture);
+    fn visible_workspace(node: &Value) -> Option<&Value> {
+        if node["type"] == "workspace" && node["name"] != "__i3_scratch" {
+            return Some(node);
+        }
+        node["nodes"]
+            .as_array()?
+            .iter()
+            .find_map(visible_workspace)
     }
+    let workspace = visible_workspace(&tree).unwrap();
+    assert_eq!(workspace["nodes"].as_array().unwrap().len(), 1, "{tree:#}");
+    let floating = &workspace["floating_nodes"];
+    assert_eq!(floating.as_array().unwrap().len(), 1);
+    assert_eq!(floating[0]["type"], "floating_con");
+    assert_eq!(floating[0]["floating"], "user_on");
+    fn leaf_count(node: &Value) -> usize {
+        if node["type"] == "con" && node["nodes"].as_array().is_some_and(Vec::is_empty) {
+            return 1;
+        }
+        node["nodes"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(leaf_count)
+            .sum()
+    }
+    assert_eq!(leaf_count(&floating[0]), 2, "{tree:#}");
 }
 
 #[test]

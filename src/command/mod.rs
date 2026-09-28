@@ -423,12 +423,14 @@ fn execute_one(
             None
         }
         Command::Floating(mode) => {
-            if matches!(focused_target(state), Some(CommandTarget::Container(_, _))) {
-                return if mode == Toggle::Disable {
-                    success()
-                } else {
-                    failure("floating container groups are not supported")
-                };
+            if let Some(CommandTarget::Container(workspace, node)) = focused_target(state) {
+                if mode != Toggle::Disable
+                    && !state.swayward.layout.float_tiling_subtree(workspace, node)
+                {
+                    return failure("No matching node.");
+                }
+                state.swayward.queue_redraw_all();
+                return success();
             }
             let Some(window) = state
                 .swayward

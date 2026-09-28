@@ -4524,6 +4524,12 @@ impl<W: LayoutElement> Layout<W> {
             .is_some_and(|workspace| workspace.set_tiling_node_title_format(node, format))
     }
 
+    pub fn float_tiling_subtree(&mut self, workspace_id: WorkspaceId, node: NodeId) -> bool {
+        self.workspaces_mut()
+            .find(|workspace| workspace.id() == workspace_id)
+            .is_some_and(|workspace| workspace.float_tiling_subtree(node).is_some())
+    }
+
     pub fn tiling_node_windows(
         &self,
         workspace_id: WorkspaceId,

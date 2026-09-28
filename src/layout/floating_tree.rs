@@ -581,6 +581,14 @@ impl<W: LayoutElement> FloatingLayout<W> {
     /// During animations, assumes the final tile position.
     pub fn active_window_visual_rectangle(&self) -> Option<Rectangle<f64, Logical>> {
         let active_id = self.active_window_id.as_ref()?;
+        if let Some(rect) = self.tree_entries.iter().find_map(|entry| {
+            entry
+                .tree
+                .node_for_window(active_id)
+                .and_then(|_| entry.tree.active_window_visual_rectangle())
+        }) {
+            return Some(rect);
+        }
         let (tile, offset) = self
             .tiles_with_offsets()
             .find(|(tile, _)| tile.window().id() == active_id)?;
@@ -618,6 +626,13 @@ impl<W: LayoutElement> FloatingLayout<W> {
     }
 
     pub fn popup_target_rect(&self, id: &W::Id) -> Option<Rectangle<f64, Logical>> {
+        if let Some(rect) = self
+            .tree_entries
+            .iter()
+            .find_map(|entry| entry.tree.popup_target_rect(id))
+        {
+            return Some(rect);
+        }
         for (tile, pos) in self.tiles_with_offsets() {
             if tile.window().id() == id {
                 // Position within the working area.
@@ -639,7 +654,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
     }
 
     fn contains(&self, id: &W::Id) -> bool {
-        self.idx_of(id).is_some()
+        self.has_window(id)
     }
 
     pub fn active_window(&self) -> Option<&W> {
@@ -649,15 +664,31 @@ impl<W: LayoutElement> FloatingLayout<W> {
             .map(|entry| &entry.tile)
             .find(|tile| tile.window().id() == id)
             .map(Tile::window)
+            .or_else(|| {
+                self.tree_entries
+                    .iter()
+                    .find_map(|entry| entry.tree.windows().find(|(_, window)| window.id() == id))
+                    .map(|(_, window)| window)
+            })
     }
 
     pub fn active_window_mut(&mut self) -> Option<&mut W> {
         let id = self.active_window_id.as_ref()?;
-        self.entries
+        if let Some(tile) = self
+            .entries
             .iter_mut()
             .map(|entry| &mut entry.tile)
             .find(|tile| tile.window().id() == id)
-            .map(Tile::window_mut)
+        {
+            return Some(tile.window_mut());
+        }
+        self.tree_entries.iter_mut().find_map(|entry| {
+            entry
+                .tree
+                .tiles_mut()
+                .find(|tile| tile.window().id() == id)
+                .map(Tile::window_mut)
+        })
     }
 
     pub fn has_window(&self, id: &W::Id) -> bool {
@@ -697,6 +728,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
             .tree_entries
             .iter()
             .any(|entry| entry.tree.contains(root)));
+        self.active_window_id = tree.active_window().map(|window| window.id().clone());
         self.tree_entries.insert(
             0,
             FloatingTreeEntry {
@@ -729,6 +761,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
             self.options.clone(),
         );
         let root = removed.root;
+        self.active_window_id = tree.active_window().map(|window| window.id().clone());
         self.tree_entries.insert(
             0,
             FloatingTreeEntry {
@@ -788,6 +821,30 @@ impl<W: LayoutElement> FloatingLayout<W> {
 
     pub fn tree_roots(&self) -> impl Iterator<Item = NodeId> + '_ {
         self.tree_entries.iter().map(|entry| entry.root)
+    }
+
+    pub fn ipc_trees(
+        &self,
+    ) -> impl Iterator<Item = (NodeId, super::tiling_tree::IpcNode<W::Id>, bool)> + '_ {
+        self.tree_entries
+            .iter()
+            .map(|entry| (entry.root, entry.tree.ipc_tree(), entry.sticky))
+    }
+
+    pub fn tree_root_for_node(&self, node: NodeId) -> Option<NodeId> {
+        self.tree_entries
+            .iter()
+            .find(|entry| entry.tree.contains(node))
+            .map(|entry| entry.root)
+    }
+
+    pub fn focused_container_node(&self) -> Option<NodeId> {
+        let active = self.active_window_id.as_ref()?;
+        let entry = self
+            .tree_entries
+            .iter()
+            .find(|entry| entry.tree.node_for_window(active).is_some())?;
+        entry.tree.focus().filter(|node| entry.tree.is_split(*node))
     }
 
     pub fn tree_window_ids(&self, root: NodeId) -> Option<Vec<W::Id>> {
@@ -1081,20 +1138,35 @@ impl<W: LayoutElement> FloatingLayout<W> {
         if !self.contains(id) {
             return false;
         }
-
+        if let Some(entry) = self
+            .tree_entries
+            .iter_mut()
+            .find(|entry| entry.tree.node_for_window(id).is_some())
+        {
+            entry.tree.activate_window(id);
+        }
         self.active_window_id = Some(id.clone());
         true
     }
 
     pub fn activate_window(&mut self, id: &W::Id) -> bool {
-        let Some(idx) = self.idx_of(id) else {
+        if let Some(idx) = self.idx_of(id) {
+            self.raise_window(idx, 0);
+            self.active_window_id = Some(id.clone());
+            self.bring_up_descendants_of(0);
+            return true;
+        }
+        let Some(idx) = self
+            .tree_entries
+            .iter()
+            .position(|entry| entry.tree.node_for_window(id).is_some())
+        else {
             return false;
         };
-
-        self.raise_window(idx, 0);
+        let mut entry = self.tree_entries.remove(idx);
+        entry.tree.activate_window(id);
+        self.tree_entries.insert(0, entry);
         self.active_window_id = Some(id.clone());
-        self.bring_up_descendants_of(0);
-
         true
     }
 
@@ -1651,6 +1723,13 @@ impl<W: LayoutElement> FloatingLayout<W> {
     }
 
     pub fn update_window(&mut self, id: &W::Id, serial: Option<Serial>) -> bool {
+        if let Some(entry) = self
+            .tree_entries
+            .iter_mut()
+            .find(|entry| entry.tree.node_for_window(id).is_some())
+        {
+            return entry.tree.update_window(id, serial);
+        }
         let Some(tile_idx) = self.idx_of(id) else {
             return false;
         };
@@ -2121,10 +2200,10 @@ impl<W: LayoutElement> FloatingLayout<W> {
         }
 
         if let Some(id) = &self.active_window_id {
-            assert!(!self.entries.is_empty());
+            assert!(!self.is_empty());
             assert!(self.contains(id), "active window must be present in tiles");
         } else {
-            assert!(self.entries.is_empty());
+            assert!(self.is_empty());
         }
 
         if let Some(resize) = &self.interactive_resize {
