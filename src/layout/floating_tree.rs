@@ -846,6 +846,16 @@ impl<W: LayoutElement> FloatingLayout<W> {
             .map(|entry| entry.root)
     }
 
+    pub fn focused_leaf_is_only_child_of_tree_root(&self) -> bool {
+        let Some(active) = self.active_window_id.as_ref() else {
+            return false;
+        };
+        self.tree_entries
+            .iter()
+            .find(|entry| entry.tree.node_for_window(active).is_some())
+            .is_some_and(|entry| entry.tree.focused_leaf_is_only_child_of_resident_root())
+    }
+
     pub fn focused_container_node(&self) -> Option<NodeId> {
         let active = self.active_window_id.as_ref()?;
         let entry = self

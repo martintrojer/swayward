@@ -209,6 +209,13 @@ fn execute_one(
                 if fullscreen_floating {
                     return failure("Cannot move fullscreen floating container");
                 }
+                if state
+                    .swayward
+                    .layout
+                    .focused_leaf_is_only_child_of_floating_tree_root()
+                {
+                    return success();
+                }
                 let pixels = f64::from(pixels.unwrap_or(10));
                 let (x, y) = match direction {
                     Direction::Left => (-pixels, 0.),

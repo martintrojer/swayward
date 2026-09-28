@@ -60,6 +60,17 @@ impl<W: LayoutElement> TilingTree<W> {
         self.focus == Some(self.root)
     }
 
+    pub fn focused_leaf_is_only_child_of_resident_root(&self) -> bool {
+        let Some(root) = self.resident_root() else {
+            return false;
+        };
+        self.focus.is_some_and(|focus| {
+            self.tile(focus).is_some()
+                && self.nodes.get(&focus).and_then(|node| node.parent) == Some(root)
+                && self.split_len(root) == Some(1)
+        })
+    }
+
     pub fn is_root(&self, id: NodeId) -> bool {
         id == self.root
     }

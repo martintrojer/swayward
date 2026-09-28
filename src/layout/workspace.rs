@@ -1711,6 +1711,9 @@ impl<W: LayoutElement> Workspace<W> {
 
     pub fn move_right(&mut self) -> bool {
         if self.floating_is_active.get() {
+            if self.floating.focused_leaf_is_only_child_of_tree_root() {
+                return true;
+            }
             self.floating.move_right();
             true
         } else {
@@ -1725,6 +1728,9 @@ impl<W: LayoutElement> Workspace<W> {
         pixels: f64,
     ) -> bool {
         if self.floating.has_window(window) {
+            if self.floating.focused_leaf_is_only_child_of_tree_root() {
+                return true;
+            }
             let (x, y) = match direction {
                 Direction::Left => (-pixels, 0.),
                 Direction::Right => (pixels, 0.),

@@ -5737,6 +5737,14 @@ impl<W: LayoutElement> Layout<W> {
         workspace.switch_focus_floating_tiling();
     }
 
+    pub fn focused_leaf_is_only_child_of_floating_tree_root(&self) -> bool {
+        self.active_workspace().is_some_and(|workspace| {
+            workspace
+                .floating()
+                .focused_leaf_is_only_child_of_tree_root()
+        })
+    }
+
     pub fn move_floating_window(
         &mut self,
         id: Option<&W::Id>,
