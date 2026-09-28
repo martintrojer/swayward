@@ -177,6 +177,9 @@ Run `./contrib/check-divergence` before committing.
 - The container tree stays well formed after every mutation.
 - A live-session path must not panic. An `ERROR` in the log is a bug.
 - A feature needs executable evidence before it counts as working.
+- Every sway-compatibility fix names the exact oracle scenario/event row that proves it in
+  its commit message. If no focused row exists, add and capture one from pinned sway
+  before landing the fix.
 - Stability regressions outrank new features.
 - **An AI does not sign off.** A human reviews every change, checks the
   licensing and is responsible for the result, following the kernel's
