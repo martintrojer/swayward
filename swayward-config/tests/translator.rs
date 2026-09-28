@@ -1,7 +1,49 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 use swayward_config::Config;
+use tempfile::TempDir;
+
+/// A fixture file inside its own temporary directory, removed on drop.
+struct Fixture {
+    _dir: TempDir,
+    path: PathBuf,
+}
+
+impl std::ops::Deref for Fixture {
+    type Target = Path;
+
+    fn deref(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl AsRef<Path> for Fixture {
+    fn as_ref(&self) -> &Path {
+        &self.path
+    }
+}
+
+fn fixture_path(name: String) -> Fixture {
+    let dir = tempfile::tempdir_in(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("target"),
+    )
+    .unwrap();
+    let path = dir.path().join(name);
+    Fixture { _dir: dir, path }
+}
+
+#[test]
+fn fixtures_with_the_same_label_do_not_collide() {
+    let first = fixture_path("collision.conf".to_owned());
+    let second = fixture_path("collision.conf".to_owned());
+    std::fs::write(&first, "first").unwrap();
+    std::fs::write(&second, "second").unwrap();
+    assert_eq!(std::fs::read_to_string(&first).unwrap(), "first");
+}
 
 fn run_translator(fixture: &std::path::Path) -> Output {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -11,7 +53,6 @@ fn run_translator(fixture: &std::path::Path) -> Output {
         .arg(fixture)
         .output()
         .unwrap();
-    std::fs::remove_file(fixture).unwrap();
     assert!(
         output.status.success(),
         "translator failed: {}",
@@ -22,7 +63,7 @@ fn run_translator(fixture: &std::path::Path) -> Output {
 
 #[test]
 fn sway_exec_translates_to_loadable_startup_commands_without_weakening_binds() {
-    let fixture = std::env::temp_dir().join(format!(
+    let fixture = fixture_path(format!(
         "swayward-exec-{}-{}.conf",
         std::process::id(),
         std::thread::current().name().unwrap_or("test")
@@ -48,7 +89,7 @@ fn sway_exec_translates_to_loadable_startup_commands_without_weakening_binds() {
 
 #[test]
 fn sway_inner_gap_units_translate_to_loadable_typed_geometry() {
-    let fixture = std::env::temp_dir().join(format!(
+    let fixture = fixture_path(format!(
         "swayward-outer-gaps-{}-{}.conf",
         std::process::id(),
         std::thread::current().name().unwrap_or("test")
@@ -77,7 +118,7 @@ fn sway_xkb_numlock_translates_to_loadable_keyboard_state() {
         ("toggle", true),
         ("garbage", false),
     ] {
-        let fixture = std::env::temp_dir().join(format!(
+        let fixture = fixture_path(format!(
             "swayward-xkb-numlock-{}-{value}.conf",
             std::process::id()
         ));
@@ -115,7 +156,7 @@ fn sway_xkb_numlock_translates_to_loadable_keyboard_state() {
 
 #[test]
 fn sway_named_scroll_button_preserves_the_linux_event_code() {
-    let fixture = std::env::temp_dir().join(format!(
+    let fixture = fixture_path(format!(
         "swayward-named-scroll-button-{}-{}.conf",
         std::process::id(),
         std::thread::current().name().unwrap_or("test")
@@ -135,7 +176,7 @@ fn sway_named_scroll_button_preserves_the_linux_event_code() {
 
 #[test]
 fn sway_titlebar_settings_translate_without_silently_dropping_colors() {
-    let fixture = std::env::temp_dir().join(format!(
+    let fixture = fixture_path(format!(
         "swayward-titlebar-{}-{}.conf",
         std::process::id(),
         std::thread::current().name().unwrap_or("test")
@@ -183,7 +224,7 @@ fn sway_titlebar_settings_translate_without_silently_dropping_colors() {
 
 #[test]
 fn sway_ignored_client_directives_remain_visible_and_loadable() {
-    let fixture = std::env::temp_dir().join(format!(
+    let fixture = fixture_path(format!(
         "swayward-client-noops-{}-{}.conf",
         std::process::id(),
         std::thread::current().name().unwrap_or("test")
@@ -219,7 +260,7 @@ fn force_focus_wrapping_maps_to_swaywards_focus_wrapping_mode() {
         ("force_focus_wrapping true\n", "focus-wrapping \"force\""),
         ("force_focus_wrapping false\n", "focus-wrapping \"yes\""),
     ] {
-        let fixture = std::env::temp_dir().join(format!(
+        let fixture = fixture_path(format!(
             "swayward-focus-wrapping-{}-{}.conf",
             std::process::id(),
             expected
@@ -253,7 +294,7 @@ fn focus_wrapping_maps_exact_modes_and_refuses_unknown_modes() {
         ("focus_wrapping", "toggle", None),
         ("focus_wrapping", "false", None),
     ] {
-        let fixture = std::env::temp_dir().join(format!(
+        let fixture = fixture_path(format!(
             "swayward-modern-focus-wrapping-{}-{value}.conf",
             std::process::id()
         ));
@@ -295,7 +336,7 @@ fn floating_constraints_preserve_values_and_refuse_invalid_forms() {
             Some((0, 0)),
         ),
     ] {
-        let fixture = std::env::temp_dir().join(format!(
+        let fixture = fixture_path(format!(
             "swayward-floating-constraints-{}-{}.conf",
             std::process::id(),
             minimum.unwrap().0
@@ -331,7 +372,7 @@ fn floating_constraints_preserve_values_and_refuse_invalid_forms() {
         "floating_maximum_size -2 x 100\n",
         "floating_minimum_size 60x40\n",
     ] {
-        let fixture = std::env::temp_dir().join(format!(
+        let fixture = fixture_path(format!(
             "swayward-invalid-floating-constraints-{}-{}.conf",
             std::process::id(),
             source.len()
@@ -355,7 +396,7 @@ fn default_orientation_maps_all_values_to_loadable_layout() {
         ("vertical", swayward_config::DefaultOrientation::Vertical),
         ("auto", swayward_config::DefaultOrientation::Auto),
     ] {
-        let fixture = std::env::temp_dir().join(format!(
+        let fixture = fixture_path(format!(
             "swayward-default-orientation-{}-{value}.conf",
             std::process::id()
         ));
@@ -387,7 +428,7 @@ fn workspace_layout_maps_sway_values_and_refuses_i3_stacked_spelling() {
         ("stacked", None),
         ("splitv", None),
     ] {
-        let fixture = std::env::temp_dir().join(format!(
+        let fixture = fixture_path(format!(
             "swayward-workspace-layout-{}-{value}.conf",
             std::process::id()
         ));
@@ -412,7 +453,7 @@ fn workspace_layout_maps_sway_values_and_refuses_i3_stacked_spelling() {
 
 #[test]
 fn title_criteria_preserve_regex_escapes_and_translate_window_actions() {
-    let fixture = std::env::temp_dir().join(format!(
+    let fixture = fixture_path(format!(
         "swayward-title-rules-{}-{}.conf",
         std::process::id(),
         std::thread::current().name().unwrap_or("test")
@@ -462,7 +503,7 @@ for_window [title="^test\w+$"] layout tabbed, focus, move workspace moved
 
 #[test]
 fn title_criteria_preserve_non_ascii_regex_characters_in_loadable_kdl() {
-    let fixture = std::env::temp_dir().join(format!(
+    let fixture = fixture_path(format!(
         "swayward-non-ascii-title-rule-{}-{}.conf",
         std::process::id(),
         std::thread::current().name().unwrap_or("test")
@@ -491,7 +532,7 @@ fn title_criteria_preserve_non_ascii_regex_characters_in_loadable_kdl() {
 #[test]
 fn no_focus_maps_portable_criteria_and_refuses_x11_only_criteria() {
     for (criterion, accepted) in [("class", false), ("title", true), ("instance", false)] {
-        let fixture = std::env::temp_dir().join(format!(
+        let fixture = fixture_path(format!(
             "swayward-no-focus-{}-{criterion}.conf",
             std::process::id()
         ));
@@ -514,7 +555,7 @@ fn no_focus_maps_portable_criteria_and_refuses_x11_only_criteria() {
 
 #[test]
 fn sway_default_border_aliases_translate_to_initial_window_rules() {
-    let fixture = std::env::temp_dir().join(format!(
+    let fixture = fixture_path(format!(
         "swayward-default-borders-{}-{}.conf",
         std::process::id(),
         std::thread::current().name().unwrap_or("test")
@@ -562,7 +603,7 @@ fn mouse_warping_maps_every_mode_case_insensitively() {
             Some(swayward_config::WarpMouseToFocusMode::CenterXy),
         ),
     ] {
-        let fixture = std::env::temp_dir().join(format!(
+        let fixture = fixture_path(format!(
             "swayward-mouse-warping-{}-{value}.conf",
             std::process::id()
         ));
@@ -587,7 +628,7 @@ fn mouse_warping_maps_every_mode_case_insensitively() {
     // warps to the focused window for both sway modes, which the
     // mouse_warping IPC command also does, so it converts with the narrowing
     // recorded in a comment rather than dropping the directive.
-    let fixture = std::env::temp_dir().join(format!(
+    let fixture = fixture_path(format!(
         "swayward-mouse-warping-{}-output.conf",
         std::process::id()
     ));
@@ -611,7 +652,7 @@ fn mouse_warping_maps_every_mode_case_insensitively() {
 
 #[test]
 fn sway_workspace_output_preserves_ordered_fallback_lists() {
-    let fixture = std::env::temp_dir().join(format!(
+    let fixture = fixture_path(format!(
         "swayward-workspace-output-{}-{}.conf",
         std::process::id(),
         std::thread::current().name().unwrap_or("test")
@@ -658,7 +699,7 @@ fn swayfx_titlebar_padding_translates_to_loadable_layout() {
         ("titlebar_padding 6 3", 6., 3., 1),
         ("titlebar_border_thickness 3", 5., 4., 3),
     ] {
-        let fixture = std::env::temp_dir().join(format!(
+        let fixture = fixture_path(format!(
             "swayward-titlebar-padding-{}-{}",
             std::process::id(),
             horizontal
@@ -727,7 +768,7 @@ fn upstream_sway_and_swayfx_defaults_translate_to_valid_config() {
 
 #[test]
 fn default_valued_unsupported_directives_are_satisfied_and_loadable() {
-    let fixture = std::env::temp_dir().join(format!(
+    let fixture = fixture_path(format!(
         "swayward-default-valued-{}.conf",
         std::process::id()
     ));
