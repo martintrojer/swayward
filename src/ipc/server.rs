@@ -1473,13 +1473,16 @@ impl State {
                     continue;
                 }
                 Event::WorkspaceInitialized { current } => {
-                    if let Some(settled) = find_workspace_by_tree_id(&current_tree, current.id) {
-                        **current = settled.clone();
-                        current.focused = false;
-                    }
-                    if sticky_move.is_some() {
-                        current.floating_nodes.clear();
-                        current.focus.clear();
+                    // Sway emits init when it creates the empty workspace, before
+                    // the command moves a container into it.
+                    current.nodes.clear();
+                    current.floating_nodes.clear();
+                    current.focus.clear();
+                    current.focused = false;
+                    if let swayward_ipc::NodeProperties::Workspace(properties) =
+                        &mut current.properties
+                    {
+                        properties.representation = None;
                     }
                 }
                 Event::WorkspaceFocusChanged { old, current } => {

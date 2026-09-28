@@ -1573,6 +1573,12 @@ why = "Sway's container detach path calls `container_reap_empty`, which removes 
 
 [[edit]]
 migrated = false
+paths = ["src/ipc/server.rs", "src/tests/ipc/events.rs"]
+what = "serialize a workspace init event as the empty workspace at creation time instead of replacing it with the command's settled destination tree."
+why = "Sway emits workspace init from `workspace_create` before a following container move populates the workspace (`sway/tree/workspace.c`; `sway/sway/ipc-server.c`). The transaction flusher's settled-tree substitution leaked the moved floating group into the earlier init event."
+
+[[edit]]
+migrated = false
 paths = ["src/command/layout.rs", "src/layout/floating_tree.rs", "src/layout/workspace.rs", "src/tests/ipc/events.rs"]
 what = "fullscreen a resident floating container tree as one recursive root and emit the root's `window::fullscreen_mode` event instead of passing one descendant through the inherited leaf-only floating toggle."
 why = "Sway fullscreen targets the focused container, including a split in the workspace floating list, and emits one recursive event for that container (`sway/commands/fullscreen.c`; `sway/sway/ipc-server.c`). The inherited leaf path could not find resident-tree descendants and panicked."

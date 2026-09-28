@@ -847,6 +847,47 @@ fn moving_a_floating_group_to_scratchpad_emits_one_recursive_move_event() {
 }
 
 #[test]
+fn moving_a_floating_group_to_new_workspace_emits_empty_init() {
+    let (mut fixture, socket) = ipc_fixture();
+    fixture.add_output(1, (1920, 1080));
+    let client = fixture.add_client();
+    map_test_window(&mut fixture, client, "group-first");
+    assert!(crate::command::execute(fixture.niri_state(), "splitv")[0].success);
+    map_test_window(&mut fixture, client, "group-second");
+    assert!(crate::command::execute(fixture.niri_state(), "focus parent")[0].success);
+    assert!(crate::command::execute(fixture.niri_state(), "floating enable")[0].success);
+    fixture.niri_state().ipc_refresh_layout();
+
+    let mut subscriber = UnixStream::connect(&socket).unwrap();
+    subscriber
+        .write_all(&swayward_ipc::wire::encode(
+            MessageType::Subscribe,
+            r#"["workspace"]"#,
+        ))
+        .unwrap();
+    let (_, reply) = read_ipc_reply(&mut fixture, &mut subscriber);
+    assert_eq!(reply, r#"{"success": true}"#);
+
+    assert!(crate::command::execute(
+        fixture.niri_state(),
+        "move container to workspace 2",
+    )[0]
+    .success);
+    fixture.niri_state().ipc_refresh_layout();
+
+    let ((event_type, payload), _) =
+        read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, Vec::new());
+    assert_eq!(event_type, 1 << 31);
+    let event = serde_json::from_str::<Value>(&payload).unwrap();
+    assert_eq!(event["change"], "init");
+    assert!(event["current"]["nodes"].as_array().unwrap().is_empty());
+    assert!(event["current"]["floating_nodes"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+}
+
+#[test]
 fn captured_window_map_sequences_pin_focus_order_and_multiplicity() {
     for (fixture, expected) in [
         (
