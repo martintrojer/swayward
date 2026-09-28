@@ -94,15 +94,7 @@ impl<W: LayoutElement> TilingTree<W> {
                 tile: Box::new(tile),
             },
         });
-        let target = match target {
-            InsertTarget::Focused => self.focus,
-            InsertTarget::Node(id) => Some(id),
-        };
-        let parent = target
-            .and_then(|id| self.nodes.get(&id)?.parent)
-            .unwrap_or(self.root);
-        let after = target
-            .filter(|target| self.nodes.get(target).and_then(|node| node.parent) == Some(parent));
+        let (parent, after) = self.insertion_slot(target);
         self.insert_child(parent, id, after);
         if parent == self.root {
             if let Some(layout) = match self.options.layout.workspace_layout {
@@ -155,6 +147,19 @@ impl<W: LayoutElement> TilingTree<W> {
         self.animate_geometry_changes(old_geometries, Some(id));
         self.request_window_sizes();
         id
+    }
+
+    fn insertion_slot(&self, target: InsertTarget) -> (NodeId, Option<NodeId>) {
+        let target = match target {
+            InsertTarget::Focused => self.focus,
+            InsertTarget::Node(id) => Some(id),
+        };
+        let parent = target
+            .and_then(|id| self.nodes.get(&id)?.parent)
+            .unwrap_or(self.root);
+        let after = target
+            .filter(|target| self.nodes.get(target).and_then(|node| node.parent) == Some(parent));
+        (parent, after)
     }
 
     pub fn remove_tile_node(&mut self, id: NodeId) -> Option<Tile<W>> {

@@ -184,43 +184,17 @@ impl<W: LayoutElement> TilingTree<W> {
                     title_format,
                     pending_mode,
                 } => {
-                    if old_id != self.root {
-                        remapped.push((old_id, self.root));
-                    }
-                    let TreeNode::Split {
-                        layout: root_layout,
-                        ..
-                    } = &mut self.nodes.get_mut(&self.root).unwrap().value
-                    else {
-                        unreachable!();
-                    };
-                    *root_layout = layout;
-                    if let Some(layout) = previous_layout {
-                        self.previous_split_layouts.insert(self.root, layout);
-                    }
-                    if let Some(format) = title_format {
-                        self.title_formats.insert(self.root, format);
-                    }
-                    if let Some(mode) = pending_mode {
-                        self.pending_modes.insert(self.root, mode);
-                    }
-                    let ids = children
-                        .into_iter()
-                        .map(|child| {
-                            self.insert_detached_node(child, Some(self.root), &mut remapped)
-                        })
-                        .collect::<Vec<_>>();
-                    let TreeNode::Split {
-                        children, percents, ..
-                    } = &mut self.nodes.get_mut(&self.root).unwrap().value
-                    else {
-                        unreachable!();
-                    };
-                    *percents = detached_percents;
-                    *children = ids;
-                    self.has_had_tile = true;
-                    self.restore_transferred_focus(focus_history);
-                    self.request_window_sizes();
+                    self.attach_split_to_empty_root(
+                        old_id,
+                        layout,
+                        children,
+                        detached_percents,
+                        previous_layout,
+                        title_format,
+                        pending_mode,
+                        focus_history,
+                        &mut remapped,
+                    );
                     return (self.root, remapped);
                 }
                 node => node,
@@ -254,6 +228,56 @@ impl<W: LayoutElement> TilingTree<W> {
         }
         self.request_window_sizes();
         (id, remapped)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn attach_split_to_empty_root(
+        &mut self,
+        old_id: NodeId,
+        layout: Layout,
+        children: Vec<DetachedNode<W>>,
+        detached_percents: Vec<f64>,
+        previous_layout: Option<Layout>,
+        title_format: Option<String>,
+        pending_mode: Option<PendingMode>,
+        focus_history: Vec<W::Id>,
+        remapped: &mut Vec<(NodeId, NodeId)>,
+    ) {
+        if old_id != self.root {
+            remapped.push((old_id, self.root));
+        }
+        let TreeNode::Split {
+            layout: root_layout,
+            ..
+        } = &mut self.nodes.get_mut(&self.root).unwrap().value
+        else {
+            unreachable!();
+        };
+        *root_layout = layout;
+        if let Some(layout) = previous_layout {
+            self.previous_split_layouts.insert(self.root, layout);
+        }
+        if let Some(format) = title_format {
+            self.title_formats.insert(self.root, format);
+        }
+        if let Some(mode) = pending_mode {
+            self.pending_modes.insert(self.root, mode);
+        }
+        let ids = children
+            .into_iter()
+            .map(|child| self.insert_detached_node(child, Some(self.root), remapped))
+            .collect::<Vec<_>>();
+        let TreeNode::Split {
+            children, percents, ..
+        } = &mut self.nodes.get_mut(&self.root).unwrap().value
+        else {
+            unreachable!();
+        };
+        *percents = detached_percents;
+        *children = ids;
+        self.has_had_tile = true;
+        self.restore_transferred_focus(focus_history);
+        self.request_window_sizes();
     }
 
     pub(super) fn restore_transferred_focus(&mut self, focus_history: Vec<W::Id>) {
@@ -326,45 +350,17 @@ impl<W: LayoutElement> TilingTree<W> {
                 previous_layout,
                 title_format,
                 pending_mode,
-            } => {
-                let id = self.insert_with_id(
-                    old_id,
-                    Node {
-                        parent,
-                        value: TreeNode::Split {
-                            layout,
-                            children: Vec::new(),
-                            percents,
-                        },
-                    },
-                );
-                if id != old_id {
-                    remapped.push((old_id, id));
-                }
-                let children = children
-                    .into_iter()
-                    .map(|child| self.insert_detached_node(child, Some(id), remapped))
-                    .collect();
-                let TreeNode::Split { children: slot, .. } = &mut self
-                    .nodes
-                    .get_mut(&id)
-                    .expect("invariant: a freshly allocated split remains in the arena")
-                    .value
-                else {
-                    unreachable!();
-                };
-                *slot = children;
-                if let Some(layout) = previous_layout {
-                    self.previous_split_layouts.insert(id, layout);
-                }
-                if let Some(format) = title_format {
-                    self.title_formats.insert(id, format);
-                }
-                if let Some(mode) = pending_mode {
-                    self.pending_modes.insert(id, mode);
-                }
-                id
-            }
+            } => self.insert_detached_split(
+                old_id,
+                layout,
+                children,
+                percents,
+                previous_layout,
+                title_format,
+                pending_mode,
+                parent,
+                remapped,
+            ),
             DetachedNode::Leaf {
                 old_id,
                 mut tile,
@@ -391,5 +387,57 @@ impl<W: LayoutElement> TilingTree<W> {
                 id
             }
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn insert_detached_split(
+        &mut self,
+        old_id: NodeId,
+        layout: Layout,
+        children: Vec<DetachedNode<W>>,
+        percents: Vec<f64>,
+        previous_layout: Option<Layout>,
+        title_format: Option<String>,
+        pending_mode: Option<PendingMode>,
+        parent: Option<NodeId>,
+        remapped: &mut Vec<(NodeId, NodeId)>,
+    ) -> NodeId {
+        let id = self.insert_with_id(
+            old_id,
+            Node {
+                parent,
+                value: TreeNode::Split {
+                    layout,
+                    children: Vec::new(),
+                    percents,
+                },
+            },
+        );
+        if id != old_id {
+            remapped.push((old_id, id));
+        }
+        let children = children
+            .into_iter()
+            .map(|child| self.insert_detached_node(child, Some(id), remapped))
+            .collect();
+        let TreeNode::Split { children: slot, .. } = &mut self
+            .nodes
+            .get_mut(&id)
+            .expect("invariant: a freshly allocated split remains in the arena")
+            .value
+        else {
+            unreachable!();
+        };
+        *slot = children;
+        if let Some(layout) = previous_layout {
+            self.previous_split_layouts.insert(id, layout);
+        }
+        if let Some(format) = title_format {
+            self.title_formats.insert(id, format);
+        }
+        if let Some(mode) = pending_mode {
+            self.pending_modes.insert(id, mode);
+        }
+        id
     }
 }
