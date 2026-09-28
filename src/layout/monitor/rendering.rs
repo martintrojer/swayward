@@ -85,13 +85,13 @@ impl<W: LayoutElement> Monitor<W> {
             // There's also a damage tracking bug which causes glitched
             // rendering for maximized GTK windows.
             //
-            // FIXME: use proper bounds after fixing the Crop element.
+            // Proper workspace bounds depend on the Crop coordinate and damage fixes tracked by
+            // mu task layout-crop-bounds.
             //
             // Also, check cull here to avoid cropping windows moving between workspaces.
             //
-            // FIXME: for cull=true, it might be better visually to crop to a workspace-high region
-            // anchored to the window as it moves between workspaces, to prevent overflowing
-            // windows from appearing and disappearing.
+            // Mu task layout-crop-bounds also tracks a workspace-height crop for moving windows,
+            // which prevents overflow from appearing and disappearing.
             let crop_bounds =
                 if cull && (self.workspace_switch.is_some() || self.overview_progress.is_some()) {
                     Rectangle::new(

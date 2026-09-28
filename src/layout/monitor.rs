@@ -50,9 +50,8 @@ pub struct Monitor<W: LayoutElement> {
     /// Latest known working area for this output.
     ///
     /// Not rounded to physical pixels.
-    // FIXME: since this is used for things like DnD scrolling edges in the overview, ideally this
-    // should only consider overlay and top layer-shell surfaces. However, Smithay doesn't easily
-    // let you do this at the moment.
+    // Restricting this to overlay and top layer-shell surfaces for overview DnD is tracked by mu
+    // task layout-dnd-edge-scroll-size.
     working_area: Rectangle<f64, Logical>,
     // Must always contain at least one.
     pub(super) workspaces: Vec<Workspace<W>>,
@@ -615,7 +614,7 @@ impl<W: LayoutElement> Monitor<W> {
         idx: usize,
         config: Option<swayward_config::Animation>,
     ) {
-        // FIXME: also compute and use current velocity.
+        // Preserving velocity is tracked by mu task layout-workspace-switch-velocity.
         let current_idx = self.workspace_render_idx();
 
         if self.active_workspace_idx != idx {
@@ -741,7 +740,8 @@ impl<W: LayoutElement> Monitor<W> {
         tile: Tile<W>,
         target: MonitorAddWindowTarget<W>,
         activate: ActivateWindow,
-        // FIXME: Refactor ActivateWindow enum to make this better.
+        // Kept separate from window activation until mu task layout-activate-window-api gives the
+        // API an explicit workspace-activation policy.
         allow_to_activate_workspace: bool,
         width: TiledWidth,
         is_full_width: bool,
@@ -779,7 +779,8 @@ impl<W: LayoutElement> Monitor<W> {
         edge: ResizeEdge,
         tile: Tile<W>,
         activate: bool,
-        // FIXME: Refactor ActivateWindow enum to make this better.
+        // Kept separate from window activation until mu task layout-activate-window-api gives the
+        // API an explicit workspace-activation policy.
         allow_to_activate_workspace: bool,
     ) {
         let workspace = &mut self.workspaces[workspace_idx];
@@ -990,8 +991,8 @@ impl<W: LayoutElement> Monitor<W> {
         self.reap_empty_workspaces();
         self.active_workspace_idx = self.idx_of_ws(active).unwrap();
 
-        // FIXME: if we're adding workspaces to currently invisible positions
-        // (outside the workspace switch), we don't need to cancel it.
+        // Avoiding this cancellation for invisible insertions is tracked by mu task
+        // layout-invisible-workspace-switch.
         self.workspace_switch = None;
         self.clean_up_workspaces();
     }
@@ -1678,7 +1679,7 @@ impl<W: LayoutElement> Monitor<W> {
         // the workspace switch to avoid jumps.
         if prev_render_idx != new_render_idx {
             if let Some(WorkspaceSwitch::Animation(anim)) = &mut self.workspace_switch {
-                // FIXME: maintain velocity.
+                // Preserving velocity is tracked by mu task layout-workspace-switch-velocity.
                 *anim = anim.restarted(prev_render_idx, anim.to(), 0.);
             }
         }

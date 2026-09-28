@@ -1241,9 +1241,8 @@ impl<W: LayoutElement> Layout<W> {
                             .retain(|candidate| *candidate != ws.id());
                         reclaimed_any = true;
 
-                        // FIXME: this can be coded in a way that the workspace switch won't be
-                        // affected if the removed workspace is invisible. But this is good enough
-                        // for now.
+                        // Retaining the switch when only invisible workspaces move is tracked by
+                        // mu task layout-invisible-workspace-switch.
                         if primary.workspace_switch.is_some() {
                             primary.workspace_switch = None;
                             stopped_primary_ws_switch = true;
@@ -5272,7 +5271,8 @@ impl<W: LayoutElement> Layout<W> {
                 // We're not on any specific workspace so we can't compute a "workspace view" rect.
                 // Let's instead compute a rect relative to the output.
                 //
-                // FIXME: we could make the colors match up better in the overview by figuring out
+                // Matching these colors to overview backgrounds is tracked by mu task
+                // layout-overview-move-colors. We could do that by figuring out
                 // where a centered workspace would currently be, and computing the view rect
                 // against that. Since most of the time the dragged window will be on a centered
                 // workspace.
@@ -6829,8 +6829,8 @@ impl<W: LayoutElement> Layout<W> {
                 // to the pointer. Otherwise, we just teleport it as the layout code is not aware
                 // of monitor positions.
                 //
-                // FIXME: when and if the layout code knows about monitor positions, this will be
-                // potentially animatable.
+                // Using monitor positions here is tracked by mu task layout-monitor-position-dnd.
+                // It will make cross-output movement potentially animatable.
                 let mut tile_pos = None;
                 if let Some((mon, (ws, ws_geo))) = self.monitors().find_map(|mon| {
                     mon.workspaces_with_render_geo()
