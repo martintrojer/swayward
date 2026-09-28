@@ -1984,6 +1984,11 @@ impl<W: LayoutElement> Layout<W> {
             .scratchpad
             .iter()
             .map(|removed| removed.tile.window())
+            .chain(
+                self.scratchpad_trees
+                    .iter()
+                    .flat_map(|removed| removed.tree.windows().map(|(_, window)| window)),
+            )
             .find(|window| window.is_wl_surface(wl_surface))
         {
             return Some((window, None));
@@ -2025,6 +2030,11 @@ impl<W: LayoutElement> Layout<W> {
             .scratchpad
             .iter_mut()
             .map(|removed| removed.tile.window_mut())
+            .chain(
+                self.scratchpad_trees
+                    .iter_mut()
+                    .flat_map(|removed| removed.tree.tiles_mut().map(|tile| tile.window_mut())),
+            )
             .find(|window| window.is_wl_surface(wl_surface))
         {
             return Some((window, None));

@@ -2345,10 +2345,10 @@ impl<W: LayoutElement> Workspace<W> {
             return;
         };
 
-        let (_, render_pos, _) = self
+        let render_pos = self
             .tiles_with_render_positions()
-            .find(|(tile, _, _)| *tile.window().id() == id)
-            .unwrap();
+            .find_map(|(tile, pos, _)| (*tile.window().id() == id).then_some(pos))
+            .unwrap_or_default();
 
         if self.floating.has_window(&id) {
             let removed = self.floating.remove_tile(&id, Transaction::new());
@@ -2413,12 +2413,12 @@ impl<W: LayoutElement> Workspace<W> {
             }
         }
 
-        let (tile, new_render_pos) = self
+        if let Some((tile, new_render_pos)) = self
             .tiles_with_render_positions_mut(false)
             .find(|(tile, _)| *tile.window().id() == id)
-            .unwrap();
-
-        tile.animate_move_from(render_pos - new_render_pos);
+        {
+            tile.animate_move_from(render_pos - new_render_pos);
+        }
     }
 
     pub fn set_window_floating(&mut self, id: Option<&W::Id>, floating: bool) {
@@ -2679,8 +2679,7 @@ impl<W: LayoutElement> Workspace<W> {
                 return Some(root);
             }
             let subtree = self.floating.remove_tree(root).unwrap();
-            let (root, remapped) = self.attach_tiling_subtree(subtree);
-            debug_assert!(remapped.is_empty());
+            let (root, _) = self.attach_tiling_subtree(subtree);
             return Some(root);
         }
         if !floating {

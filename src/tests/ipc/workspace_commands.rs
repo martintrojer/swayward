@@ -2096,3 +2096,33 @@ fn unfloating_a_scratchpad_window_emits_move_then_floating() {
     assert_eq!(events[0]["change"], "move");
     assert_eq!(events[1]["change"], "floating");
 }
+
+#[test]
+fn floating_toggle_after_moving_scratchpad_window_between_workspaces_does_not_panic() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    for _ in 0..5 {
+        let window = f.client(client).create_window();
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+
+    for command in [
+        "focus parent",
+        "move scratchpad",
+        "scratchpad show",
+        "move container to workspace 2",
+        "floating toggle",
+        "move container to workspace 2",
+        "workspace 2",
+        "floating toggle",
+    ] {
+        let _ = crate::command::execute(f.niri_state(), command);
+    }
+}
