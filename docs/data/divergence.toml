@@ -135,7 +135,7 @@ why = ""
 
 [[edit]]
 migrated = true
-paths = ["src/layout/mod.rs", "src/layout/floating.rs", "src/layout/titlebar.rs", "src/layout/workspace.rs", "src/layout/tiling_tree/geometry.rs", "src/layout/tiling_tree/introspection.rs", "src/window/mapped.rs"]
+paths = ["src/layout/mod.rs", "src/layout/floating.rs", "src/layout/titlebar.rs", "src/layout/workspace.rs", "src/layout/tiling_tree/geometry.rs", "src/layout/tiling_tree/introspection.rs", "src/window/mapped/"]
 what = "render sway titlebar marks and alignment and recompute workspace outer gaps for sway smart-gaps modes."
 why = ""
 
@@ -273,7 +273,7 @@ why = ""
 
 [[edit]]
 migrated = true
-paths = ["src/layout/floating.rs", "src/layout/mod.rs", "src/layout/tile.rs", "src/layout/workspace.rs", "src/window/mapped.rs", "src/swayward.rs", "swayward-config/src/layout.rs", "contrib/sway-to-kdl"]
+paths = ["src/layout/floating.rs", "src/layout/mod.rs", "src/layout/tile.rs", "src/layout/workspace.rs", "src/window/mapped/", "src/swayward.rs", "swayward-config/src/layout.rs", "contrib/sway-to-kdl"]
 what = "expose focused-tree layout mutation and direct container focus for sway runtime commands:\n- preserve sway's parent targeting, workspace-level layer history, one-level singleton flatten, and focus rank and parent across floating transitions;\n- retain fullscreen state for floating-origin command checks, clear fullscreen when required, and activate decorations outside a client's Wayland input region;\n- apply configurable global floating size constraints and client-chosen initial size, use a clamped and centered default for tiled windows entering the scratchpad, and fail an edge resize that is fully clamped;\n- remap scratchpad centres proportionally across outputs and maintain immediate global focus-timestamp ordering across outputs and tiled and floating layers."
 why = ""
 
@@ -297,7 +297,7 @@ why = ""
 
 [[edit]]
 migrated = true
-paths = ["src/layout/mod.rs", "src/layout/workspace.rs", "src/layout/tile.rs", "src/layout/floating.rs", "src/window/mapped.rs"]
+paths = ["src/layout/mod.rs", "src/layout/workspace.rs", "src/layout/tile.rs", "src/layout/floating.rs", "src/window/mapped/"]
 what = "expose focused-tree layout mutation and direct container focus for sway runtime commands, including sway's parent targeting, workspace-level layer history, one-level singleton flatten, focus rank and parent preservation across floating transitions, proportional center remapping from the saved source area when scratchpad windows cross outputs, global focus-timestamp ordering after cross-output moves, and fullscreen state for floating-origin command checks."
 why = ""
 
@@ -309,7 +309,7 @@ why = ""
 
 [[edit]]
 migrated = true
-paths = ["src/layout/mod.rs", "src/layout/workspace.rs", "src/layout/tile.rs", "src/window/mapped.rs", "src/swayward.rs"]
+paths = ["src/layout/mod.rs", "src/layout/workspace.rs", "src/layout/tile.rs", "src/window/mapped/", "src/swayward.rs"]
 what = "expose focused-tree layout mutation and direct container focus for sway runtime commands, including sway's parent targeting, workspace-level layer history, one-level singleton flatten, focus rank and parent preservation across floating transitions, immediate global focus-timestamp ordering across outputs and tiled/floating layers, and fullscreen state for floating-origin command checks."
 why = ""
 
@@ -345,25 +345,25 @@ why = ""
 
 [[edit]]
 migrated = true
-paths = ["src/layout/mod.rs", "src/window/mapped.rs", "src/layout/titlebar.rs"]
+paths = ["src/layout/mod.rs", "src/window/mapped/", "src/layout/titlebar.rs"]
 what = "expose window titles to the tree renderer for sway-style server-side titlebars and round each rendered titlebar from its absolute physical endpoints so tab strips stay aligned with their window allocation."
 why = ""
 
 [[edit]]
 migrated = true
-paths = ["src/ipc/tree.rs", "src/layout/floating.rs", "src/layout/mod.rs", "src/layout/tile.rs", "src/window/mapped.rs"]
+paths = ["src/ipc/tree.rs", "src/layout/floating.rs", "src/layout/mod.rs", "src/layout/tile.rs", "src/window/mapped/"]
 what = "retain mapped xdg-shell natural geometry, report it through GET_TREE, restore and constrain it when a window first floats, and expose a pending one-shot resize through IPC, matching sway's natural floating resize."
 why = ""
 
 [[edit]]
 migrated = true
-paths = ["src/window/mapped.rs", "src/swayward.rs", "src/handlers/compositor.rs", "src/handlers/xdg_shell.rs", "swayward-config/src/lib.rs", "contrib/sway-to-kdl"]
+paths = ["src/window/mapped/", "src/swayward.rs", "src/handlers/compositor.rs", "src/handlers/xdg_shell/", "swayward-config/src/lib.rs", "contrib/sway-to-kdl"]
 what = "timestamp urgency, clear it on focus immediately or after sway's cross-workspace timeout, cancel pending timers when windows unmap, and translate `force_display_urgency_hint` without discarding behavior."
 why = ""
 
 [[edit]]
 migrated = true
-paths = ["src/handlers/xdg_shell.rs"]
+paths = ["src/handlers/xdg_shell/"]
 what = "restrict client-requested interactive move and resize to floating windows, and reject fullscreen moves, matching sway's xdg-shell guards."
 why = ""
 
@@ -693,7 +693,7 @@ why = ""
 
 [[edit]]
 migrated = true
-paths = ["swayward-ipc/src/command.rs", "swayward-ipc/src/criteria.rs", "src/command/mod.rs", "src/handlers/compositor.rs", "src/handlers/xdg_shell.rs", "src/swayward.rs"]
+paths = ["swayward-ipc/src/command.rs", "swayward-ipc/src/criteria.rs", "src/command/mod.rs", "src/handlers/compositor.rs", "src/handlers/xdg_shell/", "src/swayward.rs"]
 what = "retain runtime `assign` and `no_focus` criteria in the active config, apply them only while future native Wayland windows map, and discard them on successful reload; reject X11-only fields rather than widening them to `app_id`."
 why = ""
 
@@ -825,7 +825,7 @@ why = ""
 
 [[edit]]
 migrated = true
-paths = ["src/window/mapped.rs", "src/handlers/mod.rs", "src/command/mod.rs"]
+paths = ["src/window/mapped/", "src/handlers/mod.rs", "src/command/mod.rs"]
 what = "store sway's three-state shortcut-inhibitor policy separately from the protocol object's active lifecycle; disable both rejects future requests and deactivates the current inhibitor, while enable changes future policy only."
 why = ""
 
@@ -909,7 +909,7 @@ why = ""
 
 [[edit]]
 migrated = true
-paths = ["swayward-ipc/src/command.rs", "src/command/", "src/window/mapped.rs", "src/layout/tiling_tree/", "src/ipc/tree.rs", "src/handlers/mod.rs", "src/handlers/xdg_shell.rs", "src/swayward.rs"]
+paths = ["swayward-ipc/src/command.rs", "src/command/", "src/window/mapped/", "src/layout/tiling_tree/", "src/ipc/tree.rs", "src/handlers/mod.rs", "src/handlers/xdg_shell/", "src/swayward.rs"]
 what = "store per-window and split-container sway `title_format`, expand view placeholders and recursive `%title` representations for GET_TREE and titlebar rendering, retain Wayland security-context metadata, and refresh formatted titles when client or tree metadata changes."
 why = ""
 
@@ -1023,7 +1023,7 @@ why = "These runtime limits cannot be translated faithfully, so the generated co
 
 [[edit]]
 migrated = true
-paths = ["contrib/sway-to-kdl", "swayward-config/src/window_rule.rs", "src/window/mod.rs", "src/layout/mod.rs", "src/layout/monitor.rs", "src/layout/tile.rs", "src/handlers/xdg_shell.rs", "src/handlers/compositor.rs"]
+paths = ["contrib/sway-to-kdl", "swayward-config/src/window_rule.rs", "src/window/mod.rs", "src/layout/mod.rs", "src/layout/monitor.rs", "src/layout/tile.rs", "src/handlers/xdg_shell/", "src/handlers/compositor.rs"]
 what = "translate sway window rules:\n- map default border directives to initial tiled and floating border rules without changing shipped visual defaults;\n- preserve combined app-id, title, and current tiling-state criteria, distinct workspace-name, workspace-number, and output targets, regex escapes, and mouse-region bind options on either side of the key;\n- translate floating, layout, focus, `nop`, `no_focus`, activation, mouse-warping, and workspace-placement actions;\n- fail loudly on X11-only criteria, i3-only provenance criteria, visibility-dependent activation, and unsupported actions."
 why = ""
 
@@ -1167,7 +1167,7 @@ why = "Because no sway command-dispatch model exists."
 
 [[edit]]
 migrated = true
-paths = ["src/swayward.rs", "src/handlers/xdg_shell.rs", "src/window/mapped.rs", "src/command/mod.rs"]
+paths = ["src/swayward.rs", "src/handlers/xdg_shell/", "src/window/mapped/", "src/command/mod.rs"]
 what = "advertise Smithay's xdg_toplevel_tag_v1 global, retain its per-surface tag, and rerun matching runtime criteria when clients update tags, matching sway's native Wayland tag selector."
 why = ""
 
@@ -1203,7 +1203,7 @@ why = ""
 
 [[edit]]
 migrated = true
-paths = ["src/swayward.rs", "src/handlers/xdg_shell.rs", "src/window/mapped.rs", "src/utils/mod.rs"]
+paths = ["src/swayward.rs", "src/handlers/xdg_shell/", "src/window/mapped/", "src/utils/mod.rs"]
 what = "always advertise xdg-decoration, force server-side decoration for tiled windows, predict open-floating rules, xdg parents, and fixed sizes before map so initially floating windows honour the client's requested mode, and reserve `border csd` for clients that requested CSD, matching sway while retaining `prefer-no-csd` only for the xdg tiled hint."
 why = ""
 
@@ -1495,7 +1495,7 @@ why = "Sway's floating_modifier resize always starts from a corner chosen by hal
 
 [[edit]]
 migrated = false
-paths = ["src/layout/tile.rs", "src/layout/mod.rs", "src/window/mapped.rs"]
+paths = ["src/layout/tile.rs", "src/layout/mod.rs", "src/window/mapped/"]
 what = "clip a tiled toplevel's pointer input to its window geometry in all cases, not only when the surface is oversized, while leaving its popups unclipped through a new `LayoutElement::is_in_popup_input_region`."
 why = "Sway clips every tiled view to its content box, input included (`sway/sway/tree/view.c:1032-1062`). A client drawing its own decorations keeps an input margin outside its geometry for resizing; unclipped, it took the pointer from the gap and the neighbour, showing the client's resize cursor and swallowing gap-resize and focus clicks there."
 
