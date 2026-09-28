@@ -2623,22 +2623,20 @@ impl<W: LayoutElement> Workspace<W> {
         self.tiling.ipc_decoration_rect(window)
     }
 
-    pub fn set_container_floating(&mut self, node: NodeId, floating: bool) -> bool {
+    pub fn set_container_floating(&mut self, node: NodeId, floating: bool) -> Option<NodeId> {
         if let Some(root) = self.floating.tree_root_for_node(node) {
             if floating {
-                return true;
+                return Some(root);
             }
             let subtree = self.floating.remove_tree(root).unwrap();
-            let (_, remapped) = self.attach_tiling_subtree(subtree);
+            let (root, remapped) = self.attach_tiling_subtree(subtree);
             debug_assert!(remapped.is_empty());
-            return true;
+            return Some(root);
         }
         if !floating {
-            return self.tiling.contains(node);
+            return self.tiling.contains(node).then_some(node);
         }
-        let Some((subtree, old_parent)) = self.detach_tiling_subtree(node) else {
-            return false;
-        };
+        let (subtree, old_parent) = self.detach_tiling_subtree(node)?;
         self.finish_tiling_subtree_detach(old_parent);
         let size = Size::from((
             self.working_area.size.w * 0.5,
@@ -2649,10 +2647,10 @@ impl<W: LayoutElement> Workspace<W> {
                 + (self.working_area.size.to_point() - size.to_point()).downscale(2.),
             size,
         );
-        let (_, remapped) = self.floating.add_tree(subtree, rect);
+        let (root, remapped) = self.floating.add_tree(subtree, rect);
         debug_assert!(remapped.is_empty());
         self.floating_is_active = FloatingActive::Yes;
-        true
+        Some(root)
     }
 
     pub fn tiles_with_ipc_layouts(&self) -> impl Iterator<Item = (&Tile<W>, WindowLayout)> {

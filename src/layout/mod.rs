@@ -4529,10 +4529,10 @@ impl<W: LayoutElement> Layout<W> {
         workspace_id: WorkspaceId,
         node: NodeId,
         floating: bool,
-    ) -> bool {
+    ) -> Option<NodeId> {
         self.workspaces_mut()
-            .find(|workspace| workspace.id() == workspace_id)
-            .is_some_and(|workspace| workspace.set_container_floating(node, floating))
+            .find(|workspace| workspace.id() == workspace_id)?
+            .set_container_floating(node, floating)
     }
 
     pub fn window_in_node(&self, workspace_id: WorkspaceId, node: NodeId) -> Option<W::Id> {

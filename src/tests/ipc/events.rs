@@ -729,6 +729,41 @@ fn map_titled_test_window(fixture: &mut Fixture, client: super::client::ClientId
 }
 
 #[test]
+fn floating_a_group_emits_one_recursive_floating_event() {
+    let (mut fixture, socket) = ipc_fixture();
+    fixture.add_output(1, (1920, 1080));
+    let client = fixture.add_client();
+    map_test_window(&mut fixture, client, "group-first");
+    assert!(crate::command::execute(fixture.niri_state(), "splitv")[0].success);
+    map_test_window(&mut fixture, client, "group-second");
+    assert!(crate::command::execute(fixture.niri_state(), "focus parent")[0].success);
+    fixture.niri_state().ipc_refresh_layout();
+    let mut subscriber = subscribe_to_window_events(&mut fixture, &socket);
+
+    assert!(crate::command::execute(fixture.niri_state(), "floating enable")[0].success);
+    fixture.niri_state().ipc_refresh_layout();
+
+    let mut remainder = Vec::new();
+    let mut events = Vec::new();
+    for _ in 0..3 {
+        let ((event_type, payload), rest) =
+            read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder);
+        remainder = rest;
+        assert_eq!(event_type, (1 << 31) | 3);
+        events.push(serde_json::from_str::<Value>(&payload).unwrap());
+    }
+    let event = events
+        .iter()
+        .find(|payload| {
+            payload["change"] == "floating" && payload["container"]["type"] == "floating_con"
+        })
+        .unwrap_or_else(|| panic!("recursive floating event missing: {events:#?}"));
+    assert_eq!(event["container"]["type"], "floating_con");
+    assert_eq!(event["container"]["floating"], "user_on");
+    assert_eq!(event["container"]["nodes"].as_array().unwrap().len(), 2);
+}
+
+#[test]
 fn captured_window_map_sequences_pin_focus_order_and_multiplicity() {
     for (fixture, expected) in [
         (
