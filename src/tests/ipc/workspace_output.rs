@@ -941,6 +941,47 @@ fn ipc_output_rects_use_global_positions() {
 }
 
 #[test]
+fn configured_startup_outputs_use_reported_rects_for_percentages() {
+    let config = swayward_config::Config::parse_mem(
+        r#"
+        output "headless-1" { mode custom=true "1270x1408@60"; scale 1; }
+        output "headless-2" { mode custom=true "1270x1408@60"; scale 1; }
+        "#,
+    )
+    .unwrap();
+    let mut f = Fixture::with_config(config);
+    // The headless backend announces pre-created outputs in reverse order.
+    f.add_output(2, (1280, 720));
+    f.add_output(1, (1280, 720));
+
+    let swayward = f.swayward();
+    let outputs = describe_outputs(&swayward.layout, &swayward.global_space);
+    let first = outputs
+        .iter()
+        .find(|output| output.name == "headless-1")
+        .unwrap();
+    let second = outputs
+        .iter()
+        .find(|output| output.name == "headless-2")
+        .unwrap();
+    assert_eq!(first.rect.x, 0);
+    assert_eq!(first.rect.width, 1270);
+    assert_eq!(second.rect.x, 1270);
+    assert_eq!(second.rect.width, 1270);
+    assert_eq!(first.percent, Some(0.5));
+    assert_eq!(second.percent, Some(0.5));
+
+    let root = describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &Default::default(),
+        &Default::default(),
+    );
+    assert_eq!(root.nodes[1].percent, Some(0.5));
+    assert_eq!(root.nodes[2].percent, Some(0.5));
+}
+
+#[test]
 fn stale_tree_leaf_is_omitted_without_panicking() {
     let tree = IpcNode::Leaf {
         id: NodeId(1),

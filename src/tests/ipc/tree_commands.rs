@@ -80,7 +80,7 @@ fn live_ipc_descriptions_match_sway_schema_and_values() {
     let window = f.client(id).create_window();
     window.xdg_toplevel.set_app_id("fixture-1".into());
     window.set_title("fixture-1");
-    window.set_size(696, 491);
+    window.set_size(696, 496);
     let surface = window.surface.clone();
     window.commit();
     f.roundtrip(id);
@@ -99,8 +99,8 @@ fn live_ipc_descriptions_match_sway_schema_and_values() {
     assert_percent_matches_fixture(&fixture, &ours, "$tree");
     assert_eq!(
         ours["nodes"][1]["nodes"][0]["nodes"][0]["geometry"],
-        serde_json::json!({"x": 0, "y": 0, "width": 696, "height": 491}),
-        "tiled leaf geometry must remain the requested map-time geometry"
+        fixture["nodes"][1]["nodes"][0]["nodes"][0]["geometry"],
+        "tiled leaf geometry must remain the client's natural map-time geometry"
     );
     assert_eq!(
         fixture["nodes"][1]["nodes"][0]["representation"],
@@ -111,7 +111,7 @@ fn live_ipc_descriptions_match_sway_schema_and_values() {
     let window = f.client(id).create_window();
     window.xdg_toplevel.set_app_id("fixture-2".into());
     window.set_title("fixture-2");
-    window.set_size(696, 491);
+    window.set_size(696, 496);
     let surface = window.surface.clone();
     window.commit();
     f.roundtrip(id);

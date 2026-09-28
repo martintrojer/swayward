@@ -15,11 +15,11 @@ The public measurements live with the independent
 [`sway-ipc-oracle`](https://github.com/martintrojer/sway-ipc-oracle), not in a
 second table here:
 
-- [`i3/results/swayward.toml`](https://github.com/martintrojer/sway-ipc-oracle/blob/3d8159e7dbc1b296d52b00e45c12befcdcae605b/i3/results/swayward.toml)
+- [`i3/results/swayward-eb170906.toml`](https://github.com/martintrojer/sway-ipc-oracle/blob/db7147c0908021f18090f73517daaa3f420ed54e/i3/results/swayward-eb170906.toml)
   records the unchanged i3 suite run. Read its pass, skip, and fail figures
   together. A skip usually marks an i3-only premise or a harness boundary, not
   a successful assertion.
-- [`sway-ipc/results/swayward.toml`](https://github.com/martintrojer/sway-ipc-oracle/blob/3d8159e7dbc1b296d52b00e45c12befcdcae605b/sway-ipc/results/swayward.toml)
+- [`sway-ipc/results/swayward-eb170906.toml`](https://github.com/martintrojer/sway-ipc-oracle/blob/db7147c0908021f18090f73517daaa3f420ed54e/sway-ipc/results/swayward-eb170906.toml)
   records the captured sway IPC scenarios as match, mismatch, and not
   applicable.
 

@@ -208,6 +208,7 @@ impl Headless {
             }
             !externally_removed
         });
+        let mut output_resized = false;
         for output in self.outputs.clone() {
             let name = output.user_data().get::<OutputName>().unwrap();
             let config = swayward
@@ -278,6 +279,10 @@ impl Headless {
                 ipc_output.logical = Some(logical_output(&output));
             }
             swayward.output_resized(&output);
+            output_resized = true;
+        }
+        if output_resized {
+            swayward.reposition_outputs(None);
         }
     }
 
