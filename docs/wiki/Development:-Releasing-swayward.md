@@ -85,8 +85,9 @@ git push origin "swayward-v$version"
 Do not amend the commit, move the tag, or merge another change after this
 point.
 
-Run the **Prepare release** workflow from the Actions tab. Select the tag you
-just pushed as the workflow ref and enter the version without
+Run the **Prepare release** workflow from the Actions tab. This workflow is the
+only current distribution channel; COPR and AUR publication come later. Select
+the tag you just pushed as the workflow ref and enter the version without
 `swayward-v`. The workflow rejects any other ref or inconsistent version. It
 builds and tests on the target distributions, then drafts a GitHub release
 with generated release notes and these files:

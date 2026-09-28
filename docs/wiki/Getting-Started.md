@@ -1,9 +1,13 @@
 ## Install
 
-There is no COPR repository and no AUR package. Packages are published on the
-[releases page](https://github.com/martintrojer/swayward/releases) instead.
-Each release carries these x86_64 downloads, where `VERSION` is the release
-version:
+There is no public build yet. For now, install the current source with Nix or
+[build swayward](https://github.com/martintrojer/swayward/blob/main/docs/BUILDING.md).
+There is no COPR repository or AUR package either. Both wait until the release
+packages have survived real installations.
+
+The first beta will put these x86_64 downloads on the [releases
+page](https://github.com/martintrojer/swayward/releases), where `VERSION` is the
+release version:
 
 | File | For |
 |---|---|
@@ -16,7 +20,8 @@ version:
 Fedora gets one RPM per supported release. Use the file matching your Fedora
 version, which `cat /etc/fedora-release` reports.
 
-Download the file for your distribution, then install it:
+Once the beta is published, download the file for your distribution and install
+it:
 
 ```sh
 sudo apt install ./swayward_VERSION_amd64.deb            # Ubuntu 24.04
@@ -46,10 +51,8 @@ On NixOS, you can also consume `github:martintrojer/swayward` as a flake input.
 The flake exports the `swayward` and `swayward-debug` packages, an overlay, and
 a development shell.
 
-Without Nix, build from source. See [Build swayward](https://github.com/martintrojer/swayward/blob/main/docs/BUILDING.md).
-
-The recipes behind those packages live in the repository and build in clean
-containers, but no one outside the project has installed from them yet.
+The recipes behind the planned packages live in the repository and build in
+clean containers, but no one outside the project has installed from them yet.
 
 Run the compositor in a window from an existing Wayland session while testing.
 From a source checkout, use the capped launcher:

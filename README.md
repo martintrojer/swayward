@@ -99,8 +99,9 @@ came from, and swayward deliberately does not offer a scrollable mode.
 
 ## Install
 
-The [release page](https://github.com/martintrojer/swayward/releases) carries prebuilt
-x86_64 packages:
+There is no public build yet. For now, install the current source with Nix or
+[build swayward](docs/BUILDING.md). The first beta will put these prebuilt
+x86_64 packages on the [release page](https://github.com/martintrojer/swayward/releases):
 
 | File | For |
 |---|---|
@@ -110,13 +111,14 @@ x86_64 packages:
 | `swayward-VERSION-arch-x86_64.pkg.tar.zst` | Arch |
 | `swayward-VERSION-ubuntu24.04-x86_64.tar.gz` | prebuilt binaries, with a `.sha256` |
 
-Every package is installed and executed in a clean container before the release
-is drafted. The tarball is an Ubuntu 24.04 build needing GLIBC 2.39 and
-`libdisplay-info.so.1`, not a generic Linux build. See [Getting
-started](https://github.com/martintrojer/swayward/wiki/Getting-Started) for install commands.
+The release workflow installs and executes every package in a clean container
+before it drafts the release. The tarball is an Ubuntu 24.04 build needing
+GLIBC 2.39 and `libdisplay-info.so.1`, not a generic Linux build. See [Getting
+started](https://github.com/martintrojer/swayward/wiki/Getting-Started) for the
+install commands once beta 1 is published.
 
-There is no COPR repository and no AUR package; both wait until the release
-packages have survived real installations.
+There is no COPR repository or AUR package. Both wait until the release packages
+have survived real installations.
 
 To install the current source with Nix:
 

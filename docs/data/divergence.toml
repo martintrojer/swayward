@@ -1666,3 +1666,9 @@ migrated = false
 paths = ["src/command/mod.rs", "src/tests/ipc/config_commands.rs"]
 what = "reject `mark` while a workspace root is focused instead of storing a mark on swayward's permanent tiling root."
 why = "Sway workspace nodes are never containers, regardless of how many tiling children they have, so `cmd_mark` returns `Only containers can have marks` when the workspace itself is focused (`sway/commands/mark.c`)."
+
+[[edit]]
+migrated = false
+paths = ["README.md", "docs/wiki/Getting-Started.md", "docs/wiki/FAQ.md", "docs/wiki/Development:-Releasing-swayward.md"]
+what = "describe build-from-source and Nix as the current install paths, list GitHub release artifacts as beta-1 plans, and state that COPR and AUR publication comes later."
+why = "The GitHub repository has no public release, the COPR API reports no swayward project, and there is no AUR package, so instructions must not present planned artifacts as available downloads."
