@@ -290,14 +290,11 @@ fn paint_titlebar(
     layout.set_font_description(Some(&font));
     layout.set_ellipsize(EllipsizeMode::End);
     let horizontal_padding = to_physical_precise_round::<i32>(scale, config.horizontal_padding);
-    let has_visible_marks =
-        config.show_marks && titlebar.marks.iter().any(|mark| !mark.starts_with('_'));
-    let text = titlebar_text(titlebar, config);
     layout.set_width((width - horizontal_padding * 2).max(1) * pangocairo::pango::SCALE);
-    if config.pango_markup && !has_visible_marks {
-        layout.set_markup(&titlebar.title);
+    if config.pango_markup {
+        layout.set_markup(&titlebar_markup(titlebar, config));
     } else {
-        layout.set_text(&text);
+        layout.set_text(&titlebar_text(titlebar, config));
     }
     let (text_width, text_height) = layout.pixel_size();
     let x = match config.alignment {
@@ -314,17 +311,42 @@ fn paint_titlebar(
     Some(surface)
 }
 
+fn visible_marks(
+    titlebar: &Titlebar<impl Clone>,
+    config: &swayward_config::Titlebar,
+    mut format: impl FnMut(&str) -> String,
+) -> String {
+    if !config.show_marks {
+        return String::new();
+    }
+    titlebar
+        .marks
+        .iter()
+        .filter(|mark| !mark.starts_with('_'))
+        .map(|mark| format(mark))
+        .collect()
+}
+
 fn titlebar_text(titlebar: &Titlebar<impl Clone>, config: &swayward_config::Titlebar) -> String {
-    let marks = if config.show_marks {
-        titlebar
-            .marks
-            .iter()
-            .filter(|mark| !mark.starts_with('_'))
-            .map(|mark| format!("[{mark}]"))
-            .collect::<String>()
-    } else {
-        String::new()
-    };
+    titlebar_content(
+        titlebar,
+        config,
+        visible_marks(titlebar, config, |mark| format!("[{mark}]")),
+    )
+}
+
+fn titlebar_markup(titlebar: &Titlebar<impl Clone>, config: &swayward_config::Titlebar) -> String {
+    let marks = visible_marks(titlebar, config, |mark| {
+        format!("[{}]", pangocairo::glib::markup_escape_text(mark))
+    });
+    titlebar_content(titlebar, config, marks)
+}
+
+fn titlebar_content(
+    titlebar: &Titlebar<impl Clone>,
+    config: &swayward_config::Titlebar,
+    marks: String,
+) -> String {
     if config.alignment == swayward_config::TitleAlignment::Right {
         format!("{marks}{}", titlebar.title)
     } else {
@@ -390,6 +412,33 @@ mod tests {
         let expected = f64::from(layout.pixel_size().1) + config.vertical_padding * 2.;
 
         assert_eq!(height_measured(1., &config), expected);
+    }
+
+    #[test]
+    fn titlebar_markup_keeps_markup_with_visible_marks_and_escapes_marks() {
+        let titlebar = Titlebar {
+            target: (),
+            rect: Rectangle::default(),
+            ipc_rect: Rectangle::default(),
+            title: "<b>term</b>".into(),
+            marks: vec!["<work&play>".into(), "_private".into()],
+            state: TitlebarState::Focused,
+            visible: true,
+        };
+        let mut config = swayward_config::Titlebar {
+            pango_markup: true,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            titlebar_markup(&titlebar, &config),
+            "<b>term</b>[&lt;work&amp;play&gt;]"
+        );
+        config.alignment = swayward_config::TitleAlignment::Right;
+        assert_eq!(
+            titlebar_markup(&titlebar, &config),
+            "[&lt;work&amp;play&gt;]<b>term</b>"
+        );
     }
 
     #[test]
