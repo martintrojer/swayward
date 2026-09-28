@@ -1828,3 +1828,9 @@ migrated = false
 paths = ["src/backend/headless.rs", "src/swayward.rs", "src/swayward/outputs.rs", "src/tests/i3_conformance/coverage.rs"]
 what = "preserve sway's reverse headless startup announcement order when automatically placing otherwise identical virtual outputs."
 why = "Sway receives wlroots' pre-created headless outputs in reverse order and places HEADLESS-N first; sorting swayward's virtual outputs by serial reversed their geometry after they had been created in sway's announcement order, making multi-output GET_TREE rectangles disagree with sway."
+
+[[edit]]
+migrated = false
+paths = ["swayward-config/src/utils.rs"]
+what = "reject non-finite and negative percentage strings before they reach configuration consumers."
+why = "Rust accepts `NaN` and infinity as floating-point values, but comparisons involving them can silently bypass configured thresholds; a negative percentage is outside the documented non-negative amount domain."

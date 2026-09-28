@@ -56,6 +56,10 @@ impl FromStr for Percent {
         }
 
         let value: f64 = value.parse().map_err(|_| miette!("error parsing value"))?;
+        if !value.is_finite() || value < 0. {
+            return Err(miette!("percentage must be finite and non-negative"));
+        }
+
         Ok(Percent(value / 100.))
     }
 }
@@ -204,4 +208,16 @@ pub fn parse_arg_node<S: knuffel::traits::ErrorSpan, T: knuffel::traits::DecodeS
     }
 
     Ok(value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Percent;
+
+    #[test]
+    fn percent_rejects_non_finite_and_negative_values() {
+        for value in ["NaN%", "inf%", "-1%"] {
+            assert!(value.parse::<Percent>().is_err(), "accepted {value}");
+        }
+    }
 }
