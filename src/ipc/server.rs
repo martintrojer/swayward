@@ -22,7 +22,9 @@ use smithay::reexports::rustix::fs::unlink;
 use smithay::reexports::rustix::io::Errno;
 use swayward_ipc::legacy::{Event, Workspace};
 use swayward_ipc::state::{EventStreamState, EventStreamStatePart as _};
-use swayward_ipc::wire::{decode_header_raw, encode, encode_raw, CLOSE_SENTINEL, HEADER_SIZE};
+use swayward_ipc::wire::{
+    decode_header_raw, encode, encode_raw, CLOSE_SENTINEL, HEADER_SIZE, MAX_PAYLOAD_SIZE,
+};
 use swayward_ipc::{
     CommandOutcome, KeyboardLayouts, MessageType, Timestamp, Version, WindowLayout,
 };
@@ -35,7 +37,6 @@ use crate::window::Mapped;
 
 const INITIAL_WRITE_BUFFER_SIZE: usize = 128;
 const MAX_WRITE_BUFFER_SIZE: usize = 4_000_000;
-const MAX_PAYLOAD_SIZE: u32 = 16 * 1024 * 1024;
 #[cfg(not(test))]
 static IPC_SOCKET_ID: AtomicU64 = AtomicU64::new(0);
 

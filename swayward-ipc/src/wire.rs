@@ -5,12 +5,15 @@ use crate::MessageType;
 
 pub const MAGIC: &[u8; 6] = b"i3-ipc";
 pub const HEADER_SIZE: usize = 14;
+/// Largest IPC payload accepted from a peer.
+pub const MAX_PAYLOAD_SIZE: u32 = 16 * 1024 * 1024;
 pub const CLOSE_SENTINEL: &[u8; HEADER_SIZE] = b"close-sway-ipc";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WireError {
     BadMagic,
     UnknownMessageType(u32),
+    FrameTooLarge { length: u32, maximum: u32 },
 }
 
 impl fmt::Display for WireError {
@@ -18,6 +21,9 @@ impl fmt::Display for WireError {
         match self {
             Self::BadMagic => f.write_str("invalid IPC magic"),
             Self::UnknownMessageType(value) => write!(f, "unknown IPC message type {value}"),
+            Self::FrameTooLarge { length, maximum } => {
+                write!(f, "IPC payload is {length} bytes, maximum is {maximum}")
+            }
         }
     }
 }

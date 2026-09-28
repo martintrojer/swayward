@@ -9,7 +9,9 @@ use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::{env, fmt};
 
-use crate::wire::{decode_header, decode_header_raw, encode, HEADER_SIZE};
+use crate::wire::{
+    decode_header, decode_header_raw, encode, WireError, HEADER_SIZE, MAX_PAYLOAD_SIZE,
+};
 use crate::MessageType;
 
 /// Name of the environment variable holding the sway IPC socket path.
@@ -89,6 +91,7 @@ impl SwaySocket {
         let mut header = [0u8; HEADER_SIZE];
         self.stream.read_exact(&mut header)?;
         let (got, len) = decode_header(&header).map_err(SwayError::Wire)?;
+        validate_payload_length(len)?;
 
         let sent = msg_type as u32;
         let got = got as u32;
@@ -106,16 +109,66 @@ impl SwaySocket {
         let mut header = [0u8; HEADER_SIZE];
         self.stream.read_exact(&mut header)?;
         let (msg_type, len) = decode_header_raw(&header).map_err(SwayError::Wire)?;
+        validate_payload_length(len)?;
         let mut body = vec![0u8; len as usize];
         self.stream.read_exact(&mut body)?;
         Ok((msg_type, String::from_utf8_lossy(&body).into_owned()))
     }
 }
 
+fn validate_payload_length(length: u32) -> Result<(), SwayError> {
+    if length > MAX_PAYLOAD_SIZE {
+        return Err(SwayError::Wire(WireError::FrameTooLarge {
+            length,
+            maximum: MAX_PAYLOAD_SIZE,
+        }));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::wire::encode_raw;
+    use crate::wire::{encode_raw, MAX_PAYLOAD_SIZE};
+
+    fn oversized_header(msg_type: u32) -> [u8; HEADER_SIZE] {
+        let mut header: [u8; HEADER_SIZE] =
+            encode_raw(msg_type, "")[..HEADER_SIZE].try_into().unwrap();
+        header[6..10].copy_from_slice(&(MAX_PAYLOAD_SIZE + 1).to_ne_bytes());
+        header
+    }
+
+    #[test]
+    fn send_rejects_an_oversized_reply_before_reading_its_body() {
+        let (mut server, client) = UnixStream::pair().unwrap();
+        let mut sock = SwaySocket { stream: client };
+        server
+            .write_all(&oversized_header(MessageType::GetTree as u32))
+            .unwrap();
+
+        assert!(matches!(
+            sock.send(MessageType::GetTree, ""),
+            Err(SwayError::Wire(crate::wire::WireError::FrameTooLarge {
+                length,
+                maximum: MAX_PAYLOAD_SIZE,
+            })) if length == MAX_PAYLOAD_SIZE + 1
+        ));
+    }
+
+    #[test]
+    fn read_event_rejects_an_oversized_frame_before_reading_its_body() {
+        let (mut server, client) = UnixStream::pair().unwrap();
+        let mut sock = SwaySocket { stream: client };
+        server.write_all(&oversized_header(1 << 31)).unwrap();
+
+        assert!(matches!(
+            sock.read_event(),
+            Err(SwayError::Wire(crate::wire::WireError::FrameTooLarge {
+                length,
+                maximum: MAX_PAYLOAD_SIZE,
+            })) if length == MAX_PAYLOAD_SIZE + 1
+        ));
+    }
 
     /// A subscribed client must accept event frames. Sway numbers events
     /// separately with the high bit set (`sway/include/ipc.h:27-38`), so a
