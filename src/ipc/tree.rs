@@ -23,6 +23,42 @@ const WORKSPACE_ID_BASE: i64 = 2 * ID_NAMESPACE_SIZE;
 const CONTAINER_ID_BASE: i64 = 3 * ID_NAMESPACE_SIZE;
 const WINDOW_ID_BASE: i64 = 4 * ID_NAMESPACE_SIZE;
 
+struct WorkspaceNodeContext<'a> {
+    compositor_layout: &'a Layout<Mapped>,
+    workspace: &'a crate::layout::workspace::Workspace<Mapped>,
+    output: &'a str,
+    index: usize,
+    rect: Rect,
+    output_origin: Rect,
+    marks: &'a std::collections::HashMap<MappedId, Vec<String>>,
+    container_marks: &'a std::collections::HashMap<(WorkspaceId, NodeId), Vec<String>>,
+}
+
+struct WindowNodeContext<'a> {
+    mapped: &'a Mapped,
+    rect: Rect,
+    node_type: NodeType,
+    floating: &'a str,
+    parent: Option<Rect>,
+    marks: &'a std::collections::HashMap<MappedId, Vec<String>>,
+    in_scratchpad: bool,
+    visible: bool,
+}
+
+struct CommonNodeContext<'a> {
+    id: i64,
+    node_type: NodeType,
+    layout: NodeLayout,
+    orientation: &'a str,
+    name: Option<&'a str>,
+    rect: Rect,
+    nodes: Vec<Node>,
+    floating_nodes: Vec<Node>,
+    focus: Vec<i64>,
+    focused: bool,
+    properties: NodeProperties,
+}
+
 pub fn describe_tree(
     layout: &Layout<Mapped>,
     global_space: &Space<Window>,
@@ -64,19 +100,19 @@ pub fn describe_tree(
         .into_iter()
         .map(|monitor| output_id(monitor.output_name()))
         .collect();
-    common_node(
-        ROOT_ID,
-        NodeType::Root,
-        NodeLayout::SplitH,
-        "horizontal",
-        Some("root"),
-        root_rect,
+    common_node(CommonNodeContext {
+        id: ROOT_ID,
+        node_type: NodeType::Root,
+        layout: NodeLayout::SplitH,
+        orientation: "horizontal",
+        name: Some("root"),
+        rect: root_rect,
         nodes,
-        vec![],
+        floating_nodes: vec![],
         focus,
-        false,
-        NodeProperties::None {},
-    )
+        focused: false,
+        properties: NodeProperties::None {},
+    })
 }
 
 pub fn describe_workspaces(
@@ -137,16 +173,16 @@ pub(crate) fn describe_workspaces_with_marks(
                 window_rect,
                 properties,
                 ..
-            } = describe_workspace_node(
-                layout,
+            } = describe_workspace_node(WorkspaceNodeContext {
+                compositor_layout: layout,
                 workspace,
-                monitor.output_name(),
+                output: monitor.output_name(),
                 index,
-                workspace_rect(global_space, monitor.output(), workspace),
-                output_rect(global_space, monitor.output()),
+                rect: workspace_rect(global_space, monitor.output(), workspace),
+                output_origin: output_rect(global_space, monitor.output()),
                 marks,
                 container_marks,
-            );
+            });
             let NodeProperties::Workspace(properties) = properties else {
                 unreachable!()
             };
@@ -349,16 +385,16 @@ fn describe_output_node(
             workspace.must_be_kept() || monitor.active_workspace_ref().id() == workspace.id()
         })
         .map(|(index, workspace)| {
-            describe_workspace_node(
-                layout,
+            describe_workspace_node(WorkspaceNodeContext {
+                compositor_layout: layout,
                 workspace,
-                monitor.output_name(),
+                output: monitor.output_name(),
                 index,
-                workspace_rect,
-                rect,
+                rect: workspace_rect,
+                output_origin: rect,
                 marks,
                 container_marks,
-            )
+            })
         })
         .collect::<Vec<_>>();
     let focus = monitor
@@ -370,18 +406,18 @@ fn describe_output_node(
         .into_iter()
         .find(|output| output.name == *monitor.output_name())
         .unwrap();
-    let mut node = common_node(
-        output.id,
-        NodeType::Output,
-        NodeLayout::Output,
-        "none",
-        Some(&output.name),
+    let mut node = common_node(CommonNodeContext {
+        id: output.id,
+        node_type: NodeType::Output,
+        layout: NodeLayout::Output,
+        orientation: "none",
+        name: Some(&output.name),
         rect,
-        workspaces,
-        vec![],
+        nodes: workspaces,
+        floating_nodes: vec![],
         focus,
-        false,
-        NodeProperties::Output(OutputProperties {
+        focused: false,
+        properties: NodeProperties::Output(OutputProperties {
             active: output.active,
             adaptive_sync_status: output.adaptive_sync_status,
             allow_tearing: output.allow_tearing,
@@ -402,25 +438,23 @@ fn describe_output_node(
             serial: output.serial,
             transform: output.transform,
         }),
-    );
+    });
     node.percent =
         (root_rect.width != 0).then(|| f64::from(rect.width) / f64::from(root_rect.width));
     node
 }
 
-// The flat arguments mirror the distinct workspace fields being serialized;
-// bundling them would only move this one call site's context into another type.
-#[allow(clippy::too_many_arguments)]
-fn describe_workspace_node(
-    compositor_layout: &Layout<Mapped>,
-    workspace: &crate::layout::workspace::Workspace<Mapped>,
-    output: &str,
-    index: usize,
-    rect: Rect,
-    output_origin: Rect,
-    marks: &std::collections::HashMap<MappedId, Vec<String>>,
-    container_marks: &std::collections::HashMap<(WorkspaceId, NodeId), Vec<String>>,
-) -> Node {
+fn describe_workspace_node(context: WorkspaceNodeContext<'_>) -> Node {
+    let WorkspaceNodeContext {
+        compositor_layout,
+        workspace,
+        output,
+        index,
+        rect,
+        output_origin,
+        marks,
+        container_marks,
+    } = context;
     // Layout geometry is output-relative and already carries the working-area
     // origin: tiled leaves come from `parent_area`, which is the gap-inset
     // working area, and floating positions come from `scale_by_working_area`.
@@ -479,16 +513,16 @@ fn describe_workspace_node(
                 ),
                 output_origin,
             );
-            let mut node = describe_window(
-                tile.window(),
-                outer_rect,
-                NodeType::FloatingCon,
-                "user_on",
-                Some(rect),
+            let mut node = describe_window(WindowNodeContext {
+                mapped: tile.window(),
+                rect: outer_rect,
+                node_type: NodeType::FloatingCon,
+                floating: "user_on",
+                parent: Some(rect),
                 marks,
-                compositor_layout.is_scratchpad_window(&tile.window().window),
-                true,
-            );
+                in_scratchpad: compositor_layout.is_scratchpad_window(&tile.window().window),
+                visible: true,
+            });
             node.focused = active_window == Some(tile.window().id());
             let border = tile.sway_border();
             node.border = ipc_border(border.0);
@@ -552,23 +586,23 @@ fn describe_workspace_node(
     for node in &mut floating_nodes {
         set_windows_visible(node, workspace_visible);
     }
-    let mut node = common_node(
-        workspace_id(workspace.id().get()),
-        NodeType::Workspace,
+    let mut node = common_node(CommonNodeContext {
+        id: workspace_id(workspace.id().get()),
+        node_type: NodeType::Workspace,
         layout,
-        &orientation,
-        Some(&workspace.sway_display_name(index)),
+        orientation: &orientation,
+        name: Some(&workspace.sway_display_name(index)),
         rect,
         nodes,
         floating_nodes,
         focus,
         focused,
-        NodeProperties::Workspace(swayward_ipc::WorkspaceProperties {
+        properties: NodeProperties::Workspace(swayward_ipc::WorkspaceProperties {
             num: workspace.sway_display_number(index),
             output: output.into(),
             representation,
         }),
-    );
+    });
     // Sway reports 1 for every workspace node, independent of whether a child
     // is fullscreen (`ipc_json_describe_workspace`, sway 1.12).
     node.fullscreen_mode = 1;
@@ -754,19 +788,19 @@ pub(crate) fn describe_tiling<'a, I>(
                 })
                 .collect();
             let children = children.into_iter().map(|(_, node)| node).collect();
-            let mut node = common_node(
-                container_id(id),
-                NodeType::Con,
-                ipc_layout(layout),
-                orientation(layout),
-                None,
-                offset_rect(rect, workspace_rect),
-                children,
-                vec![],
+            let mut node = common_node(CommonNodeContext {
+                id: container_id(id),
+                node_type: NodeType::Con,
+                layout: ipc_layout(layout),
+                orientation: orientation(layout),
+                name: None,
+                rect: offset_rect(rect, workspace_rect),
+                nodes: children,
+                floating_nodes: vec![],
                 focus,
                 focused,
-                NodeProperties::None {},
-            );
+                properties: NodeProperties::None {},
+            });
             node.floating = Some("auto_off".into());
             node.percent = percent;
             node.scratchpad_state = Some("none".into());
@@ -794,16 +828,16 @@ pub(crate) fn describe_tiling<'a, I>(
                 warn!("omitting stale tree leaf from IPC output");
                 return None;
             };
-            let mut node = describe_window(
+            let mut node = describe_window(WindowNodeContext {
                 mapped,
-                offset_rect(rect, workspace_rect),
-                NodeType::Con,
-                "auto_off",
-                None,
+                rect: offset_rect(rect, workspace_rect),
+                node_type: NodeType::Con,
+                floating: "auto_off",
+                parent: None,
                 marks,
-                false,
-                true,
-            );
+                in_scratchpad: false,
+                visible: true,
+            });
             node.border = ipc_border(border.0);
             node.current_border_width = ipc_border_width(border);
             if mapped_under_fullscreen {
@@ -863,19 +897,19 @@ pub(crate) fn describe_tiling<'a, I>(
 }
 
 fn empty_tiling_node(rect: Rect) -> Node {
-    common_node(
-        0,
-        NodeType::Con,
-        NodeLayout::SplitH,
-        "horizontal",
-        None,
+    common_node(CommonNodeContext {
+        id: 0,
+        node_type: NodeType::Con,
+        layout: NodeLayout::SplitH,
+        orientation: "horizontal",
+        name: None,
         rect,
-        vec![],
-        vec![],
-        vec![],
-        false,
-        NodeProperties::None {},
-    )
+        nodes: vec![],
+        floating_nodes: vec![],
+        focus: vec![],
+        focused: false,
+        properties: NodeProperties::None {},
+    })
 }
 
 fn ipc_border_width(border: (swayward_ipc::command::BorderStyle, u16)) -> i32 {
@@ -897,19 +931,17 @@ fn ipc_border(style: swayward_ipc::command::BorderStyle) -> NodeBorder {
     }
 }
 
-// Serialising a sway tree node genuinely needs this much context. Bundling it
-// into a struct would only move the argument list.
-#[allow(clippy::too_many_arguments)]
-fn describe_window(
-    mapped: &Mapped,
-    rect: Rect,
-    node_type: NodeType,
-    floating: &str,
-    parent: Option<Rect>,
-    marks: &std::collections::HashMap<MappedId, Vec<String>>,
-    in_scratchpad: bool,
-    visible: bool,
-) -> Node {
+fn describe_window(context: WindowNodeContext<'_>) -> Node {
+    let WindowNodeContext {
+        mapped,
+        rect,
+        node_type,
+        floating,
+        parent,
+        marks,
+        in_scratchpad,
+        visible,
+    } = context;
     let properties = with_toplevel_role(mapped.toplevel(), |role| ViewProperties {
         allow_tearing: false,
         app_id: role.app_id.clone(),
@@ -937,19 +969,19 @@ fn describe_window(
                 / f64::from(parent.height)
         })
     });
-    let mut node = common_node(
-        window_id(mapped.id()),
+    let mut node = common_node(CommonNodeContext {
+        id: window_id(mapped.id()),
         node_type,
-        NodeLayout::None,
-        "none",
-        title.as_deref(),
+        layout: NodeLayout::None,
+        orientation: "none",
+        name: title.as_deref(),
         rect,
-        vec![],
-        vec![],
-        vec![],
-        mapped.is_focused(),
-        NodeProperties::View(properties),
-    );
+        nodes: vec![],
+        floating_nodes: vec![],
+        focus: vec![],
+        focused: mapped.is_focused(),
+        properties: NodeProperties::View(properties),
+    });
     node.border = NodeBorder::Normal;
     node.current_border_width = 2;
     node.floating = Some(floating.into());
@@ -969,20 +1001,20 @@ fn describe_window(
     node
 }
 
-#[allow(clippy::too_many_arguments)]
-fn common_node(
-    id: i64,
-    node_type: NodeType,
-    layout: NodeLayout,
-    orientation: &str,
-    name: Option<&str>,
-    rect: Rect,
-    nodes: Vec<Node>,
-    floating_nodes: Vec<Node>,
-    focus: Vec<i64>,
-    focused: bool,
-    properties: NodeProperties,
-) -> Node {
+fn common_node(context: CommonNodeContext<'_>) -> Node {
+    let CommonNodeContext {
+        id,
+        node_type,
+        layout,
+        orientation,
+        name,
+        rect,
+        nodes,
+        floating_nodes,
+        focus,
+        focused,
+        properties,
+    } = context;
     Node {
         border: NodeBorder::None,
         current_border_width: 0,
@@ -1043,16 +1075,16 @@ fn scratch_output(
     let floating_nodes = layout
         .scratchpad_windows()
         .map(|mapped| {
-            let mut node = describe_window(
+            let mut node = describe_window(WindowNodeContext {
                 mapped,
-                Rect::default(),
-                NodeType::FloatingCon,
-                "user_on",
-                None,
+                rect: Rect::default(),
+                node_type: NodeType::FloatingCon,
+                floating: "user_on",
+                parent: None,
                 marks,
-                true,
-                false,
-            );
+                in_scratchpad: true,
+                visible: false,
+            });
             if let Some(border) = layout.window_border(&mapped.window) {
                 node.border = ipc_border(border.0);
                 node.current_border_width = i32::from(border.1);
@@ -1061,33 +1093,33 @@ fn scratch_output(
         })
         .collect::<Vec<_>>();
     let focus = floating_nodes.iter().rev().map(|node| node.id).collect();
-    let mut workspace = common_node(
-        SCRATCH_WORKSPACE_ID,
-        NodeType::Workspace,
-        NodeLayout::SplitH,
-        "horizontal",
-        Some("__i3_scratch"),
+    let mut workspace = common_node(CommonNodeContext {
+        id: SCRATCH_WORKSPACE_ID,
+        node_type: NodeType::Workspace,
+        layout: NodeLayout::SplitH,
+        orientation: "horizontal",
+        name: Some("__i3_scratch"),
         rect,
-        vec![],
+        nodes: vec![],
         floating_nodes,
         focus,
-        false,
-        NodeProperties::None {},
-    );
+        focused: false,
+        properties: NodeProperties::None {},
+    });
     workspace.fullscreen_mode = 1;
-    common_node(
-        SCRATCH_OUTPUT_ID,
-        NodeType::Output,
-        NodeLayout::Output,
-        "horizontal",
-        Some("__i3"),
+    common_node(CommonNodeContext {
+        id: SCRATCH_OUTPUT_ID,
+        node_type: NodeType::Output,
+        layout: NodeLayout::Output,
+        orientation: "horizontal",
+        name: Some("__i3"),
         rect,
-        vec![workspace],
-        vec![],
-        vec![SCRATCH_WORKSPACE_ID],
-        false,
-        NodeProperties::None {},
-    )
+        nodes: vec![workspace],
+        floating_nodes: vec![],
+        focus: vec![SCRATCH_WORKSPACE_ID],
+        focused: false,
+        properties: NodeProperties::None {},
+    })
 }
 
 fn ipc_layout(layout: TreeLayout) -> NodeLayout {
@@ -1195,36 +1227,36 @@ mod tests {
     #[test]
     fn fullscreen_descendants_keep_percentages() {
         let leaf = |id, percent, fullscreen_mode| {
-            let mut node = common_node(
+            let mut node = common_node(CommonNodeContext {
                 id,
-                NodeType::Con,
-                NodeLayout::None,
-                "none",
-                None,
-                Rect::default(),
-                vec![],
-                vec![],
-                vec![],
-                false,
-                NodeProperties::None {},
-            );
+                node_type: NodeType::Con,
+                layout: NodeLayout::None,
+                orientation: "none",
+                name: None,
+                rect: Rect::default(),
+                nodes: vec![],
+                floating_nodes: vec![],
+                focus: vec![],
+                focused: false,
+                properties: NodeProperties::None {},
+            });
             node.percent = percent;
             node.fullscreen_mode = fullscreen_mode;
             node
         };
-        let mut branch = common_node(
-            1,
-            NodeType::Con,
-            NodeLayout::SplitH,
-            "horizontal",
-            None,
-            Rect::default(),
-            vec![leaf(2, Some(0.4), 0), leaf(3, Some(0.6), 1)],
-            vec![],
-            vec![],
-            false,
-            NodeProperties::None {},
-        );
+        let mut branch = common_node(CommonNodeContext {
+            id: 1,
+            node_type: NodeType::Con,
+            layout: NodeLayout::SplitH,
+            orientation: "horizontal",
+            name: None,
+            rect: Rect::default(),
+            nodes: vec![leaf(2, Some(0.4), 0), leaf(3, Some(0.6), 1)],
+            floating_nodes: vec![],
+            focus: vec![],
+            focused: false,
+            properties: NodeProperties::None {},
+        });
         branch.percent = Some(0.5);
         let mut nodes = vec![branch, leaf(4, Some(0.5), 0)];
 
