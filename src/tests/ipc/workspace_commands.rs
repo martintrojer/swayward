@@ -1718,8 +1718,8 @@ fn cross_workspace_swap_exchanges_positions_marks_and_fullscreen() {
 }
 
 #[test]
-fn moving_a_container_tree_to_an_empty_workspace_preserves_its_layout() {
-    let mut f = Fixture::new();
+fn live_ipc_move_to_an_empty_workspace_preserves_the_container_layout() {
+    let (mut f, socket) = ipc_fixture();
     f.add_output(1, (1270, 1408));
     let client = f.add_client();
     for app_id in ["first", "second"] {
@@ -1733,20 +1733,22 @@ fn moving_a_container_tree_to_an_empty_workspace_preserves_its_layout() {
         window.ack_last_and_commit();
         f.double_roundtrip(client);
     }
-    assert!(crate::command::execute(f.niri_state(), "focus parent")[0].success);
-    assert!(crate::command::execute(f.niri_state(), "mark group")[0].success);
-    assert!(crate::command::execute(f.niri_state(), "workspace target")[0].success);
-
-    let outcome = crate::command::execute(f.niri_state(), "[con_mark=group] move workspace target");
-    assert!(outcome[0].success, "{outcome:?}");
-    let swayward = f.swayward();
-    let tree = serde_json::to_value(crate::ipc::tree::describe_tree(
-        &swayward.layout,
-        &swayward.global_space,
-        &Default::default(),
-        &Default::default(),
-    ))
-    .unwrap();
+    let mut stream = UnixStream::connect(socket).unwrap();
+    for command in [
+        "focus parent",
+        "mark group",
+        "workspace target",
+        "[con_mark=group] move workspace target",
+    ] {
+        let outcome = query_ipc_with_payload(
+            &mut f,
+            &mut stream,
+            MessageType::RunCommand,
+            command,
+        );
+        assert_eq!(outcome[0]["success"], true, "{command}: {outcome}");
+    }
+    let tree = query_ipc(&mut f, &mut stream, MessageType::GetTree);
     let target = tree["nodes"][1]["nodes"]
         .as_array()
         .unwrap()
