@@ -961,6 +961,7 @@ impl<W: LayoutElement> TilingTree<W> {
                     };
                     *percents = detached_percents;
                     *children = ids;
+                    self.has_had_tile = true;
                     self.restore_transferred_focus(focus_history);
                     self.request_window_sizes();
                     return (self.root, remapped);

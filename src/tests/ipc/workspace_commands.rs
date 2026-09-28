@@ -1722,6 +1722,7 @@ fn live_ipc_move_to_an_empty_workspace_preserves_the_container_layout() {
     let (mut f, socket) = ipc_fixture();
     f.add_output(1, (1270, 1408));
     let client = f.add_client();
+    assert!(crate::command::execute(f.niri_state(), "splith")[0].success);
     for app_id in ["first", "second"] {
         let window = f.client(client).create_window();
         window.xdg_toplevel.set_app_id(app_id.into());
@@ -1749,13 +1750,13 @@ fn live_ipc_move_to_an_empty_workspace_preserves_the_container_layout() {
         assert_eq!(outcome[0]["success"], true, "{command}: {outcome}");
     }
     let tree = query_ipc(&mut f, &mut stream, MessageType::GetTree);
-    let target = tree["nodes"][1]["nodes"]
-        .as_array()
-        .unwrap()
+    let workspaces = tree["nodes"][1]["nodes"].as_array().unwrap();
+    let target = workspaces
         .iter()
         .find(|workspace| workspace["name"] == "target")
         .unwrap();
-    assert_eq!(target["layout"], "splitv");
+    assert_eq!(target["layout"], "splith");
+    assert_eq!(target["representation"], "H[first second]");
     assert_eq!(target["nodes"].as_array().unwrap().len(), 2);
     assert_eq!(target["nodes"][0]["app_id"], "first");
     assert_eq!(target["nodes"][1]["app_id"], "second");
