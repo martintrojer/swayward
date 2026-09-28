@@ -109,26 +109,38 @@ fn render(reply: &str, pretty: bool) -> String {
     }
 }
 
-fn run() -> Result<ExitCode, Box<dyn std::error::Error>> {
+#[derive(Debug, PartialEq)]
+struct Options {
+    msg_type: MessageType,
+    socket: Option<String>,
+    raw: bool,
+    pretty: bool,
+    quiet: bool,
+    monitor: bool,
+    payload: String,
+}
+
+#[derive(Debug, PartialEq)]
+enum Invocation {
+    Help,
+    Version,
+    Execute(Options),
+}
+
+fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Invocation, String> {
     let mut kind = "run_command".to_owned();
-    let mut socket: Option<String> = None;
+    let mut socket = None;
     let mut raw = false;
     let mut pretty = false;
     let mut quiet = false;
     let mut monitor = false;
-    let mut rest: Vec<String> = Vec::new();
+    let mut rest = Vec::new();
 
-    let mut args = std::env::args().skip(1);
+    let mut args = args.into_iter();
     while let Some(arg) = args.next() {
         match arg.as_str() {
-            "-h" | "--help" => {
-                print!("{USAGE}");
-                return Ok(ExitCode::SUCCESS);
-            }
-            "-v" | "--version" => {
-                println!("swaywardmsg {}", env!("CARGO_PKG_VERSION"));
-                return Ok(ExitCode::SUCCESS);
-            }
+            "-h" | "--help" => return Ok(Invocation::Help),
+            "-v" | "--version" => return Ok(Invocation::Version),
             "-t" | "--type" => kind = args.next().ok_or("--type needs a value")?,
             "-s" | "--socket" => socket = Some(args.next().ok_or("--socket needs a value")?),
             "-r" | "--raw" => raw = true,
@@ -136,62 +148,101 @@ fn run() -> Result<ExitCode, Box<dyn std::error::Error>> {
             "-q" | "--quiet" => quiet = true,
             "-m" | "--monitor" => monitor = true,
             other if other.starts_with('-') && other.len() > 1 => {
-                return Err(format!("unknown option: {other}").into());
+                return Err(format!("unknown option: {other}"));
             }
             other => rest.push(other.to_owned()),
         }
     }
 
     let msg_type = message_type(&kind).ok_or_else(|| format!("unknown message type: {kind}"))?;
-    let payload = rest.join(" ");
+    Ok(Invocation::Execute(Options {
+        msg_type,
+        socket,
+        raw,
+        pretty,
+        quiet,
+        monitor,
+        payload: rest.join(" "),
+    }))
+}
 
-    let mut sock = match socket {
+fn execute_once(
+    options: &Options,
+) -> Result<(SwaySocket, ExitCode, bool), Box<dyn std::error::Error>> {
+    let mut sock = match &options.socket {
         Some(path) => SwaySocket::connect_to(path)?,
         None => SwaySocket::connect()?,
     };
-
-    let reply = sock.send(msg_type, &payload)?;
+    let reply = sock.send(options.msg_type, &options.payload)?;
 
     // Default to pretty output on a terminal, like swaymsg, but never when the
     // caller is piping us into something.
-    let pretty = pretty || (!raw && io::stdout().is_terminal());
-
+    let pretty = options.pretty || (!options.raw && io::stdout().is_terminal());
     let failed = match reply_status(&reply) {
         Ok(failed) => failed,
         Err(error) => {
-            if !quiet {
+            if !options.quiet {
                 eprintln!("swaywardmsg: failed to parse payload as JSON: {error}");
             }
-            return Ok(ExitCode::FAILURE);
+            return Ok((sock, ExitCode::FAILURE, pretty));
         }
     };
 
-    if msg_type == MessageType::RunCommand && !raw {
-        if failed && !quiet {
+    if options.msg_type == MessageType::RunCommand && !options.raw {
+        if failed && !options.quiet {
             for error in command_failures(&reply) {
                 eprintln!("{error}");
             }
         }
-    } else if !quiet {
+    } else if !options.quiet {
         println!("{}", render(&reply, pretty));
     }
 
-    if failed {
-        return Ok(ExitCode::from(2));
-    }
+    let code = if failed {
+        ExitCode::from(2)
+    } else {
+        ExitCode::SUCCESS
+    };
+    Ok((sock, code, pretty))
+}
 
-    if monitor && msg_type == MessageType::Subscribe {
-        let mut out = io::stdout().lock();
-        loop {
-            let (_, event) = sock.read_event()?;
-            if !quiet {
-                writeln!(out, "{}", render(&event, pretty))?;
-                out.flush()?;
-            }
+fn monitor_events(
+    sock: &mut SwaySocket,
+    quiet: bool,
+    pretty: bool,
+) -> Result<ExitCode, Box<dyn std::error::Error>> {
+    let mut out = io::stdout().lock();
+    loop {
+        let (_, event) = sock.read_event()?;
+        if !quiet {
+            writeln!(out, "{}", render(&event, pretty))?;
+            out.flush()?;
         }
     }
+}
 
-    Ok(ExitCode::SUCCESS)
+fn run() -> Result<ExitCode, Box<dyn std::error::Error>> {
+    let invocation = parse_args(std::env::args().skip(1))?;
+    let options = match invocation {
+        Invocation::Help => {
+            print!("{USAGE}");
+            return Ok(ExitCode::SUCCESS);
+        }
+        Invocation::Version => {
+            println!("swaywardmsg {}", env!("CARGO_PKG_VERSION"));
+            return Ok(ExitCode::SUCCESS);
+        }
+        Invocation::Execute(options) => options,
+    };
+
+    let (mut sock, code, pretty) = execute_once(&options)?;
+    if code != ExitCode::SUCCESS {
+        return Ok(code);
+    }
+    if options.monitor && options.msg_type == MessageType::Subscribe {
+        return monitor_events(&mut sock, options.quiet, pretty);
+    }
+    Ok(code)
 }
 
 fn main() -> ExitCode {
@@ -209,6 +260,51 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_args_preserves_command_joining_and_flags() {
+        let parsed = parse_args(
+            [
+                "-t",
+                "get_tree",
+                "--socket",
+                "/socket",
+                "-p",
+                "workspace",
+                "3",
+            ]
+            .map(str::to_owned),
+        )
+        .unwrap();
+        let Invocation::Execute(options) = parsed else {
+            panic!("expected executable options");
+        };
+
+        assert_eq!(options.msg_type, MessageType::GetTree);
+        assert_eq!(options.socket.as_deref(), Some("/socket"));
+        assert!(options.pretty);
+        assert_eq!(options.payload, "workspace 3");
+    }
+
+    #[test]
+    fn parse_args_preserves_early_actions_and_errors() {
+        assert!(matches!(
+            parse_args(["--help"].map(str::to_owned)).unwrap(),
+            Invocation::Help
+        ));
+        assert!(matches!(
+            parse_args(["--version"].map(str::to_owned)).unwrap(),
+            Invocation::Version
+        ));
+        assert_eq!(
+            parse_args(["--type"].map(str::to_owned)).unwrap_err(),
+            "--type needs a value"
+        );
+        assert_eq!(
+            parse_args(["--unknown"].map(str::to_owned)).unwrap_err(),
+            "unknown option: --unknown"
+        );
+    }
 
     #[test]
     fn every_advertised_type_parses() {
