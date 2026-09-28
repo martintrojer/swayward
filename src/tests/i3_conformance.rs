@@ -2,10 +2,10 @@
 
 use std::any::Any;
 use std::collections::HashSet;
-use std::io::{BufRead as _, BufReader, Write as _};
+use std::io::{BufRead as _, BufReader, Read as _, Write as _};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -1281,6 +1281,34 @@ fn collect_test_failures<'a>(
         .collect()
 }
 
+struct ChildOutput {
+    stdout: thread::JoinHandle<Vec<u8>>,
+    stderr: thread::JoinHandle<Vec<u8>>,
+}
+
+impl ChildOutput {
+    fn new(child: &mut Child) -> Self {
+        let mut stdout = child.stdout.take().unwrap();
+        let mut stderr = child.stderr.take().unwrap();
+        Self {
+            stdout: thread::spawn(move || {
+                let mut bytes = Vec::new();
+                stdout.read_to_end(&mut bytes).unwrap();
+                bytes
+            }),
+            stderr: thread::spawn(move || {
+                let mut bytes = Vec::new();
+                stderr.read_to_end(&mut bytes).unwrap();
+                bytes
+            }),
+        }
+    }
+
+    fn finish(self) -> (Vec<u8>, Vec<u8>) {
+        (self.stdout.join().unwrap(), self.stderr.join().unwrap())
+    }
+}
+
 fn run_i3_test(test: &str) {
     let mut config = swayward_config::Config::default();
     config.layout.gaps = 0.;
@@ -1358,6 +1386,7 @@ fn run_i3_test(test: &str) {
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
+    let child_output = ChildOutput::new(&mut child);
 
     let started = Instant::now();
     // Generous enough that a cold build cache and a loaded machine cannot trip
@@ -1382,10 +1411,10 @@ fn run_i3_test(test: &str) {
             Err(error) => panic!("test control accept failed: {error}"),
         }
         if let Some(status) = child.try_wait().unwrap() {
-            let output = child.wait_with_output().unwrap();
-            let stdout = String::from_utf8_lossy(&output.stdout);
+            let (stdout, stderr) = child_output.finish();
+            let stdout = String::from_utf8_lossy(&stdout);
             eprint!("{stdout}");
-            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stderr = String::from_utf8_lossy(&stderr);
             if !stderr.is_empty() {
                 eprint!("{stderr}");
             }
@@ -1408,9 +1437,10 @@ fn run_i3_test(test: &str) {
         }
         if Instant::now() >= deadline {
             child.kill().unwrap();
-            let output = child.wait_with_output().unwrap();
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
+            child.wait().unwrap();
+            let (stdout, stderr) = child_output.finish();
+            let stdout = String::from_utf8_lossy(&stdout);
+            let stderr = String::from_utf8_lossy(&stderr);
             panic!(
                 "i3 test {test} timed out after {:?}\nTAP failures:\n{}\nstdout:\n{stdout}\nstderr:\n{stderr}",
                 started.elapsed(),
@@ -1432,6 +1462,29 @@ fn run_i3_test(test: &str) {
 const COVERAGE: &str = include_str!("../../tests/i3/coverage.toml");
 const COVERAGE_README: &str = include_str!("../../tests/i3/README.md");
 const HARNESS: &str = include_str!("../../tests/i3/lib/i3test.pm");
+
+#[test]
+fn child_output_is_drained_while_the_child_runs() {
+    let mut child = Command::new("sh")
+        .arg("-c")
+        .arg("head -c 1048576 /dev/zero >&1; head -c 1048576 /dev/zero >&2")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let output = ChildOutput::new(&mut child);
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while child.try_wait().unwrap().is_none() && Instant::now() < deadline {
+        thread::yield_now();
+    }
+    assert!(
+        child.try_wait().unwrap().is_some(),
+        "child blocked on a full output pipe"
+    );
+    let (stdout, stderr) = output.finish();
+    assert_eq!(stdout.len(), 1_048_576);
+    assert_eq!(stderr.len(), 1_048_576);
+}
 
 #[test]
 fn harness_xcb_xkb_guard_does_not_depend_on_the_host() {
