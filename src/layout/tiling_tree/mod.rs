@@ -908,11 +908,34 @@ impl<W: LayoutElement> TilingTree<W> {
         let node = if self.is_empty() {
             match subtree.node {
                 DetachedNode::Split {
+                    old_id,
+                    layout,
                     children,
                     percents: detached_percents,
-                    ..
+                    previous_layout,
+                    title_format,
+                    pending_mode,
                 } => {
-                    self.set_layout(self.root, Layout::SplitH);
+                    if old_id != self.root {
+                        remapped.push((old_id, self.root));
+                    }
+                    let TreeNode::Split {
+                        layout: root_layout,
+                        ..
+                    } = &mut self.nodes.get_mut(&self.root).unwrap().value
+                    else {
+                        unreachable!();
+                    };
+                    *root_layout = layout;
+                    if let Some(layout) = previous_layout {
+                        self.previous_split_layouts.insert(self.root, layout);
+                    }
+                    if let Some(format) = title_format {
+                        self.title_formats.insert(self.root, format);
+                    }
+                    if let Some(mode) = pending_mode {
+                        self.pending_modes.insert(self.root, mode);
+                    }
                     let ids = children
                         .into_iter()
                         .map(|child| {

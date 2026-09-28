@@ -1746,6 +1746,54 @@ fn resident_subtree_can_be_detached_with_its_ids_and_focus_history() {
 }
 
 #[test]
+fn attaching_split_to_empty_tree_preserves_root_state() {
+    for layout in [Layout::SplitV, Layout::Tabbed] {
+        let mut source = tree((1200., 800.), 0.);
+        let first = source.add_tile(tile(1, source.view_size()), InsertTarget::Focused);
+        source.add_tile(tile(2, source.view_size()), InsertTarget::Focused);
+        source.set_layout(source.root, Layout::SplitV);
+        source.set_layout(source.root, layout);
+        source
+            .previous_split_layouts
+            .insert(source.root, Layout::SplitH);
+        source.set_title_format(source.root, "root format".into());
+        source.set_node_fullscreen(source.root, Some(FullscreenMode::Workspace));
+        let old_root = source.root;
+        let mut destination = tree((1200., 800.), 0.);
+
+        let (detached, _) = source.detach_subtree(old_root).unwrap();
+        let (attached, remapped) = destination.attach_subtree(detached);
+
+        assert_eq!(attached, destination.root);
+        assert_eq!(remapped, vec![(old_root, destination.root)]);
+        assert!(matches!(
+            destination.nodes[&destination.root].value,
+            TreeNode::Split {
+                layout: actual,
+                ..
+            } if actual == layout
+        ));
+        assert_eq!(
+            destination.previous_split_layouts.get(&destination.root),
+            Some(&Layout::SplitH)
+        );
+        assert_eq!(
+            destination
+                .title_formats
+                .get(&destination.root)
+                .map(String::as_str),
+            Some("root format")
+        );
+        assert_eq!(
+            destination.fullscreen_mode(destination.root),
+            Some(FullscreenMode::Workspace)
+        );
+        assert!(destination.contains(first));
+        destination.check_invariants();
+    }
+}
+
+#[test]
 fn attaching_subtree_to_empty_tree_restores_focus() {
     let mut source = tree((1200., 800.), 0.);
     let first = source.add_tile(tile(1, source.view_size()), InsertTarget::Focused);

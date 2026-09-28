@@ -1718,7 +1718,7 @@ fn cross_workspace_swap_exchanges_positions_marks_and_fullscreen() {
 }
 
 #[test]
-fn moving_a_container_tree_to_an_empty_workspace_unwraps_its_children() {
+fn moving_a_container_tree_to_an_empty_workspace_preserves_its_layout() {
     let mut f = Fixture::new();
     f.add_output(1, (1270, 1408));
     let client = f.add_client();
@@ -1753,7 +1753,7 @@ fn moving_a_container_tree_to_an_empty_workspace_unwraps_its_children() {
         .iter()
         .find(|workspace| workspace["name"] == "target")
         .unwrap();
-    assert_eq!(target["layout"], "splith");
+    assert_eq!(target["layout"], "splitv");
     assert_eq!(target["nodes"].as_array().unwrap().len(), 2);
     assert_eq!(target["nodes"][0]["app_id"], "first");
     assert_eq!(target["nodes"][1]["app_id"], "second");
