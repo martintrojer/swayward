@@ -137,6 +137,7 @@ struct FloatingTreeEntry<W: LayoutElement> {
     tree: TilingTree<W>,
     root: NodeId,
     rect: Rectangle<f64, Logical>,
+    pos: Point<f64, SizeFrac>,
     sticky: bool,
 }
 
@@ -381,6 +382,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
             data.update_config(view_size, working_area);
         }
         for entry in &mut self.tree_entries {
+            entry.rect.loc = Data::scale_by_working_area(working_area, entry.pos);
             entry
                 .tree
                 .update_config(view_size, entry.rect, false, scale, options.clone());
@@ -701,6 +703,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
                 tree,
                 root,
                 rect,
+                pos: Data::logical_to_size_frac_in_working_area(self.working_area, rect.loc),
                 sticky: false,
             },
         );
@@ -732,6 +735,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
                 tree,
                 root,
                 rect,
+                pos: Data::logical_to_size_frac_in_working_area(self.working_area, rect.loc),
                 sticky: removed.sticky,
             },
         );
@@ -849,6 +853,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
             return false;
         };
         entry.rect = rect;
+        entry.pos = Data::logical_to_size_frac_in_working_area(self.working_area, rect.loc);
         entry.tree.update_config(
             self.view_size,
             rect,
@@ -971,9 +976,51 @@ impl<W: LayoutElement> FloatingLayout<W> {
         }
     }
 
-    pub fn remove_tile(&mut self, id: &W::Id) -> RemovedTile<W> {
-        let idx = self.idx_of(id).unwrap();
-        self.remove_tile_by_idx(idx)
+    pub fn remove_tile(
+        &mut self,
+        id: &W::Id,
+        transaction: crate::utils::transaction::Transaction,
+    ) -> RemovedTile<W> {
+        if let Some(idx) = self.idx_of(id) {
+            return self.remove_tile_by_idx(idx);
+        }
+
+        let tree_idx = self
+            .tree_entries
+            .iter()
+            .position(|entry| entry.tree.node_for_window(id).is_some())
+            .expect("window must belong to a floating entry");
+        let mut tile = self.tree_entries[tree_idx]
+            .tree
+            .remove_tile(id, transaction)
+            .expect("floating tree window must remain present until removal");
+        if self.tree_entries[tree_idx].tree.is_empty() {
+            self.tree_entries.remove(tree_idx);
+        }
+        if Some(tile.window().id()) == self.active_window_id.as_ref() {
+            self.active_window_id = self
+                .tree_entries
+                .iter()
+                .flat_map(|entry| entry.tree.windows())
+                .map(|(_, window)| window.id().clone())
+                .next()
+                .or_else(|| {
+                    self.entries
+                        .first()
+                        .map(|entry| entry.tile.window().id().clone())
+                });
+        }
+        if let Some(size) = tile.window().expected_size() {
+            tile.floating_window_size = Some(size);
+        }
+        let width = TiledWidth::Fixed(tile.tile_expected_or_current_size().w);
+        RemovedTile {
+            tile,
+            width,
+            is_full_width: false,
+            is_floating: true,
+            floating_working_area: Some(self.working_area),
+        }
     }
 
     fn remove_tile_by_idx(&mut self, idx: usize) -> RemovedTile<W> {

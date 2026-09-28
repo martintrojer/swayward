@@ -1117,7 +1117,7 @@ impl<W: LayoutElement> Workspace<W> {
         let mut from_floating = false;
         let removed = if self.floating.has_window(id) {
             from_floating = true;
-            self.floating.remove_tile(id)
+            self.floating.remove_tile(id, transaction)
         } else {
             let tile = self.tiling.remove_tile(id, transaction).unwrap();
             let is_floating = tile.restore_to_floating;
@@ -2292,7 +2292,7 @@ impl<W: LayoutElement> Workspace<W> {
             .unwrap();
 
         if self.floating.has_window(&id) {
-            let removed = self.floating.remove_tile(&id);
+            let removed = self.floating.remove_tile(&id, Transaction::new());
             // FIXME: compute closest pos?
             let _ = (removed.width, removed.is_full_width);
             let rank = removed.tile.tiling_focus_rank;

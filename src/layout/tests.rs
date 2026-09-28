@@ -3777,6 +3777,134 @@ fn floating_tree_entry_routes_geometry_focus_hit_testing_and_lifecycle() {
 }
 
 #[test]
+fn removing_a_floating_tree_leaf_uses_the_resident_tree() {
+    let output = Output::new(
+        "output".into(),
+        PhysicalProperties {
+            size: Size::from((1280, 720)),
+            subpixel: Subpixel::Unknown,
+            make: String::new(),
+            model: String::new(),
+            serial_number: String::new(),
+        },
+    );
+    output.change_current_state(
+        Some(Mode {
+            size: Size::from((1280, 720)),
+            refresh: 60000,
+        }),
+        None,
+        None,
+        None,
+    );
+    output.user_data().insert_if_missing(|| OutputName {
+        connector: "output".into(),
+        make: None,
+        model: None,
+        serial: None,
+    });
+    let mut workspace = Workspace::new(
+        output,
+        Clock::with_time(Duration::ZERO),
+        Rc::new(Options::default()),
+    );
+    for id in 1..=2 {
+        let tile = workspace.make_tile(TestWindow::new(TestWindowParams::new(id)));
+        workspace.add_tile(
+            tile,
+            WorkspaceAddWindowTarget::Auto,
+            ActivateWindow::Yes,
+            TiledWidth::Proportion(0.5),
+            false,
+            false,
+            None,
+        );
+    }
+    workspace.tiling_mut().focus_root();
+    let root = workspace.tiling().focus().unwrap();
+    let (subtree, old_parent) = workspace.detach_tiling_subtree(root).unwrap();
+    workspace.finish_tiling_subtree_detach(old_parent);
+    workspace.floating_mut().add_tree(
+        subtree,
+        Rectangle::new((100., 120.).into(), (600., 450.).into()),
+    );
+
+    let removed = workspace.remove_tile(&1, Transaction::new());
+
+    assert_eq!(removed.tile.window().id(), &1);
+    assert!(workspace.floating().has_window(&2));
+    assert!(!workspace.floating().has_window(&1));
+    workspace.verify_invariants(None);
+}
+
+#[test]
+fn floating_tree_root_tracks_output_geometry_changes() {
+    let output = Output::new(
+        "output".into(),
+        PhysicalProperties {
+            size: Size::from((1280, 720)),
+            subpixel: Subpixel::Unknown,
+            make: String::new(),
+            model: String::new(),
+            serial_number: String::new(),
+        },
+    );
+    output.change_current_state(
+        Some(Mode {
+            size: Size::from((1280, 720)),
+            refresh: 60000,
+        }),
+        None,
+        None,
+        None,
+    );
+    output.user_data().insert_if_missing(|| OutputName {
+        connector: "output".into(),
+        make: None,
+        model: None,
+        serial: None,
+    });
+    let mut workspace = Workspace::new(
+        output.clone(),
+        Clock::with_time(Duration::ZERO),
+        Rc::new(Options::default()),
+    );
+    for id in 1..=2 {
+        let tile = workspace.make_tile(TestWindow::new(TestWindowParams::new(id)));
+        workspace.add_tile(
+            tile,
+            WorkspaceAddWindowTarget::Auto,
+            ActivateWindow::Yes,
+            TiledWidth::Proportion(0.5),
+            false,
+            false,
+            None,
+        );
+    }
+    workspace.tiling_mut().focus_root();
+    let root = workspace.tiling().focus().unwrap();
+    let (subtree, old_parent) = workspace.detach_tiling_subtree(root).unwrap();
+    workspace.finish_tiling_subtree_detach(old_parent);
+    let (root, _) = workspace.floating_mut().add_tree(
+        subtree,
+        Rectangle::new((100., 120.).into(), (600., 450.).into()),
+    );
+
+    workspace.floating_mut().update_config(
+        (2560., 1440.).into(),
+        Rectangle::from_size((2560., 1440.).into()),
+        1.,
+        Rc::new(Options::default()),
+    );
+
+    assert_eq!(
+        workspace.floating().tree_rect(root),
+        Some(Rectangle::new((200., 240.).into(), (600., 450.).into()))
+    );
+    workspace.floating().verify_invariants();
+}
+
+#[test]
 fn floating_tree_root_survives_workspace_and_output_moves() {
     let output = Output::new(
         "output".into(),
