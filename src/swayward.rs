@@ -202,6 +202,16 @@ pub enum RuntimeWindowRule {
     NoFocus(String, crate::criteria::Criteria),
 }
 
+struct LayerRenderRequest<'a> {
+    ns: Option<usize>,
+    layer_map: &'a LayerMap,
+    layer: Layer,
+    xray_pos: XrayPos,
+    for_backdrop: bool,
+}
+
+type ScreencopyRenderResult = anyhow::Result<Option<SyncPoint>>;
+
 pub struct Swayward {
     pub config: Rc<RefCell<Config>>,
 
@@ -4763,11 +4773,13 @@ impl Swayward {
             ($layer:expr, $ns:expr, $xray_pos:expr, $backdrop:expr, $push:expr) => {{
                 self.render_layer_popups(
                     ctx.r(),
-                    $ns,
-                    &layer_map,
-                    $layer,
-                    $xray_pos,
-                    $backdrop,
+                    LayerRenderRequest {
+                        ns: $ns,
+                        layer_map: &layer_map,
+                        layer: $layer,
+                        xray_pos: $xray_pos,
+                        for_backdrop: $backdrop,
+                    },
                     $push,
                 );
             }};
@@ -4789,11 +4801,13 @@ impl Swayward {
             ($layer:expr, $ns:expr, $xray_pos:expr, $backdrop:expr, $push:expr) => {{
                 self.render_layer_normal(
                     ctx.r(),
-                    $ns,
-                    &layer_map,
-                    $layer,
-                    $xray_pos,
-                    $backdrop,
+                    LayerRenderRequest {
+                        ns: $ns,
+                        layer_map: &layer_map,
+                        layer: $layer,
+                        xray_pos: $xray_pos,
+                        for_backdrop: $backdrop,
+                    },
                     $push,
                 );
             }};
@@ -4922,11 +4936,13 @@ impl Swayward {
             elements.clear();
             self.render_layer_normal(
                 ctx.r(),
-                None,
-                &layer_map,
-                Layer::Background,
-                XrayPos::default(),
-                false,
+                LayerRenderRequest {
+                    ns: None,
+                    layer_map: &layer_map,
+                    layer: Layer::Background,
+                    xray_pos: XrayPos::default(),
+                    for_backdrop: false,
+                },
                 &mut |elem| elements.push(elem.into()),
             );
             // Avoid unused capacity remaining forever.
@@ -4939,11 +4955,13 @@ impl Swayward {
             elements.clear();
             self.render_layer_normal(
                 ctx.r(),
-                None,
-                &layer_map,
-                Layer::Background,
-                XrayPos::default(),
-                true,
+                LayerRenderRequest {
+                    ns: None,
+                    layer_map: &layer_map,
+                    layer: Layer::Background,
+                    xray_pos: XrayPos::default(),
+                    for_backdrop: true,
+                },
                 &mut |elem| elements.push(elem.into()),
             );
             // Avoid unused capacity remaining forever.
@@ -4999,17 +5017,19 @@ impl Swayward {
         })
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn render_layer_normal<R: NiriRenderer>(
         &self,
         mut ctx: RenderCtx<R>,
-        ns: Option<usize>,
-        layer_map: &LayerMap,
-        layer: Layer,
-        xray_pos: XrayPos,
-        for_backdrop: bool,
+        request: LayerRenderRequest<'_>,
         push: &mut dyn FnMut(LayerSurfaceRenderElement<R>),
     ) {
+        let LayerRenderRequest {
+            ns,
+            layer_map,
+            layer,
+            xray_pos,
+            for_backdrop,
+        } = request;
         for (mapped, geo) in self.layers_in_render_order(layer_map, layer, for_backdrop) {
             let loc = geo.loc.to_f64();
             let xray_pos = xray_pos.offset(loc);
@@ -5017,17 +5037,19 @@ impl Swayward {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn render_layer_popups<R: NiriRenderer>(
         &self,
         mut ctx: RenderCtx<R>,
-        ns: Option<usize>,
-        layer_map: &LayerMap,
-        layer: Layer,
-        xray_pos: XrayPos,
-        for_backdrop: bool,
+        request: LayerRenderRequest<'_>,
         push: &mut dyn FnMut(LayerSurfaceRenderElement<R>),
     ) {
+        let LayerRenderRequest {
+            ns,
+            layer_map,
+            layer,
+            xray_pos,
+            for_backdrop,
+        } = request;
         for (mapped, geo) in self.layers_in_render_order(layer_map, layer, for_backdrop) {
             let loc = geo.loc.to_f64();
             let xray_pos = xray_pos.offset(loc);
@@ -5880,14 +5902,13 @@ impl Swayward {
         damage_tracker.damage_output(1, elements).unwrap()
     }
 
-    #[allow(clippy::type_complexity)]
     fn render_for_screencopy_internal(
         renderer: &mut GlesRenderer,
         damage_tracker: &mut OutputDamageTracker,
         elements: &[impl RenderElement<GlesRenderer>],
         states: RenderElementStates,
         screencopy: &Screencopy,
-    ) -> anyhow::Result<Option<SyncPoint>> {
+    ) -> ScreencopyRenderResult {
         let sync = match screencopy.buffer() {
             ScreencopyBuffer::Dmabuf(dmabuf) => {
                 let sync =
