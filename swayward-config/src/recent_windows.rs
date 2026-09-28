@@ -4,7 +4,9 @@ use knuffel::errors::DecodeError;
 use smithay::input::keyboard::Keysym;
 
 use crate::utils::{expect_only_children, MergeWith};
-use crate::{Action, Bind, Color, FloatOrInt, Key, Modifiers, MouseRegions, Trigger};
+use crate::{
+    Action, Bind, Color, FloatOrInt, Key, Modifiers, MouseRegions, PositiveFloatOrInt, Trigger,
+};
 
 #[derive(Debug, PartialEq)]
 pub struct RecentWindows {
@@ -125,7 +127,7 @@ pub struct MruPreviewsPart {
     #[knuffel(child, unwrap(argument))]
     pub max_height: Option<FloatOrInt<1, 65535>>,
     #[knuffel(child, unwrap(argument))]
-    pub max_scale: Option<FloatOrInt<0, 1>>,
+    pub max_scale: Option<PositiveFloatOrInt<1>>,
 }
 
 impl MergeWith<MruPreviewsPart> for MruPreviews {

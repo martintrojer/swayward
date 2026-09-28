@@ -68,6 +68,16 @@ fn output_scale_rejects_values_outside_the_supported_range() {
 }
 
 #[test]
+fn visual_scales_reject_zero() {
+    for source in [
+        "overview { zoom 0; }",
+        "recent-windows { previews { max-scale 0; }; }",
+    ] {
+        assert!(Config::parse_mem(source).is_err(), "accepted {source}");
+    }
+}
+
+#[test]
 fn workspace_parses_ordered_output_fallbacks() {
     let config =
         Config::parse_mem("workspace \"web\" { sway-output-assignment \"missing\" \"HDMI-A-1\"; }")

@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use crate::appearance::{Color, WorkspaceShadow, WorkspaceShadowPart, DEFAULT_BACKDROP_COLOR};
 use crate::utils::{Flag, MergeWith};
-use crate::FloatOrInt;
+use crate::PositiveFloatOrInt;
 
 #[derive(knuffel::DecodeScalar, Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum FocusOnWindowActivation {
@@ -205,7 +205,7 @@ impl Default for Overview {
 #[derive(knuffel::Decode, Debug, Clone, Copy, PartialEq)]
 pub struct OverviewPart {
     #[knuffel(child, unwrap(argument))]
-    pub zoom: Option<FloatOrInt<0, 1>>,
+    pub zoom: Option<PositiveFloatOrInt<1>>,
     #[knuffel(child)]
     pub backdrop_color: Option<Color>,
     #[knuffel(child)]
