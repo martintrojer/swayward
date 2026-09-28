@@ -275,6 +275,107 @@ pub(super) fn resize_set(
     Ok(())
 }
 
+enum ResolvedResizeTarget {
+    Window {
+        window: smithay::desktop::Window,
+        floating: bool,
+    },
+    Container {
+        workspace: crate::layout::workspace::WorkspaceId,
+        node: crate::layout::tiling_tree::NodeId,
+    },
+}
+
+impl ResolvedResizeTarget {
+    fn resolve(state: &State, target: CommandTarget) -> Result<Self, CommandOutcome> {
+        match target {
+            CommandTarget::Window(target) => {
+                let Some(mapped) = state
+                    .swayward
+                    .layout
+                    .windows()
+                    .find_map(|(_, mapped)| (mapped.id() == target).then_some(mapped))
+                else {
+                    return Err(failure("No matching node."));
+                };
+                let window = mapped.window.clone();
+                let floating = mapped.is_floating();
+                if state.swayward.layout.is_scratchpad_hidden(&window) {
+                    return Err(failure("Cannot resize a hidden scratchpad container"));
+                }
+                Ok(Self::Window { window, floating })
+            }
+            CommandTarget::Container(workspace, node) => Ok(Self::Container { workspace, node }),
+        }
+    }
+
+    fn is_floating(&self) -> bool {
+        matches!(self, Self::Window { floating: true, .. })
+    }
+}
+
+fn resize_change(
+    grow: bool,
+    first: ResizeAmount,
+    second: Option<ResizeAmount>,
+    floating: bool,
+) -> SizeChange {
+    let selected = super::movement::select_resize_amount(first, second, floating);
+    let sign = if grow { 1 } else { -1 };
+    let amount = selected.amount.saturating_mul(sign);
+    match selected.unit {
+        ResizeUnit::Default if floating => SizeChange::AdjustFixed(amount),
+        ResizeUnit::Pixels => SizeChange::AdjustFixed(amount),
+        ResizeUnit::Default | ResizeUnit::PercentagePoints => {
+            SizeChange::AdjustProportion(f64::from(amount))
+        }
+    }
+}
+
+fn resize_edge(axis: ResizeAxis) -> crate::utils::ResizeEdge {
+    match axis {
+        ResizeAxis::Up => crate::utils::ResizeEdge::TOP,
+        ResizeAxis::Down => crate::utils::ResizeEdge::BOTTOM,
+        ResizeAxis::Left => crate::utils::ResizeEdge::LEFT,
+        ResizeAxis::Right => crate::utils::ResizeEdge::RIGHT,
+        ResizeAxis::Width | ResizeAxis::Height => unreachable!(),
+    }
+}
+
+fn apply_resize(
+    state: &mut State,
+    target: ResolvedResizeTarget,
+    axis: ResizeAxis,
+    change: SizeChange,
+) -> Option<bool> {
+    match (target, axis) {
+        (ResolvedResizeTarget::Window { window, .. }, ResizeAxis::Width) => state
+            .swayward
+            .layout
+            .set_window_width(Some(&window), change),
+        (ResolvedResizeTarget::Window { window, .. }, ResizeAxis::Height) => state
+            .swayward
+            .layout
+            .set_window_height(Some(&window), change),
+        (ResolvedResizeTarget::Container { workspace, node }, ResizeAxis::Width) => state
+            .swayward
+            .layout
+            .resize_tiling_node(workspace, node, true, change),
+        (ResolvedResizeTarget::Container { workspace, node }, ResizeAxis::Height) => state
+            .swayward
+            .layout
+            .resize_tiling_node(workspace, node, false, change),
+        (ResolvedResizeTarget::Window { window, .. }, direction) => state
+            .swayward
+            .layout
+            .resize_window_edge(Some(&window), resize_edge(direction), change),
+        (ResolvedResizeTarget::Container { workspace, node }, direction) => state
+            .swayward
+            .layout
+            .resize_tiling_node_edge(workspace, node, resize_edge(direction), change),
+    }
+}
+
 pub(super) fn resize(
     state: &mut State,
     target: CommandTarget,
@@ -283,82 +384,9 @@ pub(super) fn resize(
     first: ResizeAmount,
     second: Option<ResizeAmount>,
 ) -> Result<(), CommandOutcome> {
-    let window = match target {
-        CommandTarget::Window(target) => {
-            let window = state
-                .swayward
-                .layout
-                .windows()
-                .find_map(|(_, mapped)| (mapped.id() == target).then(|| mapped.window.clone()));
-            let Some(window) = window else {
-                return Err(failure("No matching node."));
-            };
-            if state.swayward.layout.is_scratchpad_hidden(&window) {
-                return Err(failure("Cannot resize a hidden scratchpad container"));
-            }
-            Some(window)
-        }
-        CommandTarget::Container(_, _) => None,
-    };
-    let floating = match target {
-        CommandTarget::Window(target) => state
-            .swayward
-            .layout
-            .windows()
-            .any(|(_, mapped)| mapped.id() == target && mapped.is_floating()),
-        CommandTarget::Container(_, _) => false,
-    };
-    let selected = super::movement::select_resize_amount(first, second, floating);
-    let sign = if grow { 1 } else { -1 };
-    let amount = selected.amount.saturating_mul(sign);
-    let change = match selected.unit {
-        ResizeUnit::Default if floating => SizeChange::AdjustFixed(amount),
-        ResizeUnit::Pixels => SizeChange::AdjustFixed(amount),
-        ResizeUnit::Default | ResizeUnit::PercentagePoints => {
-            SizeChange::AdjustProportion(f64::from(amount))
-        }
-    };
-    let changed = match (target, axis) {
-        (CommandTarget::Window(_), ResizeAxis::Width) => state
-            .swayward
-            .layout
-            .set_window_width(window.as_ref(), change),
-        (CommandTarget::Window(_), ResizeAxis::Height) => state
-            .swayward
-            .layout
-            .set_window_height(window.as_ref(), change),
-        (CommandTarget::Container(workspace, node), ResizeAxis::Width) => state
-            .swayward
-            .layout
-            .resize_tiling_node(workspace, node, true, change),
-        (CommandTarget::Container(workspace, node), ResizeAxis::Height) => state
-            .swayward
-            .layout
-            .resize_tiling_node(workspace, node, false, change),
-        (target, direction) => {
-            let edge = match direction {
-                ResizeAxis::Up => crate::utils::ResizeEdge::TOP,
-                ResizeAxis::Down => crate::utils::ResizeEdge::BOTTOM,
-                ResizeAxis::Left => crate::utils::ResizeEdge::LEFT,
-                ResizeAxis::Right => crate::utils::ResizeEdge::RIGHT,
-                ResizeAxis::Width | ResizeAxis::Height => unreachable!(),
-            };
-            let changed = match target {
-                CommandTarget::Window(_) => {
-                    state
-                        .swayward
-                        .layout
-                        .resize_window_edge(window.as_ref(), edge, change)
-                }
-                CommandTarget::Container(workspace, node) => state
-                    .swayward
-                    .layout
-                    .resize_tiling_node_edge(workspace, node, edge, change),
-            };
-            changed
-        }
-    };
-    if changed == Some(false) {
+    let target = ResolvedResizeTarget::resolve(state, target)?;
+    let change = resize_change(grow, first, second, target.is_floating());
+    if apply_resize(state, target, axis, change) == Some(false) {
         return Err(swayward_ipc::command::parse_error(
             "Cannot resize any further",
         ));
