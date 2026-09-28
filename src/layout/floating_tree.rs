@@ -856,6 +856,91 @@ impl<W: LayoutElement> FloatingLayout<W> {
             .is_some_and(|entry| entry.tree.focused_leaf_is_only_child_of_resident_root())
     }
 
+    pub fn fullscreen_mode(&self) -> Option<super::tiling_tree::FullscreenMode> {
+        self.tree_entries.iter().find_map(|entry| {
+            let fullscreen = entry.tree.fullscreen_node()?;
+            entry.tree.fullscreen_mode(fullscreen)
+        })
+    }
+
+    pub fn fullscreen_mode_for_window(
+        &self,
+        window: &W::Id,
+    ) -> Option<super::tiling_tree::FullscreenMode> {
+        self.tree_entries.iter().find_map(|entry| {
+            let fullscreen = entry.tree.fullscreen_node()?;
+            let node = entry.tree.node_for_window(window)?;
+            entry
+                .tree
+                .contains_node(fullscreen, node)
+                .then(|| entry.tree.fullscreen_mode(fullscreen))
+                .flatten()
+        })
+    }
+
+    pub fn fullscreen_contains_window(&self, window: &W::Id) -> bool {
+        self.tree_entries.iter().any(|entry| {
+            entry
+                .tree
+                .fullscreen_node()
+                .zip(entry.tree.node_for_window(window))
+                .is_some_and(|(fullscreen, node)| entry.tree.contains_node(fullscreen, node))
+        })
+    }
+
+    pub fn fullscreen_window(&self) -> Option<&W::Id> {
+        self.tree_entries
+            .iter()
+            .find_map(|entry| entry.tree.fullscreen_window())
+    }
+
+    pub fn disable_fullscreen(&mut self) {
+        for entry in &mut self.tree_entries {
+            if let Some(fullscreen) = entry.tree.fullscreen_node() {
+                entry.tree.set_node_fullscreen(fullscreen, None);
+                return;
+            }
+        }
+    }
+
+    pub fn set_window_fullscreen(
+        &mut self,
+        window: &W::Id,
+        mode: Option<super::tiling_tree::FullscreenMode>,
+    ) -> bool {
+        let Some(entry) = self
+            .tree_entries
+            .iter_mut()
+            .find(|entry| entry.tree.node_for_window(window).is_some())
+        else {
+            return false;
+        };
+        let Some(node) = entry.tree.node_for_window(window) else {
+            return false;
+        };
+        entry.tree.set_node_fullscreen(node, mode)
+    }
+
+    pub fn set_focused_fullscreen(
+        &mut self,
+        mode: Option<super::tiling_tree::FullscreenMode>,
+    ) -> bool {
+        let Some(active) = self.active_window_id.as_ref() else {
+            return false;
+        };
+        let Some(entry) = self
+            .tree_entries
+            .iter_mut()
+            .find(|entry| entry.tree.node_for_window(active).is_some())
+        else {
+            return false;
+        };
+        let Some(focus) = entry.tree.focus() else {
+            return false;
+        };
+        entry.tree.set_node_fullscreen(focus, mode)
+    }
+
     pub fn focused_container_node(&self) -> Option<NodeId> {
         let active = self.active_window_id.as_ref()?;
         let entry = self
@@ -1168,10 +1253,23 @@ impl<W: LayoutElement> FloatingLayout<W> {
         id: &W::Id,
         blocker: TransactionBlocker,
     ) {
-        let (tile, tile_pos) = self
+        if let Some(entry) = self
+            .tree_entries
+            .iter_mut()
+            .find(|entry| entry.tree.node_for_window(id).is_some())
+        {
+            entry
+                .tree
+                .start_close_animation_for_window(renderer, id, blocker);
+            return;
+        }
+
+        let Some((tile, tile_pos)) = self
             .tiles_with_render_positions_mut(false)
             .find(|(tile, _)| tile.window().id() == id)
-            .unwrap();
+        else {
+            return;
+        };
 
         let Some(snapshot) = tile.take_unmap_snapshot() else {
             return;

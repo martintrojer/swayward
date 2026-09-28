@@ -2154,14 +2154,10 @@ impl<W: LayoutElement> Layout<W> {
 
     pub fn activate_window(&mut self, window: &W::Id) {
         let global = self.workspaces().find_map(|(_, _, workspace)| {
-            (workspace.fullscreen_mode() == Some(tiling_tree::FullscreenMode::Global)).then(|| {
-                (
-                    workspace.id(),
-                    workspace.tiling().fullscreen_node().unwrap(),
-                )
-            })
+            (workspace.fullscreen_mode() == Some(tiling_tree::FullscreenMode::Global))
+                .then(|| workspace.id())
         });
-        if let Some((workspace_id, node)) = global {
+        if let Some(workspace_id) = global {
             let target_is_inside = self.workspaces().any(|(_, _, candidate)| {
                 candidate.id() == workspace_id && candidate.has_window(window)
             });
@@ -2170,7 +2166,7 @@ impl<W: LayoutElement> Layout<W> {
                     .workspaces_mut()
                     .find(|candidate| candidate.id() == workspace_id)
                 {
-                    workspace.tiling_mut().set_node_fullscreen(node, None);
+                    workspace.disable_fullscreen();
                 }
             }
         }
@@ -6180,8 +6176,7 @@ impl<W: LayoutElement> Layout<W> {
         if mode.is_some() {
             for workspace in self.workspaces_mut() {
                 if workspace.fullscreen_mode() == Some(tiling_tree::FullscreenMode::Global) {
-                    let node = workspace.tiling().fullscreen_node().unwrap();
-                    workspace.tiling_mut().set_node_fullscreen(node, None);
+                    workspace.disable_fullscreen();
                     break;
                 }
             }
@@ -6214,8 +6209,7 @@ impl<W: LayoutElement> Layout<W> {
         if mode.is_some() {
             for workspace in self.workspaces_mut() {
                 if workspace.fullscreen_mode() == Some(tiling_tree::FullscreenMode::Global) {
-                    let fullscreen = workspace.tiling().fullscreen_node().unwrap();
-                    workspace.tiling_mut().set_node_fullscreen(fullscreen, None);
+                    workspace.disable_fullscreen();
                     break;
                 }
             }
@@ -6238,23 +6232,15 @@ impl<W: LayoutElement> Layout<W> {
     }
 
     pub fn fullscreen_mode(&self, id: &W::Id) -> Option<tiling_tree::FullscreenMode> {
-        self.workspaces().find_map(|(_, _, workspace)| {
-            let node = workspace.tiling().node_for_window(id)?;
-            let fullscreen = workspace.tiling().fullscreen_node()?;
-            workspace
-                .tiling()
-                .contains_node(fullscreen, node)
-                .then(|| workspace.tiling().fullscreen_mode(fullscreen))
-                .flatten()
-        })
+        self.workspaces()
+            .find_map(|(_, _, workspace)| workspace.fullscreen_mode_for_window(id))
     }
 
     pub fn set_fullscreen_mode(&mut self, id: &W::Id, mode: Option<tiling_tree::FullscreenMode>) {
         if mode.is_some() {
             for workspace in self.workspaces_mut() {
                 if workspace.fullscreen_mode() == Some(tiling_tree::FullscreenMode::Global) {
-                    let node = workspace.tiling().fullscreen_node().unwrap();
-                    workspace.tiling_mut().set_node_fullscreen(node, None);
+                    workspace.disable_fullscreen();
                     break;
                 }
             }
@@ -6268,7 +6254,7 @@ impl<W: LayoutElement> Layout<W> {
         {
             workspace.activate_window(id);
             if workspace.is_floating(id) {
-                workspace.set_fullscreen(id, mode.is_some());
+                workspace.set_window_fullscreen(id, mode);
                 workspace.activate_window(id);
                 if mode == Some(tiling_tree::FullscreenMode::Global) {
                     workspace.set_focused_fullscreen(mode);

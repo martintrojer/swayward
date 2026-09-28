@@ -750,14 +750,34 @@ impl<W: LayoutElement> Workspace<W> {
         self.tiling
             .fullscreen_node()
             .and_then(|id| self.tiling.fullscreen_mode(id))
+            .or_else(|| self.floating.fullscreen_mode())
+    }
+
+    pub fn fullscreen_mode_for_window(
+        &self,
+        window: &W::Id,
+    ) -> Option<crate::layout::tiling_tree::FullscreenMode> {
+        self.tiling
+            .node_for_window(window)
+            .and_then(|node| {
+                let fullscreen = self.tiling.fullscreen_node()?;
+                self.tiling
+                    .contains_node(fullscreen, node)
+                    .then(|| self.tiling.fullscreen_mode(fullscreen))
+                    .flatten()
+            })
+            .or_else(|| self.floating.fullscreen_mode_for_window(window))
     }
 
     pub fn fullscreen_contains_window(&self, window: &W::Id) -> bool {
         self.tiling.fullscreen_contains_window(window)
+            || self.floating.fullscreen_contains_window(window)
     }
 
     pub fn fullscreen_window(&self) -> Option<&W::Id> {
-        self.tiling.fullscreen_window()
+        self.tiling
+            .fullscreen_window()
+            .or_else(|| self.floating.fullscreen_window())
     }
 
     pub fn set_window_fullscreen(
@@ -767,6 +787,9 @@ impl<W: LayoutElement> Workspace<W> {
     ) -> bool {
         if mode.is_some() {
             self.disable_fullscreen();
+        }
+        if self.floating.tree_root_for_window(window).is_some() {
+            return self.floating.set_window_fullscreen(window, mode);
         }
         self.set_fullscreen(window, mode.is_some());
         let Some(id) = self.tiling.node_for_window(window) else {
@@ -778,6 +801,8 @@ impl<W: LayoutElement> Workspace<W> {
     pub fn disable_fullscreen(&mut self) {
         if let Some(fullscreen) = self.tiling.fullscreen_node() {
             self.tiling.set_node_fullscreen(fullscreen, None);
+        } else {
+            self.floating.disable_fullscreen();
         }
     }
 
@@ -789,6 +814,9 @@ impl<W: LayoutElement> Workspace<W> {
             let Some(window) = self.active_window().map(LayoutElement::id).cloned() else {
                 return false;
             };
+            if self.floating.tree_root_for_window(&window).is_some() {
+                return self.floating.set_focused_fullscreen(mode);
+            }
             self.set_fullscreen(&window, mode.is_some());
             return true;
         }
@@ -2095,6 +2123,13 @@ impl<W: LayoutElement> Workspace<W> {
 
     pub fn set_fullscreen(&mut self, window: &W::Id, is_fullscreen: bool) {
         let mut restore_to_floating = false;
+        if self.floating.tree_root_for_window(window).is_some() {
+            self.floating.set_window_fullscreen(
+                window,
+                is_fullscreen.then_some(crate::layout::tiling_tree::FullscreenMode::Workspace),
+            );
+            return;
+        }
         if self.floating.has_window(window) {
             if is_fullscreen {
                 restore_to_floating = true;

@@ -3971,6 +3971,91 @@ fn floating_tree_root_tracks_output_geometry_changes() {
 }
 
 #[test]
+fn fullscreen_targets_a_node_inside_a_floating_tree() {
+    let output = Output::new(
+        "output".into(),
+        PhysicalProperties {
+            size: Size::from((1280, 720)),
+            subpixel: Subpixel::Unknown,
+            make: String::new(),
+            model: String::new(),
+            serial_number: String::new(),
+        },
+    );
+    output.change_current_state(
+        Some(Mode {
+            size: Size::from((1280, 720)),
+            refresh: 60000,
+        }),
+        None,
+        None,
+        None,
+    );
+    output.user_data().insert_if_missing(|| OutputName {
+        connector: "output".into(),
+        make: None,
+        model: None,
+        serial: None,
+    });
+    let mut workspace = Workspace::new(
+        output,
+        Clock::with_time(Duration::ZERO),
+        Rc::new(Options::default()),
+    );
+    for id in 1..=2 {
+        let tile = workspace.make_tile(TestWindow::new(TestWindowParams::new(id)));
+        workspace.add_tile(
+            tile,
+            WorkspaceAddWindowTarget::Auto,
+            ActivateWindow::Yes,
+            TiledWidth::Proportion(0.5),
+            false,
+            false,
+            None,
+        );
+    }
+    workspace.tiling_mut().focus_root();
+    let root = workspace.tiling().focus().unwrap();
+    let (subtree, old_parent) = workspace.detach_tiling_subtree(root).unwrap();
+    workspace.finish_tiling_subtree_detach(old_parent);
+    workspace.floating_mut().add_tree(
+        subtree,
+        Rectangle::new((100., 120.).into(), (600., 450.).into()),
+    );
+    workspace.activate_window(&1);
+    workspace.floating_mut().focus_parent();
+
+    assert!(workspace.set_focused_fullscreen(Some(tiling_tree::FullscreenMode::Workspace)));
+    assert_eq!(
+        workspace.floating().tree(root).unwrap().fullscreen_node(),
+        Some(root)
+    );
+    assert_eq!(
+        workspace.fullscreen_mode(),
+        Some(tiling_tree::FullscreenMode::Workspace)
+    );
+    assert!(workspace.fullscreen_contains_window(&1));
+    assert_eq!(workspace.fullscreen_window(), Some(&1));
+
+    assert!(workspace.set_focused_fullscreen(Some(tiling_tree::FullscreenMode::Global)));
+    assert_eq!(
+        workspace.fullscreen_mode(),
+        Some(tiling_tree::FullscreenMode::Global)
+    );
+    workspace.disable_fullscreen();
+    assert_eq!(workspace.fullscreen_mode(), None);
+
+    assert!(workspace.set_focused_fullscreen(Some(tiling_tree::FullscreenMode::Workspace)));
+    assert!(workspace.set_focused_fullscreen(None));
+    workspace.floating_mut().focus_child();
+    assert!(workspace.set_focused_fullscreen(Some(tiling_tree::FullscreenMode::Workspace)));
+    assert_eq!(
+        workspace.floating().tree(root).unwrap().fullscreen_node(),
+        workspace.floating().tree(root).unwrap().node_for_window(&1)
+    );
+}
+
+#[test]
 fn floating_tree_root_survives_workspace_and_output_moves() {
     let output = Output::new(
         "output".into(),
