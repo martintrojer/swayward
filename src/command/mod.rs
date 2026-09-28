@@ -856,15 +856,17 @@ fn execute_one(
                     } => {
                         if let Err(error) = mutate_key_binding(
                             state,
-                            &name,
-                            &key,
-                            command,
-                            keycode,
-                            release,
-                            locked,
-                            inhibited,
-                            no_repeat,
-                            input_device,
+                            BindingMutation {
+                                mode: &name,
+                                key: &key,
+                                command,
+                                keycode,
+                                release,
+                                locked,
+                                inhibited,
+                                no_repeat,
+                                input_device,
+                            },
                         ) {
                             return failure(error);
                         }
@@ -930,15 +932,17 @@ fn execute_one(
             let mode = state.swayward.binding_mode.clone();
             if let Err(error) = mutate_key_binding(
                 state,
-                &mode,
-                &key,
-                command,
-                keycode,
-                release,
-                locked,
-                inhibited,
-                no_repeat,
-                input_device,
+                BindingMutation {
+                    mode: &mode,
+                    key: &key,
+                    command,
+                    keycode,
+                    release,
+                    locked,
+                    inhibited,
+                    no_repeat,
+                    input_device,
+                },
             ) {
                 return failure(error);
             }
@@ -2014,11 +2018,9 @@ fn mutate_switch_binding(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
-fn mutate_key_binding(
-    state: &mut State,
-    mode: &str,
-    key: &str,
+struct BindingMutation<'a> {
+    mode: &'a str,
+    key: &'a str,
     command: Option<String>,
     keycode: bool,
     release: bool,
@@ -2026,7 +2028,20 @@ fn mutate_key_binding(
     inhibited: bool,
     no_repeat: bool,
     input_device: String,
-) -> Result<(), String> {
+}
+
+fn mutate_key_binding(state: &mut State, mutation: BindingMutation<'_>) -> Result<(), String> {
+    let BindingMutation {
+        mode,
+        key,
+        command,
+        keycode,
+        release,
+        locked,
+        inhibited,
+        no_repeat,
+        input_device,
+    } = mutation;
     let keycombo = key.to_owned();
     let key = if keycode {
         let (modifiers, code) = key
