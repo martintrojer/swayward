@@ -124,6 +124,9 @@ pub struct Mapped {
     /// Whether this window should ignore opacity set through window rules.
     ignore_opacity_window_rule: bool,
 
+    /// Opacity set through sway's runtime command.
+    command_opacity: f32,
+
     /// Buffer to draw instead of the window when it should be blocked out.
     block_out_buffer: RefCell<SolidColorBuffer>,
 
@@ -402,6 +405,7 @@ impl Mapped {
             is_window_cast_target: false,
             shortcuts_inhibit_policy: ShortcutsInhibitPolicy::Default,
             ignore_opacity_window_rule: false,
+            command_opacity: 1.,
             block_out_buffer: RefCell::new(SolidColorBuffer::new((0., 0.), [0., 0., 0., 1.])),
             blur_config: config.blur,
             animate_next_configure: false,
@@ -559,6 +563,14 @@ impl Mapped {
 
     pub fn toggle_ignore_opacity_window_rule(&mut self) {
         self.ignore_opacity_window_rule = !self.ignore_opacity_window_rule;
+    }
+
+    pub fn command_opacity(&self) -> f32 {
+        self.command_opacity
+    }
+
+    pub fn set_command_opacity(&mut self, opacity: f32) {
+        self.command_opacity = opacity;
     }
 
     pub fn set_titlebar_marks(&mut self, marks: Vec<String>) {
@@ -1440,6 +1452,10 @@ impl LayoutElement for Mapped {
 
     fn is_ignoring_opacity_window_rule(&self) -> bool {
         self.ignore_opacity_window_rule
+    }
+
+    fn command_opacity(&self) -> f32 {
+        self.command_opacity
     }
 
     fn requested_size(&self) -> Option<Size<i32, Logical>> {

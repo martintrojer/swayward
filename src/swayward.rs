@@ -6074,12 +6074,13 @@ impl Swayward {
         let _span = tracy_client::span!("Swayward::screenshot_window");
 
         let scale = Scale::from(output.current_scale().fractional_scale());
-        let alpha =
+        let rule_alpha =
             if mapped.sizing_mode().is_fullscreen() || mapped.is_ignoring_opacity_window_rule() {
                 1.
             } else {
                 mapped.rules().opacity.unwrap_or(1.).clamp(0., 1.)
             };
+        let alpha = rule_alpha * mapped.command_opacity();
 
         let mut elements: Vec<WindowScreenshotRenderElement<GlesRenderer>> = Vec::new();
 

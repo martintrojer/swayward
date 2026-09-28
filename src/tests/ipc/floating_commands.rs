@@ -3,10 +3,6 @@ fn runtime_command_refusals_are_sway_shaped() {
     let mut f = Fixture::new();
     for (command, error) in [
         (
-            "opacity 0.5",
-            "opacity requires mutable per-container opacity support",
-        ),
-        (
             "inhibit_idle visible",
             "inhibit_idle requires user inhibitor policy support",
         ),
@@ -24,6 +20,55 @@ fn runtime_command_refusals_are_sway_shaped() {
             }]
         );
     }
+}
+
+#[test]
+fn opacity_updates_focused_and_criteria_targeted_windows() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1280, 720));
+    let client = f.add_client();
+    let first = f.client(client).create_window();
+    first.commit();
+    let first_surface = first.surface.clone();
+    f.roundtrip(client);
+    let first = f.client(client).window(&first_surface);
+    first.attach_new_buffer();
+    first.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    let first_id = f.swayward().layout.focus().unwrap().id();
+    assert!(crate::command::execute(f.niri_state(), "opacity 0.5")[0].success);
+    assert_eq!(f.swayward().layout.focus().unwrap().command_opacity(), 0.5);
+    assert!(crate::command::execute(f.niri_state(), "opacity plus 0.25")[0].success);
+    assert_eq!(f.swayward().layout.focus().unwrap().command_opacity(), 0.75);
+    let outcome = crate::command::execute(f.niri_state(), "opacity minus 1");
+    assert_eq!(outcome[0].error.as_deref(), Some("opacity value out of bounds"));
+    assert_eq!(f.swayward().layout.focus().unwrap().command_opacity(), 0.75);
+
+    let second = f.client(client).create_window();
+    second.xdg_toplevel.set_app_id("opacity-target".into());
+    second.commit();
+    let second_surface = second.surface.clone();
+    f.roundtrip(client);
+    let second = f.client(client).window(&second_surface);
+    second.attach_new_buffer();
+    second.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    let second_id = f.swayward().layout.focus().unwrap().id();
+    let outcome = crate::command::execute(
+        f.niri_state(),
+        r#"[app_id="^opacity-target$"] opacity set 0.4"#,
+    );
+    assert!(outcome[0].success, "{outcome:?}");
+    let opacities = f
+        .swayward()
+        .layout
+        .windows()
+        .map(|(_, mapped)| (mapped.id(), mapped.command_opacity()))
+        .collect::<Vec<_>>();
+    assert!(opacities.contains(&(second_id, 0.4)));
+    assert!(opacities.contains(&(first_id, 0.75)));
 }
 
 #[test]

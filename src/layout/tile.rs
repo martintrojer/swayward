@@ -1282,7 +1282,7 @@ impl<W: LayoutElement> Tile<W> {
         let fullscreen_progress = self.fullscreen_progress();
         let expanded_progress = self.expanded_progress();
 
-        let win_alpha = if self.window.is_ignoring_opacity_window_rule() {
+        let rule_alpha = if self.window.is_ignoring_opacity_window_rule() {
             1.
         } else {
             let alpha = self.window.rules().opacity.unwrap_or(1.).clamp(0., 1.);
@@ -1291,6 +1291,7 @@ impl<W: LayoutElement> Tile<W> {
             let p = fullscreen_progress as f32;
             alpha * (1. - p) + 1. * p
         };
+        let win_alpha = rule_alpha * self.window.command_opacity();
 
         // This is here rather than in render_offset() because render_offset() is currently assumed
         // by the code to be temporary. So, for example, interactive move will try to "grab" the

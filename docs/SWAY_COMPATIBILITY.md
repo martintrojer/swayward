@@ -113,8 +113,8 @@ runtime commands go through `swayward-ipc`. Most command gaps come from that
 seam: the setting exists in KDL, but there is no safe live mutation path for
 it yet.
 
-The parser accepts 68 of sway 1.12's 82 unique runtime command names. Of those,
-27 command families are complete and 41 are partial. An accepted name means at
+The parser accepts 69 of sway 1.12's 82 unique runtime command names. Of those,
+28 command families are complete and 41 are partial. An accepted name means at
 least one real form works; it does not mean every option, target, or unit works.
 
 The commonly used forms include:
@@ -124,7 +124,7 @@ The commonly used forms include:
 - workspace switching, naming, assignment, and back-and-forth;
 - split, tabbed, stacked, fullscreen, floating, sticky, and border state;
 - pixel and percentage resizing;
-- marks, criteria, `for_window`, and container swaps;
+- marks, criteria, `for_window`, container swaps, and per-container opacity;
 - runtime keyboard and switch bindings, modes, and several layout settings;
 - gaps, output configuration and power, process commands, reload, and exit.
 
@@ -154,7 +154,6 @@ applies to connected outputs; unlike sway, it is not retained as wildcard
 configuration for outputs connected later. Other output subcommands fail.
 
 Commands that promise state swayward cannot represent also fail. For example,
-`opacity` needs mutable per-container opacity (`sway/commands/opacity.c:9-40`),
 `inhibit_idle` needs sway's user-inhibitor policy modes
 (`sway/commands/inhibit_idle.c:8-50`, `sway/tree/view.c:281-303`), and
 `allow_tearing` needs asynchronous page flips

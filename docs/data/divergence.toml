@@ -1630,3 +1630,21 @@ migrated = false
 paths = ["contrib/live-ipc-soak", "docs/BUILDING.md"]
 what = "provide a repeatable, fixed-seed live IPC soak for nested floating-container mutations, command parsing, and wire framing on one or two headless outputs."
 why = "The randomized layout property test cannot exercise the compositor event loop, live Wayland clients, or IPC framing; the standalone probe runs through the capped nested launcher and leaves the failing seed, step, and command for reduction."
+
+[[edit]]
+migrated = false
+paths = ["src/layout/mod.rs", "src/layout/workspace.rs", "src/ui/screenshot_ui.rs"]
+what = "store a workspace's floating windows in swayward's owned `FloatingLayout` root model instead of niri's leaf-only `FloatingSpace`, and route the shared directional-move constant through the owned module."
+why = "Sway workspaces store ordered floating container roots (`sway/tree/workspace.c:961-973`). The owned boundary preserves the current one-window behavior while allowing a later migration to resident nested trees without branching through inherited niri floating code."
+
+[[edit]]
+migrated = false
+paths = ["src/layout/tiling_tree/mod.rs", "src/layout/tiling_tree/tests.rs", "src/tests/ipc/workspace_commands.rs"]
+what = "preserve a detached split root's layout, previous layout, title format, fullscreen state, and ID remapping when attaching it to an empty tiling tree."
+why = "A destination workspace has its own permanent root ID, so attaching a whole source tree must transfer the source root's state onto that root rather than discarding it while adopting only its children."
+
+[[edit]]
+migrated = false
+paths = ["src/layout/tiling_tree/mod.rs", "src/layout/tiling_tree/rendering.rs", "src/layout/tiling_tree/tests.rs", "src/layout/tests.rs", "src/layout/workspace.rs"]
+what = "allow detached nested container roots to reside in an arbitrary floating rectangle, preserving collision-free node IDs and recursive layout, focus, rendering, hit testing, resize, and lifecycle state."
+why = "Sway floats a split by moving the same recursive container root into the workspace floating list, rather than flattening it to leaves (`sway/tree/container.c:955-1050`; `sway/tree/workspace.c:961-973`)."

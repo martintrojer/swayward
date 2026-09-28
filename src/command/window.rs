@@ -45,6 +45,45 @@ pub(super) fn sticky(
     Ok(())
 }
 
+pub(super) fn opacity(
+    state: &mut State,
+    target: CommandTarget,
+    value: f32,
+    relative: bool,
+) -> Result<(), CommandOutcome> {
+    let windows = match target {
+        CommandTarget::Window(target) => {
+            state.swayward.layout.windows().find_map(|(_, mapped)| {
+                (mapped.id() == target).then(|| vec![mapped.window.clone()])
+            })
+        }
+        CommandTarget::Container(workspace, node) => {
+            state.swayward.layout.tiling_node_windows(workspace, node)
+        }
+    }
+    .ok_or_else(|| failure("No matching node."))?;
+
+    let mut result = Ok(());
+    state.swayward.layout.with_windows_mut(|mapped, _| {
+        if windows.contains(&mapped.window) {
+            let opacity = if relative {
+                mapped.command_opacity() + value
+            } else {
+                value
+            };
+            if (0. ..=1.).contains(&opacity) {
+                mapped.set_command_opacity(opacity);
+            } else {
+                result = Err(failure("opacity value out of bounds"));
+            }
+        }
+    });
+    if result.is_ok() {
+        state.swayward.queue_redraw_all();
+    }
+    result
+}
+
 pub(super) fn title_format(
     state: &mut State,
     target: CommandTarget,

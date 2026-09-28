@@ -1515,6 +1515,40 @@ fn runtime_no_focus_applies_only_to_windows_mapped_after_registration() {
 }
 
 #[test]
+fn for_window_opacity_applies_when_window_maps() {
+    let (mut fixture, socket) = ipc_fixture();
+    fixture.add_output(1, (1920, 1080));
+    let mut stream = UnixStream::connect(socket).unwrap();
+    stream
+        .write_all(&swayward_ipc::wire::encode(
+            MessageType::RunCommand,
+            r#"for_window [app_id="^transparent$"] opacity 0.6"#,
+        ))
+        .unwrap();
+    let (_, reply) = read_ipc_reply(&mut fixture, &mut stream);
+    assert_eq!(
+        serde_json::from_str::<Value>(&reply).unwrap(),
+        serde_json::json!([{"success": true}])
+    );
+
+    let id = fixture.add_client();
+    let window = fixture.client(id).create_window();
+    window.xdg_toplevel.set_app_id("transparent".into());
+    let surface = window.surface.clone();
+    window.commit();
+    fixture.roundtrip(id);
+    let window = fixture.client(id).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    fixture.double_roundtrip(id);
+
+    assert_eq!(
+        fixture.swayward().layout.focus().unwrap().command_opacity(),
+        0.6
+    );
+}
+
+#[test]
 fn for_window_applies_matching_command_when_window_maps() {
     let (mut fixture, socket) = ipc_fixture();
     fixture.add_output(1, (1920, 1080));

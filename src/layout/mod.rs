@@ -266,6 +266,9 @@ pub trait LayoutElement {
     }
     fn set_bounds(&self, bounds: Size<i32, Logical>);
     fn is_ignoring_opacity_window_rule(&self) -> bool;
+    fn command_opacity(&self) -> f32 {
+        1.
+    }
 
     fn is_urgent(&self) -> bool;
 

@@ -416,6 +416,16 @@ fn execute_one(
             layout::fullscreen(state, mode, global);
             None
         }
+        Command::Opacity(value) | Command::OpacityRelative(value) => {
+            let Some(target) = focused_target(state) else {
+                return failure("No current container");
+            };
+            let relative = matches!(parsed.command, Command::OpacityRelative(_));
+            if let Err(error) = window::opacity(state, target, value, relative) {
+                return error;
+            }
+            None
+        }
         Command::TitleFormat(format) => {
             let Some(target) = focused_target(state) else {
                 return failure("Only valid containers can have a title_format");
@@ -1458,6 +1468,12 @@ fn execute_targeted(state: &mut State, command: &Command, target: CommandTarget)
             set_client_colors(state, *class, *colors);
         }
         Command::SetLayoutOption(_) => return failure("command cannot be applied to a container"),
+        Command::Opacity(value) | Command::OpacityRelative(value) => {
+            let relative = matches!(command, Command::OpacityRelative(_));
+            if let Err(error) = window::opacity(state, target, *value, relative) {
+                return error;
+            }
+        }
         Command::TitleFormat(format) => {
             if let Err(error) = window::title_format(state, target, format) {
                 return error;
@@ -2705,15 +2721,21 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_runtime_state_commands_fail_loud() {
+    fn parses_opacity_modes_and_sway_errors() {
+        assert_eq!(command("opacity 0.5"), Command::Opacity(0.5));
+        assert_eq!(command("opacity set 0.75"), Command::Opacity(0.75));
+        assert_eq!(command("opacity plus 0.1"), Command::OpacityRelative(0.1));
+        assert_eq!(command("opacity minus 0.2"), Command::OpacityRelative(-0.2));
+
         for (input, error) in [
             (
-                "opacity 0.5",
-                "opacity requires mutable per-container opacity support",
+                "opacity",
+                "Invalid opacity command (expected at least 1 argument, got 0)",
             ),
+            ("opacity nope", "opacity float invalid"),
             (
-                "inhibit_idle visible",
-                "inhibit_idle requires user inhibitor policy support",
+                "opacity multiply 0.5",
+                "Expected: set|plus|minus <0..1>: multiply",
             ),
         ] {
             assert_eq!(
@@ -2722,6 +2744,18 @@ mod tests {
                 "{input}"
             );
         }
+    }
+
+    #[test]
+    fn unsupported_runtime_state_commands_fail_loud() {
+        assert_eq!(
+            parse("inhibit_idle visible")[0]
+                .as_ref()
+                .unwrap_err()
+                .error
+                .as_deref(),
+            Some("inhibit_idle requires user inhibitor policy support")
+        );
     }
 
     #[test]

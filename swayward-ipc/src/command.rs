@@ -297,6 +297,8 @@ pub enum Command {
     TitleFormat(String),
     Sticky(String),
     ShortcutsInhibitor(bool),
+    Opacity(f32),
+    OpacityRelative(f32),
     /// A sway directive that sets a layout option for the whole session.
     ///
     /// Sway serves the config file and IPC from one command table
@@ -836,7 +838,7 @@ fn parse_words(args: &[&str], input: &str) -> Result<Command, String> {
                 ))
             }
         }
-        "opacity" => Err("opacity requires mutable per-container opacity support".into()),
+        "opacity" => parse_opacity(rest),
         "inhibit_idle" => Err("inhibit_idle requires user inhibitor policy support".into()),
         "create_output" => no_args(rest, "create_output").map(|()| Command::CreateOutput),
         "input" => parse_input_command(rest),
@@ -2157,6 +2159,30 @@ fn parse_split(args: &[&str]) -> Result<Command, String> {
         _ => return Err("Invalid split command (expected either horizontal or vertical).".into()),
     };
     Ok(Command::Split(layout))
+}
+
+fn parse_opacity(args: &[&str]) -> Result<Command, String> {
+    let value = args
+        .get(if args.len() == 1 { 0 } else { 1 })
+        .ok_or_else(|| {
+            format!(
+                "Invalid opacity command (expected at least 1 argument, got {})",
+                args.len()
+            )
+        })?
+        .parse::<f32>()
+        .map_err(|_| "opacity float invalid".to_owned())?;
+
+    match args.first().map(|arg| arg.to_ascii_lowercase()).as_deref() {
+        Some("plus") => Ok(Command::OpacityRelative(value)),
+        Some("minus") => Ok(Command::OpacityRelative(-value)),
+        Some("set") if args.len() > 1 => Ok(Command::Opacity(value)),
+        Some(operation) if args.len() > 1 => {
+            Err(format!("Expected: set|plus|minus <0..1>: {operation}"))
+        }
+        Some(_) => Ok(Command::Opacity(value)),
+        None => unreachable!(),
+    }
 }
 
 fn parse_fullscreen(args: &[&str]) -> Result<Command, String> {
