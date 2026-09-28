@@ -369,6 +369,7 @@ impl<W: LayoutElement> TilingTree<W> {
         let id = tree.insert_detached_node(subtree.node, None, &mut remapped);
         tree.insert_child(tree.root, id, None);
         tree.restore_transferred_focus(focus_history);
+        tree.set_focus(id);
         tree.has_had_tile = true;
         tree.request_window_sizes();
         (tree, id, remapped)
