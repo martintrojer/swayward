@@ -667,7 +667,7 @@ impl<W: LayoutElement> InteractiveMoveState<W> {
 }
 
 impl<W: LayoutElement> InteractiveMoveData<W> {
-    fn tile_render_location(&self, zoom: f64) -> Point<f64, Logical> {
+    fn tile_location(&self, zoom: f64, render_offset: Point<f64, Logical>) -> Point<f64, Logical> {
         let scale = Scale::from(self.output.current_scale().fractional_scale());
         let window_size = self.tile.window_size();
         let pointer_offset_within_window = Point::from((
@@ -675,10 +675,13 @@ impl<W: LayoutElement> InteractiveMoveData<W> {
             window_size.h * self.pointer_ratio_within_window.1,
         ));
         let pos = self.pointer_pos_within_output
-            - (pointer_offset_within_window + self.tile.window_loc() - self.tile.render_offset())
-                .upscale(zoom);
+            - (pointer_offset_within_window + self.tile.window_loc() - render_offset).upscale(zoom);
         // Round to physical pixels.
         pos.to_physical_precise_round(scale).to_logical(scale)
+    }
+
+    fn tile_render_location(&self, zoom: f64) -> Point<f64, Logical> {
+        self.tile_location(zoom, self.tile.render_offset())
     }
 }
 
@@ -2082,9 +2085,7 @@ impl<W: LayoutElement> Layout<W> {
                 let width = move_.tile.window_size().w;
                 let height = output_size(&move_.output).h;
                 let mut target = Rectangle::from_size(Size::from((width, height)));
-                // FIXME: ideally this shouldn't include the tile render offset, but the code
-                // duplication would be a bit annoying for this edge case.
-                target.loc.y -= move_.tile_render_location(1.).y;
+                target.loc.y -= move_.tile_location(1., Point::default()).y;
                 target.loc.y -= move_.tile.window_loc().y;
                 return target;
             }

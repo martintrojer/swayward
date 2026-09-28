@@ -3348,6 +3348,35 @@ fn start_interactive_move_then_remove_window() {
 }
 
 #[test]
+fn moving_popup_target_ignores_tile_animation_offset() {
+    let mut layout = Layout::default();
+    Op::AddOutput(1).apply(&mut layout);
+    Op::AddWindow {
+        params: TestWindowParams::new(0),
+    }
+    .apply(&mut layout);
+    let output = layout.outputs().next().unwrap().clone();
+
+    assert!(layout.interactive_move_begin(0, &output, Point::from((50., 100.))));
+    assert!(layout.interactive_move_update(
+        &0,
+        Point::from((1000., 0.)),
+        output,
+        Point::from((500., 500.)),
+    ));
+
+    let InteractiveMoveState::Moving(move_) = layout.interactive_move.as_ref().unwrap() else {
+        panic!("window must be moving");
+    };
+    assert_ne!(move_.tile.render_offset().y, 0.);
+    let pointer_offset_y = move_.tile.window_size().h * move_.pointer_ratio_within_window.1;
+    let stable_tile_y =
+        move_.pointer_pos_within_output.y - pointer_offset_y - move_.tile.window_loc().y;
+    let target = layout.popup_target_rect(&0);
+    assert_eq!(target.loc.y, -stable_tile_y - move_.tile.window_loc().y);
+}
+
+#[test]
 fn interactive_move_keeps_source_until_drop_is_attached() {
     let mut layout = Layout::default();
     Op::AddOutput(1).apply(&mut layout);

@@ -1672,3 +1672,9 @@ migrated = false
 paths = ["README.md", "docs/wiki/Getting-Started.md", "docs/wiki/FAQ.md", "docs/wiki/Development:-Releasing-swayward.md"]
 what = "describe build-from-source and Nix as the current install paths, list GitHub release artifacts as beta-1 plans, and state that COPR and AUR publication comes later."
 why = "The GitHub repository has no public release, the COPR API reports no swayward project, and there is no AUR package, so instructions must not present planned artifacts as available downloads."
+
+[[edit]]
+migrated = false
+paths = ["src/layout/mod.rs", "src/layout/tests.rs"]
+what = "exclude a moving tile's temporary animation offset when computing the stable output-relative box used to unconstrain its popups."
+why = "Sway unconstrains popups from the output box relative to the container's pending content geometry (`sway/desktop/xdg_shell.c:44-65`); a visual movement animation must not shift that constraint box."
