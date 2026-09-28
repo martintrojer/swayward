@@ -14,6 +14,24 @@ fn headless_output_uses_configured_mode_when_added() {
 }
 
 #[test]
+fn ipc_output_snapshot_recovers_from_a_poisoned_backend_mutex() {
+    let mut fixture = Fixture::new();
+    fixture.add_output(1, (800, 600));
+    let outputs = fixture.niri_state().backend.ipc_outputs();
+    let poisoner = outputs.clone();
+    let _ = std::thread::spawn(move || {
+        let _guard = poisoner.lock().unwrap();
+        panic!("poison backend output state");
+    })
+    .join();
+
+    let snapshot = crate::ipc::server::ipc_outputs_snapshot(fixture.niri_state());
+
+    assert_eq!(snapshot.len(), 1);
+    assert_eq!(snapshot.values().next().unwrap().name, "headless-1");
+}
+
+#[test]
 fn headless_output_disable_evacuates_workspaces_and_enable_reconnects_it() {
     let mut fixture = Fixture::new();
     fixture.add_output(1, (800, 600));

@@ -464,6 +464,18 @@ fn parse_subscriptions(payload: &[u8]) -> Option<Vec<String>> {
 }
 
 /// Recompute every cached query reply from live compositor state.
+pub(crate) fn ipc_outputs_snapshot(state: &State) -> crate::backend::IpcOutputMap {
+    state
+        .backend
+        .ipc_outputs()
+        .lock()
+        .unwrap_or_else(|poisoned| {
+            warn!("backend IPC output state mutex was poisoned; using its last state");
+            poisoned.into_inner()
+        })
+        .clone()
+}
+
 fn refresh_all_query_state(state: &mut State) {
     let Some(server) = &state.swayward.ipc_server else {
         return;
@@ -472,7 +484,7 @@ fn refresh_all_query_state(state: &mut State) {
     query_state.binding_modes = binding_modes(&state.swayward.config.borrow());
     query_state.binding_state = binding_state(&state.swayward.binding_mode);
     refresh_input_query_state(&state.swayward, &mut query_state);
-    let ipc_outputs = state.backend.ipc_outputs().lock().unwrap().clone();
+    let ipc_outputs = ipc_outputs_snapshot(state);
     refresh_query_state(
         &state.swayward.layout,
         &state.swayward.global_space,
@@ -1536,7 +1548,7 @@ impl State {
             let mut query_state = server.query_state.borrow_mut();
             query_state.binding_state = binding_state(&self.swayward.binding_mode);
             refresh_input_query_state(&self.swayward, &mut query_state);
-            let ipc_outputs = self.backend.ipc_outputs().lock().unwrap().clone();
+            let ipc_outputs = ipc_outputs_snapshot(self);
             refresh_query_state(
                 &self.swayward.layout,
                 &self.swayward.global_space,
