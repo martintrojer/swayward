@@ -2146,13 +2146,7 @@ impl<W: LayoutElement> Monitor<W> {
     }
 
     #[cfg(test)]
-    pub(super) fn verify_invariants(&self, detached_move_source: Option<WorkspaceId>) {
-        use approx::assert_abs_diff_eq;
-
-        let options =
-            Options::clone(&self.base_options).with_merged_layout(self.layout_config.as_ref());
-        assert_eq!(&*self.options, &options);
-
+    fn verify_workspace_lifecycle(&self, detached_move_source: Option<WorkspaceId>) {
         assert!(
             !self.workspaces.is_empty(),
             "monitor must have at least one workspace"
@@ -2160,27 +2154,15 @@ impl<W: LayoutElement> Monitor<W> {
         assert!(self.active_workspace_idx < self.workspaces.len());
 
         if let Some(WorkspaceSwitch::Animation(anim)) = &self.workspace_switch {
-            let before_idx = anim.from() as usize;
-            let after_idx = anim.to() as usize;
-
-            assert!(before_idx < self.workspaces.len());
-            assert!(after_idx < self.workspaces.len());
+            assert!((anim.from() as usize) < self.workspaces.len());
+            assert!((anim.to() as usize) < self.workspaces.len());
         }
 
-        // Sway has no trailing placeholder workspace. Workspaces exist only
-        // when named, numbered, or holding windows; niri's always-empty last
-        // workspace is an affordance of its scrolling strip, which swayward
-        // replaced with i3's tree.
-
-        // If there's no workspace switch in progress, no inactive workspace may
-        // be both empty and unaddressable.
+        // Sway destroys an empty workspace once focus leaves it. Unlike niri there is no
+        // exemption for a trailing placeholder workspace.
         if self.workspace_switch.is_none() {
             for (idx, ws) in self.workspaces.iter().enumerate() {
                 if idx != self.active_workspace_idx {
-                    // Sway destroys an empty workspace once focus leaves it,
-                    // so an inactive workspace must be addressable or hold
-                    // windows. Unlike niri there is no exemption for the last
-                    // one: there is no trailing placeholder to exempt.
                     assert!(
                         ws.has_windows()
                             || ws.has_sway_identity()
@@ -2190,10 +2172,19 @@ impl<W: LayoutElement> Monitor<W> {
                 }
             }
         }
+    }
+
+    #[cfg(test)]
+    pub(super) fn verify_invariants(&self, detached_move_source: Option<WorkspaceId>) {
+        use approx::assert_abs_diff_eq;
+
+        let options =
+            Options::clone(&self.base_options).with_merged_layout(self.layout_config.as_ref());
+        assert_eq!(&*self.options, &options);
+        self.verify_workspace_lifecycle(detached_move_source);
 
         for workspace in &self.workspaces {
             assert_eq!(self.clock, workspace.clock);
-
             assert_eq!(
                 self.scale().integer_scale(),
                 workspace.scale().integer_scale()
@@ -2203,7 +2194,6 @@ impl<W: LayoutElement> Monitor<W> {
                 workspace.scale().fractional_scale()
             );
             assert_eq!(self.view_size, workspace.view_size());
-
             assert_eq!(
                 workspace.base_options, self.options,
                 "workspace options must be synchronized with monitor"
@@ -2211,8 +2201,7 @@ impl<W: LayoutElement> Monitor<W> {
         }
 
         let scale = self.scale().fractional_scale();
-        let iter = self.workspaces_with_render_geo();
-        for (_ws, ws_geo) in iter {
+        for (_ws, ws_geo) in self.workspaces_with_render_geo() {
             let pos = ws_geo.loc;
             let rounded_pos = pos.to_physical_precise_round(scale).to_logical(scale);
 
