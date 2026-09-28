@@ -62,6 +62,7 @@ pub enum IpcNodeKind {
 pub struct DetachedSubtree<W: LayoutElement> {
     node: DetachedNode<W>,
     focus_history: Vec<W::Id>,
+    root_focused: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -365,11 +366,14 @@ impl<W: LayoutElement> TilingTree<W> {
         let mut tree = Self::new(view_size, parent_area, false, scale, clock, options);
         tree.resident_root = true;
         let focus_history = subtree.focus_history;
+        let root_focused = subtree.root_focused;
         let mut remapped = Vec::new();
         let id = tree.insert_detached_node(subtree.node, None, &mut remapped);
         tree.insert_child(tree.root, id, None);
         tree.restore_transferred_focus(focus_history);
-        tree.set_focus(id);
+        if root_focused {
+            tree.set_focus(id);
+        }
         tree.has_had_tile = true;
         tree.request_window_sizes();
         (tree, id, remapped)
@@ -828,6 +832,7 @@ impl<W: LayoutElement> TilingTree<W> {
             return None;
         }
         self.interactive_resize = None;
+        let root_focused = self.focus == Some(id);
         let leaves = self.leaf_ids_in(id);
         let focus_history = self
             .focus_history
@@ -886,6 +891,7 @@ impl<W: LayoutElement> TilingTree<W> {
             DetachedSubtree {
                 node,
                 focus_history,
+                root_focused,
             },
             parent,
         ))
