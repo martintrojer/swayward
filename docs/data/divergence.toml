@@ -1684,3 +1684,9 @@ migrated = false
 paths = ["contrib/live-ipc-soak", "docs/BUILDING.md", "src/layout/monitor.rs", "src/tests/ipc/workspace_output.rs"]
 what = "provide a repeatable, fixed-seed live IPC soak for nested floating-container mutations, output hotplug and workspace evacuation, command parsing, and wire framing; keep each workspace unique in an output's IPC ordering after repeated moves and replug."
 why = "The randomized layout property test cannot exercise the compositor event loop, live Wayland clients, output disable and re-enable, or IPC framing; repeated hotplug exposed stale workspace-order entries that duplicated a workspace and all its windows in GET_TREE."
+
+[[edit]]
+migrated = false
+paths = ["src/swayward.rs", "src/tests/ipc/wire.rs"]
+what = "skip keyboard-focus updates when the seat has no keyboard, and soak input IPC across repeated keyboard and pointer hotplug cycles."
+why = "A keyboard may disappear between compositor refreshes; live-session focus refresh must not panic while GET_INPUTS, GET_SEATS, and input commands continue returning structured replies."

@@ -8,6 +8,84 @@ fn ipc_refresh_without_a_seat_keyboard_does_not_panic() {
 }
 
 #[test]
+fn input_queries_and_commands_survive_device_hotplug() {
+    let (mut fixture, socket) = ipc_fixture();
+    let mut query = UnixStream::connect(&socket).unwrap();
+    let mut command = UnixStream::connect(socket).unwrap();
+
+    for _ in 0..32 {
+        for device in [
+            TestDevice::keyboard("hotplug keyboard"),
+            TestDevice::pointer("hotplug pointer"),
+        ] {
+            fixture.niri_state().process_input_event::<TestInput>(
+                smithay::backend::input::InputEvent::DeviceAdded { device },
+            );
+        }
+
+        let inputs = query_ipc(&mut fixture, &mut query, MessageType::GetInputs);
+        assert_eq!(inputs.as_array().unwrap().len(), 2);
+        let seats = query_ipc(&mut fixture, &mut query, MessageType::GetSeats);
+        assert_eq!(seats[0]["capabilities"], 3);
+        assert_eq!(seats[0]["devices"], inputs);
+
+        for input in [
+            "input * xkb_switch_layout next",
+            "input * tap enabled",
+            "input * natural_scroll enabled",
+            "input * accel_speed 0.5",
+            "seat seat0 hide_cursor 1000",
+        ] {
+            let reply = query_ipc_with_payload(
+                &mut fixture,
+                &mut command,
+                MessageType::RunCommand,
+                input,
+            );
+            assert_eq!(
+                reply[0]["success"],
+                input.starts_with("input * xkb_switch_layout"),
+                "unexpected command reply for {input}: {reply}"
+            );
+        }
+
+        for device in [
+            TestDevice::keyboard("hotplug keyboard"),
+            TestDevice::pointer("hotplug pointer"),
+        ] {
+            fixture.niri_state().process_input_event::<TestInput>(
+                smithay::backend::input::InputEvent::DeviceRemoved { device },
+            );
+        }
+
+        assert_eq!(
+            query_ipc(&mut fixture, &mut query, MessageType::GetInputs),
+            serde_json::json!([])
+        );
+        assert_eq!(
+            query_ipc(&mut fixture, &mut query, MessageType::GetSeats),
+            serde_json::json!([{
+                "name": "seat0",
+                "capabilities": 0,
+                "focus": 0,
+                "devices": []
+            }])
+        );
+    }
+
+    fixture.swayward().seat.remove_keyboard();
+    fixture.niri_state().ipc_refresh_keyboard_layout_index();
+    fixture.niri_state().ipc_keyboard_layouts_changed();
+    let reply = query_ipc_with_payload(
+        &mut fixture,
+        &mut command,
+        MessageType::RunCommand,
+        "input * xkb_switch_layout next",
+    );
+    assert_eq!(reply, serde_json::json!([{"success": true}]));
+}
+
+#[test]
 fn get_seats_reports_capabilities_from_attached_devices() {
     let (mut fixture, socket) = ipc_fixture();
     let mut stream = UnixStream::connect(socket).unwrap();

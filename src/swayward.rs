@@ -1268,6 +1268,10 @@ impl State {
     }
 
     pub fn update_keyboard_focus(&mut self) {
+        let Some(keyboard) = self.swayward.seat.get_keyboard() else {
+            return;
+        };
+
         // Clean up on-demand layer surface focus if necessary.
         if let Some(surface) = &self.swayward.layer_shell_on_demand_focus {
             // Still alive and has on-demand interactivity.
@@ -1402,7 +1406,6 @@ impl State {
             KeyboardFocus::Layout { surface: None }
         };
 
-        let keyboard = self.swayward.seat.get_keyboard().unwrap();
         if self.swayward.keyboard_focus != focus {
             trace!(
                 "keyboard focus changed from {:?} to {:?}",
