@@ -6817,50 +6817,51 @@ impl<W: LayoutElement> Layout<W> {
         true
     }
 
-    pub fn interactive_move_end(&mut self, window: &W::Id) {
-        let Some(move_) = &self.interactive_move else {
-            return;
+    fn finish_starting_interactive_move(&mut self, window: &W::Id) -> bool {
+        let Some(InteractiveMoveState::Starting { window_id, .. }) = &self.interactive_move else {
+            return false;
+        };
+        if window_id != window {
+            return true;
+        }
+
+        let Some(InteractiveMoveState::Starting { window_id, .. }) = self.interactive_move.take()
+        else {
+            unreachable!()
         };
 
-        let move_ = match move_ {
-            InteractiveMoveState::Starting { window_id, .. } => {
-                if window_id != window {
-                    return;
-                }
+        for mon in self.monitors_mut() {
+            mon.dnd_scroll_gesture_end();
+        }
 
-                let Some(InteractiveMoveState::Starting { window_id, .. }) =
-                    self.interactive_move.take()
-                else {
-                    unreachable!()
-                };
-
-                for mon in self.monitors_mut() {
-                    mon.dnd_scroll_gesture_end();
-                }
-
-                for ws in self.workspaces_mut() {
-                    if let Some(tile) = ws.tiles_mut().find(|tile| *tile.window().id() == window_id)
-                    {
-                        let offset = tile.interactive_move_offset;
-                        tile.interactive_move_offset = Point::from((0., 0.));
-                        tile.animate_move_from(offset);
-                    }
-
-                    // Unlock the view on the workspaces, but if the moved window was active,
-                    // preserve that.
-                    let moved_tile_was_active =
-                        ws.active_window().is_some_and(|win| *win.id() == window_id);
-
-                    ws.dnd_scroll_gesture_end();
-
-                    if moved_tile_was_active {
-                        ws.activate_window(&window_id);
-                    }
-                }
-
-                return;
+        for ws in self.workspaces_mut() {
+            if let Some(tile) = ws.tiles_mut().find(|tile| *tile.window().id() == window_id) {
+                let offset = tile.interactive_move_offset;
+                tile.interactive_move_offset = Point::from((0., 0.));
+                tile.animate_move_from(offset);
             }
-            InteractiveMoveState::Moving(move_) => move_,
+
+            // Unlock the view on the workspaces, but if the moved window was active, preserve that.
+            let moved_tile_was_active =
+                ws.active_window().is_some_and(|win| *win.id() == window_id);
+
+            ws.dnd_scroll_gesture_end();
+
+            if moved_tile_was_active {
+                ws.activate_window(&window_id);
+            }
+        }
+
+        true
+    }
+
+    pub fn interactive_move_end(&mut self, window: &W::Id) {
+        if self.finish_starting_interactive_move(window) {
+            return;
+        }
+
+        let Some(InteractiveMoveState::Moving(move_)) = &self.interactive_move else {
+            return;
         };
 
         if window != move_.tile.window().id() {
