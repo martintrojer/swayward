@@ -179,6 +179,60 @@ impl EventStreamStatePart for WorkspacesState {
     }
 }
 
+impl WindowsState {
+    fn replace(&mut self, windows: Vec<Window>) {
+        self.windows = windows.into_iter().map(|win| (win.id, win)).collect();
+    }
+
+    fn upsert(&mut self, window: Window) {
+        let (id, is_focused) = match self.windows.entry(window.id) {
+            Entry::Occupied(mut entry) => {
+                let entry = entry.get_mut();
+                *entry = window;
+                (entry.id, entry.is_focused)
+            }
+            Entry::Vacant(entry) => {
+                let entry = entry.insert(window);
+                (entry.id, entry.is_focused)
+            }
+        };
+
+        if is_focused {
+            for win in self.windows.values_mut() {
+                if win.id != id {
+                    win.is_focused = false;
+                }
+            }
+        }
+    }
+
+    fn focus(&mut self, id: Option<u64>) {
+        for win in self.windows.values_mut() {
+            win.is_focused = Some(win.id) == id;
+        }
+    }
+
+    fn set_focus_timestamp(&mut self, id: u64, focus_timestamp: Option<crate::Timestamp>) {
+        if let Some(win) = self.windows.get_mut(&id) {
+            win.focus_timestamp = focus_timestamp;
+        }
+    }
+
+    fn set_urgency(&mut self, id: u64, urgent: bool) {
+        if let Some(win) = self.windows.get_mut(&id) {
+            win.is_urgent = urgent;
+        }
+    }
+
+    fn update_layouts(&mut self, changes: Vec<(u64, crate::WindowLayout)>) {
+        for (id, update) in changes {
+            if let Some(win) = self.windows.get_mut(&id) {
+                win.layout = update;
+            }
+        }
+    }
+}
+
 impl EventStreamStatePart for WindowsState {
     fn replicate(&self) -> Vec<Event> {
         let windows = self.windows.values().cloned().collect();
@@ -187,65 +241,19 @@ impl EventStreamStatePart for WindowsState {
 
     fn apply(&mut self, event: Event) -> Option<Event> {
         match event {
-            Event::WindowsChanged { windows } => {
-                self.windows = windows.into_iter().map(|win| (win.id, win)).collect();
-            }
+            Event::WindowsChanged { windows } => self.replace(windows),
             Event::SwayWindowChanged { .. } | Event::WindowMoved { .. } => {}
-            Event::WindowOpenedOrChanged { window } => {
-                let (id, is_focused) = match self.windows.entry(window.id) {
-                    Entry::Occupied(mut entry) => {
-                        let entry = entry.get_mut();
-                        *entry = window;
-                        (entry.id, entry.is_focused)
-                    }
-                    Entry::Vacant(entry) => {
-                        let entry = entry.insert(window);
-                        (entry.id, entry.is_focused)
-                    }
-                };
-
-                if is_focused {
-                    for win in self.windows.values_mut() {
-                        if win.id != id {
-                            win.is_focused = false;
-                        }
-                    }
-                }
-            }
+            Event::WindowOpenedOrChanged { window } => self.upsert(window),
             Event::WindowClosed { id } => {
                 self.windows.remove(&id);
             }
-            Event::WindowFocusChanged { id } => {
-                for win in self.windows.values_mut() {
-                    win.is_focused = Some(win.id) == id;
-                }
-            }
+            Event::WindowFocusChanged { id } => self.focus(id),
             Event::WindowFocusTimestampChanged {
                 id,
                 focus_timestamp,
-            } => {
-                for win in self.windows.values_mut() {
-                    if win.id == id {
-                        win.focus_timestamp = focus_timestamp;
-                        break;
-                    }
-                }
-            }
-            Event::WindowUrgencyChanged { id, urgent } => {
-                for win in self.windows.values_mut() {
-                    if win.id == id {
-                        win.is_urgent = urgent;
-                        break;
-                    }
-                }
-            }
-            Event::WindowLayoutsChanged { changes } => {
-                for (id, update) in changes {
-                    if let Some(win) = self.windows.get_mut(&id) {
-                        win.layout = update;
-                    }
-                }
-            }
+            } => self.set_focus_timestamp(id, focus_timestamp),
+            Event::WindowUrgencyChanged { id, urgent } => self.set_urgency(id, urgent),
+            Event::WindowLayoutsChanged { changes } => self.update_layouts(changes),
             event => return Some(event),
         }
         None
