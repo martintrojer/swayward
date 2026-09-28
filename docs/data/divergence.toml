@@ -1,5 +1,5 @@
 # This count records the entries migrated from docs/DIVERGENCE.md.
-migrated_entries = 204
+migrated_entries = 205
 
 [[edit]]
 migrated = true
@@ -1008,6 +1008,12 @@ migrated = true
 paths = ["contrib/sway-to-kdl"]
 what = "describe `mouse_warping` translation as a KDL format limitation rather than incorrectly claiming that runtime commands discard sway's output/container distinction."
 why = ""
+
+[[edit]]
+migrated = true
+paths = ["contrib/sway-to-kdl"]
+what = "translate sway's grouped `set`, binding, execution, and `for_window` syntax; accept case-insensitive compatibility modifiers and map default-XKB `Mod5`; and convert map-time no-focus, opacity, fixed-size, and shortcut-inhibitor actions."
+why = "Reduce manual config migration without weakening or silently dropping source semantics."
 
 [[edit]]
 migrated = true

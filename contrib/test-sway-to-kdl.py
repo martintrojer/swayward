@@ -84,6 +84,81 @@ bindsym $missing+x nop
         for item in result.stderr.splitlines()[1:]:
             self.assertIn(item.strip(), result.stdout)
 
+    def test_translates_grouped_directives(self):
+        result = self.translate(
+            """
+set {
+    $mod Mod4
+    $left h
+    $gnome-schema org.gnome.desktop.interface
+}
+bindsym --no-repeat {
+    $mod+$left focus left
+    $mod+Return exec foot
+}
+mode "resize" {
+    bindsym {
+        $left resize shrink width 10px
+        Escape mode "default"
+    }
+}
+exec {
+    mako
+    kanshi
+}
+exec_always {
+    gsettings set org.gnome.desktop.interface gtk-theme Adwaita
+}
+for_window {
+    [app_id="firefox"] floating enable
+    [app_id="mpv"] border pixel 2
+}
+for_window [app_id="foot"] {
+    floating enable
+    border none
+}
+for_window [ app_id="pavucontrol" ] floating enable
+for_window [app_id="browser"] opacity 0.9
+for_window [app_id="game"] shortcuts_inhibitor disable
+for_window [app_id="sharing"] nofocus
+for_window [app_id="calendar"] opacity set 0.8
+for_window [app_id="dialog"] floating enabled
+for_window [app_id="video"] resize set width 640 height 480
+bindsym Mod4+shift+x kill
+bindsym Print+Ctrl+Shift exec grim
+bindsym Mod5+q workspace 1
+"""
+        )
+        for expected in [
+            'Super+h repeat=false { command "focus left"; }',
+            'Super+Return repeat=false { command "exec foot"; }',
+            'h { command "resize shrink width 10 px"; }',
+            'Escape { command "mode \\"default\\""; }',
+            'spawn-sh-at-startup "mako"',
+            'spawn-sh-at-startup "kanshi"',
+            'match app-id="firefox"',
+            "open-floating true",
+            "sway-border-width 2",
+            'match app-id="foot"',
+            'match app-id="pavucontrol"',
+            "sway-border \"none\"",
+            "opacity 0.9",
+            'sway-for-window-command "shortcuts_inhibitor disable"',
+            "open-focused false",
+            "opacity 0.8",
+            'match app-id="dialog"',
+            "default-column-width { fixed 640; }",
+            "default-window-height { fixed 480; }",
+            'Super+Shift+x { command "kill"; }',
+            'ISO_Level3_Shift+q { command "workspace 1"; }',
+            'Ctrl+Shift+Print { command "exec grim"; }',
+        ]:
+            self.assertIn(expected, result.stdout)
+        self.assertNotIn("unsupported modifier", result.stderr)
+        self.assertNotIn("unhandled", result.stderr)
+        self.assertIn("manual attention: 1 directive(s)", result.stderr)
+        self.assertIn("exec_always reload behavior is not preserved", result.stderr)
+
     def test_sway_ignored_client_directives_remain_visible_with_exact_reason(self):
         result = self.translate(
             "client.background #111111 #222222 #333333 #444444 #555555\n"
@@ -434,6 +509,7 @@ bindsym $missing+x nop
             "bindsym Alt+f nop alt\n"
             "bindsym Mod2+g nop mod2\n"
             "bindsym Mod4+i nop mod4\n"
+            "bindsym Mod5+k nop mod5\n"
             "bindsym Super+j nop super\n"
         )
         for key in [
@@ -445,12 +521,13 @@ bindsym $missing+x nop
             "Alt+f",
             "Num+g",
             "Super+i",
+            "ISO_Level3_Shift+k",
             "Super+j",
         ]:
             self.assertIn(f"    {key} ", result.stdout)
         self.assertIn("manual attention: none", result.stderr)
 
-        for name in ["Mod3", "Mod5"]:
+        for name in ["Mod3"]:
             refused = self.translate(f"bindsym {name}+z nop x\n")
             self.assertNotIn("command", refused.stdout)
             self.assertIn(f"unsupported modifier {name}", refused.stdout)

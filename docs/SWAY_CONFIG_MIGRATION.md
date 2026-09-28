@@ -117,13 +117,15 @@ started in a capped nested swayward session, reloaded successfully through
 source directives appeared in both standard error and the generated KDL; none
 was silently dropped.
 
-The most frequent manual-attention categories were unsupported top-level or
-block syntax (308), binding modifiers that swayward cannot represent (156),
-`for_window` commands without equivalent rule properties (63), `exec_always`
-reload semantics (59), X11-only `class` criteria (55), and device-specific
-input selectors (37). Bars accounted for 23 more items. These are compatibility
-boundaries, not parse failures: preserve or replace them by hand rather than
-removing their comments. The pinned 12-entry reproducible audit remains in
+The initial pass found 308 unsupported top-level or block-syntax items, 156
+binding modifiers, 63 `for_window` commands, 59 `exec_always` directives, 55
+X11-only `class` criteria, 37 device-specific input selectors, and 23 bars. A
+translator follow-up reduced the total from 787 to 393. Grouped `set`, binding,
+`exec`, and `for_window` blocks now translate, as do case-insensitive modifier
+names, `Mod5`, `nofocus`, opacity, fixed-size, and shortcut-inhibitor window
+rules. The remaining items describe runtime gaps or source that cannot be
+converted without changing its meaning. Preserve or replace those items by
+hand rather than removing their comments. The pinned 12-entry reproducible audit remains in
 `docs/internal/sway-to-kdl-corpus-audit.md`;
 the larger one-time sample was kept outside the repository because many source
 repositories declare no reusable license.

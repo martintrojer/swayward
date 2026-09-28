@@ -20,6 +20,9 @@ MODIFIER_ALIASES = {
     "Ctrl": "Ctrl",
     "Alt": "Alt",
     "Mod2": "Num",
+    # Sway's default XKB map assigns Mod5 to ISO_Level3_Shift. swayward's
+    # compatibility spelling keeps that semantic name instead of the X11 bit.
+    "Mod5": "ISO_Level3_Shift",
     "Super": "Super",
     # sway spells an XKB group qualifier Group1..Group4, with Mode_switch
     # as an alias for Group2. The typed KDL parser accepts the same names.
@@ -114,7 +117,11 @@ class Translator:
                 text = text[:-1] + " " + lines[index].strip()
                 index += 1
 
-            if match := re.fullmatch(r"set\s+(\$+\w+)\s+(.+)", text):
+            if re.fullmatch(r"set\s*\{", text):
+                block, index = self.block(lines, index, text)
+                self.translate_set_block(path, line_no, block[1:-1])
+                continue
+            if match := re.fullmatch(r"set\s+(\$+[^\s]+)\s+(.+)", text):
                 value = self.expand(match.group(2).strip())
                 self.variables[match.group(1)] = value.replace(r"\$", "$")
                 continue
@@ -141,6 +148,19 @@ class Translator:
                     block[1:-1],
                     match.group(1) is not None,
                 )
+            elif match := re.fullmatch(r"(bindsym|bindcode)(.*?)\s*\{", text):
+                block, index = self.block(lines, index, text)
+                self.translate_bind_block(
+                    path, line_no, match.group(1), match.group(2), block[1:-1]
+                )
+            elif match := re.fullmatch(r"(exec|exec_always)\s*\{", text):
+                block, index = self.block(lines, index, text)
+                self.translate_exec_block(
+                    path, line_no, match.group(1), block[1:-1]
+                )
+            elif re.fullmatch(r"for_window\s*\{", text):
+                block, index = self.block(lines, index, text)
+                self.translate_for_window_block(path, line_no, block[1:-1])
             elif match := re.match(r"(input|output)\s+(.+?)\s*\{", text):
                 block, index = self.block(lines, index, text)
                 self.translate_device_block(
@@ -164,6 +184,13 @@ class Translator:
                 self.sections.append(f"// sway {text}")
             elif re.match(r"(?:un)?bind(?:gesture|switch)(?:\s|$)", text):
                 self.refuse_unsupported_binding(path, line_no, text)
+            elif match := re.fullmatch(
+                r'for_window\s*(\[(?:[^"\]]|"(?:\\.|[^"])*")+\])\s*\{', text
+            ):
+                block, index = self.block(lines, index, text)
+                self.translate_for_window_commands(
+                    path, line_no, match.group(1), block[1:-1]
+                )
             elif match := re.match(
                 r'for_window\s*(\[(?:[^"\]]|"(?:\\.|[^"])*")+\])\s+(.+)', text
             ):
@@ -449,6 +476,82 @@ class Translator:
             elif not self.translate_swayfx(path, line_no, text):
                 self.warn(path, line_no, text, "unhandled")
 
+    def translate_set_block(
+        self, source: Path, line: int, body: list[str]
+    ) -> None:
+        for offset, item in enumerate(body, 1):
+            item = item.strip()
+            if not item or item.startswith("#"):
+                continue
+            if match := re.fullmatch(r"(\$+[^\s]+)\s+(.+)", item):
+                value = self.expand(match.group(2).strip())
+                self.variables[match.group(1)] = value.replace(r"\$", "$")
+            else:
+                self.warn(source, line + offset, item, "malformed directive in set block")
+
+    def translate_bind_block(
+        self,
+        source: Path,
+        line: int,
+        kind: str,
+        options: str,
+        body: list[str],
+    ) -> None:
+        options = options.strip()
+        prefix = f"{options} " if options else ""
+        for offset, item in enumerate(body, 1):
+            item = self.expand(item.strip()).replace(r"\$", "$")
+            if not item or item.startswith("#"):
+                continue
+            self.translate_bind(source, line + offset, kind, prefix + item)
+
+    def translate_exec_block(
+        self, source: Path, line: int, directive: str, body: list[str]
+    ) -> None:
+        for offset, command in enumerate(body, 1):
+            command = self.expand(command.strip()).replace(r"\$", "$")
+            if not command or command.startswith("#"):
+                continue
+            self.translate_exec(
+                source,
+                line + offset,
+                f"{directive} {command}",
+                directive,
+                command,
+            )
+
+    def translate_for_window_block(
+        self, source: Path, line: int, body: list[str]
+    ) -> None:
+        for offset, item in enumerate(body, 1):
+            item = self.expand(item.strip()).replace(r"\$", "$")
+            if not item or item.startswith("#"):
+                continue
+            match = re.fullmatch(
+                r'(\[\s*(?:[^"\]]|"(?:\\.|[^"])*")+?\s*\])\s+(.+)', item
+            )
+            if match is None:
+                self.warn(
+                    source,
+                    line + offset,
+                    item,
+                    "grouped for_window entry needs criteria and a command",
+                )
+                continue
+            self.translate_for_window(
+                source, line + offset, match.group(1), match.group(2)
+            )
+
+    def translate_for_window_commands(
+        self, source: Path, line: int, criteria: str, body: list[str]
+    ) -> None:
+        commands = [
+            self.expand(item.strip()).replace(r"\$", "$")
+            for item in body
+            if item.strip() and not item.strip().startswith("#")
+        ]
+        self.translate_for_window(source, line, criteria, ", ".join(commands))
+
     def translate_default_border(
         self, source: Path, line: int, text: str, directive: str, arguments: str
     ) -> None:
@@ -639,11 +742,32 @@ class Translator:
         mode_binds: dict[str, str] = {}
         previous = self.binds
         self.binds = mode_binds
-        for offset, text in enumerate(body, 1):
-            text = self.expand(text.strip())
+        index = 0
+        while index < len(body):
+            offset = index + 1
+            text = body[index].strip()
+            index += 1
             if not text or text.startswith("#"):
                 continue
-            if match := re.match(r"(bindsym|bindcode)\s+(.+)", text):
+            if re.fullmatch(r"set\s*\{", text):
+                block, index = self.block(body, index, text)
+                self.translate_set_block(source, line + offset - 1, block[1:-1])
+                continue
+            if match := re.fullmatch(r"set\s+(\$+[^\s]+)\s+(.+)", text):
+                value = self.expand(match.group(2).strip())
+                self.variables[match.group(1)] = value.replace(r"\$", "$")
+                continue
+            text = self.expand(text).replace(r"\$", "$")
+            if match := re.fullmatch(r"(bindsym|bindcode)(.*?)\s*\{", text):
+                block, index = self.block(body, index, text)
+                self.translate_bind_block(
+                    source,
+                    line + offset - 1,
+                    match.group(1),
+                    match.group(2),
+                    block[1:-1],
+                )
+            elif match := re.match(r"(bindsym|bindcode)\s+(.+)", text):
                 self.translate_bind(source, line + offset, match.group(1), match.group(2))
             elif re.match(r"(?:un)?bind(?:gesture|switch)(?:\s|$)", text):
                 self.refuse_unsupported_binding(source, line + offset, text)
@@ -806,16 +930,26 @@ class Translator:
             "BTN_FORWARD": "MouseForward",
         }
         parts = key.split("+")
-        for part in parts[:-1]:
-            if part not in MODIFIER_ALIASES:
-                return None
+        non_modifiers = [
+            index
+            for index, part in enumerate(parts)
+            if Translator.translate_modifier(part) is None
+        ]
+        if len(non_modifiers) == 1:
+            trigger = parts.pop(non_modifiers[0])
+        else:
+            trigger = parts.pop()
+        translated_modifiers = [Translator.translate_modifier(part) for part in parts]
+        if any(part is None for part in translated_modifiers):
+            return None
+        parts = [part for part in translated_modifiers if part is not None] + [trigger]
         if any(
             (part.lower().startswith("button") or part.startswith("BTN_"))
             and part not in aliases
             for part in parts
         ):
             return None
-        return "+".join({**MODIFIER_ALIASES, **aliases}.get(part, part) for part in parts)
+        return "+".join(aliases.get(part, part) for part in parts)
 
     @staticmethod
     def kdl_float(value: float) -> str:
@@ -886,8 +1020,9 @@ class Translator:
         token = re.compile(
             r'(?:(\w+)=(?:"((?:\\.|[^"])*)"|([^ "\]]+))|(tiling|floating))'
         )
-        matches = list(token.finditer(criteria[1:-1]))
-        if not matches or " ".join(match.group(0) for match in matches) != criteria[1:-1]:
+        criteria_body = criteria[1:-1].strip()
+        matches = list(token.finditer(criteria_body))
+        if not matches or " ".join(match.group(0) for match in matches) != criteria_body:
             self.warn(
                 source,
                 line,
@@ -1035,7 +1170,7 @@ class Translator:
                         "Expected 'border <none|normal|pixel|csd|toggle>' "
                         "or 'border pixel <px>'",
                     )
-            elif words == ["floating", "enable"]:
+            elif words in (["floating", "enable"], ["floating", "enabled"]):
                 effects = [effect for effect in effects if not effect.startswith("    open-floating ")]
                 effects.append("    open-floating true")
             elif words == ["floating", "disable"]:
@@ -1045,6 +1180,33 @@ class Translator:
                 effects.append('    default-column-display "tabbed"')
             elif words == ["focus"]:
                 effects.append("    open-focused true")
+            elif words == ["nofocus"]:
+                effects.append("    open-focused false")
+            elif (
+                len(words) == 2 and words[0] in {"opacity", "opacity_set"}
+            ) or (len(words) == 3 and words[:2] == ["opacity", "set"]):
+                try:
+                    opacity = float(words[-1])
+                except ValueError:
+                    opacity = -1.0
+                if 0.0 <= opacity <= 1.0:
+                    effects = [
+                        effect
+                        for effect in effects
+                        if not effect.startswith("    opacity ")
+                    ]
+                    effects.append(f"    opacity {self.kdl_float(opacity)}")
+                else:
+                    self.warn(
+                        source,
+                        line,
+                        f"for_window {criteria} {directive}",
+                        "opacity must be between 0 and 1",
+                    )
+            elif words == ["shortcuts_inhibitor", "disable"]:
+                effects.append(
+                    f"    sway-for-window-command {self.quote(directive)}"
+                )
             elif words[:1] == ["title_format"] and len(words) >= 2:
                 effects.append(f"    sway-for-window-command {self.quote(directive)}")
             elif words[:1] == ["nop"]:
@@ -1095,6 +1257,18 @@ class Translator:
                         "resize size needs manual conversion",
                     )
             elif (
+                len(words) in {6, 7}
+                and words[:3] == ["resize", "set", "width"]
+                and words[4] == "height"
+                and words[3].isdigit()
+                and words[5].isdigit()
+                and (len(words) == 6 or words[6] == "px")
+            ):
+                effects += [
+                    f"    default-column-width {{ fixed {words[3]}; }}",
+                    f"    default-window-height {{ fixed {words[5]}; }}",
+                ]
+            elif (
                 resized := self.fixed_resize_set(words)
             ) is not None:
                 width, height = resized
@@ -1117,6 +1291,11 @@ class Translator:
             }:
                 effects.append(f"    sway-for-window-command {self.quote(directive)}")
             elif words[:1] == ["dim_inactive"] and len(words) == 2:
+                effects = [
+                    effect
+                    for effect in effects
+                    if not effect.startswith("    opacity ")
+                ]
                 effects.append(f"    opacity {self.kdl_float(1.0 - float(words[1]))}")
             elif words[:1] == ["corner_radius"] and len(words) == 2:
                 effects += [
