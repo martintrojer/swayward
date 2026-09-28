@@ -1,17 +1,49 @@
 fn oracle_fixture(path: &str) -> &'static str {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join(".cache/sway-ipc-oracle/sway-ipc/fixtures")
-        .join(path);
+    let cache = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(".cache/sway-ipc-oracle");
     Box::leak(
-        std::fs::read_to_string(&path)
-            .unwrap_or_else(|error| {
-                panic!(
-                    "cannot read sway IPC oracle fixture {}: {error}; run ./contrib/fetch-oracle",
-                    path.display()
-                )
-            })
+        oracle_fixture_at(&cache, path)
+            .unwrap_or_else(|error| panic!("{error}"))
             .into_boxed_str(),
     )
+}
+
+fn oracle_fixture_at(cache: &std::path::Path, path: &str) -> Result<String, String> {
+    let expected = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/oracle.toml"))
+        .lines()
+        .find_map(|line| line.strip_prefix("commit = \"")?.strip_suffix('"'))
+        .ok_or_else(|| "tests/oracle.toml has no commit".to_owned())?;
+    let actual = std::fs::read_to_string(cache.join(".git/HEAD"))
+        .map_err(|error| format!("cannot inspect sway IPC oracle cache: {error}"))?;
+    if actual.trim() != expected {
+        return Err(format!(
+            "stale oracle cache: expected {expected}, got {}; run ./contrib/fetch-oracle",
+            actual.trim()
+        ));
+    }
+
+    let path = cache.join("sway-ipc/fixtures").join(path);
+    std::fs::read_to_string(&path).map_err(|error| {
+        format!(
+            "cannot read sway IPC oracle fixture {}: {error}; run ./contrib/fetch-oracle",
+            path.display()
+        )
+    })
+}
+
+#[test]
+fn stale_oracle_cache_fails_loudly() {
+    let cache = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("target")
+        .join(format!("stale-oracle-cache-{}", std::process::id()));
+    std::fs::create_dir_all(cache.join(".git")).unwrap();
+    std::fs::write(cache.join(".git/HEAD"), "0000000000000000000000000000000000000000\n")
+        .unwrap();
+
+    let error = oracle_fixture_at(&cache, "unused.json").unwrap_err();
+    std::fs::remove_dir_all(cache).unwrap();
+
+    assert!(error.starts_with("stale oracle cache:"), "{error}");
+    assert!(error.ends_with("run ./contrib/fetch-oracle"), "{error}");
 }
 
 macro_rules! sway_fixture {
