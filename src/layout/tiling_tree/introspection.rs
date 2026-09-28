@@ -394,10 +394,10 @@ impl<W: LayoutElement> TilingTree<W> {
 
     /// Nodes in the order their render elements are collected, front to back.
     ///
-    /// The focused node comes first so its decorations sit above sibling
-    /// shadows, as sway's active container is above its siblings. Plain
-    /// depth-first order lets a preceding sibling's shadow darken the focused
-    /// border where the two meet.
+    /// The focused node comes first so its decorations sit above sibling shadows. This mirrors
+    /// sway's arranged tabbed and stacked scene, where only the active child's border is enabled
+    /// (sway/desktop/transaction.c:313-370). Plain depth-first order lets a preceding sibling's
+    /// shadow darken the focused border where the two meet.
     pub(super) fn leaf_render_order(
         &self,
         focus: Option<NodeId>,

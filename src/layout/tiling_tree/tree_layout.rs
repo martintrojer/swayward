@@ -168,8 +168,8 @@ impl<W: LayoutElement> TilingTree<W> {
             Some(TreeNode::Split { layout, .. }) => *layout,
             Some(TreeNode::Leaf { .. }) | None => unreachable!(),
         };
-        // Sway initializes or refreshes an empty workspace representation only
-        // when the command changes its layout.
+        // Preserve the empty representation until the command changes its layout, matching the
+        // old-layout comparison in sway's layout command (sway/commands/layout.c:152-189).
         if layout != root_layout {
             self.has_had_tile = true;
             self.empty_representation_layout = None;
@@ -513,7 +513,8 @@ impl<W: LayoutElement> TilingTree<W> {
         true
     }
 
-    // Unlike general tree compaction, sway's `layout` command flattens at most one ancestor.
+    // Sway's `layout` command replaces at most one singleton parent
+    // (sway/commands/layout.c:134-149), unlike general tree compaction.
     fn set_layout_for_command(&mut self, id: NodeId, layout: Layout) {
         self.interactive_resize = None;
         if let Some(Node {
@@ -531,8 +532,9 @@ impl<W: LayoutElement> TilingTree<W> {
         }
     }
 
-    // Sway operates on the focused container's parent. When both that parent and its parent are
-    // singletons, it replaces the parent with its child once and operates on the grandparent.
+    // Sway operates on the focused container's parent. If both that parent and its parent are
+    // singletons, it replaces the parent with its child once and targets the grandparent
+    // (sway/commands/layout.c:134-149).
     fn focused_layout_target(&mut self) -> (Option<NodeId>, Vec<(NodeId, NodeId)>) {
         let Some(focus) = self.focus else {
             return (None, Vec::new());

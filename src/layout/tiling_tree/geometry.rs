@@ -292,8 +292,9 @@ fn assign_leaf<W: LayoutElement>(
         edges = ResizeEdge::empty();
     }
     result.border_edges.insert(id, edges);
-    // This is the leaf's geometric identity. Rendering, hit testing, movement,
-    // sizing and IPC start from this box; content is derived below in one pass.
+    // Keep one outer box for rendering, hit testing, movement, sizing, and IPC. Sway's
+    // arrange_container() likewise derives the content and each border from the container
+    // dimensions (sway/desktop/transaction.c:392-472).
     result.leaf_boxes.insert(id, rect);
     let decorated_by_parent = decorated_by_parent && fullscreen.is_empty();
     if decorated_by_parent {
@@ -347,8 +348,8 @@ fn assign_leaf<W: LayoutElement>(
     }
     result.leaf_ipc_rects.insert(id, ipc_rect);
 
-    // Match sway's arrange_container table: the titlebar occupies the top slot,
-    // while side borders begin below it at the content rectangle.
+    // The titlebar occupies the top slot, while side borders begin below it, matching
+    // arrange_container() (sway/desktop/transaction.c:409-440).
     let width = tile.configured_border_width();
     if draw_uncovered_top_border
         && decorated_by_parent
