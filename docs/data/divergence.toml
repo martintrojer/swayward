@@ -1579,6 +1579,12 @@ why = "Sway emits workspace init from `workspace_create` before a following cont
 
 [[edit]]
 migrated = false
+paths = ["src/ipc/server.rs"]
+what = "reconstruct a sticky floating group's source-workspace snapshot at the workspace-switch event boundary while omitting the group from the destination snapshot until sway moves it."
+why = "Sway emits the workspace focus transition before its post-focus sticky-container transfer (`sway/input/seat.c:1195-1215`). Swayward batches the whole command and otherwise serializes only the settled destination, reversing which workspace contains the group in the focus event."
+
+[[edit]]
+migrated = false
 paths = ["src/command/layout.rs", "src/layout/floating_tree.rs", "src/layout/workspace.rs", "src/tests/ipc/events.rs"]
 what = "fullscreen a resident floating container tree as one recursive root and emit the root's `window::fullscreen_mode` event instead of passing one descendant through the inherited leaf-only floating toggle."
 why = "Sway fullscreen targets the focused container, including a split in the workspace floating list, and emits one recursive event for that container (`sway/commands/fullscreen.c`; `sway/sway/ipc-server.c`). The inherited leaf path could not find resident-tree descendants and panicked."

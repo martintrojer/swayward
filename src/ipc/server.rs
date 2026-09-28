@@ -1396,7 +1396,11 @@ impl State {
                                 *container = hidden.clone();
                             }
                             container["focused"] = false.into();
-                            if container["type"] == "floating_con" {
+                            if container["type"] == "floating_con"
+                                && container["nodes"]
+                                    .as_array()
+                                    .is_some_and(|nodes| !nodes.is_empty())
+                            {
                                 container.as_object_mut().unwrap().remove("visible");
                             } else {
                                 container["visible"] = false.into();
@@ -1435,6 +1439,38 @@ impl State {
             }
             _ => None,
         });
+        let sticky_root = sticky_move
+            .as_ref()
+            .and_then(|container| {
+                if container["type"] == "floating_con" {
+                    return serde_json::from_value(container.clone()).ok();
+                }
+                let id = container["id"].as_i64()?;
+                fn parent(node: &swayward_ipc::Node, id: i64) -> Option<&swayward_ipc::Node> {
+                    node.nodes
+                        .iter()
+                        .chain(&node.floating_nodes)
+                        .find_map(|child| {
+                            (child.id == id)
+                                .then_some(node)
+                                .or_else(|| parent(child, id))
+                        })
+                }
+                parent(&current_tree, id).cloned()
+            })
+            .or_else(|| {
+                fn sticky_root(node: &swayward_ipc::Node) -> Option<&swayward_ipc::Node> {
+                    (node.node_type == swayward_ipc::NodeType::FloatingCon && node.sticky)
+                        .then_some(node)
+                        .or_else(|| {
+                            node.nodes
+                                .iter()
+                                .chain(&node.floating_nodes)
+                                .find_map(sticky_root)
+                        })
+                }
+                sticky_root(&current_tree).cloned()
+            });
         if transaction.suppress_workspace_moves {
             if let Some(output_event) = events
                 .iter()
@@ -1493,9 +1529,18 @@ impl State {
                         } else {
                             clear_workspace_focus(old, true);
                         }
-                        if sticky_move.is_some() {
+                        if let Some(root) = &sticky_root {
+                            old.floating_nodes = vec![root.clone()];
+                            old.focus = vec![root.id];
                             for child in &mut old.floating_nodes {
-                                clear_workspace_focus(child, true);
+                                clear_workspace_focus(child, false);
+                            }
+                            if !root.nodes.is_empty() {
+                                if let swayward_ipc::NodeProperties::Workspace(properties) =
+                                    &mut old.properties
+                                {
+                                    properties.representation = Some("H[]".into());
+                                }
                             }
                         }
                     }
@@ -1503,7 +1548,7 @@ impl State {
                         **current = settled.clone();
                         current.focused = true;
                     }
-                    if sticky_move.is_some() {
+                    if sticky_root.is_some() {
                         current.floating_nodes.clear();
                         current.focus.clear();
                     }
@@ -1512,7 +1557,7 @@ impl State {
                     current.nodes.clear();
                     current.floating_nodes.clear();
                     current.focus.clear();
-                    if sticky_move.is_none() {
+                    if sticky_root.is_none() {
                         if has_workspace_move && !transaction.suppress_workspace_moves {
                             current.layout = swayward_ipc::NodeLayout::SplitH;
                             current.orientation = "horizontal".into();
@@ -1525,7 +1570,16 @@ impl State {
                     } else if let swayward_ipc::NodeProperties::Workspace(properties) =
                         &mut current.properties
                     {
-                        properties.representation = Some("V[]".into());
+                        properties.representation = Some(
+                            if sticky_root
+                                .as_ref()
+                                .is_some_and(|root| !root.nodes.is_empty())
+                            {
+                                "H[]".into()
+                            } else {
+                                "V[]".into()
+                            },
+                        );
                     }
                     current.focused = false;
                 }
