@@ -1,0 +1,211 @@
+#!/usr/bin/env python3
+"""Stress a capped live swayward instance through its private IPC socket."""
+
+import argparse
+import json
+import os
+from pathlib import Path
+import random
+import socket
+import struct
+import subprocess
+import time
+
+MAGIC = b"i3-ipc"
+TYPES = {"command": 0, "get_outputs": 3, "get_tree": 4, "get_version": 7}
+
+
+def recv_exact(stream, length):
+    chunks = []
+    while length:
+        chunk = stream.recv(length)
+        if not chunk:
+            raise RuntimeError("IPC connection closed before reply")
+        chunks.append(chunk)
+        length -= len(chunk)
+    return b"".join(chunks)
+
+
+def ipc(sock_path, kind, payload=""):
+    body = payload.encode()
+    with socket.socket(socket.AF_UNIX) as stream:
+        stream.settimeout(5)
+        stream.connect(os.fspath(sock_path))
+        stream.sendall(MAGIC + struct.pack("=II", len(body), TYPES[kind]) + body)
+        header = recv_exact(stream, 14)
+        if header[:6] != MAGIC:
+            raise RuntimeError("invalid IPC magic")
+        length, reply_type = struct.unpack("=II", header[6:])
+        if reply_type != TYPES[kind]:
+            raise RuntimeError(f"IPC type {reply_type}, expected {TYPES[kind]}")
+        return json.loads(recv_exact(stream, length))
+
+
+def healthy(sock_path, label):
+    version = ipc(sock_path, "get_version")
+    if not isinstance(version, dict):
+        raise RuntimeError(f"{label}: malformed GET_VERSION: {version!r}")
+
+
+def command_fuzz_cases(seed):
+    fixed = [
+        "", " \t ", "soak_unknown", '[app_id="foot" focus',
+        '[app_id="["] focus', "[soak_field=value] focus", "workspace",
+        "fullscreen toggle extra", "resize grow width 10",
+        "resize grow width 10 px", "resize grow width 10 ppt",
+        "resize grow width 10 em", "nop first; nop second",
+        "nop first, nop second", "nop first, nop second; nop third",
+        'nop "one;two"', 'nop "one,two"', 'nop "unterminated',
+        'nop "one\\\"two"', "nop λ-日本語-🙂", "workspace λ-日本語-🙂",
+        "nop before\0after", "; nop after", "nop before,",
+    ]
+    rng = random.Random(seed)
+    atoms = ("focus", "move", "workspace", "resize", "layout", "nop")
+    separators = (";", ",")
+    generated = [
+        f'{rng.choice(atoms)} "fuzz {rng.randrange(1000)}" '
+        f'{rng.choice(separators)} {rng.choice(atoms)}'
+        for _ in range(23)
+    ]
+    return fixed + generated + ["nop " + "x" * 65536]
+
+
+def wire_fuzz_cases():
+    frame = lambda length, kind, body=b"": MAGIC + struct.pack("=II", length, kind) + body
+    return [
+        (b"bad-ip" + struct.pack("=II", 0, 7), True, 0),
+        (MAGIC + b"\x00\x00", True, 0),
+        (frame(10, 0, b"nop"), True, 0),
+        (frame(0xFFFFFFFF, 0), True, 0),
+        (frame(0, 0x7FFFFFFF), False, 1),
+        (frame(1, 2, b"{"), False, 1),
+        (frame(2, 2, b"{}"), False, 1),
+        (frame(1, 0, b"{"), False, 1),
+        (frame(1, 0, b"\xff"), False, 1),
+        (None, False, 32),
+        (frame(0, 0), False, 1),
+        (frame(0, 7) * 2, False, 2),
+        (frame(0, 1 << 31), False, 1),
+        (frame(1, 7, b"x"), False, 1),
+        (frame(4, 2, b"null"), False, 1),
+        (frame(2, 2, b"[]"), False, 1),
+    ]
+
+
+def exercise_wire(sock_path, case):
+    data, shutdown, replies = case
+    if data is None:
+        streams = []
+        try:
+            for _ in range(replies):
+                stream = socket.socket(socket.AF_UNIX)
+                stream.settimeout(2)
+                stream.connect(os.fspath(sock_path))
+                stream.sendall(MAGIC + struct.pack("=II", 0, TYPES["get_version"]))
+                streams.append(stream)
+            for stream in streams:
+                length = struct.unpack("=I", recv_exact(stream, 14)[6:10])[0]
+                recv_exact(stream, length)
+        finally:
+            for stream in streams:
+                stream.close()
+        return
+    try:
+        with socket.socket(socket.AF_UNIX) as stream:
+            stream.settimeout(2)
+            stream.connect(os.fspath(sock_path))
+            stream.sendall(data)
+            if shutdown:
+                stream.shutdown(socket.SHUT_WR)
+            for _ in range(replies):
+                length = struct.unpack("=I", recv_exact(stream, 14)[6:10])[0]
+                recv_exact(stream, length)
+    except (BrokenPipeError, ConnectionResetError, RuntimeError, socket.timeout):
+        pass
+
+
+def parsed_tree(sock_path, label):
+    tree = ipc(sock_path, "get_tree")
+    if not isinstance(tree, dict) or tree.get("type") != "root":
+        raise RuntimeError(f"{label}: malformed GET_TREE")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--commands", type=int, default=50_000)
+    parser.add_argument("--seed", type=int, default=30_000)
+    parser.add_argument("--expected-outputs", type=int)
+    parser.add_argument("--skip-fuzz", action="store_true")
+    args = parser.parse_args()
+    sock_path = Path(os.environ["SWAYSOCK"])
+
+    outputs = ipc(sock_path, "get_outputs")
+    if args.expected_outputs is not None and len(outputs) != args.expected_outputs:
+        raise RuntimeError(f"expected {args.expected_outputs} outputs, got {len(outputs)}")
+
+    if not args.skip_fuzz:
+        print("command fuzz: seeds 10000..10199", flush=True)
+        for seed in range(10_000, 10_200):
+            for command in command_fuzz_cases(seed):
+                ipc(sock_path, "command", command)
+                healthy(sock_path, f"command seed={seed}")
+        print("wire fuzz: seeds 20000..20199", flush=True)
+        cases = wire_fuzz_cases()
+        for seed in range(20_000, 20_200):
+            shuffled = list(cases)
+            random.Random(seed).shuffle(shuffled)
+            for case in shuffled:
+                exercise_wire(sock_path, case)
+                healthy(sock_path, f"wire seed={seed}")
+
+    for number in range(1, 6):
+        reply = ipc(
+            sock_path,
+            "command",
+            f"exec foot --app-id=soak-{number} --title=soak-{number} sh -c 'sleep 1200'",
+        )
+        if not isinstance(reply, list):
+            raise RuntimeError(f"opening window {number}: malformed reply")
+    time.sleep(2)
+    parsed_tree(sock_path, "after opening clients")
+
+    commands = (
+        "focus parent", "focus child", "focus left", "focus right",
+        "floating toggle", "fullscreen toggle", "fullscreen toggle global",
+        "move scratchpad", "scratchpad show", "sticky toggle",
+        "split horizontal", "split vertical", "layout tabbed", "layout stacking",
+        "move left", "move right", "move container to workspace 1",
+        "move container to workspace 2", "workspace 1", "workspace 2",
+        "move container to output left", "move container to output right",
+    )
+    rng = random.Random(args.seed)
+    print(
+        f"random command soak: seed {args.seed}, {args.commands} commands, "
+        f"{len(outputs)} outputs",
+        flush=True,
+    )
+    for step in range(1, args.commands + 1):
+        command = rng.choice(commands)
+        try:
+            reply = ipc(sock_path, "command", command)
+            if not isinstance(reply, list):
+                raise RuntimeError(f"malformed command reply: {reply!r}")
+            parsed_tree(sock_path, f"step={step} command={command!r}")
+        except (ValueError, RuntimeError, OSError, socket.timeout) as error:
+            raise RuntimeError(
+                f"seed={args.seed} step={step} command={command!r}: {error}"
+            ) from error
+        if step % 1000 == 0:
+            print(f"random commands complete: {step}/{args.commands}", flush=True)
+
+    healthy(sock_path, "final")
+    print(
+        f"SOAK_OK command_cases={0 if args.skip_fuzz else 9600} "
+        f"wire_cases={0 if args.skip_fuzz else 3200} random_commands={args.commands} "
+        f"outputs={len(outputs)}",
+        flush=True,
+    )
+
+
+if __name__ == "__main__":
+    main()

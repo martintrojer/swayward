@@ -9,7 +9,7 @@ use swayward_ipc::{PositionChange, SizeChange, WindowLayout};
 
 use super::closing_window::{ClosingWindow, ClosingWindowRenderElement};
 use super::tile::{Tile, TileRenderElement, TileRenderSnapshot};
-use super::tiling_tree::{DetachedSubtree, NodeId, TilingTree, TilingTreeRenderElement};
+use super::tiling_tree::{DetachedSubtree, Direction, NodeId, TilingTree, TilingTreeRenderElement};
 use super::titlebar::{self, Titlebar, TitlebarRenderer, TitlebarState};
 use super::workspace::{InteractiveResize, ResolvedSize};
 use super::{
@@ -1700,12 +1700,24 @@ impl<W: LayoutElement> FloatingLayout<W> {
 
     fn focus_directional(
         &mut self,
+        direction: Direction,
         distance: impl Fn(Point<f64, Logical>, Point<f64, Logical>) -> f64,
     ) -> bool {
         let Some(active_id) = &self.active_window_id else {
             return false;
         };
-        let active_idx = self.idx_of(active_id).unwrap();
+        if let Some(entry) = self
+            .tree_entries
+            .iter_mut()
+            .find(|entry| entry.tree.node_for_window(active_id).is_some())
+        {
+            let moved = entry.tree.focus_direction(direction);
+            self.active_window_id = entry.tree.active_window().map(|window| window.id().clone());
+            return moved;
+        }
+        let Some(active_idx) = self.idx_of(active_id) else {
+            return false;
+        };
         let center = self.entries[active_idx].data.center();
 
         let candidates = || {
@@ -1733,19 +1745,19 @@ impl<W: LayoutElement> FloatingLayout<W> {
     }
 
     pub fn focus_left(&mut self) -> bool {
-        self.focus_directional(|focus, other| focus.x - other.x)
+        self.focus_directional(Direction::Left, |focus, other| focus.x - other.x)
     }
 
     pub fn focus_right(&mut self) -> bool {
-        self.focus_directional(|focus, other| other.x - focus.x)
+        self.focus_directional(Direction::Right, |focus, other| other.x - focus.x)
     }
 
     pub fn focus_up(&mut self) -> bool {
-        self.focus_directional(|focus, other| focus.y - other.y)
+        self.focus_directional(Direction::Up, |focus, other| focus.y - other.y)
     }
 
     pub fn focus_down(&mut self) -> bool {
-        self.focus_directional(|focus, other| other.y - focus.y)
+        self.focus_directional(Direction::Down, |focus, other| other.y - focus.y)
     }
 
     pub fn focus_leftmost(&mut self) {

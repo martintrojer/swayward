@@ -4175,6 +4175,32 @@ fn floating_tree_root_survives_workspace_and_output_moves() {
 }
 
 #[test]
+fn directional_focus_descends_into_a_floating_tree() {
+    let mut layout = Layout::default();
+    Op::AddOutput(1).apply(&mut layout);
+    for id in 1..=2 {
+        Op::AddWindow {
+            params: TestWindowParams::new(id),
+        }
+        .apply(&mut layout);
+    }
+    let workspace = layout.active_workspace_mut().unwrap();
+    workspace.tiling_mut().focus_root();
+    let root = workspace.tiling().focus().unwrap();
+    let first = workspace.tiling().node_for_window(&1).unwrap();
+    workspace.tiling_mut().set_focus(first);
+    let (subtree, old_parent) = workspace.detach_tiling_subtree(root).unwrap();
+    workspace.finish_tiling_subtree_detach(old_parent);
+    workspace.floating_mut().add_tree(
+        subtree,
+        Rectangle::new((100., 120.).into(), (600., 450.).into()),
+    );
+
+    assert!(workspace.floating_mut().focus_right());
+    assert_eq!(workspace.floating().active_window().unwrap().id(), &2);
+}
+
+#[test]
 fn floating_tree_scratchpad_moves_the_whole_root() {
     let mut layout = Layout::default();
     Op::AddOutput(1).apply(&mut layout);

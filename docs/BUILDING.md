@@ -68,6 +68,22 @@ cannot adopt the outer one's socket, and strips `spawn-at-startup` so a spawned
 bar does not compete for the IPC socket. It rewrites `Super+` binds to `Mod+`,
 because the outer compositor takes `Super` before the nested window sees it.
 
+To repeat the live floating-stack soak, build first and run the probe through
+the capped launcher. Use `WLR_HEADLESS_OUTPUTS=2` for the two-output pass.
+The default pass sends 50,000 fixed-seed layout commands after the command and
+wire fuzz seed sweeps:
+
+```sh
+distrobox enter swayward-dev -- env CARGO_BUILD_JOBS=4 cargo build
+WLR_HEADLESS_OUTPUTS=1 contrib/dev-run.sh --timeout 1800 \
+    --run "$PWD/contrib/live-ipc-soak"
+WLR_HEADLESS_OUTPUTS=2 contrib/dev-run.sh --timeout 1800 \
+    --run "$PWD/contrib/live-ipc-soak"
+```
+
+The probe prints the seed, step, and command on failure. Keep the compositor's
+log with that output when reducing a crash or `ERROR`.
+
 ## Install as a login session
 
 `contrib/install-session.sh` installs swayward as a selectable session without
