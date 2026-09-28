@@ -1,5 +1,5 @@
 # This count records the entries migrated from docs/DIVERGENCE.md.
-migrated_entries = 205
+migrated_entries = 204
 
 [[edit]]
 migrated = true
@@ -736,7 +736,7 @@ why = ""
 [[edit]]
 migrated = true
 paths = ["src/command/mod.rs"]
-what = "do not retarget `floating` from a structurally focused split to its keyboard-focus descendant; floating split containers remain unsupported."
+what = "do not retarget `floating` from a structurally focused split to its keyboard-focus descendant; the selected split is the floating root."
 why = ""
 
 [[edit]]
@@ -1146,12 +1146,6 @@ migrated = true
 paths = ["swayward-ipc/src/command.rs", "src/command/mod.rs", "src/swayward.rs"]
 what = "implement sway's runtime `set` symbol table and argument substitution at command dispatch, including same-request ordering, criteria repetition, binding execution, longest-name matching, and reload reset; KDL remains variable-free."
 why = "Because the sway translator expands config variables before writing KDL."
-
-[[edit]]
-migrated = true
-paths = ["src/command/mod.rs", "src/command/scratchpad.rs", "src/command/window.rs"]
-what = "fail commands that would create or require sway floating split-container groups before changing state; swayward deliberately has no floating-subtree model, so reporting success after acting on one child or doing nothing would claim unsupported semantics."
-why = ""
 
 [[edit]]
 migrated = true

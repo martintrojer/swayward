@@ -181,7 +181,9 @@ into a machine you need today.
 
 Enough of sway's IPC exists for real clients such as Waybar and `swaymsg`, but
 the surface is incomplete. Unsupported requests and commands return explicit
-failures rather than convincing-looking partial data.
+failures rather than convincing-looking partial data. Swayward supports sway's
+floating container groups: a split, tabbed, or stacked container can move,
+fullscreen, become sticky, or enter the scratchpad as one recursive root.
 
 Read [Sway compatibility](Sway-Compatibility.md) for the current boundary.
 Read [Differences from sway](Differences-from-Sway.md) before migrating a

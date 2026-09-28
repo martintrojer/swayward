@@ -114,11 +114,12 @@ seam: the setting exists in KDL, but there is no safe live mutation path for
 it yet.
 
 The parser accepts 68 of sway 1.12's 82 unique runtime command names. Of those,
-24 command families are complete and 44 are partial. An accepted name means at
+27 command families are complete and 41 are partial. An accepted name means at
 least one real form works; it does not mean every option, target, or unit works.
 
 The commonly used forms include:
 
+- floating a window or a nested split, tabbed, or stacked container as one root;
 - focus and movement by direction, workspace, output, mark, or scratchpad;
 - workspace switching, naming, assignment, and back-and-forth;
 - split, tabbed, stacked, fullscreen, floating, sticky, and border state;

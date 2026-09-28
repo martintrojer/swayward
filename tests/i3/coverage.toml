@@ -2046,7 +2046,7 @@ assertions = 1
 tap_plan = 1
 pass = 1
 citation = "sway/sway/commands/floating.c:23-55; sway/sway/commands/resize.c:273-279"
-note = "Fresh unchanged measurement reaches `1..1`: swayward explicitly rejects the unsupported floating-group creation, then the compositor remains live after the tiled resize is rejected with `Cannot resize any further`. Sway floats the selected split as one unit; swayward has no floating-group representation. The assertion remains vacuous: removing both relevant commands still leaves this liveness assertion green."
+note = "Fresh unchanged measurement reaches `1..1`: swayward floats the selected split as one group, then remains live after the grouped resize is rejected with `Cannot resize any further`. The assertion remains a liveness check rather than proof of either state transition."
 
 [files."185-scratchpad.t"]
 plan_unknown = true

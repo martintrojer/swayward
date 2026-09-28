@@ -10,6 +10,17 @@ how to keep it when that is possible.
 
 ## Changes you may notice on the desktop
 
+### Whole container groups can float
+
+You can now float a split, tabbed, or stacked container as one object. Its
+nested layout and focus history stay intact while you move it between
+workspaces, make it sticky, fullscreen it, or send it to the scratchpad.
+`GET_TREE` exposes the group as one recursive root in `floating_nodes`, matching
+sway rather than adding i3's extra floating wrapper.
+
+There is no new command syntax. Focus the container and use the existing
+`floating`, `move scratchpad`, `sticky`, and workspace movement commands.
+
 ### Tiled windows have no gaps by default
 
 The default inner and outer gaps changed from 16 pixels to zero. This matches

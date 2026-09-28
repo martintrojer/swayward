@@ -15,8 +15,6 @@ Check these differences before moving a session:
 - **Some i3 structures are absent because sway omits them too.** Examples
   include floating wrapper nodes, output `content` nodes, JSON layout restore,
   and the i3 `open` command.
-- **Floating split containers are deferred.** Sway can float a whole nested
-  container. Swayward currently floats windows only.
 - **Desktop integration differs.** Swayward defaults to the GNOME portal
   backend for its window picker and dynamic cast target.
 

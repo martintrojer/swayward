@@ -28,7 +28,7 @@ comparison of every accepted command family with sway 1.12:
   accepted command that silently ignores unsupported syntax or state.
 
 The parser accepts 68 of sway's 82 unique runtime command names and rejects 14.
-Of the accepted names, 24 implement the full audited command family and 44 are
+Of the accepted names, 27 implement the full audited command family and 41 are
 partial. An accepted probe establishes one implemented form, not complete
 command-family parity.
 
@@ -79,7 +79,6 @@ The audit groups accepted-command gaps into focused tasks:
 - `runtime-exec-startup-id`
 - `runtime-pointer-policy-modes`
 - `runtime-focus-layout-semantics`
-- `runtime-floating-group-commands`
 - `runtime-mode-definition`
 - `runtime-swap-x11-id`
 - `runtime-titlebar-command-semantics`
