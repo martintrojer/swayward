@@ -23,6 +23,29 @@ fn initial_workspaces_keep_the_pre_config_output_orientation() {
 }
 
 #[test]
+fn moving_workspace_reaps_an_interrupted_empty_workspace_switch() {
+    let mut f = Fixture::new();
+    f.add_named_output_at("left".into(), (1270, 1408), Some((0, 0)));
+    f.add_named_output_at("right".into(), (1270, 1408), Some((1270, 0)));
+    let client = f.add_client();
+
+    map_test_window(&mut f, client, "first");
+    assert!(crate::command::execute(f.niri_state(), "workspace 3")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "workspace 4")[0].success);
+    map_test_window(&mut f, client, "moved");
+    assert!(crate::command::execute(f.niri_state(), "move workspace to output right")[0].success);
+
+    let mut numbers = f
+        .swayward()
+        .layout
+        .workspaces()
+        .filter_map(|(_, _, workspace)| workspace.number())
+        .collect::<Vec<_>>();
+    numbers.sort_unstable();
+    assert_eq!(numbers, [1, 4]);
+}
+
+#[test]
 fn repeatedly_moving_a_workspace_does_not_duplicate_it_in_output_order() {
     let mut f = Fixture::new();
     f.add_named_output_at("left".into(), (1270, 1408), Some((0, 0)));

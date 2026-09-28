@@ -6129,12 +6129,20 @@ impl<W: LayoutElement> Layout<W> {
         let Some(mut ws) = monitors[current_idx].detach_workspace(workspace_id) else {
             return false;
         };
-        monitors[current_idx].reap_empty_workspaces();
         if source_was_active {
+            // Detaching cancels the workspace animation. Select its settled fallback before
+            // reaping so an empty workspace that the interrupted switch left active can go.
             monitors[current_idx].active_workspace_idx = source_replacement
                 .and_then(|id| monitors[current_idx].idx_of_ws(id))
-                .unwrap_or(monitors[current_idx].workspaces.len() - 1);
+                .or_else(|| {
+                    monitors[current_idx]
+                        .workspaces
+                        .iter()
+                        .rposition(Workspace::must_be_kept)
+                })
+                .unwrap_or(0);
         }
+        monitors[current_idx].reap_empty_workspaces();
         ws.original_output = OutputId::new(new_output);
 
         let target_active = monitors[target_idx].active_workspace_ref().id();
