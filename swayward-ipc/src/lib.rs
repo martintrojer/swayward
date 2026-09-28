@@ -1,4 +1,12 @@
-//! Rust types for sway's IPC JSON schemas.
+//! Rust types and blocking clients for sway-compatible IPC.
+//!
+//! [`sway_socket::SwaySocket`] connects to `$SWAYSOCK`, frames requests with sway's binary
+//! header, and returns raw JSON for schemas that this crate does not model. [`MessageType`] selects
+//! the request. After a subscribe request, use [`sway_socket::SwaySocket::read_event`] to read raw
+//! event IDs and payloads.
+//!
+//! [`socket::Socket`] and [`legacy`] implement swayward's separate line-delimited JSON protocol on
+//! `$SWAYWARD_SOCKET`. New sway-compatible clients should not use that legacy endpoint.
 
 #![cfg_attr(
     not(test),

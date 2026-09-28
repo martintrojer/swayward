@@ -1,19 +1,40 @@
+//! Framing for sway's IPC protocol.
+//!
+//! A frame contains the six-byte [`MAGIC`], a native-endian `u32` payload length, a native-endian
+//! `u32` message type, and the payload bytes. This matches sway's `ipc_header` layout
+//! (`sway/include/ipc.h:47-51`). Event types set the high bit, so use [`decode_header_raw`] for an
+//! event stream.
+
 use std::error::Error;
 use std::fmt;
 
 use crate::MessageType;
 
+/// Six-byte marker at the start of every sway IPC frame.
 pub const MAGIC: &[u8; 6] = b"i3-ipc";
+/// Size in bytes of the sway IPC header.
 pub const HEADER_SIZE: usize = 14;
 /// Largest IPC payload accepted from a peer.
 pub const MAX_PAYLOAD_SIZE: u32 = 16 * 1024 * 1024;
+/// Internal frame-sized marker used to wake and close a server connection.
+///
+/// This marker is not part of sway's IPC protocol and [`decode_header`] rejects it.
 pub const CLOSE_SENTINEL: &[u8; HEADER_SIZE] = b"close-sway-ipc";
 
+/// Error returned when an IPC header is invalid or unsupported.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WireError {
+    /// The frame does not start with [`MAGIC`].
     BadMagic,
+    /// The numeric request type is not represented by [`MessageType`].
     UnknownMessageType(u32),
-    FrameTooLarge { length: u32, maximum: u32 },
+    /// The declared payload exceeds the configured allocation limit.
+    FrameTooLarge {
+        /// Declared payload length in bytes.
+        length: u32,
+        /// Maximum accepted payload length in bytes.
+        maximum: u32,
+    },
 }
 
 impl fmt::Display for WireError {
@@ -30,10 +51,12 @@ impl fmt::Display for WireError {
 
 impl Error for WireError {}
 
+/// Encodes a request frame for a known [`MessageType`].
 pub fn encode(msg_type: MessageType, payload: &str) -> Vec<u8> {
     encode_raw(msg_type as u32, payload)
 }
 
+/// Encodes a frame with an uninterpreted numeric message or event type.
 pub fn encode_raw(msg_type: u32, payload: &str) -> Vec<u8> {
     encode_raw_bytes(msg_type, payload.as_bytes())
 }
@@ -64,6 +87,9 @@ pub fn decode_header_raw(buf: &[u8; HEADER_SIZE]) -> Result<(u32, u32), WireErro
     Ok((raw_type, len))
 }
 
+/// Decodes a request or reply header into its message type and payload length.
+///
+/// Use [`decode_header_raw`] for event frames because event IDs are not [`MessageType`] values.
 pub fn decode_header(buf: &[u8; HEADER_SIZE]) -> Result<(MessageType, u32), WireError> {
     let (raw_type, len) = decode_header_raw(buf)?;
     let msg_type = MessageType::try_from(raw_type).map_err(WireError::UnknownMessageType)?;

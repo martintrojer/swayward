@@ -25,6 +25,7 @@ pub struct SwaySocket {
 /// Why a reply could not be read.
 #[derive(Debug)]
 pub enum SwayError {
+    /// The socket could not be opened, read, or written.
     Io(io::Error),
     /// The server framed a reply we could not parse.
     Wire(crate::wire::WireError),
@@ -36,7 +37,9 @@ pub enum SwayError {
     UnknownEventType(u32),
     /// The reply carried a different message type than the request.
     Mismatch {
+        /// Numeric type sent in the request.
         sent: u32,
+        /// Numeric type received in the reply.
         got: u32,
     },
 }
@@ -113,7 +116,11 @@ impl SwaySocket {
         String::from_utf8(body).map_err(SwayError::InvalidUtf8)
     }
 
-    /// Reads one further reply, for a subscription that streams events.
+    /// Reads one event from a subscription.
+    ///
+    /// The first tuple item is the raw event ID, including sway's high event bit. The second item
+    /// is the JSON payload. This method also validates the frame and enforces
+    /// [`crate::wire::MAX_PAYLOAD_SIZE`].
     pub fn read_event(&mut self) -> Result<(u32, String), SwayError> {
         let mut header = [0u8; HEADER_SIZE];
         self.stream.read_exact(&mut header)?;

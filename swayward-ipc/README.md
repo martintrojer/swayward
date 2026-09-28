@@ -1,6 +1,20 @@
 # swayward-ipc
 
-Types and helpers for interfacing with the swayward Wayland compositor, forked from [niri](https://github.com/niri-wm/niri).
+Types and blocking clients for interfacing with the swayward Wayland compositor.
+
+Use `sway_socket::SwaySocket` for sway-compatible IPC over `$SWAYSOCK`. `MessageType` selects the
+request, `send` returns its raw JSON reply, and `read_event` reads events after a subscribe request.
+The `legacy` and `socket` modules use swayward's separate line-delimited protocol over
+`$SWAYWARD_SOCKET`; new sway-compatible clients should not use that endpoint.
+
+```rust,no_run
+use swayward_ipc::{sway_socket::SwaySocket, MessageType};
+
+let mut socket = SwaySocket::connect()?;
+let tree = socket.send(MessageType::GetTree, "")?;
+println!("{tree}");
+# Ok::<(), swayward_ipc::sway_socket::SwayError>(())
+```
 
 ## Backwards compatibility
 
