@@ -176,6 +176,13 @@ Run `./contrib/check-divergence` before committing.
   approximated.
 - The container tree stays well formed after every mutation.
 - A live-session path must not panic. An `ERROR` in the log is a bug.
+
+The `swayward-ipc` library parses untrusted IPC client input, so its non-test
+code must not use `unwrap`, `expect`, unchecked indexing or slicing, or explicit
+panics. Keep the crate-level Clippy warnings enabled and return a structured
+parse, wire, serialization, or I/O error instead of relying on parser progress
+or supposedly infallible data.
+
 - A feature needs executable evidence before it counts as working.
 - Every sway-compatibility fix names the exact oracle scenario/event row that proves it in
   its commit message. If no focused row exists, add and capture one from pinned sway

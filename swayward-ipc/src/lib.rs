@@ -1,5 +1,15 @@
 //! Rust types for sway's IPC JSON schemas.
 
+#![cfg_attr(
+    not(test),
+    warn(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::panic
+    )
+)]
+
 pub mod command;
 pub mod criteria;
 mod event;

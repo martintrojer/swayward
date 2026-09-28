@@ -50,7 +50,7 @@ impl Socket {
     /// * `Ok(Err(message))`: error message from niri
     /// * `Err(error)`: error communicating with niri
     pub fn send(&mut self, request: Request) -> io::Result<Reply> {
-        let mut buf = serde_json::to_string(&request).unwrap();
+        let mut buf = serde_json::to_string(&request).map_err(io::Error::other)?;
         buf.push('\n');
         self.stream.get_mut().write_all(buf.as_bytes())?;
 

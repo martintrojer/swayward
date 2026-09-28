@@ -468,15 +468,18 @@ pub fn expand_variables(input: &str, variables: &[(String, String)]) -> String {
     let mut out = String::with_capacity(input.len());
     let bytes = input.as_bytes();
     let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] != b'$' {
-            out.push(input[i..].chars().next().unwrap());
-            i += input[i..].chars().next().unwrap().len_utf8();
+    while let Some(&byte) = bytes.get(i) {
+        if byte != b'$' {
+            let Some(ch) = input.get(i..).and_then(|tail| tail.chars().next()) else {
+                break;
+            };
+            out.push(ch);
+            i += ch.len_utf8();
             continue;
         }
         // An escaped `$` keeps its backslash; sway leaves both in place here
         // and strips the escape later with the quotes.
-        if i > 0 && bytes[i - 1] == b'\\' {
+        if bytes.get(i.wrapping_sub(1)) == Some(&b'\\') {
             out.push('$');
             i += 1;
             continue;
@@ -487,10 +490,11 @@ pub fn expand_variables(input: &str, variables: &[(String, String)]) -> String {
             i += 2;
             continue;
         }
-        match variables
-            .iter()
-            .find(|(name, _)| input[i..].starts_with(name.as_str()))
-        {
+        match variables.iter().find(|(name, _)| {
+            input
+                .get(i..)
+                .is_some_and(|tail| tail.starts_with(name.as_str()))
+        }) {
             Some((name, value)) => {
                 out.push_str(value);
                 i += name.len();
@@ -773,7 +777,9 @@ fn parse_words(args: &[&str], input: &str) -> Result<Command, String> {
     let Some(name) = args.first().copied() else {
         return Err("expected a command".into());
     };
-    let rest = &args[1..];
+    let (_, rest) = args
+        .split_first()
+        .ok_or_else(|| "expected a command".to_owned())?;
     match name.to_ascii_lowercase().as_str() {
         "focus" => parse_focus(rest),
         "move" => parse_move(rest),
@@ -1466,7 +1472,9 @@ fn parse_output_command(args: &[&str]) -> Result<Command, String> {
         };
         action.validate()?;
         actions.push(action);
-        args = &rest[consumed..];
+        args = rest
+            .get(consumed..)
+            .ok_or_else(|| format!("Invalid output subcommand: {name}."))?;
     }
 
     Ok(Command::Output {
@@ -1496,21 +1504,28 @@ fn parse_client_colors(name: &str, args: &[&str]) -> Result<Command, String> {
         "client.urgent" => "#900000ff",
         _ => unreachable!(),
     };
+    let [border, background, text, rest @ ..] = args else {
+        return Err(format!(
+            "Invalid {name} command (expected at least 3 arguments, got {})",
+            args.len()
+        ));
+    };
     let properties = [
-        ("border", args[0]),
-        ("background", args[1]),
-        ("text", args[2]),
+        ("border", *border),
+        ("background", *background),
+        ("text", *text),
         (
             "indicator",
-            args.get(3).copied().unwrap_or(default_indicator),
+            rest.first().copied().unwrap_or(default_indicator),
         ),
-        ("child_border", args.get(4).copied().unwrap_or(args[1])),
+        ("child_border", rest.get(1).copied().unwrap_or(background)),
     ];
     let mut parsed = [[0; 4]; 5];
-    for (index, (property, value)) in properties.into_iter().enumerate() {
-        parsed[index] =
+    for (slot, (property, value)) in parsed.iter_mut().zip(properties) {
+        *slot =
             parse_sway_color(value).ok_or_else(|| format!("Invalid {property} color {value}"))?;
     }
+    let [border, background, text, ..] = parsed;
 
     if name != "client.focused_tab_title" {
         return Err(
@@ -1522,9 +1537,9 @@ fn parse_client_colors(name: &str, args: &[&str]) -> Result<Command, String> {
     Ok(Command::SetClientColors {
         class: ClientColorClass::FocusedTabTitle,
         colors: ClientColors {
-            border: parsed[0],
-            background: parsed[1],
-            text: parsed[2],
+            border,
+            background,
+            text,
         },
     })
 }
@@ -1615,14 +1630,17 @@ fn parse_switch_bind_command(args: &[&str], unbind: bool) -> Result<Command, Str
         }
         index += 1;
     }
-    let remaining = &args[index..];
+    let remaining = args.get(index..).unwrap_or_default();
     if remaining.len() < minimum {
         return Err(format!(
             "Invalid {name} command (expected at least {minimum} non-option arguments, got {})",
             remaining.len()
         ));
     }
-    let combo = join_words(&remaining[..1]);
+    let Some((combo, command)) = remaining.split_first() else {
+        return Err(format!("Invalid {name} command"));
+    };
+    let combo = join_words(&[combo]);
     let Some((switch, state)) = combo.split_once(':') else {
         return Err(format!(
             "Invalid {name} command (expected binding with the form <switch>:<state>)"
@@ -1640,7 +1658,7 @@ fn parse_switch_bind_command(args: &[&str], unbind: bool) -> Result<Command, Str
     }
     Ok(Command::SwitchBind {
         switch: combo,
-        command: (!unbind).then(|| join_words(&remaining[1..])),
+        command: (!unbind).then(|| join_words(command)),
         locked,
     })
 }
@@ -1674,7 +1692,11 @@ fn parse_bind_command(args: &[&str], keycode: bool, unbind: bool) -> Result<Comm
             "--no-repeat" => no_repeat = true,
             "--no-warn" => {}
             option if option.starts_with("--input-device=") => {
-                input_device = unquote(&option["--input-device=".len()..]).to_owned();
+                input_device = option
+                    .strip_prefix("--input-device=")
+                    .map(unquote)
+                    .unwrap_or_default()
+                    .to_owned();
             }
             // These sway forms target mouse regions or translate keysyms via
             // the live XKB keymap. The runtime command remains fail-loud until
@@ -1683,16 +1705,19 @@ fn parse_bind_command(args: &[&str], keycode: bool, unbind: bool) -> Result<Comm
         }
         index += 1;
     }
-    let remaining = &args[index..];
+    let remaining = args.get(index..).unwrap_or_default();
     if remaining.len() < minimum {
         return Err(format!(
             "Invalid {name} command (expected at least {minimum} non-option arguments, got {})",
             remaining.len()
         ));
     }
+    let Some((key, command)) = remaining.split_first() else {
+        return Err(format!("Invalid {name} command"));
+    };
     Ok(Command::Bind {
-        key: join_words(&remaining[..1]),
-        command: (!unbind).then(|| join_words(&remaining[1..])),
+        key: join_words(&[key]),
+        command: (!unbind).then(|| join_words(command)),
         keycode,
         release,
         locked,
@@ -1763,13 +1788,15 @@ fn parse_set(args: &[&str]) -> Result<Command, String> {
             args.len()
         ));
     }
-    let name = args[0];
+    let [name, value @ ..] = args else {
+        return Err("Invalid set command (expected at least 2 arguments, got 0)".into());
+    };
     if !name.starts_with('$') {
         return Err(format!("variable '{name}' must start with $"));
     }
     Ok(Command::Set {
-        name: name.to_owned(),
-        value: join_words(&args[1..]),
+        name: (*name).to_owned(),
+        value: join_words(value),
     })
 }
 
@@ -1902,8 +1929,11 @@ fn parse_focus(args: &[&str]) -> Result<Command, String> {
     if args.is_empty() {
         return Ok(Command::Focus);
     }
-    if args[0].eq_ignore_ascii_case("output") {
-        return match &args[1..] {
+    if args
+        .first()
+        .is_some_and(|arg| arg.eq_ignore_ascii_case("output"))
+    {
+        return match args.get(1..).unwrap_or_default() {
             [] => Err("Expected 'focus output <direction|name>'.".into()),
             output => Ok(Command::FocusOutput(join_words(output))),
         };
@@ -2041,7 +2071,7 @@ fn parse_move_position(args: &[&str]) -> Result<MovePosition, String> {
         return Err(move_position_usage());
     }
     let (x, consumed) = parse_resize_amount(args).map_err(|_| "Invalid x position specified")?;
-    let args = &args[consumed..];
+    let args = args.get(consumed..).unwrap_or_default();
     if args.is_empty() {
         return Err(move_position_usage());
     }
@@ -2159,34 +2189,37 @@ fn parse_rename(args: &[&str]) -> Result<Command, String> {
     if !workspace.eq_ignore_ascii_case("workspace") {
         return Err(SYNTAX.into());
     }
-    if rest
-        .first()
-        .is_some_and(|arg| arg.eq_ignore_ascii_case("to"))
-    {
-        return (rest.len() > 1)
-            .then(|| Command::RenameWorkspace {
-                old: None,
-                new_name: join_words(&rest[1..]),
-            })
-            .ok_or_else(|| SYNTAX.into());
+    if let Some((to, new_name)) = rest.split_first() {
+        if to.eq_ignore_ascii_case("to") {
+            return (!new_name.is_empty())
+                .then(|| Command::RenameWorkspace {
+                    old: None,
+                    new_name: join_words(new_name),
+                })
+                .ok_or_else(|| SYNTAX.into());
+        }
     }
     let Some(to) = rest.iter().position(|arg| arg.eq_ignore_ascii_case("to")) else {
         return Err(SYNTAX.into());
     };
-    if to + 1 == rest.len() {
+    let (old, new_name) = rest.split_at(to);
+    let Some((_, new_name)) = new_name.split_first() else {
+        return Err(SYNTAX.into());
+    };
+    if new_name.is_empty() {
         return Err(SYNTAX.into());
     }
-    let old = if rest[..to]
+    let old = if old
         .first()
         .is_some_and(|name| name.eq_ignore_ascii_case("number"))
     {
-        parse_workspace(&rest[..to])?
+        parse_workspace(old)?
     } else {
-        WorkspaceTarget::Name(join_words(&rest[..to]))
+        WorkspaceTarget::Name(join_words(old))
     };
     Ok(Command::RenameWorkspace {
         old: Some(old),
-        new_name: join_words(&rest[to + 1..]),
+        new_name: join_words(new_name),
     })
 }
 
@@ -2229,12 +2262,13 @@ fn parse_workspace_command(args: &[&str]) -> Result<Command, String> {
         // Every remaining word is a separate output, and sway uses the first
         // one that resolves (`sway/sway/commands/workspace.c:153-155`). Do not
         // join them: that would build one impossible output name.
+        let (target, outputs) = args.split_at(index);
+        let Some((_, outputs)) = outputs.split_first() else {
+            return Err("Expected 'workspace <name> output <output>'".into());
+        };
         return Ok(Command::AssignWorkspace {
-            target: parse_workspace(&args[..index])?,
-            outputs: args[index + 1..]
-                .iter()
-                .map(|output| join_words(&[output]))
-                .collect(),
+            target: parse_workspace(target)?,
+            outputs: outputs.iter().map(|output| join_words(&[output])).collect(),
         });
     }
     if let Some(index) = args.iter().position(|arg| arg.eq_ignore_ascii_case("gaps")) {
@@ -2271,14 +2305,18 @@ fn parse_workspace_gaps(args: &[&str], index: usize) -> Result<Command, String> 
             args.len()
         ));
     }
-    let Some((inner, sides)) = parse_gaps_kind(args[index + 1]) else {
+    let (name, suffix) = args.split_at(index);
+    let [_, kind, amount] = suffix else {
         return Err(EXPECTED.into());
     };
-    let Ok(amount) = args[index + 2].parse::<i32>() else {
+    let Some((inner, sides)) = parse_gaps_kind(kind) else {
+        return Err(EXPECTED.into());
+    };
+    let Ok(amount) = amount.parse::<i32>() else {
         return Err(EXPECTED.into());
     };
     Ok(Command::WorkspaceGaps {
-        name: join_words(&args[..index]),
+        name: join_words(name),
         inner,
         sides,
         amount,
@@ -2352,7 +2390,7 @@ fn parse_resize(args: &[&str]) -> Result<Command, String> {
     } else {
         parse_resize_amount(rest)?
     };
-    let rest = &rest[consumed..];
+    let rest = rest.get(consumed..).unwrap_or_default();
     let second = if rest.is_empty() {
         None
     } else {
@@ -2382,19 +2420,19 @@ fn parse_resize_set(mut args: &[&str]) -> Result<Command, String> {
     }
 
     let mut width = None;
-    if args.len() >= 2 && args[0] == "width" && args[1] != "height" {
-        args = &args[1..];
+    if matches!(args, ["width", next, ..] if *next != "height") {
+        args = args.get(1..).unwrap_or_default();
     }
-    if args[0] != "height" {
+    if args.first() != Some(&"height") {
         let (amount, consumed) = parse_resize_amount(args).map_err(|_| usage())?;
         width = Some(amount);
-        args = &args[consumed..];
+        args = args.get(consumed..).unwrap_or_default();
     }
 
     let mut height = None;
     if !args.is_empty() {
-        if args.len() >= 2 && args[0] == "height" {
-            args = &args[1..];
+        if matches!(args, ["height", _, ..]) {
+            args = args.get(1..).unwrap_or_default();
         }
         let (amount, consumed) = parse_resize_amount(args).map_err(|_| usage())?;
         if consumed != args.len() {
@@ -2531,7 +2569,7 @@ fn parse_mark(args: &[&str]) -> Result<Command, String> {
     Ok(Command::Mark {
         add,
         toggle,
-        identifier: join_words(&args[index..]),
+        identifier: join_words(args.get(index..).unwrap_or_default()),
     })
 }
 

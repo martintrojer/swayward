@@ -248,7 +248,9 @@ fn parse_pairs(input: &str) -> Result<Vec<(String, Option<String>)>, String> {
             chars.next();
             continue;
         }
-        let start = chars.peek().unwrap().0;
+        let Some((start, _)) = chars.peek().copied() else {
+            break;
+        };
         while chars
             .peek()
             .is_some_and(|(_, ch)| ch.is_ascii_lowercase() || *ch == '_')

@@ -49,22 +49,19 @@ pub fn encode_raw(msg_type: u32, payload: &str) -> Vec<u8> {
 /// separately (`sway/include/ipc.h:27-38`), so a subscribed client must read
 /// the raw value or it rejects every event it asked for.
 pub fn decode_header_raw(buf: &[u8; HEADER_SIZE]) -> Result<(u32, u32), WireError> {
-    if &buf[..MAGIC.len()] != MAGIC {
+    let (magic, fields) = buf.split_at(MAGIC.len());
+    if magic != MAGIC {
         return Err(WireError::BadMagic);
     }
 
-    let len = u32::from_ne_bytes(buf[6..10].try_into().map_err(|_| WireError::BadMagic)?);
-    let raw_type = u32::from_ne_bytes(buf[10..14].try_into().map_err(|_| WireError::BadMagic)?);
+    let (len, raw_type) = fields.split_at(size_of::<u32>());
+    let len = u32::from_ne_bytes(len.try_into().map_err(|_| WireError::BadMagic)?);
+    let raw_type = u32::from_ne_bytes(raw_type.try_into().map_err(|_| WireError::BadMagic)?);
     Ok((raw_type, len))
 }
 
 pub fn decode_header(buf: &[u8; HEADER_SIZE]) -> Result<(MessageType, u32), WireError> {
-    if &buf[..MAGIC.len()] != MAGIC {
-        return Err(WireError::BadMagic);
-    }
-
-    let len = u32::from_ne_bytes(buf[6..10].try_into().map_err(|_| WireError::BadMagic)?);
-    let raw_type = u32::from_ne_bytes(buf[10..14].try_into().map_err(|_| WireError::BadMagic)?);
+    let (raw_type, len) = decode_header_raw(buf)?;
     let msg_type = MessageType::try_from(raw_type).map_err(WireError::UnknownMessageType)?;
     Ok((msg_type, len))
 }
