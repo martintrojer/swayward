@@ -133,59 +133,57 @@ impl Criteria {
         }
         let mut criteria = Self::default();
         for (name, value) in pairs {
-            let pattern = || {
-                value
-                    .as_deref()
-                    .ok_or_else(|| format!("Token '{name}' requires a value"))
-                    .and_then(Pattern::parse)
-            };
-            match name.as_str() {
-                "all" if value.is_none() => criteria.all = true,
-                "floating" if value.is_none() => criteria.floating = true,
-                "tiling" if value.is_none() => criteria.tiling = true,
-                "title" => criteria.title = Some(pattern()?),
-                "shell" => criteria.shell = Some(pattern()?),
-                "app_id" => criteria.app_id = Some(pattern()?),
-                "con_mark" => criteria.con_mark = Some(pattern()?),
-                name @ ("class" | "instance" | "window_role") => {
-                    return Err(format!("X11-only criterion '{name}' is unsupported"))
-                }
-                "workspace" => criteria.workspace = Some(pattern()?),
-                "sandbox_engine" => criteria.sandbox_engine = Some(pattern()?),
-                "sandbox_app_id" => criteria.sandbox_app_id = Some(pattern()?),
-                "sandbox_instance_id" => criteria.sandbox_instance_id = Some(pattern()?),
-                "tag" => criteria.tag = Some(pattern()?),
-                "con_id" => {
-                    let value = required(&name, value.as_deref())?;
-                    criteria.con_id = Some(if value == "__focused__" {
-                        focused_con_id.unwrap_or(0)
-                    } else {
-                        value.parse().map_err(|_| {
-                            "The value for 'con_id' should be '__focused__' or numeric".to_owned()
-                        })?
-                    });
-                }
-                "id" => return Err("X11-only criterion 'id' is unsupported".into()),
-                "pid" => {
-                    criteria.pid = Some(number::<u32>(&name, required(&name, value.as_deref())?)?)
-                }
-                "window_type" => {
-                    return Err("X11-only criterion 'window_type' is unsupported".into())
-                }
-                "urgent" => {
-                    criteria.urgent = Some(match required(&name, value.as_deref())? {
-                        "latest" | "newest" | "last" | "recent" => Urgent::Latest,
-                        "oldest" | "first" => Urgent::Oldest,
-                        _ => return Err("The value for 'urgent' must be 'first', 'last', 'latest', 'newest', 'oldest' or 'recent'".into()),
-                    });
-                }
-                "all" => criteria.all = true,
-                "floating" => criteria.floating = true,
-                "tiling" => criteria.tiling = true,
-                _ => return Err(format!("Token '{name}' is not recognized")),
-            }
+            criteria.apply_pair(&name, value.as_deref(), focused_con_id)?;
         }
         Ok(criteria)
+    }
+
+    fn apply_pair(
+        &mut self,
+        name: &str,
+        value: Option<&str>,
+        focused_con_id: Option<u64>,
+    ) -> Result<(), String> {
+        let pattern = || required(name, value).and_then(Pattern::parse);
+        match name {
+            "all" => self.all = true,
+            "floating" => self.floating = true,
+            "tiling" => self.tiling = true,
+            "title" => self.title = Some(pattern()?),
+            "shell" => self.shell = Some(pattern()?),
+            "app_id" => self.app_id = Some(pattern()?),
+            "con_mark" => self.con_mark = Some(pattern()?),
+            name @ ("class" | "instance" | "window_role") => {
+                return Err(format!("X11-only criterion '{name}' is unsupported"))
+            }
+            "workspace" => self.workspace = Some(pattern()?),
+            "sandbox_engine" => self.sandbox_engine = Some(pattern()?),
+            "sandbox_app_id" => self.sandbox_app_id = Some(pattern()?),
+            "sandbox_instance_id" => self.sandbox_instance_id = Some(pattern()?),
+            "tag" => self.tag = Some(pattern()?),
+            "con_id" => {
+                let value = required(name, value)?;
+                self.con_id = Some(if value == "__focused__" {
+                    focused_con_id.unwrap_or(0)
+                } else {
+                    value.parse().map_err(|_| {
+                        "The value for 'con_id' should be '__focused__' or numeric".to_owned()
+                    })?
+                });
+            }
+            "id" => return Err("X11-only criterion 'id' is unsupported".into()),
+            "pid" => self.pid = Some(number::<u32>(name, required(name, value)?)?),
+            "window_type" => return Err("X11-only criterion 'window_type' is unsupported".into()),
+            "urgent" => {
+                self.urgent = Some(match required(name, value)? {
+                    "latest" | "newest" | "last" | "recent" => Urgent::Latest,
+                    "oldest" | "first" => Urgent::Oldest,
+                    _ => return Err("The value for 'urgent' must be 'first', 'last', 'latest', 'newest', 'oldest' or 'recent'".into()),
+                });
+            }
+            _ => return Err(format!("Token '{name}' is not recognized")),
+        }
+        Ok(())
     }
 
     pub fn matches(&self, window: &WindowInfo<'_>, focused: &WindowInfo<'_>) -> bool {
@@ -240,69 +238,91 @@ fn number<T: FromStr>(name: &str, value: &str) -> Result<T, String> {
         .map_err(|_| format!("The value for '{name}' should be numeric"))
 }
 
-fn parse_pairs(input: &str) -> Result<Vec<(String, Option<String>)>, String> {
-    let mut chars = input.char_indices().peekable();
-    let mut pairs = Vec::new();
-    while let Some((_, ch)) = chars.peek().copied() {
-        if ch.is_whitespace() {
-            chars.next();
-            continue;
+struct CriteriaLexer<'a> {
+    input: &'a str,
+    chars: std::iter::Peekable<std::str::CharIndices<'a>>,
+}
+
+impl<'a> CriteriaLexer<'a> {
+    fn new(input: &'a str) -> Self {
+        Self {
+            input,
+            chars: input.char_indices().peekable(),
         }
-        let Some((start, _)) = chars.peek().copied() else {
-            break;
+    }
+
+    fn skip_whitespace(&mut self) {
+        while self.chars.peek().is_some_and(|(_, ch)| ch.is_whitespace()) {
+            self.chars.next();
+        }
+    }
+
+    fn next_name(&mut self) -> Result<Option<String>, String> {
+        self.skip_whitespace();
+        let Some((start, _)) = self.chars.peek().copied() else {
+            return Ok(None);
         };
-        while chars
+        while self
+            .chars
             .peek()
             .is_some_and(|(_, ch)| ch.is_ascii_lowercase() || *ch == '_')
         {
-            chars.next();
+            self.chars.next();
         }
-        let end = chars.peek().map_or(input.len(), |(index, _)| *index);
+        let end = self
+            .chars
+            .peek()
+            .map_or(self.input.len(), |(index, _)| *index);
         if end == start {
             return Err("Invalid criteria token".into());
         }
-        let name = input[start..end].to_owned();
-        while chars.peek().is_some_and(|(_, ch)| ch.is_whitespace()) {
-            chars.next();
+        Ok(Some(self.input[start..end].to_owned()))
+    }
+
+    fn next_value(&mut self) -> Result<Option<String>, String> {
+        self.skip_whitespace();
+        if !self.chars.peek().is_some_and(|(_, ch)| *ch == '=') {
+            return Ok(None);
         }
-        let value = if chars.peek().is_some_and(|(_, ch)| *ch == '=') {
-            chars.next();
-            while chars.peek().is_some_and(|(_, ch)| ch.is_whitespace()) {
-                chars.next();
-            }
-            let quoted = chars.peek().is_some_and(|(_, ch)| *ch == '"');
-            if quoted {
-                chars.next();
-            }
-            let mut value = String::new();
-            let mut escaped = false;
-            loop {
-                let Some((_, ch)) = chars.next() else {
-                    if quoted {
-                        return Err("Quote mismatch in criteria".into());
-                    }
-                    break;
-                };
-                if escaped {
-                    if ch != '"' {
-                        value.push('\\');
-                    }
-                    value.push(ch);
-                    escaped = false;
-                } else if ch == '\\' {
-                    escaped = true;
-                } else if (quoted && ch == '"') || (!quoted && ch.is_whitespace()) {
-                    // A quoted value ends at its closing quote; a bare value ends at whitespace.
-                    break;
-                } else {
-                    value.push(ch);
+        self.chars.next();
+        self.skip_whitespace();
+
+        let quoted = self.chars.peek().is_some_and(|(_, ch)| *ch == '"');
+        if quoted {
+            self.chars.next();
+        }
+        let mut value = String::new();
+        let mut escaped = false;
+        loop {
+            let Some((_, ch)) = self.chars.next() else {
+                if quoted {
+                    return Err("Quote mismatch in criteria".into());
                 }
+                break;
+            };
+            if escaped {
+                if ch != '"' {
+                    value.push('\\');
+                }
+                value.push(ch);
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if (quoted && ch == '"') || (!quoted && ch.is_whitespace()) {
+                break;
+            } else {
+                value.push(ch);
             }
-            Some(value)
-        } else {
-            None
-        };
-        pairs.push((name, value));
+        }
+        Ok(Some(value))
+    }
+}
+
+fn parse_pairs(input: &str) -> Result<Vec<(String, Option<String>)>, String> {
+    let mut lexer = CriteriaLexer::new(input);
+    let mut pairs = Vec::new();
+    while let Some(name) = lexer.next_name()? {
+        pairs.push((name, lexer.next_value()?));
     }
     Ok(pairs)
 }
