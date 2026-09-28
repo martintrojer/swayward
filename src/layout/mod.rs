@@ -109,6 +109,13 @@ swayward_render_elements! {
 pub type LayoutElementRenderSnapshot =
     RenderSnapshot<BakedBuffer<TextureBuffer<GlesTexture>>, BakedBuffer<SolidColorBuffer>>;
 
+type NodeRemap = Vec<(tiling_tree::NodeId, tiling_tree::NodeId)>;
+
+pub(crate) struct SwapRemap {
+    pub(crate) first: NodeRemap,
+    pub(crate) second: NodeRemap,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SizingMode {
     Normal,
@@ -3591,20 +3598,13 @@ impl<W: LayoutElement> Layout<W> {
             .map_err(str::to_owned)
     }
 
-    #[allow(clippy::type_complexity)]
-    pub fn swap_tiling_nodes_between_workspaces(
+    pub(crate) fn swap_tiling_nodes_between_workspaces(
         &mut self,
         first_workspace: WorkspaceId,
         first: tiling_tree::NodeId,
         second_workspace: WorkspaceId,
         second: tiling_tree::NodeId,
-    ) -> Result<
-        (
-            Vec<(tiling_tree::NodeId, tiling_tree::NodeId)>,
-            Vec<(tiling_tree::NodeId, tiling_tree::NodeId)>,
-        ),
-        String,
-    > {
+    ) -> Result<SwapRemap, String> {
         let MonitorSet::Normal { monitors, .. } = &mut self.monitor_set else {
             return Err("cannot swap containers without an output".into());
         };
@@ -3659,7 +3659,10 @@ impl<W: LayoutElement> Layout<W> {
             .1;
         first_ws.finish_tiling_subtree_detach(None);
         second_ws.finish_tiling_subtree_detach(None);
-        Ok((first_remapped, second_remapped))
+        Ok(SwapRemap {
+            first: first_remapped,
+            second: second_remapped,
+        })
     }
 
     pub fn move_tiling_subtree_to_node(

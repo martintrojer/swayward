@@ -574,23 +574,18 @@ pub(super) fn swap_target(
         return failure("Can only swap with containers and views");
     }
     if source_workspace != destination_workspace {
-        let (source_remapped, destination_remapped) =
-            match state.swayward.layout.swap_tiling_nodes_between_workspaces(
-                source_workspace,
-                source_node,
-                destination_workspace,
-                destination_node,
-            ) {
-                Ok(remapped) => remapped,
-                Err(error) => return failure(error),
-            };
+        let remapped = match state.swayward.layout.swap_tiling_nodes_between_workspaces(
+            source_workspace,
+            source_node,
+            destination_workspace,
+            destination_node,
+        ) {
+            Ok(remapped) => remapped,
+            Err(error) => return failure(error),
+        };
         for (workspace, destination, remapped) in [
-            (source_workspace, destination_workspace, source_remapped),
-            (
-                destination_workspace,
-                source_workspace,
-                destination_remapped,
-            ),
+            (source_workspace, destination_workspace, remapped.first),
+            (destination_workspace, source_workspace, remapped.second),
         ] {
             for (old, new) in remapped {
                 if let Some(marks) = state.swayward.marks_by_container.remove(&(workspace, old)) {
