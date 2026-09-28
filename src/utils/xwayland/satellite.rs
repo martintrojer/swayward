@@ -1,6 +1,6 @@
 use std::os::fd::{AsRawFd as _, BorrowedFd, OwnedFd};
 use std::os::unix::net::UnixListener;
-use std::os::unix::process::CommandExt as _;
+use std::os::unix::process::{CommandExt as _, ExitStatusExt as _};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
@@ -335,6 +335,32 @@ fn spawn_and_wait(
         }
     };
 
-    // This is most likely a crash, hence warn!().
-    warn!("xwayland-satellite exited with: {status}");
+    if satellite_exit_needs_warning(status) {
+        warn!("xwayland-satellite exited with: {status}");
+    } else {
+        debug!("xwayland-satellite exited with: {status}");
+    }
+}
+
+fn satellite_exit_needs_warning(status: std::process::ExitStatus) -> bool {
+    status.signal() != Some(libc::SIGTERM)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::os::unix::process::ExitStatusExt as _;
+    use std::process::ExitStatus;
+
+    #[test]
+    fn satellite_sigterm_is_expected_during_compositor_shutdown() {
+        assert!(!super::satellite_exit_needs_warning(ExitStatus::from_raw(
+            libc::SIGTERM
+        )));
+        assert!(super::satellite_exit_needs_warning(ExitStatus::from_raw(
+            libc::SIGKILL
+        )));
+        assert!(super::satellite_exit_needs_warning(ExitStatus::from_raw(
+            1 << 8
+        )));
+    }
 }
