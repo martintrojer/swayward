@@ -1582,13 +1582,11 @@ impl State {
                             );
 
                             // If the active output changed (window was moved and focused).
-                            #[allow(clippy::collapsible_if)]
                             if !target_was_active
                                 && self.swayward.layout.active_output() == Some(&output)
+                                && !self.maybe_warp_cursor_to_focus_centered()
                             {
-                                if !self.maybe_warp_cursor_to_focus_centered() {
-                                    self.move_cursor_to_output(&output);
-                                }
+                                self.move_cursor_to_output(&output);
                             }
                         } else {
                             self.swayward
@@ -2136,13 +2134,11 @@ impl State {
                         );
 
                         // If the active output changed (window was moved and focused).
-                        #[allow(clippy::collapsible_if)]
                         if !target_was_active
                             && self.swayward.layout.active_output() == Some(&output)
+                            && !self.maybe_warp_cursor_to_focus_centered()
                         {
-                            if !self.maybe_warp_cursor_to_focus_centered() {
-                                self.move_cursor_to_output(&output);
-                            }
+                            self.move_cursor_to_output(&output);
                         }
                     }
                 }
