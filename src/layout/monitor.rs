@@ -57,7 +57,7 @@ pub struct Monitor<W: LayoutElement> {
     // Must always contain at least one.
     pub(super) workspaces: Vec<Workspace<W>>,
     /// Workspace IDs in sway's output child order, separate from spatial storage.
-    sway_workspace_order: Vec<WorkspaceId>,
+    pub(super) sway_workspace_order: Vec<WorkspaceId>,
     /// Index of the currently active workspace.
     pub(super) active_workspace_idx: usize,
     /// Workspaces ordered from most to least recently focused.

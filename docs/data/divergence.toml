@@ -1681,8 +1681,8 @@ why = "Sway unconstrains popups from the output box relative to the container's 
 
 [[edit]]
 migrated = false
-paths = ["contrib/live-ipc-soak", "docs/BUILDING.md", "src/layout/monitor.rs", "src/tests/ipc/workspace_output.rs"]
-what = "provide a repeatable, fixed-seed live IPC soak for nested floating-container mutations, output hotplug and workspace evacuation, command parsing, and wire framing; keep each workspace unique in an output's IPC ordering after repeated moves and replug."
+paths = ["contrib/live-ipc-soak", "docs/BUILDING.md", "src/layout/mod.rs", "src/layout/monitor.rs", "src/tests/ipc/workspace_output.rs"]
+what = "provide a repeatable, fixed-seed live IPC soak for nested floating-container mutations, output hotplug and workspace evacuation, command parsing, and wire framing; remove a reclaimed workspace from its old output order and keep each workspace unique after repeated moves and replug."
 why = "The randomized layout property test cannot exercise the compositor event loop, live Wayland clients, output disable and re-enable, or IPC framing; repeated hotplug exposed stale workspace-order entries that duplicated a workspace and all its windows in GET_TREE."
 
 [[edit]]

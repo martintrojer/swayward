@@ -1236,6 +1236,9 @@ impl<W: LayoutElement> Layout<W> {
                 for i in (0..primary.workspaces.len()).rev() {
                     if primary.workspaces[i].original_output.matches(&output) {
                         let ws = primary.workspaces.remove(i);
+                        primary
+                            .sway_workspace_order
+                            .retain(|candidate| *candidate != ws.id());
                         reclaimed_any = true;
 
                         // FIXME: this can be coded in a way that the workspace switch won't be

@@ -394,6 +394,41 @@ fn repeatedly_moving_a_workspace_does_not_duplicate_it_in_output_order() {
 }
 
 #[test]
+fn repeated_output_unplug_does_not_duplicate_a_restored_workspace() {
+    let mut f = Fixture::new();
+    f.add_named_output_at("left".into(), (1270, 1408), Some((0, 0)));
+    f.add_named_output_at("right".into(), (1270, 1408), Some((1270, 0)));
+    let client = f.add_client();
+    assert!(crate::command::execute(f.niri_state(), "focus output right")[0].success);
+    map_test_window(&mut f, client, "restored");
+
+    assert!(crate::command::execute(f.niri_state(), "output right disable")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "output right enable")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "output right disable")[0].success);
+
+    let swayward = f.swayward();
+    let tree = describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &Default::default(),
+        &Default::default(),
+    );
+    let workspace_ids = tree
+        .nodes
+        .iter()
+        .flat_map(|output| &output.nodes)
+        .map(|workspace| workspace.id)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        workspace_ids
+            .iter()
+            .collect::<std::collections::HashSet<_>>()
+            .len(),
+        workspace_ids.len()
+    );
+}
+
+#[test]
 fn workspace_back_and_forth_without_history_uses_sway_error() {
     let (mut f, socket) = ipc_fixture();
     f.add_output(1, (1920, 1080));
