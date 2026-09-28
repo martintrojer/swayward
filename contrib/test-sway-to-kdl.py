@@ -140,7 +140,7 @@ bindsym $missing+x nop
             "    drag enabled\n"
             "    drag_lock enabled\n"
             "    tap_button_map lrm\n"
-            "    scroll_factor 2\n"
+            "    scroll_factor .2\n"
             "    scroll_button 274\n"
             "}\n"
         )
@@ -154,7 +154,7 @@ bindsym $missing+x nop
             "drag true",
             "drag-lock",
             'tap-button-map "left-right-middle"',
-            "scroll-factor 2",
+            "scroll-factor 0.2",
             "scroll-button 274",
         ]:
             self.assertIn(expected, result.stdout)

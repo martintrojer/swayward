@@ -1323,6 +1323,13 @@ class Translator:
                 rendered = f"{name} {self.quote(enum_values[name].get(value, value))}"
             elif name in {"layout", "model", "options", "rules", "variant"}:
                 rendered = f"{name} {self.quote(value.strip(chr(34)))}"
+            elif name in {"accel-speed", "scroll-factor"}:
+                try:
+                    rendered = f"{name} {float(value):g}"
+                except ValueError:
+                    comment = f"unhandled input directive: {item}"
+                    rendered = f"// sway-to-kdl: {comment}"
+                    self.manual.append(f"{source}:{line}: {comment}")
             elif name == "scroll-button" and not value.isdecimal():
                 button_codes = {
                     "BTN_LEFT": 272,
