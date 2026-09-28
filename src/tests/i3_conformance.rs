@@ -1281,6 +1281,31 @@ fn collect_test_failures<'a>(
         .collect()
 }
 
+struct ChildGuard(Option<Child>);
+
+impl ChildGuard {
+    fn new(child: Child) -> Self {
+        Self(Some(child))
+    }
+
+    fn child_mut(&mut self) -> &mut Child {
+        self.0.as_mut().unwrap()
+    }
+
+    fn disarm(&mut self) {
+        self.0.take();
+    }
+}
+
+impl Drop for ChildGuard {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.0.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
 struct ChildOutput {
     stdout: thread::JoinHandle<Vec<u8>>,
     stderr: thread::JoinHandle<Vec<u8>>,
@@ -1387,6 +1412,7 @@ fn run_i3_test(test: &str) {
         .spawn()
         .unwrap();
     let child_output = ChildOutput::new(&mut child);
+    let mut child = ChildGuard::new(child);
 
     let started = Instant::now();
     // Generous enough that a cold build cache and a loaded machine cannot trip
@@ -1410,7 +1436,8 @@ fn run_i3_test(test: &str) {
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
             Err(error) => panic!("test control accept failed: {error}"),
         }
-        if let Some(status) = child.try_wait().unwrap() {
+        if let Some(status) = child.child_mut().try_wait().unwrap() {
+            child.disarm();
             let (stdout, stderr) = child_output.finish();
             let stdout = String::from_utf8_lossy(&stdout);
             eprint!("{stdout}");
@@ -1436,8 +1463,9 @@ fn run_i3_test(test: &str) {
             break;
         }
         if Instant::now() >= deadline {
-            child.kill().unwrap();
-            child.wait().unwrap();
+            child.child_mut().kill().unwrap();
+            child.child_mut().wait().unwrap();
+            child.disarm();
             let (stdout, stderr) = child_output.finish();
             let stdout = String::from_utf8_lossy(&stdout);
             let stderr = String::from_utf8_lossy(&stderr);
@@ -1462,6 +1490,20 @@ fn run_i3_test(test: &str) {
 const COVERAGE: &str = include_str!("../../tests/i3/coverage.toml");
 const COVERAGE_README: &str = include_str!("../../tests/i3/README.md");
 const HARNESS: &str = include_str!("../../tests/i3/lib/i3test.pm");
+
+#[test]
+fn child_is_reaped_when_the_control_loop_panics() {
+    let child = Command::new("sleep").arg("60").spawn().unwrap();
+    let pid = child.id();
+    let _ = std::panic::catch_unwind(move || {
+        let _child = ChildGuard::new(child);
+        panic!("injected control-loop panic");
+    });
+    assert!(
+        !PathBuf::from(format!("/proc/{pid}")).exists(),
+        "child {pid} survived its guard"
+    );
+}
 
 #[test]
 fn child_output_is_drained_while_the_child_runs() {
