@@ -294,7 +294,7 @@ fn parses_fullscreen_with_sway_boolean_vocabulary() {
 }
 
 #[test]
-fn parses_every_supported_command_family() {
+fn parses_focus_and_mode_command_families() {
     assert_eq!(command("focus"), Command::Focus);
     assert_eq!(command("focus workspace"), Command::FocusWorkspace);
     assert_eq!(
@@ -324,6 +324,10 @@ fn parses_every_supported_command_family() {
             .as_deref(),
         Some("Mode name is missing")
     );
+}
+
+#[test]
+fn parses_move_and_swap_command_families() {
     assert_eq!(
         command("move right 12 px"),
         Command::MoveDirection {
@@ -394,6 +398,10 @@ fn parses_every_supported_command_family() {
             "{input}"
         );
     }
+}
+
+#[test]
+fn parses_layout_and_window_command_families() {
     let stacked = parse("layout stacked");
     assert_eq!(
             stacked[0].as_ref().unwrap_err().error.as_deref(),
@@ -448,6 +456,10 @@ fn parses_every_supported_command_family() {
             width: Some(10)
         })
     );
+}
+
+#[test]
+fn parses_workspace_resize_and_reload_command_families() {
     assert_eq!(
         command("workspace next_on_output"),
         Command::Workspace {
@@ -488,6 +500,10 @@ fn parses_every_supported_command_family() {
             amount: -10,
         }
     );
+}
+
+#[test]
+fn parses_nop_and_exec_command_families() {
     assert_eq!(command("nop anything is ignored"), Command::Nop);
     assert_eq!(
         command("exec --no-startup-id notify-send 'hello; world'"),
