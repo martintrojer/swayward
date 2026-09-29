@@ -236,7 +236,11 @@ pub(super) fn move_position(
                 .find_map(|(_, mapped)| (mapped.id() == target).then(|| mapped.window.clone()))
                 .ok_or("No matching node.")?,
         ),
-        None => None,
+        None => state
+            .swayward
+            .layout
+            .focus()
+            .map(|mapped| mapped.window.clone()),
     };
     let workspace = window
         .as_ref()
