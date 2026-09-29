@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""Summarize sway's and swayward's published oracle snapshots."""
+
+import argparse
+import collections
+import subprocess
+from pathlib import Path
+import tomllib
+
+
+X11_REVIEWED_FILES = {
+    "141-resize.t",
+    "189-floating-constraints.t",
+    "232-cmd-move-criteria.t",
+    "243-move-to-mark.t",
+    "319-gaps.t",
+}
+
+
+def load(path):
+    with path.open("rb") as file:
+        return tomllib.load(file)
+
+
+def assertions(result):
+    scope = set()
+    passed = set()
+    for name, row in result["files"].items():
+        total = row.get("tap_plan")
+        if not isinstance(total, int):
+            total = row.get("source_assertions", row["assertions"])
+        scope.update((name, number) for number in range(1, total + 1))
+        passed.update((name, number) for number in row.get("pass_assertions", []))
+    return scope, passed
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("oracle", type=Path, help="sway-ipc-oracle checkout")
+    args = parser.parse_args()
+
+    sway = load(args.oracle / "i3/results/sway-1.12.toml")
+    swayward = load(args.oracle / "i3/results/swayward-eb170906.toml")
+    sway_scope, sway_pass = assertions(sway)
+    swayward_scope, swayward_pass = assertions(swayward)
+    scope = sway_scope | swayward_scope
+    sway_nonpass = scope - sway_pass
+    swayward_nonpass = scope - swayward_pass
+    swayward_only = swayward_nonpass - sway_nonpass
+    sway_only = sway_nonpass - swayward_nonpass
+    both = sway_nonpass & swayward_nonpass
+    reviewed_x11 = {row for row in swayward_only if row[0] in X11_REVIEWED_FILES}
+    sway_pass_after_x11_filter = sway_pass - reviewed_x11
+    shared_pass_after_x11_filter = sway_pass_after_x11_filter & swayward_pass
+
+    classifications = load(
+        args.oracle / "i3/classifications/swayward-eb170906.toml"
+    )["classification"]
+    reasons = {
+        (row["file"], row["assertion"]): row["reason"] for row in classifications
+    }
+    reason_counts = collections.Counter(
+        reasons.get(row, "unclassified") for row in swayward_only
+    )
+    findings = sum(
+        count
+        for reason, count in reason_counts.items()
+        if reason.startswith("swayward_") and reason.endswith("_finding")
+    )
+    satellite = sum(
+        count
+        for reason, count in reason_counts.items()
+        if reason.startswith("xwayland_satellite_")
+    )
+
+    # A linked worktree has a .git text file, so ask Git rather than reading it.
+    commit = subprocess.run(
+        ["git", "-C", args.oracle, "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+    print(f"oracle commit: {commit}")
+    print(f"assertions in comparison: {len(scope):,}")
+    print(f"sway passes: {len(sway_pass):,}")
+    print(f"swayward passes: {len(swayward_pass):,}")
+    print(f"sway non-passes: {len(sway_nonpass):,}")
+    print(f"swayward non-passes: {len(swayward_nonpass):,}")
+    print(f"non-passes shared by both: {len(both):,}")
+    print(f"swayward-only non-passes: {len(swayward_only):,}")
+    print(f"sway-only non-passes: {len(sway_only):,}")
+    print(f"reviewed X11 boundary in five largest gap files: {len(reviewed_x11):,}")
+    print(
+        "sway-passed assertions after that X11 filter: "
+        f"{len(sway_pass_after_x11_filter):,}"
+    )
+    print(
+        "also passed by swayward after that X11 filter: "
+        f"{len(shared_pass_after_x11_filter):,} "
+        f"({len(shared_pass_after_x11_filter) / len(sway_pass_after_x11_filter):.0%})"
+    )
+    filtered = len(swayward_only - reviewed_x11)
+    print(f"swayward-only after that X11 filter: {filtered:,}")
+    print(f"classification: satellite families: {satellite:,}")
+    print(f"classification: swayward finding families: {findings:,}")
+    other = len(swayward_only) - satellite - findings
+    print(f"classification: other or unclassified: {other:,}")
+
+    print("sway IPC corpora:")
+    results = (args.oracle / "sway-ipc/results").glob("swayward-eb170906*.toml")
+    for path in sorted(results):
+        result = load(path)
+        counts = collections.Counter(row["verdict"] for row in result["result"])
+        print(
+            "  "
+            f"{path.stem.removeprefix('swayward-eb170906').lstrip('-') or 'hand-picked'}: "
+            f"{counts['match']:,} match, {counts['mismatch']:,} mismatch, "
+            f"{counts['not_applicable']:,} not applicable"
+        )
+
+
+if __name__ == "__main__":
+    main()

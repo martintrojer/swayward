@@ -16,9 +16,13 @@ criteria, the scratchpad, and sway's IPC protocol on `SWAYSOCK`. It is a very
 serious amount of engineering in service of putting one rectangle beside
 another rectangle, but correctly.
 
-**Status: beta.** The [oracle's published snapshot
-table](https://github.com/martintrojer/sway-ipc-oracle) reports passes, skips,
-failures or unreached assertions, and unstable assertions together. It is also
+**Status: beta.** After removing the reviewed X11-only boundary, swayward
+passes **1,217 of the 1,447 i3-suite assertions that sway 1.12 passes (84%)**.
+Sway doesn't pass i3's own suite either: many tests really ask "is this i3?"
+The [full comparison](docs/I3_SUITE_RESULTS.md) gives the remaining 230 rows a
+proper airing, while the [oracle's published snapshot
+table](https://github.com/martintrojer/sway-ipc-oracle) keeps every pass, skip,
+failure, unreached assertion, and unstable assertion visible. It is also
 somebody's desktop now: the maintainer's two work machines run it every day,
 both Fedora 44, one a single-monitor setup with Waybar and kanshi, the other
 two monitors running DankMaterialShell with its outputs set in `config.kdl`.
@@ -206,7 +210,9 @@ See [Migrate a sway config](docs/SWAY_CONFIG_MIGRATION.md).
 
 The independent [sway IPC oracle](https://github.com/martintrojer/sway-ipc-oracle)
 runs i3's unchanged tests and sway IPC scenarios against i3, sway, and
-swayward. Its snapshot table publishes passes, skips, failures or unreached
+swayward. The [i3 suite results guide](docs/I3_SUITE_RESULTS.md) explains why
+raw non-pass counts include i3-only premises and gives the sway-relative
+comparison. The snapshot table publishes passes, skips, failures or unreached
 assertions, and unstable assertions together for the i3 suite, plus matches,
 not-applicable scenarios, and mismatches for the sway IPC suite. The underlying
 results live in `i3/results/swayward.toml` and
