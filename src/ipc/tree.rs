@@ -165,6 +165,10 @@ fn scratch_output(
                     node.border = ipc_border(border.0);
                     node.current_border_width = i32::from(border.1);
                 }
+                node.sticky = layout
+                    .scratchpad_tiles()
+                    .find_map(|(window, sticky)| (window.id() == mapped.id()).then_some(sticky))
+                    .unwrap_or(false);
                 node
             }),
     );

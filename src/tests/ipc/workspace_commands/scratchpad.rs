@@ -231,6 +231,28 @@ fn scratchpad_hides_focused_window_and_show_cycles_windows() {
 }
 
 #[test]
+fn sticky_state_survives_moving_a_window_back_to_scratchpad() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+
+    map_test_window(&mut f, client, "sticky-scratchpad");
+    assert!(crate::command::execute(f.niri_state(), "move scratchpad")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "scratchpad show")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "sticky enable")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "move scratchpad")[0].success);
+
+    let swayward = f.swayward();
+    let tree = describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &swayward.marks_by_window,
+        &swayward.marks_by_container,
+    );
+    assert!(tree.nodes[0].nodes[0].floating_nodes[0].sticky);
+}
+
+#[test]
 fn directional_move_emits_one_settled_sway_move_event() {
     let (mut f, socket) = ipc_fixture();
     f.add_output(1, (1280, 800));

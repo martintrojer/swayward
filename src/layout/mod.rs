@@ -4470,6 +4470,12 @@ impl<W: LayoutElement> Layout<W> {
         Some(shown)
     }
 
+    pub fn scratchpad_tiles(&self) -> impl Iterator<Item = (&W, bool)> {
+        self.scratchpad
+            .iter()
+            .map(|removed| (removed.tile.window(), removed.tile.is_sticky))
+    }
+
     pub fn scratchpad_windows(&self) -> impl Iterator<Item = &W> {
         self.scratchpad
             .iter()
