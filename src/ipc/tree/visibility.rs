@@ -84,7 +84,7 @@ pub(super) fn apply_fullscreen_state(nodes: &mut [Node], workspace_visible: bool
                 let pending_tab_wrapper = node.fullscreen_mode == 0
                     && node.percent == Some(0.)
                     && matches!(node.layout, NodeLayout::Tabbed | NodeLayout::Stacked);
-                if set_full_percent && !pending_tab_wrapper {
+                if set_full_percent && node.fullscreen_mode != 0 && !pending_tab_wrapper {
                     node.percent = Some(1.);
                 }
                 if node.fullscreen_mode == 0 {

@@ -51,7 +51,7 @@ fn fullscreen_descendants_keep_percentages() {
     let mut nodes = vec![branch, leaf(4, Some(0.5), 0)];
 
     assert!(apply_fullscreen_state(&mut nodes, true));
-    assert_eq!(nodes[0].percent, Some(1.));
+    assert_eq!(nodes[0].percent, Some(0.5));
     assert_eq!(nodes[0].nodes[0].percent, Some(0.4));
     assert_eq!(nodes[0].nodes[1].percent, Some(0.6));
 }
