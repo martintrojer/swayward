@@ -235,6 +235,24 @@ fn split_on_an_emptied_tree_updates_layout_but_retains_its_representation() {
 }
 
 #[test]
+fn split_on_an_empty_tree_preserves_the_previous_layout_representation() {
+    let mut t = tree((1200., 800.), 0.);
+    t.set_focused_layout(Layout::Stacked);
+
+    t.split_focused(Layout::SplitV);
+
+    assert!(matches!(
+        t.nodes[&t.root].value,
+        TreeNode::Split {
+            layout: Layout::SplitV,
+            ..
+        }
+    ));
+    assert_eq!(t.representation_layout(), Layout::Stacked);
+    t.check_invariants();
+}
+
+#[test]
 fn layout_on_an_empty_tree_sets_the_root_layout() {
     let mut t = tree((1200., 800.), 0.);
 

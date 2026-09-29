@@ -206,7 +206,9 @@ impl<W: LayoutElement> TilingTree<W> {
         if let Some(focus) = self.focus {
             self.split(focus, layout);
         } else {
+            let representation = self.representation_layout();
             self.set_layout(self.root, layout);
+            self.empty_representation_layout = Some(representation);
         }
     }
 
