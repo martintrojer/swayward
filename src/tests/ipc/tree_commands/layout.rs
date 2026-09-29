@@ -382,6 +382,53 @@ fn fullscreen_floating_window_keeps_sways_raw_focus() {
 }
 
 #[test]
+fn layout_commands_apply_to_children_inside_a_floating_group() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+
+    for app_id in ["fixture-1", "fixture-2"] {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+    assert!(crate::command::execute(f.niri_state(), "focus parent")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "floating enable")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "focus child")[0].success);
+
+    for (command, expected) in [
+        ("layout splitv", crate::layout::tiling_tree::Layout::SplitV),
+        ("layout tabbed", crate::layout::tiling_tree::Layout::Tabbed),
+        (
+            "layout stacking",
+            crate::layout::tiling_tree::Layout::Stacked,
+        ),
+        (
+            "layout toggle split",
+            crate::layout::tiling_tree::Layout::SplitV,
+        ),
+        ("layout default", crate::layout::tiling_tree::Layout::SplitV),
+    ] {
+        assert!(crate::command::execute(f.niri_state(), command)[0].success);
+        let workspace = f.swayward().layout.active_workspace().unwrap();
+        let (_, tree, _) = workspace.ipc_floating_trees().next().unwrap();
+        assert!(
+            matches!(
+                tree,
+                crate::layout::tiling_tree::IpcNode::Split { layout, .. } if layout == expected
+            ),
+            "{command}: {tree:?}"
+        );
+    }
+}
+
+#[test]
 fn focus_parent_then_layout_targets_the_parent_of_the_focused_container() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));

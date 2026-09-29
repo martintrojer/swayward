@@ -196,6 +196,14 @@ const ALLOWED_REJECTIONS: &[AllowedRejection] = &[
     },
     AllowedRejection {
         test: "184-regress-float-split-resize.t",
+        command: "layout stacking",
+        repeatable: false,
+        reason: "the test targets the floating group root, which sway rejects with \
+                 `Unable to change layout of floating windows`; only the following \
+                 liveness assertion matters (sway/sway/commands/layout.c:128-131)",
+    },
+    AllowedRejection {
+        test: "184-regress-float-split-resize.t",
         command: "resize grow up 10 px or 10 ppt",
         repeatable: false,
         reason: "the test only checks that the compositor remains live; sway \

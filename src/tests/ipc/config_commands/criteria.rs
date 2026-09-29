@@ -511,7 +511,6 @@ fn layout_and_split_commands_preserve_a_focused_floating_window_and_the_tree() {
 
     let mut stream = UnixStream::connect(socket).unwrap();
     for (command, expected_reply) in [
-        ("split v", r#"[{"success":true}]"#),
         (
             "layout tabbed",
             r#"[{"success":false,"error":"Unable to change layout of floating windows","parse_error":false}]"#,
@@ -520,6 +519,7 @@ fn layout_and_split_commands_preserve_a_focused_floating_window_and_the_tree() {
             "layout toggle split",
             r#"[{"success":false,"error":"Unable to change layout of floating windows","parse_error":false}]"#,
         ),
+        ("split v", r#"[{"success":true}]"#),
     ] {
         let before = fixture
             .swayward()

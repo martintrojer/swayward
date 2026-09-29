@@ -26,7 +26,9 @@ fn reject_floating(state: &State) -> Result<(), CommandOutcome> {
         .swayward
         .layout
         .active_workspace()
-        .is_some_and(|workspace| workspace.floating_is_active())
+        .is_some_and(|workspace| {
+            workspace.floating_is_active() && !workspace.focused_floating_tree_child()
+        })
     {
         Err(command_failure(
             "Unable to change layout of floating windows",
@@ -57,15 +59,7 @@ pub(super) fn toggle(state: &mut State, cycle: &LayoutToggle) -> Result<(), Comm
 }
 
 pub(super) fn set(state: &mut State, layout: Layout) -> Result<(), CommandOutcome> {
-    let floating_group = state
-        .swayward
-        .layout
-        .active_workspace()
-        .and_then(|workspace| workspace.focused_container_node())
-        .is_some();
-    if !floating_group {
-        reject_floating(state)?;
-    }
+    reject_floating(state)?;
     let remapped = match layout {
         Layout::SplitH => state
             .swayward

@@ -1484,6 +1484,10 @@ impl<W: LayoutElement> Workspace<W> {
         }
     }
 
+    pub fn focused_floating_tree_child(&self) -> bool {
+        self.floating_is_active.get() && self.floating.focused_tree_child()
+    }
+
     pub fn is_workspace_focused(&self) -> bool {
         !self.floating_is_active.get() && self.tiling.root_is_focused()
     }
@@ -1877,14 +1881,8 @@ impl<W: LayoutElement> Workspace<W> {
         layout: crate::layout::tiling_tree::Layout,
     ) -> Vec<(NodeId, NodeId)> {
         if self.floating_is_active.get() {
-            let Some(node) = self.floating.focused_container_node() else {
-                return Vec::new();
-            };
-            let Some(root) = self.floating.tree_root_for_node(node) else {
-                return Vec::new();
-            };
             self.floating
-                .tree_mut(root)
+                .focused_child_tree_mut()
                 .map(|tree| tree.set_focused_layout(layout))
                 .unwrap_or_default()
         } else {
@@ -1926,7 +1924,10 @@ impl<W: LayoutElement> Workspace<W> {
         toggle: &swayward_ipc::command::LayoutToggle,
     ) -> Vec<(NodeId, NodeId)> {
         if self.floating_is_active.get() {
-            Vec::new()
+            self.floating
+                .focused_child_tree_mut()
+                .map(|tree| tree.toggle_focused_layout(toggle))
+                .unwrap_or_default()
         } else {
             self.tiling.toggle_focused_layout(toggle)
         }
@@ -1934,7 +1935,9 @@ impl<W: LayoutElement> Workspace<W> {
 
     pub fn restore_focused_split_layout(&mut self) -> Option<Vec<(NodeId, NodeId)>> {
         if self.floating_is_active.get() {
-            None
+            self.floating
+                .focused_child_tree_mut()?
+                .restore_focused_split_layout()
         } else {
             self.tiling.restore_focused_split_layout()
         }
@@ -1942,7 +1945,10 @@ impl<W: LayoutElement> Workspace<W> {
 
     pub fn toggle_focused_layout_split(&mut self) -> Vec<(NodeId, NodeId)> {
         if self.floating_is_active.get() {
-            Vec::new()
+            self.floating
+                .focused_child_tree_mut()
+                .map(crate::layout::tiling_tree::TilingTree::toggle_focused_layout_split)
+                .unwrap_or_default()
         } else {
             self.tiling.toggle_focused_layout_split()
         }

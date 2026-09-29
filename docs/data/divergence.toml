@@ -1597,6 +1597,12 @@ why = "Sway fullscreen targets the focused container, including a split in the w
 
 [[edit]]
 migrated = false
+paths = ["src/command/layout.rs", "src/layout/floating_tree.rs", "src/layout/workspace.rs", "src/tests/i3_conformance/allowlist.rs", "src/tests/ipc/tree_commands/layout.rs"]
+what = "apply layout set, default, and toggle commands to the focused child inside a resident floating group while continuing to reject the floating root itself."
+why = "Sway rejects `layout` only when the focused container is itself floating; a child of a floating group is not a floating root, so sway operates on its parent (`sway/commands/layout.c:128-139`; `sway/tree/container.c:1041-1049`)."
+
+[[edit]]
+migrated = false
 paths = ["src/command/mod.rs", "src/command/focus.rs", "src/layout/tiling_tree/mod.rs", "src/tests/ipc/events.rs"]
 what = "match command criteria against resident floating-tree leaves and emit their focus event explicitly when criteria focus raises the group."
 why = "Sway evaluates criteria against every view and emits `window::focus` after focusing a matched view (`sway/criteria.c`; `sway/input/seat.c:1177-1198`). Swayward's general event iterator omits resident-tree leaves, so criteria matching and the resulting event need the recursive tree path."

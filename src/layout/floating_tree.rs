@@ -966,6 +966,28 @@ impl<W: LayoutElement> FloatingLayout<W> {
         entry.tree.focus().filter(|node| entry.tree.is_split(*node))
     }
 
+    pub fn focused_tree_child(&self) -> bool {
+        let Some(active) = self.active_window_id.as_ref() else {
+            return false;
+        };
+        self.tree_entries
+            .iter()
+            .find(|entry| entry.tree.node_for_window(active).is_some())
+            .and_then(|entry| entry.tree.focus().map(|focus| focus != entry.root))
+            .unwrap_or(false)
+    }
+
+    pub fn focused_child_tree_mut(&mut self) -> Option<&mut TilingTree<W>> {
+        let active = self.active_window_id.as_ref()?;
+        self.tree_entries
+            .iter_mut()
+            .find(|entry| {
+                entry.tree.node_for_window(active).is_some()
+                    && entry.tree.focus().is_some_and(|focus| focus != entry.root)
+            })
+            .map(|entry| &mut entry.tree)
+    }
+
     pub fn window_in_node(&self, node: NodeId) -> Option<&W::Id> {
         self.tree_entries.iter().find_map(|entry| {
             entry

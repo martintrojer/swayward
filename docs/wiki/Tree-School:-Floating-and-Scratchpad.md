@@ -44,8 +44,10 @@ swaywardmsg -t get_tree -p | grep -B 1 '"type":' | grep -E '"(name|type)"'
 3. Press `Mod+A` to focus that split.
 4. Press `Mod+Shift+Space` to float the split and both windows together.
 
-You can still use `Mod+hjkl` to move focus inside the floating group. To send
-the whole group to another workspace, focus any child and press
+You can still use `Mod+hjkl` to move focus inside the floating group. With a
+child focused, `Mod+W` switches the group to tabbed layout and `Mod+E` returns
+it to a split layout. To send the whole group to another workspace, focus any
+child and press
 `Mod+Shift+<number>`. The same rule applies to `Mod+Shift+Minus`: the scratchpad
 takes the complete group, not one leaf.
 
