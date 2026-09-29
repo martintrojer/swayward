@@ -281,11 +281,15 @@ pub(super) fn describe_workspace_node(context: WorkspaceNodeContext<'_>) -> Node
         .then(|| tree_representation(ipc_layout(workspace.tiling_representation_layout()), &nodes));
     let mut nodes = nodes;
     set_tabbed_percentages(layout, &mut nodes, rect);
-    if !apply_fullscreen_state(&mut nodes, workspace_visible) {
+    let tiling_fullscreen = apply_fullscreen_state(&mut nodes, workspace_visible);
+    if !tiling_fullscreen {
         set_child_windows_visible(layout, &focus, &mut nodes, workspace_visible);
     }
     for node in &mut floating_nodes {
-        set_windows_visible(node, workspace_visible);
+        set_windows_visible(node, workspace_visible && !tiling_fullscreen);
+        if tiling_fullscreen {
+            clear_focused(node);
+        }
     }
     let mut node = common_node(CommonNodeContext {
         id: workspace_id(workspace.id().get()),

@@ -212,6 +212,27 @@ fn rapid_output_config_changes_report_sway_output_state() {
     }
 
     let swayward = fixture.swayward();
+    let tree = serde_json::to_value(crate::ipc::tree::describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &swayward.marks_by_window,
+        &swayward.marks_by_container,
+    ))
+    .unwrap();
+    let floating = tree["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|output| output["nodes"].as_array().unwrap())
+        .find_map(|workspace| workspace["floating_nodes"].as_array()?.first())
+        .unwrap();
+    assert_eq!(floating["focused"], false);
+    assert!(floating["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|node| node["visible"] == false));
+
     let outputs = crate::ipc::tree::describe_outputs_with_power(
         &swayward.layout,
         &swayward.global_space,
