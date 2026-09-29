@@ -1627,6 +1627,12 @@ why = "Sway rejects `layout` only when the focused container is itself floating;
 
 [[edit]]
 migrated = false
+paths = ["src/layout/floating_tree.rs", "src/layout/workspace.rs", "src/layout/tests.rs"]
+what = "distinguish resident floating-tree children from floating roots when commands choose floating or tiled semantics, while routing child border changes into the resident tree."
+why = "Sway's `container_is_floating` is true only for a workspace floating-list root, not its descendants (`sway/tree/container.c:1041-1049`). Treating every resident child as floating made absolute move succeed and chose floating resize units, while the floating-only border path could not find the child."
+
+[[edit]]
+migrated = false
 paths = ["src/command/mod.rs", "src/command/focus.rs", "src/layout/tiling_tree/mod.rs", "src/tests/ipc/events.rs"]
 what = "match command criteria against resident floating-tree leaves and emit their focus event explicitly when criteria focus raises the group."
 why = "Sway evaluates criteria against every view and emits `window::focus` after focusing a matched view (`sway/criteria.c`; `sway/input/seat.c:1177-1198`). Swayward's general event iterator omits resident-tree leaves, so criteria matching and the resulting event need the recursive tree path."

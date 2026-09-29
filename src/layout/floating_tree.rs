@@ -715,6 +715,12 @@ impl<W: LayoutElement> FloatingLayout<W> {
                 .any(|entry| entry.tree.node_for_window(id).is_some())
     }
 
+    pub fn window_is_floating_root(&self, id: &W::Id) -> bool {
+        self.entries
+            .iter()
+            .any(|entry| entry.tile.window().id() == id)
+    }
+
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty() && self.tree_entries.is_empty()
     }
@@ -964,6 +970,18 @@ impl<W: LayoutElement> FloatingLayout<W> {
             .iter()
             .find(|entry| entry.tree.node_for_window(active).is_some())?;
         entry.tree.focus().filter(|node| entry.tree.is_split(*node))
+    }
+
+    pub fn set_tree_window_border(
+        &mut self,
+        id: &W::Id,
+        style: swayward_ipc::command::BorderStyle,
+        width: Option<u16>,
+    ) -> bool {
+        self.tree_entries
+            .iter_mut()
+            .find(|entry| entry.tree.node_for_window(id).is_some())
+            .is_some_and(|entry| entry.tree.set_window_border(id, style, width))
     }
 
     pub fn focused_tree_child(&self) -> bool {

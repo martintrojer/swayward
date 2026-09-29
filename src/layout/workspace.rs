@@ -685,7 +685,7 @@ impl<W: LayoutElement> Workspace<W> {
     }
 
     pub fn is_floating(&self, id: &W::Id) -> bool {
-        self.floating.has_window(id)
+        self.floating.window_is_floating_root(id)
     }
 
     pub fn window_border(
@@ -705,6 +705,7 @@ impl<W: LayoutElement> Workspace<W> {
     ) -> Result<(), &'static str> {
         let changed = if self.floating.has_window(window) {
             self.floating.set_window_border(window, style, width)
+                || self.floating.set_tree_window_border(window, style, width)
         } else {
             self.tiling.set_window_border(window, style, width)
         };

@@ -2623,6 +2623,7 @@ fn moving_the_only_child_of_a_floating_group_keeps_the_root_position() {
     workspace.set_container_floating(group, true).unwrap();
     workspace.focus_child();
 
+    assert!(!workspace.is_floating(&2));
     let root = workspace.floating_tree_root_for_window(&2).unwrap();
     let before = workspace.floating().tree_rect(root).unwrap();
     assert!(workspace
