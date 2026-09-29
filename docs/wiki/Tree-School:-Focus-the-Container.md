@@ -50,22 +50,23 @@ starts being a thing you can pick up. When focus is on a container,
 - **Tab a whole group**: focus a row, hit `Mod+W` — every direct child becomes a tab. `Mod+W` runs `layout tabbed`, which sets the layout rather than toggling it. Use `Mod+E` (`layout toggle split`) to get back to a split.
 - **Wrap a whole subtree in a new split**: focus a row, hit `Mod+V` — the entire row becomes the top child of a new splitv.
 
-Floating is the exception. Sway can float a whole container, swayward cannot:
-`floating toggle` with a container focused floats nothing. See [Differences
-from sway](Differences-from-Sway.md).
+Floating works at container scope too. Focus a split and press
+`Mod+Shift+Space`: the whole subtree floats as one group, with its children and
+layout intact.
 
 **Quick check** — You have a row of 5 windows, all siblings (no nesting). You focus one, press `Mod+A`, then press `Mod+Shift+Space` (toggle floating). What floats?
 
 1. Just the originally focused window
-2. Nothing, because swayward floats windows and not containers
+2. Nothing, because only windows can float
 3. All five windows, as a group
 4. Swayward picks one at random
 
 <details><summary>Answer</summary>
 
-**2.** Nothing, because swayward floats windows and not containers
+**3.** All five windows, as a group
 
-Sway would float the whole subtree. Swayward's floating space holds window tiles rather than tree nodes, so a container target does nothing. This is a recorded deviation, not a setting you can change.
+`Mod+A` focused their parent container, so the floating command moves that
+whole branch to the workspace's floating stage.
 
 </details>
 

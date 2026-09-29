@@ -1,22 +1,24 @@
 **Induction V: floating, scratchpad, and sticky windows**
 
-The tree has exceptions. Floating windows stand in front of it. Scratchpad
-windows leave the workspace and wait in a drawer. Sticky windows follow you
-around like a note you attached to every desk. None of this disproves the tree;
-it merely confirms that even a cult needs a utility cupboard.
+The tree has a front stage. Floating containers stand there. Scratchpad
+containers leave the workspace and wait in a drawer. Sticky containers follow
+you around like a note you attached to every desk. None of this disproves the
+tree; it merely confirms that even a cult needs a utility cupboard.
 
-## Floating windows stand in front
+## Floating containers stand in front
 
-> A floating window **lives outside the tree**. It has no parent, no siblings, no layout. It's just a rectangle that sits on top of everything tiled.
+> A floating window is a floating container with one child. A floating
+> container can also hold a whole subtree, complete with splits, tabs, and
+> focus history.
 
-That's the whole concept. Everything else is consequences. It took a project
-this devoted to parents and siblings a while to accept that some windows simply
-do not want a family.
+That's the whole concept. Everything else is consequences. The workspace has a
+tiled tree at the back and a floating tree at the front. We did not escape the
+tree. We built another stage for it.
 
 <!-- CAPTURED tree-05-floating-stage
      WHAT: A tiled; B floating and centred above it
      KEYS: open A and B, floating enable B, move B to centre
-     WHY: show the two workspace stages without pretending B is a tree child
+     WHY: show a one-window floating tree in front of the tiled tree
      SIZE: nested output 1280x800 logical; captured at host scale 1.5
 -->
 
@@ -27,13 +29,45 @@ do not want a family.
 
 ### Toggle and verify
 
-- `Mod+Shift+Space` → toggle the focused window between tiled and floating (i3/sway default).
+- `Mod+Shift+Space` → toggle the focused window or container between tiled and floating (i3/sway default).
 
 Verify it actually floated by looking for `"type": "floating_con"` in the tree dump:
 
 ```
 swaywardmsg -t get_tree -p | grep -B 1 '"type":' | grep -E '"(name|type)"'
 ```
+
+### Float a whole branch
+
+1. Open A, B, and C.
+2. Focus B, press `Mod+V`, and open D. B and D now share a vertical split.
+3. Press `Mod+A` to focus that split.
+4. Press `Mod+Shift+Space` to float the split and both windows together.
+
+You can still use `Mod+hjkl` to move focus inside the floating group. To send
+the whole group to another workspace, focus any child and press
+`Mod+Shift+<number>`. The same rule applies to `Mod+Shift+Minus`: the scratchpad
+takes the complete group, not one leaf.
+
+Press `Mod+Shift+Space` again to return the branch to the tiled tree. Swayward
+inserts the branch as one container. Its internal split survives the trip.
+
+The tree dump makes the nesting explicit. Here, the floating root has two
+children:
+
+```json
+{
+  "type": "floating_con",
+  "layout": "splitv",
+  "nodes": [
+    { "type": "con", "app_id": "foot" },
+    { "type": "con", "app_id": "foot" }
+  ]
+}
+```
+
+The two stages from Induction V are two trees, not a tree and a bag of
+rectangles. The tree knows no bounds.
 
 ### Mouse: hold Mod and drag
 
@@ -54,13 +88,19 @@ binds {
 
 `focus tiling` and `focus floating` are available too if you want one key per layer. With `focus-follows-mouse` uncommented in the `input` node, hovering also crosses the layers.
 
-> Each workspace has **two stages**: tiled (back) and floating (front). `focus mode_toggle` is the curtain between them.
+> Each workspace has **two trees**: tiled (back) and floating (front). `focus mode_toggle` is the curtain between them.
 
 ### Un-float placement gotcha
 
-When you `Mod+Shift+Space` a floater back to tiled, it's treated as a **brand new window**: inserted via the insertion rule from Induction II as the next sibling of the most recently focused tile. Swayward does *not* remember where the window came from before floating.
+When you `Mod+Shift+Space` a floating root back to tiled, swayward inserts it
+via the rule from Induction II. It becomes the next sibling of the most recently
+focused tile. Swayward does not remember where the root was before it floated.
 
-To control placement, cross into the tree with your `focus mode_toggle` bind, walk to the desired neighbour, cross back to the floater, then press `Mod+Shift+Space`.
+For a single window, the window is the root. For a floating group, the whole
+branch is the root, so its internal structure stays intact. To control the new
+placement, cross into the tiled tree with your `focus mode_toggle` bind, walk
+to the desired neighbour, cross back to the floater, then press
+`Mod+Shift+Space`.
 
 ### Keyboard resize
 
@@ -113,6 +153,23 @@ Every launch: float, resize to a known size, centre on the active output. The wi
 | `open-floating true` plus `default-column-width` / `default-window-height` | Summon-and-dismiss popup at a fixed size |
 | `open-floating true`, then run the `sticky enable` command | Always-visible overlay, such as PiP |
 | `Mod+Shift+Minus` after it opens | Stash into the scratchpad drawer |
+
+**Quick check** — You focus a vertical split containing B and D, then press
+`Mod+Shift+Space`. What does the tree dump contain?
+
+1. Two independent `floating_con` nodes
+2. One `floating_con` whose `nodes` contain B and D
+3. No change, because only windows can float
+4. One floating B while D stays tiled
+
+<details><summary>Answer</summary>
+
+**2.** One `floating_con` whose `nodes` contain B and D
+
+The floating root holds the original subtree. Its children do not become
+independent floaters.
+
+</details>
 
 **Quick check** — A window is floating. You press `Mod+Shift+Space` to un-float it. Where in the tiled tree does it land?
 
@@ -175,12 +232,12 @@ because the restore is exact: summoned onto workspace 1 it lands on the same
 pixels as the floating shot above, and the two frames come out identical. The
 size and position survive the drawer; the workspace is whichever one you are on.
 
-### The model: a flat list of floaters with no workspace
+### The model: floating roots with no workspace
 
-- Scratchpad windows are **always floating**. Stashing converts a tiled window to floating.
+- Scratchpad containers are **always floating**. Stashing a tiled window or subtree converts its root to floating.
 - They have **no workspace** — they appear on whichever workspace you're on when you summon.
-- Each window remembers its **size and position**. Set once, summons always restore.
-- You can stash any number of windows. `Mod+Minus` cycles through them; doesn't pop or consume.
+- Each root remembers its **size and position**. Set once, summons always restore.
+- You can stash any number of roots. `Mod+Minus` cycles through them; it does not pop or consume them.
 
 Cycling: `hidden → A → hidden → B → hidden → A → …`.
 
