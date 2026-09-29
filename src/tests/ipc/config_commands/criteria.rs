@@ -582,3 +582,28 @@ fn criteria_lifecycle_commands_fail_without_changing_state() {
     }
 }
 
+#[test]
+fn moving_a_focused_split_to_scratchpad_preserves_the_subtree() {
+    let mut fixture = Fixture::new();
+    fixture.add_output(1, (1920, 1080));
+    let client = fixture.add_client();
+    for _ in 0..3 {
+        let window = fixture.client(client).create_window();
+        window.commit();
+        let surface = window.surface.clone();
+        fixture.roundtrip(client);
+        let window = fixture.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        fixture.double_roundtrip(client);
+    }
+    assert!(crate::command::execute(fixture.niri_state(), "focus parent")[0].success);
+
+    assert!(crate::command::execute(fixture.niri_state(), "move scratchpad")[0].success);
+
+    let (tree, _) = fixture.swayward().layout.scratchpad_trees().next().unwrap();
+    assert!(matches!(
+        tree,
+        crate::layout::tiling_tree::IpcNode::Split { children, .. } if children.len() == 3
+    ));
+}

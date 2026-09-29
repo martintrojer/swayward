@@ -1543,6 +1543,12 @@ why = "Sway's `cmd_border` error is `Expected 'border <none|normal|pixel|csd|tog
 
 [[edit]]
 migrated = false
+paths = ["src/command/dispatch.rs", "src/tests/ipc/config_commands/criteria.rs"]
+what = "move the structurally focused tiling subtree to the scratchpad rather than choosing one descendant window."
+why = "Sway wraps workspace children when needed, climbs a floating child to its root, and passes the selected container to `root_scratchpad_add_container` (`sway/commands/move.c:921-947`); flattening the selection to one window silently discarded the rest of the subtree."
+
+[[edit]]
+migrated = false
 paths = ["src/layout/monitor.rs", "src/tests/ipc/workspace_output.rs"]
 what = "preserve every output's initial workspace split while its configured output mode is applied, rather than only preserving the first output's split."
 why = "Sway creates an initial workspace in output_enable before the configured mode takes effect (`sway/tree/output.c`); the 360-state oracle shows portrait secondary outputs retaining the pre-mode horizontal split."

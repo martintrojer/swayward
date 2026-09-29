@@ -366,7 +366,16 @@ fn execute_one(
             }
             let window = match target {
                 Some(CommandTarget::Container(workspace, node)) => {
-                    state.swayward.layout.window_in_node(workspace, node)
+                    let window = state.swayward.layout.window_in_node(workspace, node);
+                    if state
+                        .swayward
+                        .layout
+                        .set_container_floating(workspace, node, true)
+                        .is_none()
+                    {
+                        return failure("No matching node.");
+                    }
+                    window
                 }
                 Some(CommandTarget::Window(_)) => None,
                 None => unreachable!(),
