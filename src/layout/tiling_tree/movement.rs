@@ -201,6 +201,7 @@ impl<W: LayoutElement> TilingTree<W> {
             Direction::Left | Direction::Right => Layout::SplitH,
             Direction::Up | Direction::Down => Layout::SplitV,
         };
+        let boundary_root = self.resident_root().unwrap_or(self.root);
         if self.windows().nth(1).is_none() {
             self.move_only_window(id, wanted_layout);
             return false;
@@ -253,7 +254,7 @@ impl<W: LayoutElement> TilingTree<W> {
                         false,
                     );
                 }
-                if parent_id == self.root {
+                if parent_id == boundary_root {
                     if branch == id {
                         return false;
                     }
@@ -267,7 +268,7 @@ impl<W: LayoutElement> TilingTree<W> {
                     let Some(old_parent) = self.detach_subtree_only(id) else {
                         return false;
                     };
-                    self.insert_existing_child(self.root, id, insert_index, boundary);
+                    self.insert_existing_child(boundary_root, id, insert_index, boundary);
                     self.reap_empty_from(old_parent);
                     self.compact_tree();
                     self.finish_directional_move(id);
@@ -276,6 +277,9 @@ impl<W: LayoutElement> TilingTree<W> {
             }
             branch = parent_id;
             parent = *grandparent;
+        }
+        if boundary_root != self.root {
+            return false;
         }
         let Some(old_parent) = self.detach_subtree_only(id) else {
             return false;

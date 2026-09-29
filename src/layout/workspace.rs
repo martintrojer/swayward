@@ -1741,7 +1741,13 @@ impl<W: LayoutElement> Workspace<W> {
 
     pub fn move_left(&mut self) -> bool {
         if self.floating_is_active.get() {
-            self.floating.move_left();
+            if self
+                .floating
+                .move_focused_tree_child(Direction::Left)
+                .is_none()
+            {
+                self.floating.move_left();
+            }
             true
         } else {
             self.tiling.move_left()
@@ -1750,10 +1756,13 @@ impl<W: LayoutElement> Workspace<W> {
 
     pub fn move_right(&mut self) -> bool {
         if self.floating_is_active.get() {
-            if self.floating.focused_leaf_is_only_child_of_tree_root() {
-                return true;
+            if self
+                .floating
+                .move_focused_tree_child(Direction::Right)
+                .is_none()
+            {
+                self.floating.move_right();
             }
-            self.floating.move_right();
             true
         } else {
             self.tiling.move_right()
@@ -1767,7 +1776,7 @@ impl<W: LayoutElement> Workspace<W> {
         pixels: f64,
     ) -> bool {
         if self.floating.has_window(window) {
-            if self.floating.focused_leaf_is_only_child_of_tree_root() {
+            if self.floating.move_tree_window(window, direction).is_some() {
                 return true;
             }
             let (x, y) = match direction {
@@ -1815,7 +1824,13 @@ impl<W: LayoutElement> Workspace<W> {
 
     pub fn move_down(&mut self) -> bool {
         if self.floating_is_active.get() {
-            self.floating.move_down();
+            if self
+                .floating
+                .move_focused_tree_child(Direction::Down)
+                .is_none()
+            {
+                self.floating.move_down();
+            }
             true
         } else {
             self.tiling.move_down()
@@ -1824,7 +1839,13 @@ impl<W: LayoutElement> Workspace<W> {
 
     pub fn move_up(&mut self) -> bool {
         if self.floating_is_active.get() {
-            self.floating.move_up();
+            if self
+                .floating
+                .move_focused_tree_child(Direction::Up)
+                .is_none()
+            {
+                self.floating.move_up();
+            }
             true
         } else {
             self.tiling.move_up()

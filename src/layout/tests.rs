@@ -2638,6 +2638,68 @@ fn moving_the_only_child_of_a_floating_group_keeps_the_root_position() {
 }
 
 #[test]
+fn directional_move_reorders_a_floating_group_child() {
+    let output = Output::new(
+        "output".into(),
+        PhysicalProperties {
+            size: Size::from((1280, 720)),
+            subpixel: Subpixel::Unknown,
+            make: String::new(),
+            model: String::new(),
+            serial_number: String::new(),
+        },
+    );
+    output.change_current_state(
+        Some(Mode {
+            size: Size::from((1280, 720)),
+            refresh: 60000,
+        }),
+        None,
+        None,
+        None,
+    );
+    output.user_data().insert_if_missing(|| OutputName {
+        connector: "output".into(),
+        make: None,
+        model: None,
+        serial: None,
+    });
+    let mut workspace = Workspace::new(
+        output,
+        Clock::with_time(Duration::ZERO),
+        Rc::new(Options::default()),
+    );
+    for id in 1..=3 {
+        let tile = workspace.make_tile(TestWindow::new(TestWindowParams::new(id)));
+        workspace.add_tile(
+            tile,
+            WorkspaceAddWindowTarget::Auto,
+            ActivateWindow::Yes,
+            TiledWidth::Proportion(0.5),
+            false,
+            false,
+            None,
+        );
+    }
+    let second = workspace.tiling().node_for_window(&2).unwrap();
+    workspace.tiling_mut().set_focus(second);
+    workspace.tiling_mut().focus_root();
+    let group = workspace.tiling().focus().unwrap();
+    workspace.tiling_mut().set_focus(second);
+    let root = workspace.set_container_floating(group, true).unwrap();
+    let before = workspace.floating().tree_rect(root).unwrap();
+
+    assert!(workspace.move_window_in_direction(&2, tiling_tree::Direction::Left, 10.));
+
+    let tree = workspace.floating().tree(root).unwrap();
+    let first = tree.node_for_window(&1).unwrap();
+    let second = tree.node_for_window(&2).unwrap();
+    assert!(tree.geometry(second).unwrap().loc.x < tree.geometry(first).unwrap().loc.x);
+    assert_eq!(workspace.floating().tree_rect(root), Some(before));
+    workspace.verify_invariants(None);
+}
+
+#[test]
 fn removing_a_floating_tree_leaf_uses_the_resident_tree() {
     let output = Output::new(
         "output".into(),

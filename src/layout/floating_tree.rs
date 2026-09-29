@@ -1006,6 +1006,25 @@ impl<W: LayoutElement> FloatingLayout<W> {
             .map(|entry| &mut entry.tree)
     }
 
+    pub fn move_focused_tree_child(&mut self, direction: Direction) -> Option<bool> {
+        let active = self.active_window_id.as_ref()?;
+        let entry = self
+            .tree_entries
+            .iter_mut()
+            .find(|entry| entry.tree.node_for_window(active).is_some())?;
+        let focus = entry.tree.focus().filter(|focus| *focus != entry.root)?;
+        Some(entry.tree.move_node_direction(focus, direction))
+    }
+
+    pub fn move_tree_window(&mut self, window: &W::Id, direction: Direction) -> Option<bool> {
+        let entry = self
+            .tree_entries
+            .iter_mut()
+            .find(|entry| entry.tree.node_for_window(window).is_some())?;
+        let node = entry.tree.node_for_window(window)?;
+        Some(entry.tree.move_node_direction(node, direction))
+    }
+
     pub fn window_in_node(&self, node: NodeId) -> Option<&W::Id> {
         self.tree_entries.iter().find_map(|entry| {
             entry

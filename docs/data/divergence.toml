@@ -1792,3 +1792,9 @@ migrated = false
 paths = ["src/layout/mod.rs", "src/layout/tiling_tree/transfer.rs"]
 what = "give a detached workspace root split a fresh node ID so the emptied root keeps its own, and route container moves of a floating-group root through the floating-tree transfer."
 why = "Sway floats or moves a whole workspace by wrapping its children in a new container while the workspace keeps its identity (`sway/tree/workspace.c:898-910`; `sway/commands/floating.c:28-33`; `sway/commands/move.c:928-933`). Reusing the root ID left it live in both the tiling tree and the floating group, so a restored scratchpad tree could collide with a later group (CI seed 4d1a7790) and moving a floating group only worked when its ID aliased the tiling root."
+
+[[edit]]
+migrated = false
+paths = ["proptest-regressions/layout/tests.txt", "src/layout/floating_tree.rs", "src/layout/tests.rs", "src/layout/tiling_tree/movement.rs", "src/layout/workspace.rs"]
+what = "dispatch directional moves of children inside resident floating groups through their nested tiling tree without allowing the move to escape the resident root, while retaining root movement for ordinary floating windows."
+why = "Sway classifies only the floating group root as floating, so a directional move of one of its descendants rearranges that descendant within the group (`floating_group_child_move_direction` in sway-ipc-oracle 418bad7)."
