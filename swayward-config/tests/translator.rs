@@ -618,7 +618,7 @@ fn sway_workspace_output_preserves_ordered_fallback_lists() {
     ));
     std::fs::write(
         &fixture,
-        "workspace 7:web output missing HDMI-A-1\nworkspace chat room output DP-2\n",
+        "workspace 7:web output missing\nworkspace chat room output DP-2\nworkspace 7:web output HDMI-A-1\n",
     )
     .unwrap();
     let output = run_translator(&fixture);
@@ -639,6 +639,7 @@ fn sway_workspace_output_preserves_ordered_fallback_lists() {
         translated.contains("workspace \"chat room\" {\n    sway-output-assignment \"DP-2\"\n}"),
         "{translated}"
     );
+    assert_eq!(translated.matches("workspace \"7:web\"").count(), 1);
     assert_eq!(
         String::from_utf8(output.stderr).unwrap(),
         "manual attention: none\n"

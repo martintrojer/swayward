@@ -45,6 +45,7 @@ class Translator:
         self.blur_settings: dict[str, str] = {}
         self.layout_settings: list[str] = []
         self.workspace_layout_settings: dict[str, list[str]] = {}
+        self.workspace_assignments: dict[str, list[str]] = {}
         self.titlebar_font: str | None = None
         self.titlebar_pango_markup = False
         self.titlebar_show_marks: bool | None = None
@@ -208,22 +209,11 @@ class Translator:
             elif match := re.match(r"assign\s+(\[[^]]+\])\s+(?:→|->)?\s*(.+)", text):
                 self.translate_assign(path, line_no, match.group(1), match.group(2))
             elif match := re.fullmatch(r"workspace\s+(.+?)\s+output\s+(.+)", text):
-                outputs = match.group(2).split()
-                assignment = " ".join(
-                    self.quote(output.strip(chr(34))) for output in outputs
-                )
-                # Always emit the sway node, even for a single output. A sway
-                # `workspace <name> output <output>` is an ASSIGNMENT consulted
-                # by workspace_next_name, whereas `open-on-output` is niri's
-                # own directive for a workspace that is PRE-CREATED. Collapsing
-                # to the latter put every assigned workspace on the first
-                # output at startup.
-                node = "sway-output-assignment"
-                self.sections += [
-                    f"workspace {self.quote(match.group(1).strip(chr(34)))} {{",
-                    f"    {node} {assignment}",
-                    "}",
-                ]
+                workspace = match.group(1).strip(chr(34))
+                outputs = [output.strip(chr(34)) for output in match.group(2).split()]
+                # Sway appends every output to one workspace_config in source
+                # order (sway/commands/workspace.c:153-161).
+                self.workspace_assignments.setdefault(workspace, []).extend(outputs)
             elif match := re.fullmatch(r"font\s+(pango:)?(.+)", text):
                 self.titlebar_pango_markup = match.group(1) is not None
                 self.titlebar_font = match.group(2)
@@ -1828,15 +1818,17 @@ class Translator:
             output += ["", "layout {", *self.layout_settings, "}"]
         if self.sections:
             output += ["", *self.sections]
-        for workspace, settings in self.workspace_layout_settings.items():
-            output += [
-                "",
-                f"workspace {self.quote(workspace)} {{",
-                "    layout {",
-                *settings,
-                "    }",
-                "}",
-            ]
+        workspace_names = dict.fromkeys(
+            [*self.workspace_assignments, *self.workspace_layout_settings]
+        )
+        for workspace in workspace_names:
+            output += ["", f"workspace {self.quote(workspace)} {{"]
+            if outputs := self.workspace_assignments.get(workspace):
+                assignment = " ".join(self.quote(output) for output in outputs)
+                output.append(f"    sway-output-assignment {assignment}")
+            if settings := self.workspace_layout_settings.get(workspace):
+                output += ["    layout {", *settings, "    }"]
+            output.append("}")
         return "\n".join(output) + "\n"
 
 
