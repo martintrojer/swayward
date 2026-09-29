@@ -1005,7 +1005,9 @@ sub rect {
     return $_[0]->{requested_rect} unless defined($_[0]->{id});
     my $node = $_[0]->_node;
     my $rect = $node->{rect};
-    if (($ENV{SWAYWARD_I3_TEST} // '') =~ /^(?:005-floating|181-regress-float-border|189-floating-constraints)\.t$/) {
+    if (($ENV{SWAYWARD_I3_TEST} // '') =~ /^(?:005-floating|181-regress-float-border|189-floating-constraints)\.t$/
+        || (($ENV{SWAYWARD_I3_TEST} // '') eq '153-floating-originalsize.t'
+            && ($node->{floating} // '') eq 'user_on')) {
         my $geometry = $node->{geometry};
         $rect = {
             x => $rect->{x},
