@@ -362,6 +362,21 @@ fn changing_from_tabbed_to_split_keeps_visible_tiles_consistent() {
 }
 
 #[test]
+fn closing_a_floating_group_child_keeps_the_resident_root() {
+    check_ops(vec![
+        Op::Command("layout splitv"),
+        Op::Command("floating toggle"),
+        Op::Command("focus parent"),
+        Op::Command("floating toggle"),
+        Op::Command("layout tabbed"),
+        Op::Command("layout splith"),
+        Op::Close(1),
+        Op::Command("focus parent"),
+        Op::Command("layout splith"),
+    ]);
+}
+
+#[test]
 fn targeted_scratchpad_window_can_be_moved_after_focus_changes() {
     check_ops(vec![
         Op::ConIdCommand(0, "move scratchpad"),
