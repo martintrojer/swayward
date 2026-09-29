@@ -229,9 +229,33 @@ impl<W: LayoutElement> TilingTree<W> {
                                 Layout::SplitH | Layout::SplitV
                                     if tree.fullscreen_node().is_some() =>
                                 {
+                                    let rect = |child: &NodeId| {
+                                        tree.pre_layout_ipc_rects
+                                            .get(child)
+                                            .or_else(|| geometries.tiled_ipc_nodes.get(child))
+                                            .copied()
+                                    };
+                                    let extent = |rect: Rectangle<f64, Logical>| match layout {
+                                        Layout::SplitH => rect.size.w,
+                                        Layout::SplitV => rect.size.h,
+                                        _ => unreachable!(),
+                                    };
+                                    let parent_rect = rect(&id).unwrap_or_default();
+                                    let parent_extent = extent(parent_rect).round();
+                                    let allocated = if index + 1 == children.len() {
+                                        parent_extent
+                                            - percents[..index]
+                                                .iter()
+                                                .map(|percent| (parent_extent * percent).round())
+                                                .sum::<f64>()
+                                    } else {
+                                        (parent_extent * stored_percent).round()
+                                    };
                                     Some(if tree.mapped_under_fullscreen.contains(child) {
                                         0.
-                                    } else {
+                                    } else if !tree.mapped_under_fullscreen.is_empty()
+                                        && tree.fullscreen_node() != Some(*child)
+                                    {
                                         let visible_total = children
                                             .iter()
                                             .zip(percents)
@@ -241,6 +265,25 @@ impl<W: LayoutElement> TilingTree<W> {
                                             .map(|(_, percent)| percent)
                                             .sum::<f64>();
                                         *stored_percent / visible_total
+                                    } else if tree.fullscreen_node() == Some(*child) {
+                                        let child_rect = geometries
+                                            .ipc_nodes
+                                            .get(child)
+                                            .copied()
+                                            .unwrap_or_default();
+                                        let parent_area =
+                                            parent_rect.size.w.round() * parent_rect.size.h.round();
+                                        let child_area =
+                                            child_rect.size.w.round() * child_rect.size.h.round();
+                                        if parent_area > 0. {
+                                            child_area / parent_area
+                                        } else {
+                                            *stored_percent
+                                        }
+                                    } else if parent_extent > 0. {
+                                        allocated / parent_extent
+                                    } else {
+                                        *stored_percent
                                     })
                                 }
                                 Layout::SplitH | Layout::SplitV => {

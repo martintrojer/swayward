@@ -14,6 +14,7 @@ pub(crate) struct Geometry<I> {
     pub leaf_contents: HashMap<NodeId, Rectangle<f64, Logical>>,
     pub leaf_ipc_rects: HashMap<NodeId, Rectangle<f64, Logical>>,
     pub ipc_nodes: HashMap<NodeId, Rectangle<f64, Logical>>,
+    pub tiled_ipc_nodes: HashMap<NodeId, Rectangle<f64, Logical>>,
     pub titlebars: HashMap<NodeId, Titlebar<I>>,
     pub titlebar_leaves: HashMap<NodeId, NodeId>,
     pub titlebar_attached: HashSet<NodeId>,
@@ -76,6 +77,7 @@ pub(crate) fn compute<W: LayoutElement>(
         leaf_contents: HashMap::new(),
         leaf_ipc_rects: HashMap::new(),
         ipc_nodes: HashMap::new(),
+        tiled_ipc_nodes: HashMap::new(),
         titlebars: HashMap::new(),
         titlebar_leaves: HashMap::new(),
         titlebar_attached: HashSet::new(),
@@ -123,6 +125,7 @@ pub(crate) fn compute<W: LayoutElement>(
         },
         &mut result,
     );
+    result.tiled_ipc_nodes = result.ipc_nodes.clone();
     if let Some(fullscreen_root) = fullscreen_root {
         context.fullscreen = fullscreen;
         assign(

@@ -22,15 +22,59 @@ fn mapping_under_fullscreen_preserves_focus_and_sibling_percents() {
     let IpcNode::Split { children, .. } = t.ipc_tree() else {
         panic!("IPC root must be a split");
     };
-    assert!(matches!(
-        &children[..],
-        [
-            IpcNode::Leaf { percent: Some(first), .. },
-            IpcNode::Leaf { percent: Some(second), .. },
-            IpcNode::Leaf { percent: Some(mapped), .. },
-        ] if *first == 0.5 && *second == 0.5 && *mapped == 0.
-    ));
+    let percents = children
+        .iter()
+        .map(|child| match child {
+            IpcNode::Leaf { percent, .. } => *percent,
+            IpcNode::Split { .. } => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(percents, [Some(0.5), Some(1.), Some(0.)]);
     t.check_invariants();
+}
+
+#[test]
+fn fullscreen_leaf_reports_pending_area_percent_without_changing_siblings() {
+    let mut t = tree((1280., 720.), 0.);
+    t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let fullscreen = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+
+    assert!(t.set_node_fullscreen(fullscreen, Some(FullscreenMode::Workspace)));
+
+    let IpcNode::Split { children, .. } = t.ipc_tree() else {
+        panic!("IPC root must be a split");
+    };
+    let percents = children
+        .iter()
+        .map(|child| match child {
+            IpcNode::Leaf { percent, .. } => *percent,
+            IpcNode::Split { .. } => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(percents, [Some(427. / 1280.), Some(1.), Some(426. / 1280.)]);
+}
+
+#[test]
+fn nested_fullscreen_leaf_reports_area_relative_to_pending_parent() {
+    let mut t = tree((1920., 1080.), 0.);
+    t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let upper = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.split(upper, Layout::SplitV);
+    let fullscreen = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+
+    assert!(t.set_node_fullscreen(fullscreen, Some(FullscreenMode::Workspace)));
+
+    let IpcNode::Split { children, .. } = t.ipc_tree() else {
+        panic!("IPC root must be a split");
+    };
+    let IpcNode::Split { children, .. } = &children[1] else {
+        panic!("second child must be a split");
+    };
+    let IpcNode::Leaf { percent, .. } = &children[1] else {
+        panic!("second nested child must be a leaf");
+    };
+    assert_eq!(*percent, Some(2.));
 }
 
 #[test]
