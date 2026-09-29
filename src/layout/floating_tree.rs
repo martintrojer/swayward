@@ -721,6 +721,12 @@ impl<W: LayoutElement> FloatingLayout<W> {
             .any(|entry| entry.tile.window().id() == id)
     }
 
+    pub fn window_is_tree_root(&self, window: &W::Id) -> bool {
+        self.tree_entries
+            .iter()
+            .any(|entry| entry.tree.node_for_window(window) == Some(entry.root))
+    }
+
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty() && self.tree_entries.is_empty()
     }
@@ -1068,6 +1074,59 @@ impl<W: LayoutElement> FloatingLayout<W> {
             .iter()
             .find(|entry| entry.root == root)
             .is_some_and(|entry| entry.sticky)
+    }
+
+    pub fn window_is_sticky(&self, window: &W::Id) -> bool {
+        let Some(entry) = self
+            .tree_entries
+            .iter()
+            .find(|entry| entry.tree.node_for_window(window).is_some())
+        else {
+            return false;
+        };
+        if entry.tree.node_for_window(window) == Some(entry.root) {
+            entry.sticky
+        } else {
+            entry
+                .tree
+                .tiles()
+                .find(|tile| tile.window().id() == window)
+                .is_some_and(|tile| tile.is_sticky)
+        }
+    }
+
+    pub fn set_window_sticky(&mut self, window: &W::Id, sticky: bool) -> bool {
+        let Some(entry) = self
+            .tree_entries
+            .iter_mut()
+            .find(|entry| entry.tree.node_for_window(window).is_some())
+        else {
+            return false;
+        };
+        if entry.tree.node_for_window(window) == Some(entry.root) {
+            entry.sticky = sticky;
+            return true;
+        }
+        let Some(tile) = entry
+            .tree
+            .tiles_mut()
+            .find(|tile| tile.window().id() == window)
+        else {
+            return false;
+        };
+        tile.is_sticky = sticky;
+        true
+    }
+
+    pub fn swap_nodes(&mut self, first: NodeId, second: NodeId) -> Result<(), &'static str> {
+        let Some(entry) = self
+            .tree_entries
+            .iter_mut()
+            .find(|entry| entry.tree.contains(first) && entry.tree.contains(second))
+        else {
+            return Err("node not found");
+        };
+        entry.tree.swap_nodes(first, second)
     }
 
     pub fn set_tree_sticky(&mut self, root: NodeId, sticky: bool) -> bool {

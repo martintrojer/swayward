@@ -38,7 +38,14 @@ pub(super) fn sticky(
     if state.swayward.layout.is_scratchpad_hidden(&window) {
         return Ok(());
     }
-    if !state.swayward.layout.set_window_sticky(&window, value) {
+    let applied = match target {
+        CommandTarget::Container(workspace, node) => state
+            .swayward
+            .layout
+            .set_floating_group_sticky(workspace, node, value),
+        CommandTarget::Window(_) => None,
+    };
+    if !applied.unwrap_or_else(|| state.swayward.layout.set_window_sticky(&window, value)) {
         return Err(failure("Expected output to have a workspace"));
     }
     state.swayward.queue_redraw_all();

@@ -1798,3 +1798,9 @@ migrated = false
 paths = ["proptest-regressions/layout/tests.txt", "src/layout/floating_tree.rs", "src/layout/tests.rs", "src/layout/tiling_tree/movement.rs", "src/layout/workspace.rs"]
 what = "dispatch directional moves of children inside resident floating groups through their nested tiling tree without allowing the move to escape the resident root, while retaining root movement for ordinary floating windows."
 why = "Sway classifies only the floating group root as floating, so a directional move of one of its descendants rearranges that descendant within the group (`floating_group_child_move_direction` in sway-ipc-oracle 418bad7)."
+
+[[edit]]
+migrated = false
+paths = ["src/command/movement.rs", "src/layout/floating_tree.rs", "src/layout/mod.rs", "src/layout/workspace.rs", "src/layout/tests.rs"]
+what = "store sticky state on an individual floating-group child, route swaps through the resident tree, and preserve resident-tree fullscreen visibility."
+why = "Sway treats descendants of a floating group as tiling containers for sticky, swap, and fullscreen commands (`floating_group_child_sticky`, `floating_group_child_swap`, and `floating_group_child_fullscreen` in sway-ipc-oracle 418bad7)."

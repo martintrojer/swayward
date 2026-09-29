@@ -3599,6 +3599,16 @@ impl<W: LayoutElement> Layout<W> {
             .is_some_and(|(_, _, candidate)| candidate.tiling().is_root(node))
     }
 
+    pub fn workspace_contains_tiling_node(
+        &self,
+        workspace: WorkspaceId,
+        node: tiling_tree::NodeId,
+    ) -> bool {
+        self.workspaces()
+            .find(|(_, _, candidate)| candidate.id() == workspace)
+            .is_some_and(|(_, _, candidate)| candidate.contains_tiling_node(node))
+    }
+
     pub fn swap_tiling_nodes(
         &mut self,
         workspace: WorkspaceId,
@@ -3793,6 +3803,17 @@ impl<W: LayoutElement> Layout<W> {
         self.workspaces().find_map(|(_, _, workspace)| {
             workspace
                 .tiling_node_for_window(window)
+                .map(|node| (workspace.id(), node))
+        })
+    }
+
+    pub fn swap_target_for_window(
+        &self,
+        window: &W::Id,
+    ) -> Option<(WorkspaceId, tiling_tree::NodeId)> {
+        self.workspaces().find_map(|(_, _, workspace)| {
+            workspace
+                .swap_node_for_window(window)
                 .map(|node| (workspace.id(), node))
         })
     }
@@ -4116,9 +4137,34 @@ impl<W: LayoutElement> Layout<W> {
     }
 
     pub fn set_window_sticky(&mut self, window: &W::Id, value: &str) -> bool {
-        let current = self
+        self.set_sticky(window, None, value)
+    }
+
+    /// Applies `sticky` to a floating group root itself rather than to one of its
+    /// children, as sway sets `is_sticky` on the focused container
+    /// (`sway/commands/sticky.c:20-26`). Returns `None` when `node` is not a
+    /// floating group root in `workspace`.
+    pub fn set_floating_group_sticky(
+        &mut self,
+        workspace: WorkspaceId,
+        node: NodeId,
+        value: &str,
+    ) -> Option<bool> {
+        let window = self
             .workspaces()
-            .any(|(_, _, workspace)| workspace.is_window_sticky(window));
+            .find(|(_, _, candidate)| candidate.id() == workspace)
+            .and_then(|(_, _, candidate)| {
+                candidate.floating().tree(node)?;
+                candidate.floating().window_in_node(node).cloned()
+            })?;
+        Some(self.set_sticky(&window, Some(node), value))
+    }
+
+    fn set_sticky(&mut self, window: &W::Id, group: Option<NodeId>, value: &str) -> bool {
+        let current = self.workspaces().any(|(_, _, workspace)| match group {
+            Some(root) => workspace.floating().tree_is_sticky(root),
+            None => workspace.is_window_sticky(window),
+        });
         let sticky = swayward_ipc::command::parse_boolean(value, current);
         let Some(monitor) = self
             .monitors_mut()
@@ -4135,11 +4181,17 @@ impl<W: LayoutElement> Layout<W> {
             return false;
         };
         let source_idx = monitor.idx_of_ws(source).unwrap();
-        if !monitor.workspaces[source_idx].set_window_sticky(window, sticky) {
+        let whole_tree =
+            group.is_some() || monitor.workspaces[source_idx].window_is_floating_root(window);
+        let changed = match group {
+            Some(root) => monitor.workspaces[source_idx].set_floating_tree_sticky(root, sticky),
+            None => monitor.workspaces[source_idx].set_window_sticky(window, sticky),
+        };
+        if !changed {
             return true;
         }
         let target = monitor.active_workspace_ref().id();
-        if sticky && source != target {
+        if whole_tree && sticky && source != target {
             let removed_trees = monitor.workspaces[source_idx].take_sticky_trees();
             let removed = monitor.workspaces[source_idx].take_sticky_tiles();
             let target_idx = monitor.idx_of_ws(target).unwrap();

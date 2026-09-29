@@ -562,11 +562,11 @@ fn resolve_swap_endpoint(
                     .layout
                     .active_workspace()
                     .is_some_and(|active| {
-                        active.id() == workspace && active.contains_tiling_node(node)
+                        active.id() == workspace && active.contains_swap_node(node)
                     })
             } else {
                 state.swayward.layout.workspaces().any(|(_, _, candidate)| {
-                    candidate.id() == workspace && candidate.contains_tiling_node(node)
+                    candidate.id() == workspace && candidate.contains_swap_node(node)
                 })
             } =>
         {
@@ -585,7 +585,7 @@ fn resolve_swap_endpoint(
             state
                 .swayward
                 .layout
-                .tiling_target_for_window(&mapped)
+                .swap_target_for_window(&mapped)
                 .ok_or_else(|| failure("Can only swap with containers and views"))
         }
     }
@@ -650,6 +650,17 @@ pub(super) fn swap_target(
         return failure("Can only swap with containers and views");
     }
     if source_workspace != destination_workspace {
+        if !state
+            .swayward
+            .layout
+            .workspace_contains_tiling_node(source_workspace, source_node)
+            || !state
+                .swayward
+                .layout
+                .workspace_contains_tiling_node(destination_workspace, destination_node)
+        {
+            return failure("Can only swap with containers and views");
+        }
         let remapped = match state.swayward.layout.swap_tiling_nodes_between_workspaces(
             source_workspace,
             source_node,

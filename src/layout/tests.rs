@@ -1372,7 +1372,7 @@ fn sticky_floating_tree_follows_workspace_focus() {
         subtree,
         Rectangle::new((100., 120.).into(), (600., 450.).into()),
     );
-    assert!(layout.set_window_sticky(&1, "enable"));
+    workspace.floating_mut().set_tree_sticky(root, true);
 
     layout
         .activate_sway_workspace(crate::command::WorkspaceTarget::Name("target".into()))
@@ -2827,6 +2827,95 @@ fn floating_tree_root_tracks_output_geometry_changes() {
     workspace.floating().verify_invariants();
 }
 
+fn floating_group_workspace() -> (Workspace<TestWindow>, tiling_tree::NodeId) {
+    let output = Output::new(
+        "output".into(),
+        PhysicalProperties {
+            size: Size::from((1280, 720)),
+            subpixel: Subpixel::Unknown,
+            make: String::new(),
+            model: String::new(),
+            serial_number: String::new(),
+        },
+    );
+    output.change_current_state(
+        Some(Mode {
+            size: Size::from((1280, 720)),
+            refresh: 60000,
+        }),
+        None,
+        None,
+        None,
+    );
+    output.user_data().insert_if_missing(|| OutputName {
+        connector: "output".into(),
+        make: None,
+        model: None,
+        serial: None,
+    });
+    let mut workspace = Workspace::new(
+        output,
+        Clock::with_time(Duration::ZERO),
+        Rc::new(Options::default()),
+    );
+    for id in 1..=2 {
+        let tile = workspace.make_tile(TestWindow::new(TestWindowParams::new(id)));
+        workspace.add_tile(
+            tile,
+            WorkspaceAddWindowTarget::Auto,
+            ActivateWindow::Yes,
+            TiledWidth::Proportion(0.5),
+            false,
+            false,
+            None,
+        );
+    }
+    workspace.tiling_mut().focus_root();
+    let root = workspace.tiling().focus().unwrap();
+    let (subtree, old_parent) = workspace.detach_tiling_subtree(root).unwrap();
+    workspace.finish_tiling_subtree_detach(old_parent);
+    let (root, _) = workspace.floating_mut().add_tree(
+        subtree,
+        Rectangle::new((100., 120.).into(), (600., 450.).into()),
+    );
+    (workspace, root)
+}
+
+#[test]
+fn sticky_targets_only_the_floating_group_child() {
+    let (mut workspace, root) = floating_group_workspace();
+
+    assert!(workspace.set_window_sticky(&2, true));
+
+    assert!(workspace.is_window_sticky(&2));
+    assert!(!workspace.is_window_sticky(&1));
+    assert!(!workspace.floating().tree_is_sticky(root));
+    assert!(workspace.take_sticky_tiles().is_empty());
+    assert_eq!(workspace.floating_tree_root_for_window(&2), Some(root));
+}
+
+#[test]
+fn swap_targets_children_inside_the_same_floating_group() {
+    let (mut workspace, root) = floating_group_workspace();
+    let tree = workspace.floating().tree(root).unwrap();
+    let first = tree.node_for_window(&1).unwrap();
+    let second = tree.node_for_window(&2).unwrap();
+
+    workspace.swap_tiling_nodes(first, second).unwrap();
+
+    let children = &workspace.floating().tree(root).unwrap().ipc_tree();
+    let tiling_tree::IpcNode::Split { children, .. } = children else {
+        panic!("floating group root must remain a split");
+    };
+    assert!(matches!(
+        &children[..],
+        [
+            tiling_tree::IpcNode::Leaf { window: 2, .. },
+            tiling_tree::IpcNode::Leaf { window: 1, .. }
+        ]
+    ));
+}
+
 #[test]
 fn fullscreen_targets_a_node_inside_a_floating_tree() {
     let output = Output::new(
@@ -2909,6 +2998,16 @@ fn fullscreen_targets_a_node_inside_a_floating_tree() {
     assert_eq!(
         workspace.floating().tree(root).unwrap().fullscreen_node(),
         workspace.floating().tree(root).unwrap().node_for_window(&1)
+    );
+    assert_eq!(
+        workspace
+            .floating()
+            .tree(root)
+            .unwrap()
+            .tiles_with_render_positions()
+            .map(|(tile, _, visible)| (*tile.window().id(), visible))
+            .collect::<Vec<_>>(),
+        vec![(1, true), (2, false)]
     );
 }
 

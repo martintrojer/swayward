@@ -1194,10 +1194,10 @@ impl<W: LayoutElement> Workspace<W> {
     }
 
     pub fn swap_tiling_nodes(&mut self, first: NodeId, second: NodeId) -> Result<(), &'static str> {
-        if !self.tiling.contains(first) || !self.tiling.contains(second) {
-            return Err("node not found");
+        if self.tiling.contains(first) && self.tiling.contains(second) {
+            return self.tiling.swap_nodes(first, second);
         }
-        self.tiling.swap_nodes(first, second)
+        self.floating.swap_nodes(first, second)
     }
 
     pub fn detach_tiling_subtree_for_swap(
@@ -2598,15 +2598,17 @@ impl<W: LayoutElement> Workspace<W> {
         self.floating.tree_root_for_window(window)
     }
 
+    pub fn window_is_floating_root(&self, window: &W::Id) -> bool {
+        self.floating.window_is_floating_root(window) || self.floating.window_is_tree_root(window)
+    }
+
     pub fn focused_floating_tree_root(&self) -> Option<NodeId> {
         self.active_window()
             .and_then(|window| self.floating.tree_root_for_window(window.id()))
     }
 
     pub fn is_window_sticky(&self, window: &W::Id) -> bool {
-        self.floating
-            .tree_root_for_window(window)
-            .is_some_and(|root| self.floating.tree_is_sticky(root))
+        self.floating.window_is_sticky(window)
             || self
                 .tiles()
                 .find(|tile| tile.window().id() == window)
@@ -2614,14 +2616,18 @@ impl<W: LayoutElement> Workspace<W> {
     }
 
     pub fn set_window_sticky(&mut self, window: &W::Id, sticky: bool) -> bool {
-        if let Some(root) = self.floating.tree_root_for_window(window) {
-            return self.floating.set_tree_sticky(root, sticky);
+        if self.floating.tree_root_for_window(window).is_some() {
+            return self.floating.set_window_sticky(window, sticky);
         }
         let Some(tile) = self.tiles_mut().find(|tile| tile.window().id() == window) else {
             return false;
         };
         tile.is_sticky = sticky;
         true
+    }
+
+    pub fn set_floating_tree_sticky(&mut self, root: NodeId, sticky: bool) -> bool {
+        self.floating.set_tree_sticky(root, sticky)
     }
 
     pub fn take_sticky_trees(&mut self) -> Vec<RemovedFloatingTree<W>> {
@@ -2636,7 +2642,9 @@ impl<W: LayoutElement> Workspace<W> {
         let ids = self
             .floating
             .tiles()
-            .filter(|tile| tile.is_sticky)
+            .filter(|tile| {
+                tile.is_sticky && self.floating.window_is_floating_root(tile.window().id())
+            })
             .map(|tile| tile.window().id().clone())
             .collect::<Vec<_>>();
         ids.iter()
@@ -2681,11 +2689,25 @@ impl<W: LayoutElement> Workspace<W> {
         self.tiling.contains(id)
     }
 
+    pub fn contains_swap_node(&self, id: crate::layout::tiling_tree::NodeId) -> bool {
+        self.tiling.contains(id) || self.floating.tree_root_for_node(id).is_some()
+    }
+
     pub fn tiling_node_for_window(
         &self,
         window: &W::Id,
     ) -> Option<crate::layout::tiling_tree::NodeId> {
         self.tiling.node_for_window(window)
+    }
+
+    pub fn swap_node_for_window(
+        &self,
+        window: &W::Id,
+    ) -> Option<crate::layout::tiling_tree::NodeId> {
+        self.tiling.node_for_window(window).or_else(|| {
+            let root = self.floating.tree_root_for_window(window)?;
+            self.floating.tree(root)?.node_for_window(window)
+        })
     }
 
     pub fn tiling_window_for_node(&self, node: NodeId) -> Option<&W> {

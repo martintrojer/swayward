@@ -290,6 +290,24 @@ fn criteria_targeted_floating_group_commands_operate_on_the_root() {
 }
 
 #[test]
+fn sticky_on_a_focused_floating_group_marks_the_root() {
+    // Oracle: grouped_sticky_events (grouped_sticky_after). Sway sets
+    // is_sticky on the focused container, here the floating group itself
+    // (sway/commands/sticky.c:20-26).
+    let mut fixture = nested_split_fixture();
+    assert!(crate::command::execute(fixture.niri_state(), "floating enable")[0].success);
+    assert!(crate::command::execute(fixture.niri_state(), "sticky enable")[0].success);
+
+    let tree = command_tree(&mut fixture);
+    let floating = &tree["nodes"][1]["nodes"][0]["floating_nodes"];
+    assert_eq!(floating.as_array().map(Vec::len), Some(1), "{tree:#}");
+    assert_eq!(floating[0]["sticky"], true, "{tree:#}");
+    for child in floating[0]["nodes"].as_array().unwrap() {
+        assert_eq!(child["sticky"], false, "{tree:#}");
+    }
+}
+
+#[test]
 fn floating_accepts_sways_boolean_vocabulary() {
     let mut f = Fixture::new();
     f.add_output(1, (800, 600));
