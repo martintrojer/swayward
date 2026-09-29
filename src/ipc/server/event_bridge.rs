@@ -828,9 +828,17 @@ impl State {
                 .into_iter()
                 .flatten()
                 {
+                    let mut container = container.clone();
+                    if change == "floating" {
+                        container["floating"] = if container["type"] == "floating_con" {
+                            "user_on".into()
+                        } else {
+                            "user_off".into()
+                        };
+                    }
                     events.push(Event::SwayWindowChanged {
                         change: change.into(),
-                        container: container.clone(),
+                        container,
                     });
                 }
             }

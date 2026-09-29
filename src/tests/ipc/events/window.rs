@@ -70,6 +70,26 @@ fn floating_a_group_emits_one_recursive_floating_event() {
 }
 
 #[test]
+fn floating_events_report_user_requested_state() {
+    let (mut fixture, socket) = ipc_fixture();
+    fixture.add_output(1, (1920, 1080));
+    let client = fixture.add_client();
+    map_test_window(&mut fixture, client, "floating-event");
+    fixture.niri_state().ipc_refresh_layout();
+    let mut subscriber = subscribe_to_window_events(&mut fixture, &socket);
+
+    for (command, expected) in [("floating enable", "user_on"), ("floating disable", "user_off")] {
+        assert!(crate::command::execute(fixture.niri_state(), command)[0].success);
+        fixture.niri_state().ipc_refresh_layout();
+        let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
+        assert_eq!(event_type, (1 << 31) | 3);
+        let event: Value = serde_json::from_str(&payload).unwrap();
+        assert_eq!(event["change"], "floating");
+        assert_eq!(event["container"]["floating"], expected);
+    }
+}
+
+#[test]
 fn fullscreening_a_floating_group_emits_one_recursive_fullscreen_event() {
     let (mut fixture, socket) = ipc_fixture();
     fixture.add_output(1, (1920, 1080));
