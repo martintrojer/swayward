@@ -71,6 +71,10 @@ impl<W: LayoutElement> TilingTree<W> {
         ))
     }
 
+    pub fn ipc_focus_is_stale(&self, id: NodeId) -> bool {
+        self.ipc_stale_nodes.contains(&id)
+    }
+
     pub fn window_for_node(&self, id: NodeId) -> Option<&W> {
         self.tile(id).map(Tile::window)
     }
@@ -198,6 +202,7 @@ impl<W: LayoutElement> TilingTree<W> {
                     focus: tree
                         .focus_history
                         .iter()
+                        .filter(|focused| !tree.ipc_stale_nodes.contains(focused))
                         .filter_map(|focused| {
                             children
                                 .iter()

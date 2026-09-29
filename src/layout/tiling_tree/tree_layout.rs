@@ -479,6 +479,7 @@ impl<W: LayoutElement> TilingTree<W> {
                 percents,
             },
         });
+        self.ipc_stale_nodes.insert(wrapper);
         if matches!(root_layout, Layout::SplitH | Layout::SplitV) {
             self.previous_split_layouts.insert(wrapper, root_layout);
         }

@@ -1762,3 +1762,9 @@ migrated = false
 paths = ["src/command/dispatch.rs", "src/command/tests.rs", "swayward-ipc/src/command/parse/"]
 what = "preserve sway's argument-count validation order and messages for empty mark, border, rename, output, and unfocused move-position commands, and accept gaps values with strtol-style i32 wrapping."
 why = "IPC clients consume the structured RUN_COMMAND result, including `parse_error`; validating syntax or numeric range earlier than sway changes that wire-visible result. Cases `mark-missing-name`, `gaps-overflow`, `border-missing-style`, `move-position-missing`, `move-position-one-coordinate`, `move-position-invalid-unit`, `workspace-rename-missing-to`, and `output-missing-target` in sway-ipc-oracle branch worker-1/command-fuzz-review cover these boundaries."
+
+[[edit]]
+migrated = false
+paths = ["src/layout/tiling_tree/introspection.rs", "src/layout/tiling_tree/invariants.rs", "src/layout/tiling_tree/mod.rs", "src/layout/tiling_tree/mutation.rs", "src/layout/tiling_tree/state.rs", "src/layout/tiling_tree/tree_layout.rs", "src/layout/workspace.rs", "src/tests/ipc/tree_commands/layout.rs"]
+what = "preserve the prior IPC focus rank of tiled branches that layout commands wrap in newly-created containers."
+why = "Sway creates a seat-focus entry for every container and leaves newly-created wrapper containers at the tail unless they are explicitly focused (`seat_node_from_node`, sway/input/seat.c:329-351; `container_split`, sway/tree/container.c:1565-1620); deriving branch recency only from descendant window timestamps incorrectly promotes a wrapper above older siblings."

@@ -33,6 +33,7 @@ impl<W: LayoutElement> TilingTree<W> {
             nodes,
             root,
             focus: None,
+            ipc_stale_nodes: HashSet::new(),
             has_had_tile: false,
             empty_representation_layout: None,
             focus_history: Vec::new(),

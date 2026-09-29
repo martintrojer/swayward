@@ -218,6 +218,7 @@ impl<W: LayoutElement> TilingTree<W> {
         self.tab_active.remove(&id);
         self.tab_active.retain(|_, active| *active != id);
         self.focus_history.retain(|candidate| *candidate != id);
+        self.ipc_stale_nodes.remove(&id);
         Some(node)
     }
 
@@ -226,6 +227,11 @@ impl<W: LayoutElement> TilingTree<W> {
         if let Some(id) = focus {
             self.focus_history.retain(|candidate| *candidate != id);
             self.focus_history.insert(0, id);
+            let stale = self.ipc_stale_nodes.clone();
+            self.ipc_stale_nodes = stale
+                .into_iter()
+                .filter(|candidate| !self.contains_node(*candidate, id))
+                .collect();
         }
     }
 

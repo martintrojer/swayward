@@ -575,3 +575,30 @@ fn focused_container_can_be_marked_and_targeted_by_con_id() {
     );
 }
 
+
+#[test]
+fn wrapping_a_tiled_child_does_not_promote_it_past_an_older_floating_child() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+
+    for app_id in ["floating", "tiled"] {
+        map_test_window(&mut f, client, app_id);
+        if app_id == "floating" {
+            assert!(crate::command::execute(f.niri_state(), "floating enable")[0].success);
+        }
+    }
+    assert!(crate::command::execute(f.niri_state(), "layout stacking")[0].success);
+
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &Default::default(),
+        &Default::default(),
+    ))
+    .unwrap();
+    let workspace = &tree["nodes"][1]["nodes"][0];
+    assert_eq!(workspace["focus"][0], workspace["floating_nodes"][0]["id"]);
+}
+

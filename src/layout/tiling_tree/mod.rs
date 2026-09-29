@@ -327,6 +327,7 @@ pub struct TilingTree<W: LayoutElement> {
     nodes: HashMap<NodeId, Node<W>>,
     root: NodeId,
     focus: Option<NodeId>,
+    ipc_stale_nodes: HashSet<NodeId>,
     has_had_tile: bool,
     empty_representation_layout: Option<Layout>,
     focus_history: Vec<NodeId>,

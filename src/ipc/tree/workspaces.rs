@@ -247,6 +247,16 @@ pub(super) fn describe_workspace_node(context: WorkspaceNodeContext<'_>) -> Node
         focus.extend(floating_focus);
     }
     if !workspace.floating_is_active() {
+        let stale_tiling = workspace
+            .ipc_tiling_tree()
+            .nodes()
+            .into_iter()
+            .filter_map(|(id, _)| {
+                workspace
+                    .tiling_ipc_focus_is_stale(id)
+                    .then_some(container_id(id))
+            })
+            .collect::<std::collections::HashSet<_>>();
         let focus_timestamps = workspace
             .windows()
             .filter_map(|window| {
@@ -257,12 +267,13 @@ pub(super) fn describe_workspace_node(context: WorkspaceNodeContext<'_>) -> Node
             .collect::<std::collections::HashMap<_, _>>();
         let children = nodes.iter().chain(&floating_nodes).collect::<Vec<_>>();
         focus.sort_by_key(|id| {
-            Reverse(
+            Reverse((
+                !stale_tiling.contains(id),
                 children
                     .iter()
                     .find(|child| child.id == *id)
                     .and_then(|child| newest_focus_timestamp(child, &focus_timestamps)),
-            )
+            ))
         });
     }
     let representation = workspace

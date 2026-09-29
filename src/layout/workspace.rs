@@ -2683,6 +2683,10 @@ impl<W: LayoutElement> Workspace<W> {
         self.tiling.tab_indicator_focus_target(window)
     }
 
+    pub fn tiling_ipc_focus_is_stale(&self, id: NodeId) -> bool {
+        self.tiling.ipc_focus_is_stale(id)
+    }
+
     pub fn ipc_tiling_tree(&self) -> super::tiling_tree::IpcNode<W::Id> {
         let mut tree = self.tiling.ipc_tree();
         tree.retain_leaves(&|window| !self.is_floating_for_ipc(window));

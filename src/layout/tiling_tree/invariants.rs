@@ -56,6 +56,11 @@ impl<W: LayoutElement> TilingTree<W> {
             .iter()
             .map(|id| ("focus_history", id))
             .chain(
+                self.ipc_stale_nodes
+                    .iter()
+                    .map(|id| ("ipc_stale_nodes", id)),
+            )
+            .chain(
                 self.previous_split_layouts
                     .keys()
                     .map(|id| ("previous_split_layouts", id)),
