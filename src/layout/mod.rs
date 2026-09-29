@@ -3854,11 +3854,7 @@ impl<W: LayoutElement> Layout<W> {
             .filter(|(_, _, workspace)| workspace.tiling().is_root(node))
             .map(|(_, _, workspace)| {
                 (
-                    workspace
-                        .tiles()
-                        .filter(|tile| workspace.is_floating(tile.window().id()))
-                        .map(|tile| tile.window().id().clone())
-                        .collect::<Vec<_>>(),
+                    workspace.floating_transfer_window_ids(),
                     workspace.tiling().tiles().next().is_none(),
                 )
             })

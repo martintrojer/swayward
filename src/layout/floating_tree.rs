@@ -859,6 +859,20 @@ impl<W: LayoutElement> FloatingLayout<W> {
         self.tree_entries.iter().map(|entry| entry.root)
     }
 
+    pub fn transfer_window_ids(&self) -> Vec<W::Id> {
+        self.entries
+            .iter()
+            .map(|entry| entry.tile.window().id().clone())
+            .chain(self.tree_entries.iter().filter_map(|entry| {
+                entry
+                    .tree
+                    .tiles()
+                    .next()
+                    .map(|tile| tile.window().id().clone())
+            }))
+            .collect()
+    }
+
     pub fn ipc_trees(
         &self,
     ) -> impl Iterator<Item = (NodeId, super::tiling_tree::IpcNode<W::Id>, bool)> + '_ {

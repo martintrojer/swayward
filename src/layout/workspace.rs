@@ -2598,6 +2598,10 @@ impl<W: LayoutElement> Workspace<W> {
         self.floating.tree_root_for_window(window)
     }
 
+    pub fn floating_transfer_window_ids(&self) -> Vec<W::Id> {
+        self.floating.transfer_window_ids()
+    }
+
     pub fn window_is_floating_root(&self, window: &W::Id) -> bool {
         self.floating.window_is_floating_root(window) || self.floating.window_is_tree_root(window)
     }
