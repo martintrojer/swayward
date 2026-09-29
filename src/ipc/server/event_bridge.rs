@@ -709,7 +709,16 @@ impl State {
         let state = &mut state.windows;
 
         let mut events = Vec::new();
+        let mut restored_focus_events = Vec::new();
         let layout = &self.swayward.layout;
+        let focused_window_closed = state.windows.values().any(|window| {
+            window.is_focused
+                && find_node_by_id(
+                    &current_tree,
+                    crate::ipc::tree::window_id_from_raw(window.id),
+                )
+                .is_none()
+        });
 
         let mut batch_change_layouts: Vec<(u64, WindowLayout)> = Vec::new();
 
@@ -862,16 +871,33 @@ impl State {
             }
 
             if mapped.is_focused() && !ipc_win.is_focused {
-                if let Some(container) =
-                    find_node_by_id(&current_tree, crate::ipc::tree::window_id(mapped.id()))
-                        .cloned()
-                {
-                    events.push(Event::SwayWindowChanged {
+                let node_id = crate::ipc::tree::window_id(mapped.id());
+                let mut container = if focused_window_closed {
+                    previous_tree.and_then(|tree| find_node_by_id(tree, node_id))
+                } else {
+                    find_node_by_id(&current_tree, node_id)
+                }
+                .cloned();
+                if let Some(container) = &mut container {
+                    container["focused"] = true.into();
+                }
+                if let Some(container) = container {
+                    let focus = Event::SwayWindowChanged {
                         change: "focus".into(),
                         container,
-                    });
+                    };
+                    if focused_window_closed {
+                        restored_focus_events.push(focus);
+                    } else {
+                        events.push(focus);
+                    }
                 }
-                events.push(Event::WindowFocusChanged { id: Some(id) });
+                let focus = Event::WindowFocusChanged { id: Some(id) };
+                if focused_window_closed {
+                    restored_focus_events.push(focus);
+                } else {
+                    events.push(focus);
+                }
             }
 
             let focus_timestamp = mapped.get_focus_timestamp().map(Timestamp::from);
@@ -930,6 +956,10 @@ impl State {
                 ipc_focused_id = Some(id);
             }
         }
+
+        // Sway emits close from container_begin_destroy before seat focus is
+        // restored (`sway/tree/container.c:492`; `sway/input/seat.c:260-315`).
+        events.append(&mut restored_focus_events);
 
         // Extra check for focus becoming None, since the checks above only work for focus becoming
         // a different window.

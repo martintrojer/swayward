@@ -636,3 +636,41 @@ fn workspace_window_and_mode_events_match_sway_shapes() {
     assert_event_shape(&expected, &serde_json::from_str(&payload).unwrap(), "$mode");
 }
 
+#[test]
+fn closing_the_focused_window_emits_close_before_restored_focus() {
+    let (mut fixture, socket) = ipc_fixture();
+    fixture.add_output(1, (1920, 1080));
+    let client = fixture.add_client();
+    map_titled_test_window(&mut fixture, client, "first");
+    map_titled_test_window(&mut fixture, client, "second");
+    fixture.niri_state().ipc_refresh_layout();
+    let mut subscriber = subscribe_to_window_events(&mut fixture, &socket);
+    let mapped = fixture
+        .swayward()
+        .layout
+        .windows()
+        .find(|(_, mapped)| mapped.formatted_title() == "second")
+        .unwrap()
+        .1
+        .window
+        .clone();
+
+    fixture
+        .swayward()
+        .layout
+        .remove_window(&mapped, crate::utils::transaction::Transaction::new());
+    fixture.niri_state().update_keyboard_focus();
+    fixture.niri_state().ipc_refresh_layout();
+
+    let ((_, close), remainder) =
+        read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, Vec::new());
+    let ((_, focus), _) =
+        read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder);
+    let close: Value = serde_json::from_str(&close).unwrap();
+    let focus: Value = serde_json::from_str(&focus).unwrap();
+    assert_eq!(close["change"], "close");
+    assert_eq!(close["container"]["app_id"], "second");
+    assert_eq!(focus["change"], "focus");
+    assert_eq!(focus["container"]["app_id"], "first");
+}
+
