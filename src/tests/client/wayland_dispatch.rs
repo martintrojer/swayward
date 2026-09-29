@@ -85,6 +85,21 @@ impl State {
         self.lock_surfaces.last_mut().unwrap()
     }
 
+    pub fn create_subsurface(&mut self, parent: &WlSurface) -> &mut (WlSurface, WlSubsurface) {
+        let surface = self
+            .compositor
+            .as_ref()
+            .unwrap()
+            .create_surface(&self.qh, ());
+        let subsurface = self
+            .subcompositor
+            .as_ref()
+            .unwrap()
+            .get_subsurface(&surface, parent, &self.qh, ());
+        self.subsurfaces.push((surface, subsurface));
+        self.subsurfaces.last_mut().unwrap()
+    }
+
     pub fn create_window(&mut self) -> &mut Window {
         let compositor = self.compositor.as_ref().unwrap();
         let xdg_wm_base = self.xdg_wm_base.as_ref().unwrap();
@@ -387,6 +402,9 @@ impl Dispatch<WlRegistry, ()> for State {
                 if interface == WlCompositor::interface().name {
                     let version = min(version, WlCompositor::interface().version);
                     state.compositor = Some(registry.bind(name, version, qh, ()));
+                } else if interface == WlSubcompositor::interface().name {
+                    let version = min(version, WlSubcompositor::interface().version);
+                    state.subcompositor = Some(registry.bind(name, version, qh, ()));
                 } else if interface == WlSeat::interface().name {
                     let version = min(version, WlSeat::interface().version);
                     state.seat = Some(registry.bind(name, version, qh, ()));
@@ -553,3 +571,29 @@ impl Dispatch<ZxdgToplevelDecorationV1, ()> for State {
     }
 }
 
+
+impl Dispatch<WlSubcompositor, ()> for State {
+    fn event(
+        _state: &mut Self,
+        _proxy: &WlSubcompositor,
+        _event: <WlSubcompositor as wayland_client::Proxy>::Event,
+        _data: &(),
+        _conn: &Connection,
+        _qhandle: &QueueHandle<Self>,
+    ) {
+        unreachable!()
+    }
+}
+
+impl Dispatch<WlSubsurface, ()> for State {
+    fn event(
+        _state: &mut Self,
+        _proxy: &WlSubsurface,
+        _event: <WlSubsurface as wayland_client::Proxy>::Event,
+        _data: &(),
+        _conn: &Connection,
+        _qhandle: &QueueHandle<Self>,
+    ) {
+        unreachable!()
+    }
+}

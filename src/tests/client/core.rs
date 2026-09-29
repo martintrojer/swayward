@@ -86,6 +86,8 @@ use wayland_client::protocol::wl_compositor::WlCompositor;
 use wayland_client::protocol::wl_display::WlDisplay;
 use wayland_client::protocol::wl_output::{self, WlOutput};
 use wayland_client::protocol::wl_region::WlRegion;
+use wayland_client::protocol::wl_subcompositor::WlSubcompositor;
+use wayland_client::protocol::wl_subsurface::WlSubsurface;
 use wayland_client::protocol::wl_registry::{self, WlRegistry};
 use wayland_client::protocol::wl_seat::{self, WlSeat};
 use wayland_client::protocol::wl_keyboard::{self, WlKeyboard};
@@ -113,6 +115,8 @@ pub struct State {
     pub outputs: HashMap<WlOutput, String>,
 
     pub compositor: Option<WlCompositor>,
+    pub subcompositor: Option<WlSubcompositor>,
+    pub subsurfaces: Vec<(WlSurface, WlSubsurface)>,
     pub seat: Option<WlSeat>,
     pub keyboard: Option<WlKeyboard>,
     pub keyboard_enter_serial: Option<u32>,
@@ -339,6 +343,8 @@ impl Client {
             globals: Vec::new(),
             outputs: HashMap::new(),
             compositor: None,
+            subcompositor: None,
+            subsurfaces: Vec::new(),
             seat: None,
             keyboard: None,
             keyboard_enter_serial: None,

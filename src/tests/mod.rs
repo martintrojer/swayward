@@ -1,6 +1,7 @@
 use fixture::Fixture;
 
 mod client;
+mod client_protocol_fuzz;
 pub(crate) mod fixture;
 mod server;
 
