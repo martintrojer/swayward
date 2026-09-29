@@ -1,6 +1,7 @@
 use proptest::prelude::*;
 
 use super::Fixture;
+use crate::swayward::{LockRenderState, LockState};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Expected {
@@ -376,6 +377,60 @@ fn check_ops(ops: Vec<Op>) {
     }
 }
 
+fn check_dead_lock_client_keeps_session_secure(output_ops: Vec<bool>) {
+    let mut fixture = Fixture::new();
+    let client = fixture.add_client();
+    let lock = {
+        let client = fixture.client(client);
+        client
+            .state
+            .session_lock_manager
+            .as_ref()
+            .unwrap()
+            .lock(&client.qh, ())
+    };
+    fixture.roundtrip(client);
+    drop(lock);
+    fixture.disconnect_client(client);
+
+    assert!(
+        fixture.swayward().is_locked(),
+        "disconnecting the confirmed lock client unlocked the session"
+    );
+    assert!(matches!(
+        fixture.swayward().lock_state,
+        LockState::Locked(_)
+    ));
+
+    let mut output_present = false;
+    for add in output_ops {
+        if add && !output_present {
+            fixture.add_output(1, (1280, 720));
+            output_present = true;
+        } else if !add && output_present {
+            let output = fixture.niri_output(1);
+            fixture.swayward().remove_output(&output);
+            output_present = false;
+        }
+
+        fixture.dispatch();
+        assert!(
+            fixture.swayward().is_locked(),
+            "output hotplug unlocked a session whose lock client died"
+        );
+        assert!(matches!(
+            fixture.swayward().lock_state,
+            LockState::Locked(_)
+        ));
+        assert!(fixture
+            .swayward()
+            .output_state
+            .values()
+            .all(|state| { state.lock_render_state == LockRenderState::Locked }));
+        fixture.swayward().layout.verify_invariants();
+    }
+}
+
 proptest! {
     #![proptest_config(ProptestConfig {
         cases: if std::env::var_os("RUN_SLOW_TESTS").is_none() {
@@ -392,6 +447,13 @@ proptest! {
         ops in prop::collection::vec(op(), 1..80),
     ) {
         check_ops(ops);
+    }
+
+    #[test]
+    fn dead_session_lock_client_never_unlocks_during_output_hotplug(
+        output_ops in prop::collection::vec(any::<bool>(), 1..40),
+    ) {
+        check_dead_lock_client_keeps_session_secure(output_ops);
     }
 }
 

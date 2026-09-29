@@ -1,10 +1,11 @@
+use std::collections::HashMap;
 use std::os::fd::AsFd as _;
 use std::os::unix::net::UnixStream;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use calloop::generic::Generic;
-use calloop::{EventLoop, Interest, LoopHandle, Mode, PostAction};
+use calloop::{EventLoop, Interest, LoopHandle, Mode, PostAction, RegistrationToken};
 use smithay::output::Output;
 use swayward_config::Config;
 
@@ -16,6 +17,7 @@ pub struct Fixture {
     pub state: State,
     pub handle: LoopHandle<'static, State>,
     pub event_loop: EventLoop<'static, State>,
+    client_sources: HashMap<ClientId, RegistrationToken>,
 }
 
 pub struct State {
@@ -51,6 +53,7 @@ impl Fixture {
             event_loop,
             handle,
             state,
+            client_sources: HashMap::new(),
         }
     }
 
@@ -152,13 +155,15 @@ impl Fixture {
 
         let fd = client.event_loop.as_fd().try_clone_to_owned().unwrap();
         let source = Generic::new(fd, Interest::READ, Mode::Level);
-        self.handle
+        let token = self
+            .handle
             .insert_source(source, move |_, _, state: &mut State| {
                 state.client(id).dispatch();
                 Ok(PostAction::Continue)
             })
             .unwrap();
 
+        self.client_sources.insert(id, token);
         self.state.clients.push(client);
         self.roundtrip(id);
         id
@@ -166,6 +171,15 @@ impl Fixture {
 
     pub fn client(&mut self, id: ClientId) -> &mut Client {
         self.state.client(id)
+    }
+
+    pub fn disconnect_client(&mut self, id: ClientId) {
+        let token = self.client_sources.remove(&id).unwrap();
+        self.handle.remove(token);
+        self.state.clients.retain(|client| client.id != id);
+        for _ in 0..4 {
+            self.dispatch();
+        }
     }
 
     pub fn roundtrip(&mut self, id: ClientId) {

@@ -1900,3 +1900,9 @@ migrated = false
 paths = [".github/workflows/live-soak.yml", "AGENTS.md"]
 what = "run the live IPC soak nightly and on manual dispatch against release builds with one and two headless outputs, retain failure logs, and reject compositor errors and panics."
 why = "The live soak found event-loop and Wayland-client failures that unit tests and layout proptests missed, but its runtime is too long for the per-push gate."
+
+[[edit]]
+migrated = false
+paths = ["src/tests/client_protocol_fuzz.rs", "src/tests/fixture.rs"]
+what = "exercise session-lock client death while outputs are repeatedly added and removed, using an explicit fixture operation for abrupt Wayland disconnects."
+why = "A dead session-lock client must leave the compositor securely locked; output hotplug must not turn that fail-secure state into an unlocked session."
