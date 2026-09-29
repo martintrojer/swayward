@@ -462,10 +462,13 @@ impl Tty {
 
         event_loop
             .insert_source(notifier, move |event, _, state| {
-                state
+                let focus_default_monitor = state
                     .backend
                     .tty()
                     .on_session_event(&mut state.swayward, event);
+                if focus_default_monitor {
+                    state.focus_configured_monitor();
+                }
             })
             .unwrap();
 
@@ -596,8 +599,9 @@ impl Tty {
         }
     }
 
-    fn on_session_event(&mut self, swayward: &mut Swayward, event: SessionEvent) {
+    fn on_session_event(&mut self, swayward: &mut Swayward, event: SessionEvent) -> bool {
         let _span = tracy_client::span!("Tty::on_session_event");
+        let had_outputs = swayward.layout.outputs().next().is_some();
 
         match event {
             SessionEvent::PauseSession => {
@@ -743,6 +747,8 @@ impl Tty {
                 swayward.queue_redraw_all();
             }
         }
+
+        !had_outputs && swayward.layout.outputs().next().is_some()
     }
 
     fn device_added(

@@ -1075,25 +1075,35 @@ impl State {
 
     pub fn focus_default_monitor(&mut self) {
         // Our default target is the first output in sorted order.
-        let Some(mut target) = self.swayward.sorted_outputs.first().cloned() else {
+        let Some(target) = self.swayward.sorted_outputs.first().cloned() else {
             // No outputs are connected.
             return;
         };
 
-        let config = self.swayward.config.borrow();
-        for config in &config.outputs.0 {
-            if !config.focus_at_startup {
-                continue;
-            }
-            if let Some(output) = self.swayward.output_by_name_match(&config.name) {
-                target = output.clone();
-                break;
-            }
+        if !self.focus_configured_monitor() {
+            self.swayward.layout.focus_output(&target);
+            self.move_cursor_to_output(&target);
         }
-        drop(config);
+    }
+
+    pub fn focus_configured_monitor(&mut self) -> bool {
+        let target = {
+            let config = self.swayward.config.borrow();
+            config.outputs.0.iter().find_map(|config| {
+                config
+                    .focus_at_startup
+                    .then(|| self.swayward.output_by_name_match(&config.name))
+                    .flatten()
+                    .cloned()
+            })
+        };
+        let Some(target) = target else {
+            return false;
+        };
 
         self.swayward.layout.focus_output(&target);
         self.move_cursor_to_output(&target);
+        true
     }
 
     /// Focus a specific window, taking care of a potential active output change and cursor

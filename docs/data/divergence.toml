@@ -1732,3 +1732,9 @@ migrated = false
 paths = ["README.md"]
 what = "frame the unchanged i3 suite with a generated sway-relative, reviewed-X11-filtered number and link its full accounting."
 why = "Raw non-pass totals include i3-only and X11-window-manager premises that sway also does not satisfy, so presenting the total alone misstates what the suite measures."
+
+[[edit]]
+migrated = false
+paths = ["src/backend/tty.rs", "src/main.rs", "src/swayward.rs"]
+what = "reapply only an explicit output `focus-at-startup` choice when a backend creates its first outputs after compositor state initialization."
+why = "Headless and initially inactive TTY backends create outputs after the normal startup-focus pass. Reapplying swayward's implicit first-sorted-output fallback would override the backend's live focus when no output requested startup focus; only the explicit configured choice was missed."
