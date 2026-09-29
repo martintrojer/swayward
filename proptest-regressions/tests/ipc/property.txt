@@ -15,3 +15,4 @@ cc 964f6d02612f67cfb7f6dc618233d6a344b3da49f47bb5da0f5a7ed5da133ff7 # shrinks to
 cc 5a96e9333a7672872c902c6f9b1dad25c82021a2c5e4e289def45a9a6cc6ca8f # shrinks to ops = [Open(2), ConIdCommand(1, "move scratchpad"), ConIdCommand(2, "floating toggle"), Command("focus left"), Command("focus left"), Command("floating toggle"), Command("focus up"), Open(3), Command("layout splitv"), Command("focus parent"), Command("mark alpha"), Command("floating toggle"), Command("[app_id=app-0] focus"), Command("swap container with mark alpha")]
 cc 4c1724cc827e7936ede3002b3baeeecfe26a787a4381978067dc27be612bef13 # shrinks to ops = [Command("focus left")]
 cc 912e3f93a82853e2d30d94326527989601376187d0281f2b331fedbf0e37201e # shrinks to ops = [Command("focus left")]
+cc 82efd1ceb1e5fa57eef412b9021b3c2aed30151f5d4d8ed2059e0203f06bfdee # shrinks to multiple fullscreen nodes

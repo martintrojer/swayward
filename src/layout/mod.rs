@@ -3666,7 +3666,7 @@ impl<W: LayoutElement> Layout<W> {
         let (mut second_subtree, second_slot) = second_ws
             .detach_tiling_subtree_for_swap(second)
             .ok_or_else(|| "No matching node.".to_owned())?;
-        first_subtree.swap_root_mode(&mut second_subtree);
+        first_subtree.swap_fullscreen_position(&mut second_subtree);
         let second_remapped = first_ws
             .attach_tiling_subtree_for_swap(second_subtree, first_slot)
             .1;

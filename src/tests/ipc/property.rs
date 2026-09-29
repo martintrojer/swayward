@@ -278,6 +278,26 @@ fn repeated_property_fixtures_release_file_descriptors() {
 }
 
 #[test]
+fn swapping_a_marked_container_does_not_leave_multiple_fullscreen_nodes() {
+    check_ops(vec![
+        Op::Command("focus left"),
+        Op::Command("move workspace 1"),
+        Op::Command("split horizontal"),
+        Op::Command("workspace 2"),
+        Op::Open(2),
+        Op::Command("move left"),
+        Op::ConIdCommand(0, "fullscreen toggle"),
+        Op::Command("move workspace 2"),
+        Op::Command("focus parent"),
+        Op::Command("mark alpha"),
+        Op::Command("move right"),
+        Op::Command("fullscreen toggle"),
+        Op::Command("[app_id=app-0] focus"),
+        Op::Command("swap container with mark alpha"),
+    ]);
+}
+
+#[test]
 fn swapping_with_a_marked_floating_container_is_rejected_safely() {
     check_ops(vec![
         Op::Open(2),

@@ -145,14 +145,59 @@ impl<W: LayoutElement> DetachedSubtree<W> {
         self.node.has_fullscreen()
     }
 
-    pub fn swap_root_mode(&mut self, other: &mut Self) {
-        fn mode<W: LayoutElement>(node: &mut DetachedNode<W>) -> &mut Option<PendingMode> {
+    pub fn swap_fullscreen_position(&mut self, other: &mut Self) {
+        fn root_fullscreen<W: LayoutElement>(node: &DetachedNode<W>) -> Option<FullscreenMode> {
             match node {
                 DetachedNode::Split { pending_mode, .. }
-                | DetachedNode::Leaf { pending_mode, .. } => pending_mode,
+                | DetachedNode::Leaf { pending_mode, .. } => {
+                    pending_mode.and_then(|mode| mode.fullscreen)
+                }
             }
         }
-        std::mem::swap(mode(&mut self.node), mode(&mut other.node));
+        fn set_root_fullscreen<W: LayoutElement>(
+            node: &mut DetachedNode<W>,
+            fullscreen: Option<FullscreenMode>,
+        ) {
+            match node {
+                DetachedNode::Split { pending_mode, .. }
+                | DetachedNode::Leaf { pending_mode, .. } => {
+                    pending_mode
+                        .get_or_insert(PendingMode {
+                            fullscreen: None,
+                            maximized: false,
+                        })
+                        .fullscreen = fullscreen;
+                }
+            }
+        }
+        fn clear_fullscreen<W: LayoutElement>(node: &mut DetachedNode<W>) {
+            match node {
+                DetachedNode::Split {
+                    children,
+                    pending_mode,
+                    ..
+                } => {
+                    if let Some(mode) = pending_mode {
+                        mode.fullscreen = None;
+                    }
+                    for child in children {
+                        clear_fullscreen(child);
+                    }
+                }
+                DetachedNode::Leaf { pending_mode, .. } => {
+                    if let Some(mode) = pending_mode {
+                        mode.fullscreen = None;
+                    }
+                }
+            }
+        }
+
+        let first = root_fullscreen(&self.node);
+        let second = root_fullscreen(&other.node);
+        clear_fullscreen(&mut self.node);
+        clear_fullscreen(&mut other.node);
+        set_root_fullscreen(&mut self.node, second);
+        set_root_fullscreen(&mut other.node, first);
     }
 }
 
