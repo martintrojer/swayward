@@ -38,10 +38,6 @@ pub(super) fn parse_output_command(args: &[&str]) -> Result<Command, String> {
     let Some((target, mut args)) = args.split_first() else {
         return Err("Invalid output command (expected at least 1 argument, got 0)".into());
     };
-    if args.is_empty() {
-        return Err("Expected 'output <name> <subcommand>'".into());
-    }
-
     let mut actions = Vec::new();
     while let Some((name, rest)) = args.split_first() {
         let (action, consumed) = match name.to_ascii_lowercase().as_str() {

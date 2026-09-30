@@ -281,6 +281,29 @@ fn layout_on_an_empty_tree_initializes_representation_only_when_it_changes() {
 }
 
 #[test]
+fn toggle_split_on_an_empty_tree_changes_the_root_layout() {
+    let mut t = tree((1200., 800.), 0.);
+    assert!(matches!(
+        t.nodes[&t.root].value,
+        TreeNode::Split {
+            layout: Layout::SplitH,
+            ..
+        }
+    ));
+
+    t.toggle_focused_split();
+
+    assert!(matches!(
+        t.nodes[&t.root].value,
+        TreeNode::Split {
+            layout: Layout::SplitV,
+            ..
+        }
+    ));
+    t.check_invariants();
+}
+
+#[test]
 fn split_on_an_empty_tree_sets_the_root_layout() {
     let mut t = tree((1200., 800.), 0.);
 

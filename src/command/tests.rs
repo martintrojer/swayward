@@ -160,6 +160,17 @@ fn parses_shortcuts_inhibitor_view_policy_only() {
 }
 
 #[test]
+fn output_without_subcommands_is_a_successful_no_op() {
+    assert_eq!(
+        command("output λ-日本語-🙂"),
+        Command::Output {
+            target: "λ-日本語-🙂".into(),
+            actions: Vec::new(),
+        }
+    );
+}
+
+#[test]
 fn parses_standalone_split_aliases_with_no_arguments() {
     for (alias, layout) in [
         ("splith", Layout::SplitH),

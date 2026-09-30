@@ -390,7 +390,7 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub fn toggle_focused_split(&mut self) {
-        let Some(focus) = self.focus else { return };
+        let focus = self.focus.unwrap_or(self.root);
         let layout = match self.nodes.get(&focus).map(|node| &node.value) {
             Some(TreeNode::Split {
                 layout: Layout::SplitH,
