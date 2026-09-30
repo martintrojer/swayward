@@ -292,7 +292,6 @@ impl<'a> CriteriaLexer<'a> {
             self.chars.next();
         }
         let mut value = String::new();
-        let mut escaped = false;
         loop {
             let Some((_, ch)) = self.chars.next() else {
                 if quoted {
@@ -300,14 +299,15 @@ impl<'a> CriteriaLexer<'a> {
                 }
                 break;
             };
-            if escaped {
-                if ch != '"' {
+            // Sway removes a backslash only before a double quote and keeps
+            // every other one (`sway/criteria.c:753-771`).
+            if ch == '\\' {
+                if self.chars.peek().is_some_and(|(_, next)| *next == '"') {
+                    self.chars.next();
+                    value.push('"');
+                } else {
                     value.push('\\');
                 }
-                value.push(ch);
-                escaped = false;
-            } else if ch == '\\' {
-                escaped = true;
             } else if (quoted && ch == '"') || (!quoted && ch.is_whitespace()) {
                 break;
             } else {
@@ -353,6 +353,24 @@ mod tests {
 
         assert!(criteria.matches(&matching, &WindowInfo::default()));
         assert!(!criteria.matches(&excluded, &WindowInfo::default()));
+    }
+
+    #[test]
+    fn criteria_unescaping_only_removes_a_backslash_before_a_quote() {
+        assert_eq!(
+            parse_pairs(r#"title=foo\ app_id=bar"#).unwrap(),
+            vec![
+                ("title".into(), Some(r#"foo\"#.into())),
+                ("app_id".into(), Some("bar".into())),
+            ]
+        );
+        assert_eq!(
+            parse_pairs(r#"title=foo\"bar app_id=^org\.example$"#).unwrap(),
+            vec![
+                ("title".into(), Some(r#"foo"bar"#.into())),
+                ("app_id".into(), Some(r#"^org\.example$"#.into())),
+            ]
+        );
     }
 
     #[test]
