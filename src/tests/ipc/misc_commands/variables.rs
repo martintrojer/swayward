@@ -486,3 +486,97 @@ fn get_tree_hides_windows_on_inactive_tabs_at_every_depth() {
         assert_eq!(found, expected, "focused {focused}: only it is visible");
     }
 }
+
+fn focused_workspace(f: &mut Fixture) -> Option<String> {
+    f.swayward().layout.active_workspace().unwrap().sway_name()
+}
+
+/// Oracle: command-fuzz invalid-stops-list, invalid-stops-comma-list and
+/// failure-continues-list. A runtime CMD_INVALID ends the command list, while
+/// a CMD_FAILURE does not (`sway/sway/commands.c:296-299`).
+#[test]
+fn runtime_invalid_result_stops_the_command_list() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+
+    for list in [
+        "scratchpad show; workspace oracle-invalid",
+        "scratchpad show, workspace oracle-invalid",
+    ] {
+        let outcome = crate::command::execute(f.niri_state(), list);
+        assert_eq!(outcome.len(), 1, "{list}: {outcome:?}");
+        assert_eq!(outcome[0].error.as_deref(), Some("Scratchpad is empty"));
+        assert_eq!(outcome[0].parse_error, Some(true));
+        assert_eq!(focused_workspace(&mut f), Some("1".to_owned()), "{list}");
+    }
+
+    let outcome =
+        crate::command::execute(f.niri_state(), "sticky enable; workspace oracle-failure");
+    assert_eq!(outcome.len(), 2, "{outcome:?}");
+    assert_eq!(outcome[0].parse_error, Some(false));
+    assert!(outcome[1].success, "{outcome:?}");
+    assert_eq!(focused_workspace(&mut f), Some("oracle-failure".to_owned()));
+}
+
+/// Oracle: criteria_failure_keeps_running_later_matches. Sway runs the handler
+/// for every match and reports the last failure; a CMD_FAILURE on one match
+/// does not stop later ones (`sway/sway/commands.c:305-323`). The floating
+/// window sits between two tiled ones, so the reply must be the tiled failure
+/// whichever order the matches run in, and the floating one must still move.
+#[test]
+fn criteria_failure_on_one_match_still_runs_later_matches() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    windows_on_workspaces(
+        &mut f,
+        &[("1", "fixture-1"), ("1", "fixture-2"), ("1", "fixture-3")],
+    );
+    assert!(
+        crate::command::execute(f.niri_state(), "[app_id=\"^fixture-2$\"] floating enable")[0]
+            .success
+    );
+
+    let outcome = crate::command::execute(
+        f.niri_state(),
+        "[app_id=\"^fixture-[123]$\"] move position 10 px 20 px",
+    );
+    assert_eq!(
+        outcome,
+        vec![crate::command::failure(
+            "Only floating containers can be moved to an absolute position"
+        )]
+    );
+    // The floating match still moved. The tree rect includes the titlebar
+    // above the content, so subtract it to get the requested content origin.
+    let tree = command_tree(&mut f);
+    let floating = find_json_node_with_app_id(&tree, "fixture-2").unwrap();
+    assert_eq!(floating["type"], "floating_con");
+    assert_eq!(floating["rect"]["x"], 10, "{floating:#}");
+    assert_eq!(
+        floating["rect"]["y"].as_i64().unwrap() - floating["deco_rect"]["height"].as_i64().unwrap(),
+        20,
+        "{floating:#}"
+    );
+}
+
+/// Oracle: criteria_invalid_stops_later_matches. A CMD_INVALID from one match
+/// stops the remaining matches and the rest of the command list
+/// (`sway/sway/commands.c:316-321`).
+#[test]
+fn criteria_invalid_result_stops_later_matches_and_the_list() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    windows_on_workspaces(&mut f, &[("1", "fixture-1"), ("1", "fixture-2")]);
+
+    let outcome = crate::command::execute(
+        f.niri_state(),
+        "[app_id=\"^fixture-[12]$\"] scratchpad show; workspace oracle-after",
+    );
+    assert_eq!(outcome.len(), 1, "{outcome:?}");
+    assert_eq!(
+        outcome[0].error.as_deref(),
+        Some("Container is not in scratchpad.")
+    );
+    assert_eq!(outcome[0].parse_error, Some(true));
+    assert_eq!(focused_workspace(&mut f), Some("1".to_owned()));
+}

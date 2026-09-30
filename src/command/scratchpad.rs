@@ -76,7 +76,11 @@ pub(super) fn show_targeted(
 ) -> Result<(), CommandOutcome> {
     let window = target_window(state, target)?;
     if !state.swayward.layout.is_scratchpad_window(&window) {
-        return Err(failure("Container is not in scratchpad."));
+        // CMD_INVALID in sway (`sway/sway/commands/scratchpad.c:118-125`), so it
+        // stops the remaining matches and the command list.
+        return Err(swayward_ipc::command::parse_error(
+            "Container is not in scratchpad.",
+        ));
     }
     let order = if state.swayward.layout.is_scratchpad_hidden(&window) {
         crate::ipc::server::ScratchpadEventOrder::Show

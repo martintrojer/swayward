@@ -79,10 +79,13 @@ pub fn execute(state: &mut State, input: &str) -> Vec<CommandOutcome> {
             *error = command_failure(message);
         }
     }
+    // Sway stops the list after the first CMD_INVALID result, whether the
+    // parser or a handler produced it, and continues past CMD_FAILURE
+    // (`sway/sway/commands.c:296-299`, `316-321`).
     let mut retained_targets = None;
-    let outcomes = parsed
-        .into_iter()
-        .map(|parsed| match parsed {
+    let mut outcomes = Vec::new();
+    for parsed in parsed {
+        let outcome = match parsed {
             Ok(parsed) => {
                 if parsed.criteria_start {
                     retained_targets = None;
@@ -90,10 +93,40 @@ pub fn execute(state: &mut State, input: &str) -> Vec<CommandOutcome> {
                 execute_one(state, parsed, &mut retained_targets)
             }
             Err(error) => error,
-        })
-        .collect();
+        };
+        let invalid = is_invalid(&outcome);
+        outcomes.push(outcome);
+        if invalid {
+            break;
+        }
+    }
     state.ipc_commit_workspace_transaction();
     outcomes
+}
+
+/// Whether an outcome is sway's CMD_INVALID, which ends a command list.
+fn is_invalid(outcome: &CommandOutcome) -> bool {
+    !outcome.success && outcome.parse_error == Some(true)
+}
+
+/// Run a handler once per criteria match as sway does: every match runs, the
+/// last failure is reported, and a CMD_INVALID stops the remaining matches
+/// (`sway/sway/commands.c:305-323`).
+fn for_each_match<T>(
+    targets: impl IntoIterator<Item = T>,
+    mut run: impl FnMut(T) -> CommandOutcome,
+) -> CommandOutcome {
+    let mut last_failure = None;
+    for target in targets {
+        let outcome = run(target);
+        if is_invalid(&outcome) {
+            return outcome;
+        }
+        if !outcome.success {
+            last_failure = Some(outcome);
+        }
+    }
+    last_failure.unwrap_or_else(success)
 }
 
 fn execute_one(
@@ -124,13 +157,7 @@ fn execute_one(
         }
         if let Command::SetLayoutOption(option) = &parsed.command {
             if criteria_global_setting(option) {
-                for _ in targets {
-                    let outcome = execute_global_setting(state, option);
-                    if !outcome.success {
-                        return outcome;
-                    }
-                }
-                return success();
+                return for_each_match(targets, |_| execute_global_setting(state, option));
             }
         }
         if let Command::Unmark(identifier) = &parsed.command {
@@ -139,13 +166,9 @@ fn execute_one(
             }
             return success();
         }
-        for target in targets {
-            let outcome = execute_targeted(state, &parsed.command, target);
-            if !outcome.success {
-                return outcome;
-            }
-        }
-        return success();
+        return for_each_match(targets, |target| {
+            execute_targeted(state, &parsed.command, target)
+        });
     }
 
     let action = match parsed.command {
