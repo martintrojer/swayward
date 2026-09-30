@@ -284,7 +284,7 @@ fn directional_move_emits_one_settled_sway_move_event() {
         crate::ipc::tree::window_id(moved_id)
     );
     assert!(event["container"]["rect"]["x"].as_i64().unwrap() < before);
-    let expected: Value = serde_json::from_str(sway_fixture!("events/window.move.json")).unwrap();
+    let expected: Value = serde_json::from_str(&sway_fixture!("events/window.move.json")).unwrap();
     assert_event_shape(&expected, &event, "$window");
 }
 

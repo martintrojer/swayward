@@ -295,7 +295,7 @@ fn captured_window_map_sequences_pin_focus_order_and_multiplicity() {
             &["new", "title"][..],
         ),
     ] {
-        let events: Vec<Value> = serde_json::from_str(fixture).unwrap();
+        let events: Vec<Value> = serde_json::from_str(&fixture).unwrap();
         assert_eq!(
             events
                 .iter()
@@ -583,7 +583,7 @@ fn workspace_window_and_mode_events_match_sway_shapes() {
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
     assert_eq!(event_type, 1 << 31);
     let expected: Value =
-        serde_json::from_str(sway_fixture!("events/workspace.reload.json")).unwrap();
+        serde_json::from_str(&sway_fixture!("events/workspace.reload.json")).unwrap();
     assert_event_shape(
         &expected,
         &serde_json::from_str(&payload).unwrap(),
@@ -617,7 +617,7 @@ fn workspace_window_and_mode_events_match_sway_shapes() {
     );
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
     assert_eq!(event_type, (1 << 31) | 3);
-    let expected: Value = serde_json::from_str(sway_fixture!("events/window.focus.json")).unwrap();
+    let expected: Value = serde_json::from_str(&sway_fixture!("events/window.focus.json")).unwrap();
     assert_event_shape(
         &expected,
         &serde_json::from_str(&payload).unwrap(),
@@ -632,7 +632,7 @@ fn workspace_window_and_mode_events_match_sway_shapes() {
     );
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
     assert_eq!(event_type, (1 << 31) | 2);
-    let expected: Value = serde_json::from_str(sway_fixture!("events/mode.default.json")).unwrap();
+    let expected: Value = serde_json::from_str(&sway_fixture!("events/mode.default.json")).unwrap();
     assert_event_shape(&expected, &serde_json::from_str(&payload).unwrap(), "$mode");
 }
 

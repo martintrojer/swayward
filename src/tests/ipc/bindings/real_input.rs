@@ -313,13 +313,13 @@ fn binding_modes_switch_binds_emit_events_and_list_over_ipc() {
     assert!(crate::command::execute(fixture.niri_state(), "mode resize")[0].success);
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
     assert_eq!(event_type, (1 << 31) | 2);
-    let expected: Value = serde_json::from_str(sway_fixture!("events/mode.resize.json")).unwrap();
+    let expected: Value = serde_json::from_str(&sway_fixture!("events/mode.resize.json")).unwrap();
     assert_event_shape(&expected, &serde_json::from_str(&payload).unwrap(), "$mode");
 
     type_key_chords(&mut fixture, &[&[133, 10]]);
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
     assert_eq!(event_type, (1 << 31) | 5);
-    let expected: Value = serde_json::from_str(sway_fixture!("events/binding.run.json")).unwrap();
+    let expected: Value = serde_json::from_str(&sway_fixture!("events/binding.run.json")).unwrap();
     assert_event_shape(
         &expected,
         &serde_json::from_str(&payload).unwrap(),
@@ -339,7 +339,7 @@ fn binding_modes_switch_binds_emit_events_and_list_over_ipc() {
     assert!(crate::command::execute(fixture.niri_state(), "mode default")[0].success);
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
     assert_eq!(event_type, (1 << 31) | 2);
-    let expected: Value = serde_json::from_str(sway_fixture!("events/mode.default.json")).unwrap();
+    let expected: Value = serde_json::from_str(&sway_fixture!("events/mode.default.json")).unwrap();
     assert_event_shape(&expected, &serde_json::from_str(&payload).unwrap(), "$mode");
 
     let mut query = UnixStream::connect(socket).unwrap();

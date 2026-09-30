@@ -29,7 +29,7 @@ fn reload_rereads_config_and_emits_the_sway_workspace_event() {
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
     assert_eq!(event_type, 1 << 31);
     let expected: Value =
-        serde_json::from_str(sway_fixture!("events/workspace.reload.json")).unwrap();
+        serde_json::from_str(&sway_fixture!("events/workspace.reload.json")).unwrap();
     assert_eq!(serde_json::from_str::<Value>(&payload).unwrap(), expected);
     assert_eq!(fixture.swayward().config.borrow().layout.gaps, 7.);
     subscriber.set_nonblocking(true).unwrap();

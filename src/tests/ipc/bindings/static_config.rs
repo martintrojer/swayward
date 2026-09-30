@@ -78,7 +78,7 @@ fn mark_event_matches_captured_sway_schema() {
     let ((event_type, payload), remainder) =
         read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder);
     assert_eq!(event_type, (1 << 31) | 3);
-    let expected: Value = serde_json::from_str(sway_fixture!("events/window.mark.json")).unwrap();
+    let expected: Value = serde_json::from_str(&sway_fixture!("events/window.mark.json")).unwrap();
     let marked = serde_json::from_str(&payload).unwrap();
     assert_event_shape(&expected, &marked, "$window");
     assert_eq!(marked["container"]["marks"], serde_json::json!(["event-mark"]));
@@ -168,7 +168,7 @@ fn close_event_matches_captured_sway_schema_before_removal() {
     fixture.double_roundtrip(client);
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
     assert_eq!(event_type, (1 << 31) | 3);
-    let expected: Value = serde_json::from_str(sway_fixture!("events/window.close.json")).unwrap();
+    let expected: Value = serde_json::from_str(&sway_fixture!("events/window.close.json")).unwrap();
     assert_event_shape(
         &expected,
         &serde_json::from_str(&payload).unwrap(),
@@ -223,7 +223,7 @@ fn marks_round_trip_through_commands_get_marks_and_tree() {
     ))
     .unwrap();
     let marked = find_json_node(&tree, "con", true).unwrap();
-    let oracle: Value = serde_json::from_str(sway_fixture!("marked.tree.json")).unwrap();
+    let oracle: Value = serde_json::from_str(&sway_fixture!("marked.tree.json")).unwrap();
     let expected = find_json_node(&oracle, "con", true).unwrap();
     assert_eq!(marked["marks"], expected["marks"]);
 

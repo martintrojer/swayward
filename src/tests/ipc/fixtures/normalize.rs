@@ -1,10 +1,12 @@
-fn oracle_fixture(path: &str) -> &'static str {
+fn oracle_fixture(path: &str) -> String {
     let cache = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(".cache/sway-ipc-oracle");
-    Box::leak(
-        oracle_fixture_at(&cache, path)
-            .unwrap_or_else(|error| panic!("{error}"))
-            .into_boxed_str(),
-    )
+    oracle_fixture_at(&cache, path).unwrap_or_else(|error| panic!("{error}"))
+}
+
+#[test]
+fn oracle_fixture_contents_are_owned() {
+    fn assert_owned(_: String) {}
+    assert_owned(oracle_fixture("one_window.tree.json"));
 }
 
 fn oracle_fixture_at(cache: &std::path::Path, path: &str) -> Result<String, String> {
@@ -172,7 +174,7 @@ fn mutate_scalar(value: &mut Value) {
 
 #[test]
 fn tree_fixture_comparison_rejects_every_rectangle_coordinate() {
-    let original: Value = serde_json::from_str(sway_fixture!("one_window.tree.json")).unwrap();
+    let original: Value = serde_json::from_str(&sway_fixture!("one_window.tree.json")).unwrap();
     let mut paths = Vec::new();
     for rectangle in ["rect", "deco_rect", "window_rect", "geometry"] {
         for coordinate in ["x", "y", "width", "height"] {
@@ -207,7 +209,7 @@ fn normalized_fixture_comparison_rejects_every_retained_value() {
         ),
         ("$outputs", sway_fixture!("one_window.outputs.json"), 29, 4),
     ] {
-        let original: Value = serde_json::from_str(fixture).unwrap();
+        let original: Value = serde_json::from_str(&fixture).unwrap();
         let (normalized, _) = normalized_fixture_values(&original, &original, path);
         let mut paths = Vec::new();
         checked_scalar_paths(&normalized, "", &mut paths);

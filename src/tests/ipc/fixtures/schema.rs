@@ -385,7 +385,7 @@ fn nested_live_tree() -> Value {
 }
 
 fn nested_fixture_tree() -> Value {
-    serde_json::from_str(sway_fixture!("nested_h_in_v.tree.json")).unwrap()
+    serde_json::from_str(&sway_fixture!("nested_h_in_v.tree.json")).unwrap()
 }
 
 fn nested_representation_live_tree() -> Value {
@@ -449,6 +449,6 @@ fn mixed_live_tree() -> Value {
 }
 
 fn mixed_fixture_tree() -> Value {
-    serde_json::from_str(sway_fixture!("one_floating.tree.json")).unwrap()
+    serde_json::from_str(&sway_fixture!("one_floating.tree.json")).unwrap()
 }
 

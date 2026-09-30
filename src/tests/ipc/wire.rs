@@ -198,7 +198,7 @@ fn get_inputs_and_seats_return_sway_schema_and_values() {
 
     let mut stream = UnixStream::connect(socket).unwrap();
     let inputs = query_ipc(&mut fixture, &mut stream, MessageType::GetInputs);
-    let mut sway_inputs: Value = serde_json::from_str(sway_fixture!("inputs.json")).unwrap();
+    let mut sway_inputs: Value = serde_json::from_str(&sway_fixture!("inputs.json")).unwrap();
     sway_inputs
         .as_array_mut()
         .unwrap()
@@ -211,7 +211,7 @@ fn get_inputs_and_seats_return_sway_schema_and_values() {
         },
     );
     let inputs = query_ipc(&mut fixture, &mut stream, MessageType::GetInputs);
-    let sway_libinput: Value = serde_json::from_str(sway_fixture!("inputs-libinput.json")).unwrap();
+    let sway_libinput: Value = serde_json::from_str(&sway_fixture!("inputs-libinput.json")).unwrap();
     let actual_libinput = inputs
         .as_array()
         .unwrap()

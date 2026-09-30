@@ -123,7 +123,7 @@ fn workspace_urgency_event_matches_sway_shape() {
     assert_eq!(event_type, 1 << 31);
     let actual = serde_json::from_str::<Value>(&payload).unwrap();
     let expected =
-        serde_json::from_str::<Value>(sway_fixture!("events/workspace.urgent.json")).unwrap();
+        serde_json::from_str::<Value>(&sway_fixture!("events/workspace.urgent.json")).unwrap();
     assert_event_shape(&expected, &actual, "$workspace");
     assert_eq!(actual["change"], "urgent");
     assert_eq!(actual["old"], Value::Null);
@@ -183,7 +183,7 @@ fn workspace_move_event_matches_sway_shape() {
     assert_eq!(event_type, 1 << 31);
     let actual = serde_json::from_str::<Value>(&payload).unwrap();
     let expected =
-        serde_json::from_str::<Value>(sway_fixture!("events/workspace.move.json")).unwrap();
+        serde_json::from_str::<Value>(&sway_fixture!("events/workspace.move.json")).unwrap();
     assert_eq!(actual["change"], expected["change"]);
     assert_eq!(actual["old"], Value::Null);
     assert_eq!(actual["current"]["type"], "workspace");
@@ -213,7 +213,7 @@ fn workspace_rename_event_matches_sway_shape() {
     assert_eq!(event_type, 1 << 31);
     let actual = serde_json::from_str::<Value>(&payload).unwrap();
     let expected =
-        serde_json::from_str::<Value>(sway_fixture!("events/workspace.rename.json")).unwrap();
+        serde_json::from_str::<Value>(&sway_fixture!("events/workspace.rename.json")).unwrap();
     assert_event_shape(&expected, &actual, "$workspace");
     assert_eq!(actual["change"], "rename");
     assert_eq!(actual["old"], Value::Null);

@@ -146,7 +146,7 @@ fn reloaded_gap_defaults_do_not_change_an_existing_workspace() {
     assert_eq!(event_type, 1 << 31);
     assert_eq!(
         serde_json::from_str::<Value>(&payload).unwrap(),
-        serde_json::from_str::<Value>(sway_fixture!("events/workspace.reload.json")).unwrap()
+        serde_json::from_str::<Value>(&sway_fixture!("events/workspace.reload.json")).unwrap()
     );
     assert_eq!(fixture.swayward().config.borrow().layout.gaps, 16.);
     assert_eq!(tiled_window_rects(&mut fixture), before);

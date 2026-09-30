@@ -91,7 +91,7 @@ fn live_ipc_descriptions_match_sway_schema_and_values() {
 
     let mut stream = UnixStream::connect(&socket).unwrap();
     let ours = query_ipc(&mut f, &mut stream, MessageType::GetTree);
-    let fixture: Value = serde_json::from_str(sway_fixture!("one_window.tree.json")).unwrap();
+    let fixture: Value = serde_json::from_str(&sway_fixture!("one_window.tree.json")).unwrap();
     assert_same_shape(&fixture, &ours, "$tree");
     assert_same_values(&fixture, &ours, "$tree");
     assert_tree_rectangles_match_fixture(&fixture, &ours, "$tree");
@@ -122,7 +122,7 @@ fn live_ipc_descriptions_match_sway_schema_and_values() {
     assert!(crate::command::execute(f.niri_state(), "floating enable")[0].success);
 
     let ours = query_ipc(&mut f, &mut stream, MessageType::GetTree);
-    let fixture: Value = serde_json::from_str(sway_fixture!("one_floating.tree.json")).unwrap();
+    let fixture: Value = serde_json::from_str(&sway_fixture!("one_floating.tree.json")).unwrap();
     assert_same_shape(&fixture, &ours, "$tree");
     assert_rectangle_roles_match_fixture(&fixture, &ours, "$tree");
     assert_focus_matches_fixture(&fixture, &ours, "$tree");
@@ -156,7 +156,7 @@ fn live_ipc_descriptions_match_sway_schema_and_values() {
     ];
     let mut fixture_nodes = Vec::new();
     for fixture in fixture_trees {
-        collect_fixture_nodes(&serde_json::from_str(fixture).unwrap(), &mut fixture_nodes);
+        collect_fixture_nodes(&serde_json::from_str(&fixture).unwrap(), &mut fixture_nodes);
     }
     assert_node_schema_appears_in_fixtures(&ours, &fixture_nodes, "$tree");
 
@@ -167,7 +167,7 @@ fn live_ipc_descriptions_match_sway_schema_and_values() {
 
     let ours = query_ipc(&mut f, &mut stream, MessageType::GetWorkspaces);
     let fixture: Value =
-        serde_json::from_str(sway_fixture!("one_floating.workspaces.json")).unwrap();
+        serde_json::from_str(&sway_fixture!("one_floating.workspaces.json")).unwrap();
     assert_same_shape(&fixture, &ours, "$workspaces");
     let expected_focus = fixture[0]["focus"].as_array().unwrap();
     let actual_focus = ours[0]["focus"].as_array().unwrap();
@@ -178,7 +178,7 @@ fn live_ipc_descriptions_match_sway_schema_and_values() {
     assert_eq!(ours[0]["representation"], fixture[0]["representation"]);
 
     let ours = query_ipc(&mut f, &mut stream, MessageType::GetOutputs);
-    let fixture: Value = serde_json::from_str(sway_fixture!("one_window.outputs.json")).unwrap();
+    let fixture: Value = serde_json::from_str(&sway_fixture!("one_window.outputs.json")).unwrap();
     assert_same_shape(&fixture, &ours, "$outputs");
     assert_same_values(&fixture, &ours, "$outputs");
 

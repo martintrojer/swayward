@@ -631,7 +631,7 @@ fn floating_input_region_holes_click_through_but_decorations_activate() {
 
 #[test]
 fn floating_stacking_and_focus_match_sway_before_and_after_raise() {
-    let two: Value = serde_json::from_str(sway_fixture!("two_floating.tree.json")).unwrap();
+    let two: Value = serde_json::from_str(&sway_fixture!("two_floating.tree.json")).unwrap();
     assert_eq!(
         floating_order(&two),
         (
@@ -670,12 +670,12 @@ fn floating_stacking_and_focus_match_sway_before_and_after_raise() {
         .unwrap()
     };
     let before: Value =
-        serde_json::from_str(sway_fixture!("three_floating_before_raise.tree.json")).unwrap();
+        serde_json::from_str(&sway_fixture!("three_floating_before_raise.tree.json")).unwrap();
     assert_eq!(floating_order(&describe(&mut f)), floating_order(&before));
 
     assert!(crate::command::execute(f.niri_state(), r#"[app_id="^fixture-1$"] focus"#)[0].success);
     let after: Value =
-        serde_json::from_str(sway_fixture!("three_floating_after_raise.tree.json")).unwrap();
+        serde_json::from_str(&sway_fixture!("three_floating_after_raise.tree.json")).unwrap();
     assert_eq!(floating_order(&describe(&mut f)), floating_order(&after));
 }
 

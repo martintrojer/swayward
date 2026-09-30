@@ -26,7 +26,7 @@ fn captured_workspace_event_sequences_pin_order_and_multiplicity() {
             &["move"][..],
         ),
     ] {
-        let events = serde_json::from_str::<Vec<Value>>(fixture).unwrap();
+        let events = serde_json::from_str::<Vec<Value>>(&fixture).unwrap();
         let changes = events
             .iter()
             .map(|event| event["change"].as_str().unwrap())
