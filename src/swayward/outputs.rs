@@ -32,13 +32,20 @@ impl Swayward {
             self.global_space.unmap_output(output);
         }
 
-        // Connectors can appear in udev in any order. If we sort by name then we get output
-        // positioning that does not depend on the order they appeared.
-        //
-        // This sorting first compares by make/model/serial so that it is stable regardless of the
-        // connector name. However, if make/model/serial is equal or unknown, then it does fall
-        // back to comparing the connector name, which should always be unique.
-        outputs.sort_unstable_by(|a, b| a.name.compare(&b.name));
+        // Connectors can appear in udev in any order. Sorting physical outputs by name makes
+        // their placement independent of announcement order. Headless startup output order is
+        // deliberate, however: it matches wlroots' reverse announcement order and must also
+        // determine placement.
+        outputs.sort_by(|a, b| {
+            let both_headless_startup = [&a.output, &b.output]
+                .into_iter()
+                .all(|output| output.user_data().get::<HeadlessStartupOutput>().is_some());
+            if both_headless_startup {
+                b.name.compare(&a.name)
+            } else {
+                a.name.compare(&b.name)
+            }
+        });
 
         // Place all outputs with explicitly configured position first, then the unconfigured ones.
         outputs.sort_by_key(|d| d.config.is_none());

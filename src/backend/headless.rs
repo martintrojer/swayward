@@ -24,6 +24,8 @@ use crate::render_helpers::{resources, shaders};
 use crate::swayward::{RedrawState, Swayward};
 use crate::utils::{get_monotonic_time, logical_output};
 
+pub(crate) struct HeadlessStartupOutput;
+
 pub struct Headless {
     renderer: Option<GlesRenderer>,
     ipc_outputs: Arc<Mutex<IpcOutputMap>>,
@@ -76,7 +78,13 @@ impl Headless {
     pub fn add_startup_outputs(&mut self, swayward: &mut Swayward, count: u8) {
         for n in (1..=count).rev() {
             self.add_output(swayward, n, (1280, 720));
+            if let Some(output) = self.outputs.last() {
+                output
+                    .user_data()
+                    .insert_if_missing(|| HeadlessStartupOutput);
+            }
         }
+        swayward.reposition_outputs(None);
     }
 
     pub fn create_output(&mut self, swayward: &mut Swayward) -> Result<(), &'static str> {

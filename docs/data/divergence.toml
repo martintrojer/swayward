@@ -1822,3 +1822,9 @@ migrated = false
 paths = ["src/window/mapped/"]
 what = "`request_size_once` treats a configure as already sent only when the pending toplevel state also matches the requested floating state."
 why = "niri's early return checked only the last configure, so a queued fullscreen request survived a floating size request and the next configure made a floating window fullscreen. Sway returns a floating container to its saved floating geometry when fullscreen is disabled (`sway/tree/container.c:1246-1280`, sway 88869399), after the client's unset request (`sway/desktop/xdg_shell.c:395-420`)."
+
+[[edit]]
+migrated = false
+paths = ["src/backend/headless.rs", "src/swayward.rs", "src/swayward/outputs.rs", "src/tests/i3_conformance/coverage.rs"]
+what = "preserve sway's reverse headless startup announcement order when automatically placing otherwise identical virtual outputs."
+why = "Sway receives wlroots' pre-created headless outputs in reverse order and places HEADLESS-N first; sorting swayward's virtual outputs by serial reversed their geometry after they had been created in sway's announcement order, making multi-output GET_TREE rectangles disagree with sway."

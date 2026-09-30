@@ -213,9 +213,9 @@ fn headless_startup_outputs_follow_sways_backend_order() {
     assert_eq!(
         actual
             .iter()
-            .map(|output| output.name.as_str())
+            .map(|output| (output.name.as_str(), output.rect.x))
             .collect::<Vec<_>>(),
-        ["headless-3", "headless-2", "headless-1"]
+        [("headless-3", 0), ("headless-2", 1280), ("headless-1", 2560)]
     );
 }
 

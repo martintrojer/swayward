@@ -125,6 +125,7 @@ use wayland_server::protocol::wl_output::WlOutput;
 #[cfg(feature = "dbus")]
 use crate::a11y::A11y;
 use crate::animation::Clock;
+use crate::backend::headless::HeadlessStartupOutput;
 use crate::backend::tty::SurfaceDmabufFeedback;
 use crate::backend::{Backend, Headless, RenderResult, Tty, Winit};
 use crate::cursor::{CursorManager, CursorTextureCache, RenderCursor, XCursor};
