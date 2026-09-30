@@ -733,3 +733,48 @@ fn marks_are_globally_unique_across_windows_and_containers() {
     assert!(!outcome[0].success, "{outcome:?}");
     assert_eq!(mark_count(f.niri_state(), "unique"), 1);
 }
+
+/// Criteria walk resident floating-group leaves through the group's IPC
+/// snapshot. Run app_id criteria at every step of a group's lifecycle: while
+/// it floats, while it is hidden in the scratchpad, after it is shown, and as
+/// its leaves unmap one by one. None of these may panic the compositor.
+#[test]
+fn criteria_over_floating_group_leaves_survive_group_lifecycle() {
+    let mut f = Fixture::new();
+    f.add_output(1, (800, 600));
+    let client = f.add_client();
+    let mut surfaces = Vec::new();
+    for _ in 0..3 {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id("grouped".into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+        surfaces.push(surface);
+    }
+    f.swayward().layout.nest_or_unnest_window_left(None);
+    assert!(crate::command::execute(f.niri_state(), "focus parent")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "floating enable")[0].success);
+
+    let matched = |f: &mut Fixture| {
+        let outcome = crate::command::execute(f.niri_state(), "[app_id=^grouped$] nop");
+        let remaining = f.swayward().layout.windows().count();
+        assert_eq!(outcome[0].success, remaining > 0, "{remaining}: {outcome:?}");
+    };
+    matched(&mut f);
+    assert!(crate::command::execute(f.niri_state(), "move scratchpad")[0].success);
+    matched(&mut f);
+    assert!(crate::command::execute(f.niri_state(), "scratchpad show")[0].success);
+    matched(&mut f);
+    for surface in surfaces {
+        let window = f.client(client).window(&surface);
+        window.attach_null();
+        window.commit();
+        f.double_roundtrip(client);
+        matched(&mut f);
+    }
+}

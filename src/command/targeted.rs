@@ -804,11 +804,16 @@ pub(super) fn matching_targets(state: &State, criteria: &criteria::Criteria) -> 
             for (node, value) in tree.nodes() {
                 if matches!(value, crate::layout::tiling_tree::IpcNodeKind::Leaf) {
                     if floating {
-                        let window = tree.window_for_node(node).unwrap();
-                        let mapped = workspace
-                            .windows()
-                            .find(|mapped| mapped.window == *window)
-                            .unwrap();
+                        // The snapshot and the window list come from the same
+                        // workspace borrow, so both lookups succeed. A leaf that
+                        // did not resolve would be unmatchable, never a reason
+                        // to take the compositor down on a criteria command.
+                        let Some(mapped) = tree.window_for_node(node).and_then(|window| {
+                            workspace.windows().find(|mapped| mapped.window == *window)
+                        }) else {
+                            warn!("criteria: floating leaf {node:?} has no mapped window");
+                            continue;
+                        };
                         let (title, app_id) = with_toplevel_role(mapped.toplevel(), |role| {
                             (role.title.clone(), role.app_id.clone())
                         });
