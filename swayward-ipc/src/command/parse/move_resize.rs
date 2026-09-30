@@ -3,7 +3,7 @@ use super::*;
 pub(super) fn parse_border(args: &[&str]) -> Result<Border, String> {
     const SYNTAX: &str = "Expected 'border <none|normal|pixel|csd|toggle>' or 'border pixel <px>'";
     let Some(style) = args.first() else {
-        return Err(SYNTAX.into());
+        return Err("Invalid border command (expected at least 1 argument, got 0)".into());
     };
     let (style, mut width) = match style.to_ascii_lowercase().as_str() {
         "normal" => (BorderStyle::Normal, None),
