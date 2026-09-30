@@ -281,12 +281,24 @@ pub(super) fn describe_workspace_node(context: WorkspaceNodeContext<'_>) -> Node
         .then(|| tree_representation(ipc_layout(workspace.tiling_representation_layout()), &nodes));
     let mut nodes = nodes;
     set_tabbed_percentages(layout, &mut nodes, rect);
-    let tiling_fullscreen = apply_fullscreen_state(&mut nodes, workspace_visible);
-    if !tiling_fullscreen {
+    // A workspace fullscreen container hides every view outside it, across
+    // the tiling and floating layers (`view_is_visible`,
+    // `sway/tree/view.c:1187-1193`).
+    let floating_fullscreen = floating_nodes.iter().any(contains_fullscreen);
+    let tiling_fullscreen = if floating_fullscreen {
+        for node in &mut nodes {
+            set_windows_visible(node, false);
+        }
+        false
+    } else {
+        apply_fullscreen_state(&mut nodes, workspace_visible)
+    };
+    if !tiling_fullscreen && !floating_fullscreen {
         set_child_windows_visible(layout, &focus, &mut nodes, workspace_visible);
     }
     for node in &mut floating_nodes {
-        set_windows_visible(node, workspace_visible && !tiling_fullscreen);
+        let shown = !tiling_fullscreen && (!floating_fullscreen || contains_fullscreen(node));
+        set_windows_visible(node, workspace_visible && shown);
         if tiling_fullscreen {
             clear_focused(node);
         }

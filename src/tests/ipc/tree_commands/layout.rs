@@ -381,6 +381,47 @@ fn fullscreen_floating_window_keeps_sways_raw_focus() {
     );
 }
 
+// random seed 260 step 5 (sway-1.12-random): a floating fullscreen window
+// hides the tiled windows beside it (`view_is_visible`,
+// sway/tree/view.c:1187-1193).
+#[test]
+fn floating_fullscreen_hides_tiled_windows() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1280, 720));
+    let client = f.add_client();
+    for app_id in ["fixture-1", "fixture-2"] {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+
+    assert!(crate::command::execute(f.niri_state(), "floating toggle")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "fullscreen toggle")[0].success);
+
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &Default::default(),
+        &Default::default(),
+    ))
+    .unwrap();
+    let fullscreen = find_json_node_with_app_id(&tree, "fixture-2").unwrap();
+    assert_eq!(fullscreen["type"], "floating_con");
+    assert_eq!(fullscreen["fullscreen_mode"], 1);
+    assert_eq!(fullscreen["visible"], true);
+    assert_eq!(
+        find_json_node_with_app_id(&tree, "fixture-1").unwrap()["visible"],
+        false
+    );
+}
+
 #[test]
 fn layout_commands_apply_to_children_inside_a_floating_group() {
     let mut f = Fixture::new();
