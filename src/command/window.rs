@@ -28,11 +28,20 @@ pub(super) fn sticky(
     value: &str,
 ) -> Result<(), CommandOutcome> {
     let window = match target {
-        CommandTarget::Container(workspace, node) => state
-            .swayward
-            .layout
-            .window_in_node(workspace, node)
-            .ok_or_else(|| failure("No matching node."))?,
+        CommandTarget::Container(workspace, node) => {
+            if state
+                .swayward
+                .layout
+                .set_split_sticky(workspace, node, value)
+            {
+                return Ok(());
+            }
+            state
+                .swayward
+                .layout
+                .window_in_node(workspace, node)
+                .ok_or_else(|| failure("No matching node."))?
+        }
         CommandTarget::Window(_) => target_window(state, target, "No matching node.")?,
     };
     if state.swayward.layout.is_scratchpad_hidden(&window) {

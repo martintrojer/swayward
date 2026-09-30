@@ -136,6 +136,7 @@ impl<W: LayoutElement> TilingTree<W> {
                 previous_layout: self.previous_split_layouts.remove(&id),
                 title_format: self.title_formats.remove(&id),
                 pending_mode: self.pending_modes.remove(&id),
+                sticky: self.sticky_splits.remove(&id),
             }
         } else {
             self.take_detached_node(id)?
@@ -187,6 +188,7 @@ impl<W: LayoutElement> TilingTree<W> {
                     previous_layout,
                     title_format,
                     pending_mode,
+                    sticky,
                 } => {
                     self.attach_split_to_empty_root(
                         old_id,
@@ -196,6 +198,7 @@ impl<W: LayoutElement> TilingTree<W> {
                         previous_layout,
                         title_format,
                         pending_mode,
+                        sticky,
                         focus_history,
                         &mut remapped,
                     );
@@ -244,6 +247,7 @@ impl<W: LayoutElement> TilingTree<W> {
         previous_layout: Option<Layout>,
         title_format: Option<String>,
         pending_mode: Option<PendingMode>,
+        sticky: bool,
         focus_history: Vec<W::Id>,
         remapped: &mut Vec<(NodeId, NodeId)>,
     ) {
@@ -263,6 +267,9 @@ impl<W: LayoutElement> TilingTree<W> {
         }
         if let Some(format) = title_format {
             self.title_formats.insert(self.root, format);
+        }
+        if sticky {
+            self.sticky_splits.insert(self.root);
         }
         if let Some(mode) = pending_mode {
             self.pending_modes.insert(self.root, mode);
@@ -311,6 +318,7 @@ impl<W: LayoutElement> TilingTree<W> {
         let previous_layout = self.previous_split_layouts.get(&id).copied();
         let title_format = self.title_formats.get(&id).cloned();
         let pending_mode = self.pending_modes.get(&id).copied();
+        let sticky = self.sticky_splits.contains(&id);
         let mapped_under_fullscreen = self.mapped_under_fullscreen.contains(&id);
         let node = self.remove_node(id)?;
         match node.value {
@@ -329,6 +337,7 @@ impl<W: LayoutElement> TilingTree<W> {
                 previous_layout,
                 title_format,
                 pending_mode,
+                sticky,
             }),
             TreeNode::Leaf { tile } => Some(DetachedNode::Leaf {
                 old_id: id,
@@ -354,6 +363,7 @@ impl<W: LayoutElement> TilingTree<W> {
                 previous_layout,
                 title_format,
                 pending_mode,
+                sticky,
             } => self.insert_detached_split(
                 old_id,
                 layout,
@@ -362,6 +372,7 @@ impl<W: LayoutElement> TilingTree<W> {
                 previous_layout,
                 title_format,
                 pending_mode,
+                sticky,
                 parent,
                 remapped,
             ),
@@ -403,6 +414,7 @@ impl<W: LayoutElement> TilingTree<W> {
         previous_layout: Option<Layout>,
         title_format: Option<String>,
         pending_mode: Option<PendingMode>,
+        sticky: bool,
         parent: Option<NodeId>,
         remapped: &mut Vec<(NodeId, NodeId)>,
     ) -> NodeId {
@@ -438,6 +450,9 @@ impl<W: LayoutElement> TilingTree<W> {
         }
         if let Some(format) = title_format {
             self.title_formats.insert(id, format);
+        }
+        if sticky {
+            self.sticky_splits.insert(id);
         }
         if let Some(mode) = pending_mode {
             self.pending_modes.insert(id, mode);

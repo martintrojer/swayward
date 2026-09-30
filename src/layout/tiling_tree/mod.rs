@@ -88,6 +88,7 @@ enum DetachedNode<W: LayoutElement> {
         previous_layout: Option<Layout>,
         title_format: Option<String>,
         pending_mode: Option<PendingMode>,
+        sticky: bool,
     },
     Leaf {
         old_id: NodeId,
@@ -216,6 +217,7 @@ pub enum IpcNode<I> {
         focus: Vec<NodeId>,
         focused: bool,
         fullscreen_mode: i32,
+        sticky: bool,
         children: Vec<IpcNode<I>>,
     },
     Leaf {
@@ -333,6 +335,7 @@ pub struct TilingTree<W: LayoutElement> {
     focus_history: Vec<NodeId>,
     previous_split_layouts: HashMap<NodeId, Layout>,
     title_formats: HashMap<NodeId, String>,
+    sticky_splits: HashSet<NodeId>,
     pending_modes: HashMap<NodeId, PendingMode>,
     mapped_under_fullscreen: HashSet<NodeId>,
     fullscreen_layout_wrappers: HashSet<NodeId>,

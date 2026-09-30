@@ -487,6 +487,51 @@ fn sticky_accepts_sway_boolean_words_and_reports_tree_state() {
 }
 
 #[test]
+fn sticky_on_a_focused_split_marks_the_container_like_sway() {
+    // Oracle random seeds 57, 60 and 69 (sticky on a split) and 143, 317 and 413 (sticky with
+    // the workspace focused): sway stores `is_sticky` on the focused container
+    // (sway/commands/sticky.c:21-26), and a focused workspace has no container.
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    let tree = |f: &mut Fixture| {
+        let swayward = f.swayward();
+        serde_json::to_value(describe_tree(
+            &swayward.layout,
+            &swayward.global_space,
+            &Default::default(),
+            &Default::default(),
+        ))
+        .unwrap()
+    };
+    for command in ["layout splitv", "layout splith", "focus parent", "sticky toggle"] {
+        assert!(crate::command::execute(f.niri_state(), command)[0].success, "{command}");
+    }
+    let tree = tree(&mut f);
+    let split = find_json_node(&tree, "con", true).unwrap();
+    assert_eq!(split["layout"], "splith");
+    assert_eq!(split["sticky"], true);
+    assert_eq!(split["nodes"][0]["sticky"], false);
+
+    assert!(crate::command::execute(f.niri_state(), "focus parent")[0].success);
+    assert_eq!(
+        crate::command::execute(f.niri_state(), "sticky toggle")[0]
+            .error
+            .as_deref(),
+        Some("No current container")
+    );
+}
+
+#[test]
 fn sticky_without_a_container_matches_sway_failure() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));

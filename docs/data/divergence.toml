@@ -1810,3 +1810,9 @@ migrated = false
 paths = ["src/command/movement.rs", "src/command/targeted.rs", "src/tests/ipc/misc_commands/protocol.rs"]
 what = "move a focused or criteria-targeted floating-group root to an absolute position while retaining rejection for a focused child inside that group."
 why = "Sway applies `move position` to a focused floating group root, but rejects the same command after `focus child`; the two focus scopes must not be collapsed (`floating_group_child_move_position` in sway-ipc-oracle 418bad7)."
+
+[[edit]]
+migrated = false
+paths = ["src/command/window.rs", "src/layout/floating_tree.rs", "src/layout/mod.rs", "src/layout/tiling_tree/introspection.rs", "src/layout/tiling_tree/invariants.rs", "src/layout/tiling_tree/mod.rs", "src/layout/tiling_tree/mutation.rs", "src/layout/tiling_tree/state.rs", "src/layout/tiling_tree/transfer.rs", "src/layout/workspace.rs"]
+what = "store `sticky` on split containers, carry it through subtree transfers and floating toggles, and refuse `sticky` when the workspace itself is focused."
+why = "Sway sets `is_sticky` on the focused container, not on a descendant window, and fails with `No current container` when the workspace is focused (`sway/commands/sticky.c:21-26`); GET_TREE reports the flag on every container (`sway/ipc-json.c:731`). Oracle random seeds 57, 60, 69, 143, 317 and 413."

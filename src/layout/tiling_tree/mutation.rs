@@ -210,6 +210,7 @@ impl<W: LayoutElement> TilingTree<W> {
         let node = self.nodes.remove(&id)?;
         self.previous_split_layouts.remove(&id);
         self.title_formats.remove(&id);
+        self.sticky_splits.remove(&id);
         self.pending_modes.remove(&id);
         self.mapped_under_fullscreen.remove(&id);
         self.fullscreen_layout_wrappers.remove(&id);

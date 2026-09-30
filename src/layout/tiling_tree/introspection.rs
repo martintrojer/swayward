@@ -91,6 +91,22 @@ impl<W: LayoutElement> TilingTree<W> {
         true
     }
 
+    pub fn is_split_sticky(&self, id: NodeId) -> bool {
+        self.sticky_splits.contains(&id)
+    }
+
+    pub fn set_split_sticky(&mut self, id: NodeId, sticky: bool) -> bool {
+        if !self.is_split(id) {
+            return false;
+        }
+        if sticky {
+            self.sticky_splits.insert(id);
+        } else {
+            self.sticky_splits.remove(&id);
+        }
+        true
+    }
+
     pub fn windows(&self) -> impl Iterator<Item = (NodeId, &W)> {
         self.iter_depth_first().filter_map(|(id, node)| match node {
             TreeNode::Leaf { tile } => Some((id, tile.window())),
@@ -218,6 +234,7 @@ impl<W: LayoutElement> TilingTree<W> {
                         }),
                     focused: tree.focus == Some(id),
                     fullscreen_mode: tree.fullscreen_mode(id).map_or(0, |mode| mode as i32),
+                    sticky: tree.sticky_splits.contains(&id),
                     children: children
                         .iter()
                         .zip(percents)

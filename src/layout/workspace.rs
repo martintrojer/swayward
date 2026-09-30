@@ -2619,6 +2619,25 @@ impl<W: LayoutElement> Workspace<W> {
                 .is_some_and(|tile| tile.is_sticky)
     }
 
+    /// Sets sticky on a split container that is not a floating root; sway stores the flag on
+    /// every container, and it only takes effect once the container becomes floating.
+    pub fn set_split_sticky(&mut self, id: NodeId, value: &str) -> bool {
+        let tree = if self.tiling.is_split(id) {
+            &mut self.tiling
+        } else {
+            match self
+                .floating
+                .tree_root_for_node(id)
+                .filter(|root| *root != id)
+            {
+                Some(root) => self.floating.tree_mut(root).unwrap(),
+                None => return false,
+            }
+        };
+        let sticky = swayward_ipc::command::parse_boolean(value, tree.is_split_sticky(id));
+        tree.set_split_sticky(id, sticky)
+    }
+
     pub fn set_window_sticky(&mut self, window: &W::Id, sticky: bool) -> bool {
         if self.floating.tree_root_for_window(window).is_some() {
             return self.floating.set_window_sticky(window, sticky);

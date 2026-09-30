@@ -478,9 +478,24 @@ fn execute_one(
             None
         }
         Command::Sticky(value) => {
+            if state
+                .swayward
+                .layout
+                .active_workspace()
+                .is_some_and(|workspace| workspace.is_workspace_focused())
+            {
+                return command_failure("No current container");
+            }
             let target = focused_target(state);
             let container_window = match target {
                 Some(CommandTarget::Container(workspace, node)) => {
+                    if state
+                        .swayward
+                        .layout
+                        .set_split_sticky(workspace, node, &value)
+                    {
+                        return success();
+                    }
                     state.swayward.layout.window_in_node(workspace, node)
                 }
                 _ => None,

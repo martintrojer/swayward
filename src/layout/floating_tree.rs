@@ -193,8 +193,9 @@ impl<W: LayoutElement> RemovedFloatingTree<W> {
         })
     }
 
-    pub fn into_subtree(self) -> Option<DetachedSubtree<W>> {
+    pub fn into_subtree(mut self) -> Option<DetachedSubtree<W>> {
         let root = self.tree.resident_root()?;
+        self.tree.set_split_sticky(root, self.sticky);
         self.tree.detach_resident_root(root)
     }
 }
@@ -774,6 +775,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
             .iter()
             .any(|entry| entry.tree.contains(root)));
         self.active_window_id = tree.active_window().map(|window| window.id().clone());
+        let sticky = tree.is_split_sticky(root);
         self.tree_entries.insert(
             0,
             FloatingTreeEntry {
@@ -781,7 +783,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
                 root,
                 rect,
                 pos: Data::logical_to_size_frac_in_working_area(self.working_area, rect.loc),
-                sticky: false,
+                sticky,
             },
         );
         (root, remapped)
@@ -1172,6 +1174,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
             return false;
         };
         entry.sticky = sticky;
+        entry.tree.set_split_sticky(root, sticky);
         true
     }
 

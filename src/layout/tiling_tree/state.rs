@@ -39,6 +39,7 @@ impl<W: LayoutElement> TilingTree<W> {
             focus_history: Vec::new(),
             previous_split_layouts: HashMap::new(),
             title_formats: HashMap::new(),
+            sticky_splits: HashSet::new(),
             pending_modes: HashMap::new(),
             mapped_under_fullscreen: HashSet::new(),
             fullscreen_layout_wrappers: HashSet::new(),

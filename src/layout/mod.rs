@@ -4164,6 +4164,17 @@ impl<W: LayoutElement> Layout<W> {
             .set_window_border(window, style, width)
     }
 
+    pub fn set_split_sticky(
+        &mut self,
+        workspace_id: WorkspaceId,
+        node: NodeId,
+        value: &str,
+    ) -> bool {
+        self.workspaces_mut()
+            .find(|workspace| workspace.id() == workspace_id)
+            .is_some_and(|workspace| workspace.set_split_sticky(node, value))
+    }
+
     pub fn set_window_sticky(&mut self, window: &W::Id, value: &str) -> bool {
         self.set_sticky(window, None, value)
     }

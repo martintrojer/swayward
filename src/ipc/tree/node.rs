@@ -43,6 +43,7 @@ pub(crate) fn describe_tiling<'a, I>(
             focus,
             focused,
             fullscreen_mode,
+            sticky,
             children,
         } => {
             let children = children
@@ -88,6 +89,7 @@ pub(crate) fn describe_tiling<'a, I>(
             node.percent = percent;
             node.scratchpad_state = Some("none".into());
             node.fullscreen_mode = fullscreen_mode;
+            node.sticky = sticky;
             node.marks = container_marks
                 .get(&(workspace_id, id))
                 .cloned()

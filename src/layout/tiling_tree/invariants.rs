@@ -66,6 +66,7 @@ impl<W: LayoutElement> TilingTree<W> {
                     .map(|id| ("previous_split_layouts", id)),
             )
             .chain(self.title_formats.keys().map(|id| ("title_formats", id)))
+            .chain(self.sticky_splits.iter().map(|id| ("sticky_splits", id)))
             .chain(self.pending_modes.keys().map(|id| ("pending_modes", id)))
             .chain(
                 self.mapped_under_fullscreen
