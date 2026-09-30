@@ -265,6 +265,52 @@ fn command_arity_failures_match_sway() {
 }
 
 #[test]
+fn invalid_setting_values_match_sway() {
+    let mut fixture = crate::tests::fixture::Fixture::new();
+    fixture.add_output(1, (1920, 1080));
+    let outcome = &execute(fixture.niri_state(), "focus_follows_mouse oracle_invalid")[0];
+    assert_eq!(
+        outcome.error.as_deref(),
+        Some("Expected 'focus_follows_mouse no|yes|always'")
+    );
+    assert_eq!(outcome.parse_error, Some(false));
+
+    assert_eq!(
+        command("default_floating_border pixel -1"),
+        Command::SetLayoutOption(swayward_ipc::command::LayoutOption::DefaultBorder {
+            floating: true,
+            style: "pixel".into(),
+            width: Some(u16::MAX),
+        })
+    );
+    for (input, expected) in [
+        (
+            "new_float oracle_invalid",
+            "Expected 'default_floating_border <none|normal|pixel>' or 'default_floating_border <normal|pixel> <px>'",
+        ),
+        (
+            "new_window oracle_invalid",
+            "Expected 'default_border <none|normal|pixel>' or 'default_border <normal|pixel> <px>'",
+        ),
+        (
+            "title_align oracle_invalid",
+            "Expected 'title_align left|center|right'",
+        ),
+        ("no_focus oracle_invalid", "No criteria"),
+        (
+            "input oracle_invalid",
+            "Invalid input command (expected at least 2 arguments, got 1)",
+        ),
+    ] {
+        assert_eq!(
+            parse(input)[0].as_ref().unwrap_err().error.as_deref(),
+            Some(expected),
+            "{input}"
+        );
+    }
+}
+
+#[test]
 fn parses_exit_and_rejects_arguments() {
     assert_eq!(command("exit"), Command::Exit);
     assert_eq!(

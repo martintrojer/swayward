@@ -276,7 +276,16 @@ fn parse_words(args: &[&str], input: &str) -> Result<Command, String> {
         "inhibit_idle" => Err("inhibit_idle requires user inhibitor policy support".into()),
         // Sway's developer-only create_output handler deliberately ignores argv.
         "create_output" => Ok(Command::CreateOutput),
-        "input" => parse_input_command(rest),
+        "input" => {
+            if rest.len() < 2 {
+                Err(format!(
+                    "Invalid input command (expected at least 2 arguments, got {})",
+                    rest.len()
+                ))
+            } else {
+                parse_input_command(rest)
+            }
+        }
         "output" => parse_output_command(rest),
         "allow_tearing" => Err("allow_tearing requires immediate presentation support".into()),
         "max_render_time" if rest.is_empty() => Err("Missing max render time argument.".into()),

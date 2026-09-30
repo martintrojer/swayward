@@ -256,7 +256,7 @@ pub(super) fn parse(name: &str, rest: &[&str]) -> Result<Command, String> {
                     Ok(Command::SetLayoutOption(option))
                 }
                 _ => Err("Expected 'hide_edge_borders [--i3] \
-                          none|vertical|horizontal|both|smart|smart_no_gaps'"
+                          none|vertical|horizontal|both|smart|smart_no_gaps"
                     .into()),
             }
         }
@@ -303,7 +303,7 @@ pub(super) fn parse(name: &str, rest: &[&str]) -> Result<Command, String> {
             [value] if matches!(*value, "left" | "center" | "right") => Ok(
                 Command::SetLayoutOption(LayoutOption::TitleAlignment((*value).into())),
             ),
-            _ => Err("Expected 'title_align <left|center|right>'".into()),
+            _ => Err("Expected 'title_align left|center|right'".into()),
         },
         "tiling_drag" => match rest {
             [value] => Ok(Command::SetLayoutOption(LayoutOption::TilingDrag(
@@ -369,12 +369,21 @@ pub(super) fn parse(name: &str, rest: &[&str]) -> Result<Command, String> {
             // optional width that sway reads with atoi and only for `pixel`
             // and `normal`. new_window and new_float are the older i3
             // spellings of the same two settings.
-            let usage =
-                format!("Expected '{name} <none|normal|pixel>' or '{name} <normal|pixel> <px>'");
+            let canonical = match name {
+                "new_window" => "default_border",
+                "new_float" => "default_floating_border",
+                _ => name,
+            };
+            let usage = format!(
+                "Expected '{canonical} <none|normal|pixel>' or '{canonical} <normal|pixel> <px>'"
+            );
             let (style, width) = match rest {
                 [style] => (style, None),
                 [style, width] => {
-                    let width: u16 = width.parse().map_err(|_| usage.clone())?;
+                    let width = width
+                        .parse::<i64>()
+                        .map(|width| width as u16)
+                        .map_err(|_| usage.clone())?;
                     (style, Some(width))
                 }
                 _ => return Err(usage),

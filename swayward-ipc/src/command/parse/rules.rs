@@ -134,6 +134,10 @@ pub(super) fn parse_assign(input: &str, name: &str) -> Result<Command, String> {
 
 pub(super) fn parse_no_focus(input: &str, name: &str) -> Result<Command, String> {
     const USAGE: &str = "Expected 'no_focus <criteria>'";
+    let rest = input[name.len()..].trim_start();
+    if !rest.starts_with('[') {
+        return Err("No criteria".into());
+    }
     let (criteria, trailing) = parse_rule_criteria(input, name, USAGE)?;
     if !trailing.is_empty() {
         return Err(USAGE.into());

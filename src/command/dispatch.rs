@@ -68,7 +68,8 @@ pub fn execute(state: &mut State, input: &str) -> Vec<CommandOutcome> {
         let message = error.error.as_deref().unwrap_or_default();
         if matches!(
             message,
-            "Expected 'mouse_warping output|container|none'"
+            "Expected 'focus_follows_mouse no|yes|always'"
+                | "Expected 'mouse_warping output|container|none'"
                 | "Invalid split command (expected either horizontal or vertical)."
                 | "Invalid size specified"
         ) || message.starts_with("Invalid unbindswitch command (expected binding with the form")
