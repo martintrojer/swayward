@@ -1116,6 +1116,68 @@ impl<W: LayoutElement> Layout<W> {
             .is_some_and(|name| output_matches_name(output, name))
     }
 
+    /// The monitor a newly created workspace called `name` belongs on.
+    ///
+    /// Sway creates every workspace on the first RESOLVING output in its
+    /// workspace config, else on the focused output
+    /// (workspace_get_initial_output, sway/tree/workspace.c:153-175), so
+    /// `workspace`, `move container to workspace` and `assign` agree.
+    fn initial_monitor_for_workspace(&self, name: &str) -> Option<usize> {
+        let MonitorSet::Normal {
+            monitors,
+            active_monitor_idx,
+            ..
+        } = &self.monitor_set
+        else {
+            return None;
+        };
+        let assigned = self
+            .workspace_configs
+            .iter()
+            .find(|config| config.name.0.eq_ignore_ascii_case(name))
+            .and_then(Self::workspace_assignment)
+            .and_then(|outputs| {
+                outputs.iter().find_map(|output| {
+                    monitors
+                        .iter()
+                        .position(|monitor| output_matches_name(&monitor.output, output))
+                })
+            });
+        Some(assigned.unwrap_or(*active_monitor_idx))
+    }
+
+    /// Creates a sway workspace on its initial output and returns that output
+    /// and the workspace's index there. Sway sorts an output's workspaces on
+    /// every creation (workspace_create calls output_sort_workspaces,
+    /// sway/tree/workspace.c:259; ordering in sway/tree/output.c:387-405).
+    fn create_sway_workspace(
+        &mut self,
+        name: Option<String>,
+        number: Option<i32>,
+    ) -> Result<(Output, usize), String> {
+        let workspace_name = name
+            .clone()
+            .or_else(|| number.map(|number| number.to_string()))
+            .unwrap_or_default();
+        let monitor_idx = self
+            .initial_monitor_for_workspace(&workspace_name)
+            .ok_or_else(|| "cannot create a workspace without an output".to_owned())?;
+        let layout_config = layout_config_for(&self.workspace_configs, name.as_deref());
+        let MonitorSet::Normal { monitors, .. } = &mut self.monitor_set else {
+            return Err("cannot create a workspace without an output".into());
+        };
+        let monitor = &mut monitors[monitor_idx];
+        let index = monitor.workspaces_len().saturating_sub(1);
+        if monitor.workspaces_len() == 1 && !monitor.active_workspace_ref().tiling_has_had_window()
+        {
+            monitor.refresh_empty_auto_layout(0);
+        }
+        let id = monitor.add_sway_workspace_at(index, name, number, layout_config);
+        monitor.sort_sway_workspaces();
+        let index = monitor.idx_of_ws(id).unwrap_or(index);
+        Ok((monitor.output().clone(), index))
+    }
+
     fn next_initial_workspace_name_for_output(&self, output: Option<&Output>) -> Option<String> {
         let existing_names = self
             .workspaces()
@@ -1934,28 +1996,15 @@ impl<W: LayoutElement> Layout<W> {
         if self.find_workspace_by_name(workspace_name).is_some() {
             return;
         }
-        let (name, number) = sway_workspace_identity(crate::command::WorkspaceTarget::Name(
+        let Ok((name, number)) = sway_workspace_identity(crate::command::WorkspaceTarget::Name(
             workspace_name.to_owned(),
-        ))
-        .unwrap();
-        if let MonitorSet::Normal {
-            monitors,
-            active_monitor_idx,
-            ..
-        } = &mut self.monitor_set
-        {
-            let layout_config = layout_config_for(&self.workspace_configs, name.as_deref());
-            let monitor = &mut monitors[*active_monitor_idx];
-            let index = monitor.workspaces.len().saturating_sub(1);
-            monitor.add_sway_workspace_at(index, name, number, layout_config);
-            // Sway sorts an output's workspaces on every creation:
-            // workspace_create calls output_sort_workspaces
-            // (sway/sway/tree/workspace.c:259), which puts numeric names in
-            // numeric order and ahead of non-numeric ones
-            // (sway/sway/tree/output.c:387-405). Appending without sorting left
-            // GET_WORKSPACES in creation order.
-            monitor.sort_sway_workspaces();
-        }
+        )) else {
+            return;
+        };
+        // An outputless layout has nowhere to create it; sway would use its
+        // fallback output, and the assigned window lands on the active
+        // workspace instead.
+        let _ = self.create_sway_workspace(name, number);
     }
 
     pub fn find_workspace_by_ref(
@@ -3313,47 +3362,10 @@ impl<W: LayoutElement> Layout<W> {
         }
 
         let (name, number) = sway_workspace_identity(target)?;
-        let workspace_name = name
-            .as_deref()
-            .map(str::to_owned)
-            .unwrap_or_else(|| number.unwrap().to_string());
-        let MonitorSet::Normal {
-            monitors,
-            active_monitor_idx,
-            ..
-        } = &mut self.monitor_set
-        else {
-            return Err("cannot create a workspace without an output".into());
-        };
-        let monitor_idx = self
-            .workspace_configs
-            .iter()
-            .find(|config| config.name.0.eq_ignore_ascii_case(&workspace_name))
-            .and_then(|config| config.sway_output_assignment.as_ref())
-            .and_then(|outputs| {
-                outputs.iter().find_map(|name| {
-                    monitors
-                        .iter()
-                        .position(|monitor| output_matches_name(&monitor.output, name))
-                })
-            })
-            .unwrap_or(*active_monitor_idx);
-        let layout_config = layout_config_for(&self.workspace_configs, name.as_deref());
-        let monitor = &mut monitors[monitor_idx];
-        let index = monitor.workspaces_len().saturating_sub(1);
-        if monitor.workspaces_len() == 1 && !monitor.active_workspace_ref().tiling_has_had_window()
-        {
-            monitor.refresh_empty_auto_layout(0);
-        }
-        let id = monitor.add_sway_workspace_at(index, name, number, layout_config);
-        // Sway sorts on every creation: workspace_create calls
-        // output_sort_workspaces (sway/sway/tree/workspace.c:259), which orders
-        // numeric names numerically and ahead of non-numeric ones
-        // (sway/sway/tree/output.c:387-405). The new workspace therefore does
-        // not stay where it was inserted, so re-find it before activating.
-        monitor.sort_sway_workspaces();
-        let index = monitor.idx_of_ws(id).unwrap_or(index);
-        monitor.activate_workspace(index);
+        let (output, index) = self.create_sway_workspace(name, number)?;
+        // Sway's workspace_switch focuses the new workspace, and with it the
+        // output it was created on.
+        self.activate_workspace_at(Some(&output), index);
         Ok(())
     }
 
@@ -4045,25 +4057,8 @@ impl<W: LayoutElement> Layout<W> {
             Ok(position)
         } else {
             let (name, number) = sway_workspace_identity(target)?;
-            let MonitorSet::Normal {
-                monitors,
-                active_monitor_idx,
-                ..
-            } = &mut self.monitor_set
-            else {
-                return Err("cannot create a workspace without an output".into());
-            };
-            let layout_config = layout_config_for(&self.workspace_configs, name.as_deref());
-            let monitor = &mut monitors[*active_monitor_idx];
-            let id = monitor.add_sway_workspace_at(
-                monitor.workspaces.len(),
-                name,
-                number,
-                layout_config,
-            );
-            monitor.sort_sway_workspaces();
-            let index = monitor.idx_of_ws(id).unwrap();
-            Ok((Some(monitor.output().clone()), index))
+            let (output, index) = self.create_sway_workspace(name, number)?;
+            Ok((Some(output), index))
         }
     }
 

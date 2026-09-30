@@ -335,3 +335,91 @@ fn move_no_auto_back_and_forth_changes_the_same_workspace_destination() {
     assert_eq!(workspace_apps[&1], ["suppressed"]);
 }
 
+
+/// Sway creates every workspace on the first resolving output its config
+/// assigns, else on the focused output (workspace_get_initial_output,
+/// sway/tree/workspace.c:153-175). Oracle scenarios
+/// move_to_assigned_workspace_creates_on_its_output,
+/// assign_rule_creates_workspace_on_its_output and
+/// switch_to_assigned_workspace_focuses_its_output.
+#[test]
+fn new_workspaces_are_created_on_their_assigned_output() {
+    for command in [
+        "move container to workspace 7",
+        r#"assign [app_id="^assigned$"] workspace 7"#,
+        "workspace 7",
+    ] {
+        // headless-2 takes the first assigned name, 5, as its initial
+        // workspace (workspace_next_name, sway/tree/workspace.c:436), so 7
+        // does not exist until the command creates it.
+        let config = swayward_config::Config::parse_mem(
+            r#"
+workspace "5" { sway-output-assignment "headless-2"; }
+workspace "7" { sway-output-assignment "headless-2"; }
+"#,
+        )
+        .unwrap();
+        let mut f = Fixture::with_config(config);
+        f.add_output(1, (1280, 720));
+        f.add_output(2, (1280, 720));
+        let client = f.add_client();
+        let focus = crate::command::execute(f.niri_state(), "focus output headless-1");
+        assert!(focus[0].success, "{focus:?}");
+        assert!(
+            !f.swayward()
+                .layout
+                .workspaces()
+                .any(|(_, _, workspace)| workspace.sway_name().as_deref() == Some("7")),
+            "workspace 7 must not exist before {command}"
+        );
+        let moved = if command.starts_with("assign") {
+            let outcome = crate::command::execute(f.niri_state(), command);
+            assert!(outcome[0].success, "{command}: {outcome:?}");
+            map_test_window(&mut f, client, "assigned");
+            "assigned"
+        } else {
+            map_test_window(&mut f, client, "first");
+            let outcome = crate::command::execute(f.niri_state(), command);
+            assert!(outcome[0].success, "{command}: {outcome:?}");
+            if command == "workspace 7" {
+                map_test_window(&mut f, client, "second");
+                "second"
+            } else {
+                "first"
+            }
+        };
+
+        let swayward = f.swayward();
+        let workspaces = describe_workspaces(&swayward.layout, &swayward.global_space);
+        let seven = workspaces
+            .iter()
+            .find(|workspace| workspace.name == "7")
+            .unwrap_or_else(|| panic!("{command}: no workspace 7"));
+        assert_eq!(seven.output, "headless-2", "{command}");
+        let focused = workspaces
+            .iter()
+            .find(|workspace| workspace.focused)
+            .unwrap();
+        let expected_focus = if command == "workspace 7" {
+            "headless-2"
+        } else {
+            "headless-1"
+        };
+        assert_eq!(focused.output, expected_focus, "{command}");
+        let tree = serde_json::to_value(describe_tree(
+            &swayward.layout,
+            &swayward.global_space,
+            &swayward.marks_by_window,
+            &swayward.marks_by_container,
+        ))
+        .unwrap();
+        let holder = tree["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|output| output["nodes"].as_array().unwrap())
+            .find(|workspace| find_json_node_with_app_id(workspace, moved).is_some())
+            .unwrap();
+        assert_eq!(holder["name"], "7", "{command}");
+    }
+}
