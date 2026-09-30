@@ -58,6 +58,53 @@ fn empty_layout_command_failures_match_sway() {
 }
 
 #[test]
+fn empty_layout_argument_failures_match_sway() {
+    let mut fixture = crate::tests::fixture::Fixture::new();
+    fixture.add_output(1, (1920, 1080));
+    for (input, expected, parse_error) in [
+        (
+            "mark",
+            "Invalid mark command (expected at least 1 argument, got 0)",
+            true,
+        ),
+        (
+            "border",
+            "Invalid border command (expected at least 1 argument, got 0)",
+            true,
+        ),
+        (
+            "move position",
+            "Only floating containers can be moved to an absolute position",
+            false,
+        ),
+        (
+            "move position 10 px",
+            "Only floating containers can be moved to an absolute position",
+            false,
+        ),
+        (
+            "move position 10 em 20 px",
+            "Only floating containers can be moved to an absolute position",
+            false,
+        ),
+        (
+            "rename workspace fuzz",
+            "Invalid rename command (expected at least 3 arguments, got 2)",
+            true,
+        ),
+        (
+            "output",
+            "Invalid output command (expected at least 1 argument, got 0)",
+            true,
+        ),
+    ] {
+        let outcome = &execute(fixture.niri_state(), input)[0];
+        assert_eq!(outcome.error.as_deref(), Some(expected), "{input}");
+        assert_eq!(outcome.parse_error, Some(parse_error), "{input}");
+    }
+}
+
+#[test]
 fn parses_focus_output_with_multi_word_name() {
     assert_eq!(
         parse("focus output left monitor")[0]

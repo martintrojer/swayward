@@ -59,6 +59,9 @@ pub(super) fn parse_mark(args: &[&str]) -> Result<Command, String> {
         }
         index += 1;
     }
+    if args.is_empty() {
+        return Err("Invalid mark command (expected at least 1 argument, got 0)".into());
+    }
     if index == args.len() {
         return Err("Expected '[--add|--replace] [--toggle] <identifier>'".into());
     }
