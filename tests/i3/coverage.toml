@@ -3557,7 +3557,7 @@ assertions = 20
 tap_plan = 20
 pass = 10
 citation = "sway/sway/commands/mark.c:54; sway/sway/tree/container.c:1639-1653; sway/sway/criteria.c:607-610"
-reason = "10 of 20 assertions cannot pass on sway. A sway mark is globally unique, so one fixed mark applied by a for_window rule survives only on the last matching window; and six assertions expect tiling_auto or floating_auto marks from i3-only tiling_from and floating_from provenance criteria. Two real defects were fixed while establishing this: criteria resolved before compute_open_floating, so every window looked tiled, and criteria were never re-evaluated on a float-state change."
+reason = "10 of 20 assertions cannot pass on sway. A sway mark is globally unique, so one fixed mark applied by a for_window rule survives only on the last matching window; and six assertions expect tiling_auto or floating_auto marks from i3-only tiling_from and floating_from provenance criteria. One real defect was fixed while establishing this: criteria resolved before compute_open_floating, so every window looked tiled. Swayward no longer reruns for_window criteria on a float-state change, because sway does not (sway/sway/tree/view.c:569-593); the ten passes are unchanged by that."
 reason_verified = true
 skip = [
   { n = 2, reason = "Expects a mark such as tiling_auto or floating_auto, which comes from i3's tiling_from and floating_from provenance criteria. Sway does not implement them: criteria_token recognises only tiling and floating (sway/sway/criteria.c:607-610). Additionally a sway mark is globally unique (container_find_and_unmark, sway/sway/commands/mark.c:54), so one fixed mark applied by a for_window rule survives only on the last matching window." },

@@ -361,14 +361,6 @@ pub(super) fn execute_targeted(
             if let Err(error) = window::floating(state, target, mode) {
                 return error;
             }
-            // Re-run this window's `for_window` commands now that its float
-            // state has changed, so a `tiling` or `floating` criterion is
-            // re-evaluated rather than only being applied at map time. i3
-            // encodes the same idea through its tiling_from and floating_from
-            // provenance criteria.
-            if let CommandTarget::Window(window) = target {
-                rerun_for_window_rules(state, window);
-            }
         }
         Command::Urgent(value) => {
             let CommandTarget::Window(target) = target else {
@@ -867,35 +859,6 @@ fn matching_ids(
             CommandTarget::Container(_, _) => None,
         })
         .collect()
-}
-
-/// Re-resolve and re-run the window rules for one window.
-///
-/// Called when a window's float state changes, so criteria that test that state
-/// see the new value.
-fn rerun_for_window_rules(state: &mut State, id: crate::window::mapped::MappedId) {
-    let commands = {
-        let config = state.swayward.config.borrow();
-        let rules = &config.window_rules;
-        state
-            .swayward
-            .layout
-            .windows()
-            .find(|(_, mapped)| mapped.id() == id)
-            .map(|(_, mapped)| {
-                crate::window::ResolvedWindowRules::compute(
-                    rules,
-                    crate::window::WindowRef::Mapped(mapped),
-                    false,
-                )
-                .sway_for_window_commands
-            })
-            .unwrap_or_default()
-    };
-    for command in commands {
-        let targeted = format!("[con_id={}] {command}", crate::ipc::tree::window_id(id));
-        let _ = execute(state, &targeted);
-    }
 }
 
 /// Execute newly matching runtime `for_window` criteria once for this window.
