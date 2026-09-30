@@ -593,3 +593,80 @@ fn tiled_grow_at_workspace_edge_reports_failure() {
     );
 }
 
+
+#[test]
+fn directional_resize_of_a_floating_group_child_resizes_inside_the_group() {
+    // A floating group's child is not itself floating, so sway resizes it like
+    // a tiled child of the group (`container_is_floating` in
+    // sway/commands/resize.c:523 selects resize_adjust_tiled). The first child
+    // has no left sibling, so `grow left` cannot resize any further, while
+    // `grow right` moves the shared edge with its sibling
+    // (container_find_resize_parent, sway/commands/resize.c:44-63).
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    for app_id in ["group-first", "group-second"] {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+    for command in ["focus parent", "floating enable", "focus child"] {
+        let outcome = crate::command::execute(f.niri_state(), command);
+        assert!(outcome[0].success, "{command}: {outcome:?}");
+    }
+    let focus = crate::command::execute(f.niri_state(), r#"[app_id="^group-first$"] focus"#);
+    assert!(focus[0].success, "{focus:?}");
+
+    let widths = |f: &mut Fixture| {
+        f.niri_state().ipc_refresh_layout();
+        let swayward = f.swayward();
+        let tree = serde_json::to_value(describe_tree(
+            &swayward.layout,
+            &swayward.global_space,
+            &swayward.marks_by_window,
+            &swayward.marks_by_container,
+        ))
+        .unwrap();
+        ["group-first", "group-second"].map(|app_id| {
+            find_json_node_with_app_id(&tree, app_id).unwrap()["rect"]["width"]
+                .as_i64()
+                .unwrap()
+        })
+    };
+    let before = widths(&mut f);
+
+    for command in ["resize grow left 10 px", "resize shrink up 10 px", "resize grow down 10 px"] {
+        let outcome = crate::command::execute(f.niri_state(), command);
+        assert_eq!(
+            outcome,
+            [swayward_ipc::CommandOutcome {
+                success: false,
+                error: Some("Cannot resize any further".into()),
+                parse_error: Some(true),
+            }],
+            "{command}"
+        );
+    }
+    assert_eq!(widths(&mut f), before);
+
+    let grow = crate::command::execute(f.niri_state(), "resize grow right 10 px");
+    assert!(grow[0].success, "{grow:?}");
+    let after = widths(&mut f);
+    assert!(after[0] > before[0], "before={before:?} after={after:?}");
+    assert!(after[1] < before[1], "before={before:?} after={after:?}");
+
+    let focus = crate::command::execute(f.niri_state(), r#"[app_id="^group-second$"] focus"#);
+    assert!(focus[0].success, "{focus:?}");
+    let grow = crate::command::execute(f.niri_state(), "resize grow left 10 px");
+    assert!(grow[0].success, "{grow:?}");
+    let left = widths(&mut f);
+    assert!(left[1] > after[1], "after={after:?} left={left:?}");
+    assert!(left[0] < after[0], "after={after:?} left={left:?}");
+    f.swayward().layout.verify_invariants();
+}

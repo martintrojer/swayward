@@ -593,7 +593,19 @@ impl<W: LayoutElement> FloatingLayout<W> {
         let Some(id) = id.or(self.active_window_id.as_ref()).cloned() else {
             return false;
         };
-        let idx = self.idx_of(&id).unwrap();
+        // A floating group's child is not itself floating, so sway resizes it
+        // inside the group like a tiled child (`container_is_floating`,
+        // sway/commands/resize.c:523-550).
+        if let Some(entry) = self
+            .tree_entries
+            .iter_mut()
+            .find(|entry| entry.tree.node_for_window(&id).is_some())
+        {
+            return entry.tree.resize_window_edge(Some(&id), edge, change);
+        }
+        let Some(idx) = self.idx_of(&id) else {
+            return false;
+        };
         let old_size = self.entries[idx].tile.tile_expected_or_current_size();
         if edge.intersects(ResizeEdge::LEFT_RIGHT) {
             self.set_window_width(Some(&id), change, true, self.view_size.to_i32_round());
