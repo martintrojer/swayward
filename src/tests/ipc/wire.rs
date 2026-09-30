@@ -526,3 +526,52 @@ fn malformed_frames_do_not_hang_or_wedge_the_server() {
         );
     }
 }
+
+/// Oracle: command-fuzz newline-separated, newline-trailing and
+/// newline-inside-quotes. Sway rewrites each newline that ends a non-empty
+/// line into `;` before parsing a RUN_COMMAND payload, ignoring quotes
+/// (sway/sway/ipc-server.c:640-648). The quoted case names the workspace
+/// `oracle;newline`, as a direct sway probe shows.
+#[test]
+fn run_command_splits_on_newlines_like_sway() {
+    let (mut fixture, socket) = ipc_fixture();
+    fixture.add_output(1, (1280, 720));
+    let mut stream = UnixStream::connect(socket).unwrap();
+    let workspaces = |fixture: &mut Fixture, stream: &mut UnixStream| {
+        query_ipc(fixture, stream, MessageType::GetWorkspaces)
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|workspace| workspace["focused"] == true)
+            .map(|workspace| workspace["name"].as_str().unwrap().to_owned())
+            .collect::<Vec<_>>()
+    };
+
+    for (payload, replies, focused) in [
+        (
+            "nop first\nworkspace oracle-newline",
+            serde_json::json!([{"success": true}, {"success": true}]),
+            "oracle-newline",
+        ),
+        (
+            "workspace oracle-trailing\n",
+            serde_json::json!([{"success": true}]),
+            "oracle-trailing",
+        ),
+        (
+            "workspace \"oracle\nnewline\"",
+            serde_json::json!([{"success": true}]),
+            "oracle;newline",
+        ),
+        (
+            "nop a\n\nworkspace oracle-blank\n\n",
+            serde_json::json!([{"success": true}, {"success": true}]),
+            "oracle-blank",
+        ),
+    ] {
+        let reply =
+            query_ipc_with_payload(&mut fixture, &mut stream, MessageType::RunCommand, payload);
+        assert_eq!(reply, replies, "{payload:?}");
+        assert_eq!(workspaces(&mut fixture, &mut stream), [focused], "{payload:?}");
+    }
+}

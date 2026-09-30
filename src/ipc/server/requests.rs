@@ -79,6 +79,7 @@ pub(super) async fn dispatch(ctx: &ClientCtx, msg_type: MessageType, payload: &[
                     return reply;
                 }
             };
+            let input = split_payload_lines(&input);
             let (reply, receiver) = async_channel::bounded(1);
             if ctx
                 .commands
@@ -126,5 +127,51 @@ pub(super) async fn dispatch(ctx: &ClientCtx, msg_type: MessageType, payload: &[
             br#"{"success": true}"#.to_vec()
         }
         _ => br#"{"success":false,"error":"not implemented"}"#.to_vec(),
+    }
+}
+
+/// Apply sway's RUN_COMMAND line rewrite before parsing.
+///
+/// Sway strtoks the payload on `\n` and overwrites the terminator of every
+/// token with `;`, stopping only at a final token that has no terminator
+/// (`sway/sway/ipc-server.c:640-648`). strtok skips empty tokens, so exactly
+/// the newlines that directly follow another byte become separators. This
+/// ignores quoting, as sway does; the command splitter still treats a `;`
+/// inside quotes as data.
+fn split_payload_lines(input: &str) -> String {
+    let mut previous = None;
+    input
+        .chars()
+        .map(|character| {
+            let rewritten = if character == '\n' && previous.is_some_and(|p| p != '\n') {
+                ';'
+            } else {
+                character
+            };
+            previous = Some(character);
+            rewritten
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::split_payload_lines;
+
+    #[test]
+    fn payload_lines_follow_sways_strtok_rewrite() {
+        for (input, expected) in [
+            ("a\nb", "a;b"),
+            ("a\n", "a;"),
+            ("a\n\nb", "a;\nb"),
+            ("\na\nb\n", "\na;b;"),
+            ("a\nb\n\n", "a;b;\n"),
+            ("\"x\ny\"", "\"x;y\""),
+            ("", ""),
+            ("\n\n", "\n\n"),
+            ("λ\nμ", "λ;μ"),
+        ] {
+            assert_eq!(split_payload_lines(input), expected, "{input:?}");
+        }
     }
 }
