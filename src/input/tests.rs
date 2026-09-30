@@ -1,7 +1,33 @@
 use std::cell::{Cell, RefCell};
 
+use super::libinput::{apply_pointer_settings, PointerSetting};
 use super::*;
 use crate::animation::Clock;
+
+#[test]
+fn libinput_pointer_settings_report_failures_and_continue() {
+    let settings = [
+        PointerSetting::NaturalScroll(true),
+        PointerSetting::AccelSpeed(0.5),
+        PointerSetting::LeftHanded(true),
+    ];
+    let mut applied = Vec::new();
+
+    let failures = apply_pointer_settings(settings, |setting| {
+        applied.push(setting.name());
+        if matches!(setting, PointerSetting::AccelSpeed(_)) {
+            Err(input::DeviceConfigError::Unsupported)
+        } else {
+            Ok(())
+        }
+    });
+
+    assert_eq!(applied, ["natural-scroll", "accel-speed", "left-handed"]);
+    assert_eq!(
+        failures,
+        [("accel-speed", input::DeviceConfigError::Unsupported)]
+    );
+}
 
 #[test]
 fn mouse_region_matching_uses_intersection_except_for_workspace_background() {
