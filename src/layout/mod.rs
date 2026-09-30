@@ -5949,6 +5949,27 @@ impl<W: LayoutElement> Layout<W> {
         }
     }
 
+    pub fn move_window_to_output_from_direction(
+        &mut self,
+        window: &W::Id,
+        output: &Output,
+        direction: tiling_tree::Direction,
+        activate: ActivateWindow,
+    ) {
+        self.move_to_output(Some(window), output, None, activate);
+        // Sway inserts right/down moves at the leading edge of a parallel
+        // destination (`sway/commands/move.c:168-193`). The generic transfer
+        // inserts after the destination focus, so move the new leaf across it.
+        let opposite = match direction {
+            tiling_tree::Direction::Right => Some(tiling_tree::Direction::Left),
+            tiling_tree::Direction::Down => Some(tiling_tree::Direction::Up),
+            tiling_tree::Direction::Left | tiling_tree::Direction::Up => None,
+        };
+        if let Some(direction) = opposite {
+            self.move_window_in_direction(window, direction, 10.);
+        }
+    }
+
     pub fn move_focused_to_output(
         &mut self,
         output: &Output,

@@ -1774,3 +1774,9 @@ migrated = false
 paths = ["src/layout/tiling_tree/introspection.rs", "src/layout/tiling_tree/invariants.rs", "src/layout/tiling_tree/mod.rs", "src/layout/tiling_tree/mutation.rs", "src/layout/tiling_tree/state.rs", "src/layout/tiling_tree/tree_layout.rs", "src/layout/workspace.rs", "src/tests/ipc/tree_commands/layout.rs"]
 what = "preserve the prior IPC focus rank of tiled branches that layout commands wrap in newly-created containers."
 why = "Sway creates a seat-focus entry for every container and leaves newly-created wrapper containers at the tail unless they are explicitly focused (`seat_node_from_node`, sway/input/seat.c:329-351; `container_split`, sway/tree/container.c:1565-1620); deriving branch recency only from descendant window timestamps incorrectly promotes a wrapper above older siblings."
+
+[[edit]]
+migrated = false
+paths = ["src/command/targeted.rs", "src/layout/mod.rs", "src/tests/ipc/workspace_commands/move_swap.rs"]
+what = "insert a container moved right or down across an output boundary before the destination's focused container."
+why = "Sway inserts right and down directional moves at the leading edge of a parallel destination workspace (`sway/commands/move.c:168-193`); generic workspace transfers insert after the focused container and reverse repeated moves. Oracle scenario `i3-derived/91f850a4f83f99d2` from `517-regress-move-direction-ipc.t:38` covers the ordering."

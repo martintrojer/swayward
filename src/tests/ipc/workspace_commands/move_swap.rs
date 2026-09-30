@@ -43,6 +43,42 @@ fn criteria_targeted_move_workspace_moves_all_matches_without_changing_focus() {
 }
 
 #[test]
+fn directional_move_to_output_inserts_before_destination_focus() {
+    let mut f = Fixture::new();
+    f.add_named_output_at("left".into(), (100, 100), Some((0, 0)));
+    f.add_named_output_at("right".into(), (100, 100), Some((100, 0)));
+    let client = f.add_client();
+
+    assert!(crate::command::execute(f.niri_state(), "focus output left")[0].success);
+    for app_id in ["first", "second"] {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+
+    assert!(crate::command::execute(f.niri_state(), "move right")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "focus output left, move right")[0].success);
+
+    let apps = f
+        .swayward()
+        .layout
+        .active_workspace()
+        .unwrap()
+        .tiles()
+        .filter_map(|tile| {
+            crate::utils::with_toplevel_role(tile.window().toplevel(), |role| role.app_id.clone())
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(apps, ["first", "second"]);
+}
+
+#[test]
 fn criteria_move_workspace_to_output_uses_the_matched_workspace() {
     let mut f = Fixture::new();
     f.add_named_output_at("west".into(), (100, 100), Some((0, 0)));

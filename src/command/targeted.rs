@@ -64,12 +64,17 @@ fn move_target_to_adjacent_output(
     let reference_point = state.swayward.layout.window_center(&window);
     if let Ok(output) = output_target(state, &destination, reference, reference_point) {
         match target {
-            CommandTarget::Window(_) => {
-                state
-                    .swayward
-                    .layout
-                    .move_to_output(Some(&window), &output, None, activate)
-            }
+            CommandTarget::Window(_) => state.swayward.layout.move_window_to_output_from_direction(
+                &window,
+                &output,
+                match direction {
+                    Direction::Left => crate::layout::tiling_tree::Direction::Left,
+                    Direction::Right => crate::layout::tiling_tree::Direction::Right,
+                    Direction::Up => crate::layout::tiling_tree::Direction::Up,
+                    Direction::Down => crate::layout::tiling_tree::Direction::Down,
+                },
+                activate,
+            ),
             CommandTarget::Container(workspace, node) => {
                 let _ = move_tiling_subtree_to_output(state, workspace, node, &output);
             }
