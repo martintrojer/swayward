@@ -12,12 +12,11 @@ pub(super) fn parse_exec(input: &str, name: &str) -> Result<Command, String> {
     if command.is_empty() {
         return Err(format!("Expected '{name} <command>'"));
     }
-    let command =
-        if words(command).map_err(str::to_owned)?.len() == 1 && command.starts_with(['\'', '"']) {
-            strip_sway_quotes(command)
-        } else {
-            command.to_owned()
-        };
+    let command = if words(command).len() == 1 && command.starts_with(['\'', '"']) {
+        strip_sway_quotes(command)
+    } else {
+        command.to_owned()
+    };
     Ok(Command::Exec {
         command,
         no_startup_id,
@@ -100,8 +99,9 @@ pub(super) fn parse_assign(input: &str, name: &str) -> Result<Command, String> {
     if target.is_empty() {
         return Err(USAGE.into());
     }
-    let words = words(target).map_err(str::to_owned)?;
-    let target = match words.as_slice() {
+    let words = words(target);
+    let args = words.iter().map(String::as_str).collect::<Vec<_>>();
+    let target = match args.as_slice() {
         [kind, target @ ..] if kind.eq_ignore_ascii_case("output") && !target.is_empty() => {
             AssignmentTarget::Output(join_words(target))
         }

@@ -55,45 +55,44 @@ pub(super) fn criteria_end(input: &str) -> Option<usize> {
     None
 }
 
-pub(super) fn words(input: &str) -> Result<Vec<&str>, &'static str> {
+pub(super) fn words(input: &str) -> Vec<String> {
     let mut words = Vec::new();
-    let mut start = None;
+    let mut word = String::new();
     let mut quote = None;
     let mut escaped = false;
-    for (index, ch) in input.char_indices() {
+    for ch in input.chars() {
         if escaped {
+            word.push(ch);
             escaped = false;
             continue;
         }
         if ch == '\\' {
+            word.push(ch);
             escaped = true;
-            start.get_or_insert(index);
             continue;
         }
         if let Some(open) = quote {
             if ch == open {
                 quote = None;
+            } else {
+                word.push(ch);
             }
             continue;
         }
         if matches!(ch, '\'' | '"') {
             quote = Some(ch);
-            start.get_or_insert(index);
         } else if ch.is_whitespace() {
-            if let Some(start) = start.take() {
-                words.push(&input[start..index]);
+            if !word.is_empty() {
+                words.push(std::mem::take(&mut word));
             }
         } else {
-            start.get_or_insert(index);
+            word.push(ch);
         }
     }
-    if quote.is_some() {
-        return Err("unterminated quote");
+    if !word.is_empty() {
+        words.push(word);
     }
-    if let Some(start) = start {
-        words.push(&input[start..]);
-    }
-    Ok(words)
+    words
 }
 
 pub(super) fn unquote(value: &str) -> &str {

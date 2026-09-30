@@ -168,7 +168,7 @@ fn parse_one_with_variables(
     input: &str,
     variables: &[(String, String)],
 ) -> Result<Command, String> {
-    let words = words(input).map_err(str::to_owned)?;
+    let words = words(input);
     let skip = if words
         .first()
         .is_some_and(|word| word.eq_ignore_ascii_case("set"))
@@ -184,7 +184,7 @@ fn parse_one_with_variables(
             if index < skip {
                 word.to_owned()
             } else {
-                expand_variables(word, variables)
+                expand_variables(&word, variables)
             }
         })
         .collect::<Vec<_>>();
@@ -202,7 +202,8 @@ pub fn parse_error(error: impl Into<String>) -> CommandOutcome {
 }
 
 fn parse_one(input: &str) -> Result<Command, String> {
-    let args = words(input).map_err(str::to_owned)?;
+    let words = words(input);
+    let args = words.iter().map(String::as_str).collect::<Vec<_>>();
     parse_words(&args, input)
 }
 

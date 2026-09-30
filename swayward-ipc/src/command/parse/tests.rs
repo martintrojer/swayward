@@ -91,6 +91,28 @@ mod command_list_tests {
     }
 
     #[test]
+    fn unterminated_quotes_are_tokenized_like_sway() {
+        assert_eq!(words("reload \"unterminated"), ["reload", "unterminated"]);
+        assert_eq!(
+            words("set 'unterminated value"),
+            ["set", "unterminated value"]
+        );
+        assert_eq!(words("focus \\"), ["focus", "\\"]);
+
+        for input in [
+            "reload \"unterminated",
+            "floating_maximum_size \"unterminated",
+            "set \"unterminated",
+        ] {
+            assert_ne!(
+                parse(input)[0].as_ref().unwrap_err().error.as_deref(),
+                Some("unterminated quote"),
+                "{input}"
+            );
+        }
+    }
+
+    #[test]
     fn comma_does_not_start_new_criteria() {
         for (input, command) in [
             ("floating enable, [title=x] kill", "[title=x]"),
