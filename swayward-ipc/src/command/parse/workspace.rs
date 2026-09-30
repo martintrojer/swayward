@@ -3,6 +3,12 @@ use super::*;
 pub(super) fn parse_rename(args: &[&str]) -> Result<Command, String> {
     const SYNTAX: &str =
         "Expected 'rename workspace <old_name> to <new_name>' or 'rename workspace to <new_name>'";
+    if args.len() < 3 {
+        return Err(format!(
+            "Invalid rename command (expected at least 3 arguments, got {})",
+            args.len()
+        ));
+    }
     let [workspace, rest @ ..] = args else {
         return Err(SYNTAX.into());
     };
