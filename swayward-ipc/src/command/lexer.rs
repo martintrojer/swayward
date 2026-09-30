@@ -24,13 +24,13 @@ pub(super) fn split_commands(input: &str) -> Vec<(&str, Option<char>)> {
             '[' => brackets += 1,
             ']' => brackets = (brackets - 1).max(0),
             ';' | ',' | '\0' if brackets == 0 => {
-                commands.push((&input[start..index], Some(ch)));
+                commands.push((input.get(start..index).unwrap_or_default(), Some(ch)));
                 start = index + ch.len_utf8();
             }
             _ => {}
         }
     }
-    commands.push((&input[start..], None));
+    commands.push((input.get(start..).unwrap_or_default(), None));
     commands
 }
 

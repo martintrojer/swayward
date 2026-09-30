@@ -19,7 +19,7 @@ pub(super) fn parse_client_colors(name: &str, args: &[&str]) -> Result<Command, 
         "client.focused_inactive" => "#484e50ff",
         "client.unfocused" => "#292d2eff",
         "client.urgent" => "#900000ff",
-        _ => unreachable!(),
+        _ => return Err(format!("Unknown/invalid command '{name}'")),
     };
     let [border, background, text, rest @ ..] = args else {
         return Err(format!(
@@ -562,6 +562,6 @@ pub(super) fn parse(name: &str, rest: &[&str]) -> Result<Command, String> {
                 },
             ))
         }
-        _ => unreachable!("settings parser called with non-setting command"),
+        _ => Err(format!("Unknown/invalid command '{name}'")),
     }
 }

@@ -512,3 +512,93 @@ mod gap_form_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod untrusted_input_panic_tests {
+    use super::super::*;
+
+    #[test]
+    fn raw_tail_parsers_survive_multibyte_whitespace_after_empty_quotes() {
+        for input in [
+            "''\u{3000}exec foo",
+            "''''''''''\u{3000}exec_always foo",
+            "''''''\u{3000}no_focus [app_id=x]",
+            "''\u{3000}for_window [app_id=x] kill",
+            "''\u{3000}assign [app_id=x] 1",
+        ] {
+            let results = parse(input);
+            assert!(
+                results.iter().all(Result::is_err),
+                "{input:?} must not dispatch through a mangled raw tail: {results:?}"
+            );
+        }
+        // Sway splits argv on ASCII whitespace only and never unquotes argv[0]
+        // (sway/common/stringop.c:92-140, sway/sway/commands.c:264-277).
+        assert_eq!(
+            parse("''\u{3000}exec foo"),
+            vec![Err(parse_error("Unknown/invalid command '''\u{3000}exec'"))]
+        );
+    }
+
+    /// Deterministic sweep over short strings from an alphabet that mixes command
+    /// names, quotes, separators and multibyte whitespace. Untrusted IPC input
+    /// must never panic the parser.
+    #[test]
+    fn mixed_multibyte_command_text_never_panics() {
+        const PIECES: &[&str] = &[
+            "exec",
+            "exec_always",
+            "for_window",
+            "assign",
+            "no_focus",
+            "move",
+            "resize",
+            "opacity",
+            "client.focused",
+            "gaps",
+            "output",
+            "workspace",
+            "mark",
+            "set",
+            "$a",
+            "'",
+            "\"",
+            "''",
+            " ",
+            "\u{3000}",
+            "\u{a0}",
+            "\u{2003}",
+            "é",
+            "日",
+            "[",
+            "]",
+            "=",
+            "app_id",
+            ";",
+            ",",
+            "\\",
+            "px",
+            "ppt",
+            "1",
+            "-",
+            "x",
+        ];
+        let variables = [("$a".to_owned(), "x".to_owned())];
+        let mut state = 0x9e37_79b9_7f4a_7c15_u64;
+        for _ in 0..200_000 {
+            let mut input = String::new();
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            let len = (state % 7) as usize + 1;
+            for _ in 0..len {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                input.push_str(PIECES[(state % PIECES.len() as u64) as usize]);
+            }
+            let _ = parse(&input);
+            let _ = parse_with_variables(&input, &variables);
+        }
+    }
+}

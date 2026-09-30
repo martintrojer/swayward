@@ -78,16 +78,16 @@ pub fn parse_with_variables(
 
         let mut criteria_start = false;
         if criteria_allowed && text.starts_with('[') {
-            match criteria_end(text) {
-                Some(end) => {
-                    let raw = text[..=end].to_owned();
+            match criteria_end(text).and_then(|end| text.split_at_checked(end + ']'.len_utf8())) {
+                Some((raw, tail)) => {
+                    let raw = raw.to_owned();
                     if let Err(error) = crate::criteria::Criteria::parse(&raw, None) {
                         results.push(Err(parse_error(error)));
                         break;
                     }
                     criteria = Some(raw);
                     criteria_start = true;
-                    text = text[end + 1..].trim_start();
+                    text = tail.trim_start();
                 }
                 None => {
                     // Sway's criteria parser reports a more specific token or

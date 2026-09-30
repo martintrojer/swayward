@@ -276,7 +276,10 @@ impl<'a> CriteriaLexer<'a> {
         if end == start {
             return Err("Invalid criteria token".into());
         }
-        Ok(Some(self.input[start..end].to_owned()))
+        self.input
+            .get(start..end)
+            .map(|token| Some(token.to_owned()))
+            .ok_or_else(|| "Invalid criteria token".into())
     }
 
     fn next_value(&mut self) -> Result<Option<String>, String> {

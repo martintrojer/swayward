@@ -10,11 +10,15 @@
 
 #![cfg_attr(
     not(test),
-    warn(
+    deny(
         clippy::unwrap_used,
         clippy::expect_used,
         clippy::indexing_slicing,
-        clippy::panic
+        clippy::string_slice,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::todo,
+        clippy::unimplemented
     )
 )]
 

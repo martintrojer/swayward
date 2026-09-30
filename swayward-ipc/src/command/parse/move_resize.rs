@@ -278,7 +278,7 @@ pub(super) fn parse_opacity(args: &[&str]) -> Result<Command, String> {
             Err(format!("Expected: set|plus|minus <0..1>: {operation}"))
         }
         Some(_) => Ok(Command::Opacity(value)),
-        None => unreachable!(),
+        None => Err("Expected: set|plus|minus <0..1>".into()),
     }
 }
 
@@ -409,12 +409,14 @@ pub(super) fn parse_move_distance(value: &str) -> Result<i32, String> {
     while bytes.get(split).is_some_and(u8::is_ascii_digit) {
         split += 1;
     }
+    let (digits, suffix) = value
+        .split_at_checked(split)
+        .ok_or("Invalid distance specified")?;
     let amount = if split == 0 {
         0
     } else {
-        parse_i32(&value[..split], "move distance")?
+        parse_i32(digits, "move distance")?
     };
-    let suffix = &value[split..];
     if suffix.is_empty() || suffix.eq_ignore_ascii_case("px") {
         Ok(amount)
     } else {
@@ -427,8 +429,8 @@ pub(super) fn parse_resize_amount(args: &[&str]) -> Result<(ResizeAmount, usize)
     let split = value
         .find(|character: char| !character.is_ascii_digit() && character != '-')
         .unwrap_or(value.len());
-    let amount = parse_i32(&value[..split], "resize amount")?;
-    let attached_unit = &value[split..];
+    let (amount, attached_unit) = value.split_at_checked(split).ok_or_else(resize_usage)?;
+    let amount = parse_i32(amount, "resize amount")?;
     let (unit, consumed) = if attached_unit.eq_ignore_ascii_case("px") {
         (ResizeUnit::Pixels, 1)
     } else if attached_unit.eq_ignore_ascii_case("ppt") {

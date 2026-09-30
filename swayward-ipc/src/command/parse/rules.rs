@@ -1,13 +1,39 @@
 use super::*;
 
+/// The raw text after the command name, for handlers that consume their tail verbatim.
+///
+/// `name` is the lexed first word. It is a prefix of the raw text only when the user typed it
+/// bare. Sway never unquotes argv[0], so a quoted or otherwise rewritten name such as `"exec"` or
+/// `''<U+3000>exec` names no handler there (`sway/sway/commands.c:264-272`). Refuse it here too
+/// rather than slicing the raw text at the lexed length, which can land inside a multibyte
+/// character or cut the tail at the wrong place.
+fn raw_tail<'a>(input: &'a str, name: &str) -> Result<&'a str, String> {
+    input
+        .trim_start()
+        .strip_prefix(name)
+        .map(str::trim_start)
+        .ok_or_else(|| {
+            let raw_name = input.split_ascii_whitespace().next().unwrap_or_default();
+            format!("Unknown/invalid command '{raw_name}'")
+        })
+}
+
+/// Split `rest`, which starts with `[`, after the criteria block's closing bracket.
+fn split_criteria(rest: &str) -> Option<(&str, &str)> {
+    let end = criteria_end(rest)?;
+    let (criteria, tail) = rest.split_at_checked(end + ']'.len_utf8())?;
+    Some((criteria, tail.trim_start()))
+}
+
 pub(super) fn parse_exec(input: &str, name: &str) -> Result<Command, String> {
-    let mut command = input[name.len()..].trim_start();
+    let mut command = raw_tail(input, name)?;
     const NO_STARTUP_ID: &str = "--no-startup-id";
-    let rest = command.strip_prefix(NO_STARTUP_ID);
-    let no_startup_id =
-        rest.is_some_and(|rest| rest.chars().next().is_none_or(char::is_whitespace));
-    if no_startup_id {
-        command = command[NO_STARTUP_ID.len()..].trim_start();
+    let mut no_startup_id = false;
+    if let Some(rest) = command.strip_prefix(NO_STARTUP_ID) {
+        if rest.chars().next().is_none_or(char::is_whitespace) {
+            no_startup_id = true;
+            command = rest.trim_start();
+        }
     }
     if command.is_empty() {
         return Err(format!("Expected '{name} <command>'"));
@@ -76,13 +102,13 @@ pub(super) fn parse_rule_criteria<'a>(
     name: &str,
     usage: &str,
 ) -> Result<(String, &'a str), String> {
-    let rest = input[name.len()..].trim_start();
-    let Some(end) = criteria_end(rest) else {
+    let rest = raw_tail(input, name)?;
+    let Some((criteria, tail)) = split_criteria(rest) else {
         return Err(usage.into());
     };
-    let criteria = rest[..=end].to_owned();
+    let criteria = criteria.to_owned();
     crate::criteria::Criteria::parse(&criteria, None)?;
-    Ok((criteria, rest[end + 1..].trim_start()))
+    Ok((criteria, tail))
 }
 
 pub(super) fn parse_assign(input: &str, name: &str) -> Result<Command, String> {
@@ -134,7 +160,7 @@ pub(super) fn parse_assign(input: &str, name: &str) -> Result<Command, String> {
 
 pub(super) fn parse_no_focus(input: &str, name: &str) -> Result<Command, String> {
     const USAGE: &str = "Expected 'no_focus <criteria>'";
-    let rest = input[name.len()..].trim_start();
+    let rest = raw_tail(input, name)?;
     if !rest.starts_with('[') {
         return Err("No criteria".into());
     }
@@ -146,13 +172,12 @@ pub(super) fn parse_no_focus(input: &str, name: &str) -> Result<Command, String>
 }
 
 pub(super) fn parse_for_window(input: &str, name: &str) -> Result<Command, String> {
-    let rest = input[name.len()..].trim_start();
-    let Some(end) = criteria_end(rest) else {
+    let rest = raw_tail(input, name)?;
+    let Some((criteria, command)) = split_criteria(rest) else {
         return Err("Expected 'for_window [criteria] <command>'".into());
     };
-    let criteria = rest[..=end].to_owned();
+    let criteria = criteria.to_owned();
     crate::criteria::Criteria::parse(&criteria, None)?;
-    let command = rest[end + 1..].trim_start();
     if command.is_empty() {
         return Err("Expected 'for_window [criteria] <command>'".into());
     }
