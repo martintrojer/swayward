@@ -24,19 +24,23 @@ pub(super) fn set_tabbed_percentages(layout: NodeLayout, children: &mut [Node], 
         .unwrap_or_default();
     let offset = match layout {
         NodeLayout::Tabbed => titlebar_height,
-        NodeLayout::Stacked => titlebar_height * children.len() as i32,
+        NodeLayout::Stacked => i32::try_from(children.len())
+            .map_or(i32::MAX, |count| titlebar_height.saturating_mul(count)),
         _ => 0,
     };
-    let parent_area = f64::from(parent_rect.width * parent_rect.height);
+    // A tiny output scale makes logical rectangles large enough that an i32
+    // area overflows, so compute areas in f64.
+    let area = |rect: Rect| f64::from(rect.width) * f64::from(rect.height);
+    let parent_area = area(parent_rect);
     for child in children {
         let mut pending_rect = parent_rect;
         if offset > 0 && !child.nodes.is_empty() {
-            pending_rect.y += offset;
-            pending_rect.height = (pending_rect.height - offset).max(0);
+            pending_rect.y = pending_rect.y.saturating_add(offset);
+            pending_rect.height = pending_rect.height.saturating_sub(offset).max(0);
             child.percent = Some(if parent_area == 0. {
                 1.
             } else {
-                f64::from(pending_rect.width * pending_rect.height) / parent_area
+                area(pending_rect) / parent_area
             });
         }
         set_tabbed_percentages(child.layout, &mut child.nodes, pending_rect);

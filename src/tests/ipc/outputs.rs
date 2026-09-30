@@ -730,3 +730,46 @@ fn moving_a_floating_group_to_the_scratchpad_while_outputless_does_not_abort_out
     assert_eq!(layout.windows().count(), 2);
     layout.verify_invariants();
 }
+
+#[test]
+fn tiny_scale_on_large_output_does_not_overflow_tree_percentages() {
+    // An 8K output at scale 0.1 is 76800x43200 logical pixels, whose area
+    // exceeds i32::MAX. GET_TREE and every layout refresh must still succeed.
+    let mut fixture = Fixture::new();
+    fixture.add_output(1, (7680, 4320));
+    assert!(crate::command::execute(fixture.niri_state(), "output headless-1 scale 0.1")[0].success);
+    let state = fixture.niri_state();
+    let tree = crate::ipc::tree::describe_tree(
+        &state.swayward.layout,
+        &state.swayward.global_space,
+        &state.swayward.marks_by_window,
+        &state.swayward.marks_by_container,
+    );
+    let output = &tree.nodes[0];
+    assert_eq!((output.rect.width, output.rect.height), (76800, 43200));
+
+    // Tabbed and stacked children take the percentage path with a titlebar
+    // offset; nested window rects take the border arithmetic.
+    let client = fixture.add_client();
+    for _ in 0..3 {
+        let window = fixture.client(client).create_window();
+        window.commit();
+        let surface = window.surface.clone();
+        fixture.roundtrip(client);
+        let window = fixture.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        fixture.double_roundtrip(client);
+    }
+    for command in ["splitv", "layout stacking", "focus parent", "layout tabbed"] {
+        assert!(crate::command::execute(fixture.niri_state(), command)[0].success, "{command}");
+    }
+    let state = fixture.niri_state();
+    let tree = crate::ipc::tree::describe_tree(
+        &state.swayward.layout,
+        &state.swayward.global_space,
+        &state.swayward.marks_by_window,
+        &state.swayward.marks_by_container,
+    );
+    assert_eq!(tree.nodes[0].rect.width, 76800);
+}
