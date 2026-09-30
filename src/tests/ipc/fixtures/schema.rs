@@ -235,13 +235,18 @@ fn assert_tree_rectangles_match_fixture(expected: &Value, actual: &Value, path: 
     // The sway capture used its host font, while the headless harness uses the
     // test environment's font. Keep enough tolerance for titlebar metrics, but
     // not enough for a wrong layout or unit-size placeholder rectangle.
-    for key in ["x", "y", "width", "height"] {
-        let expected = expected["rect"][key].as_i64().unwrap();
-        let actual = actual["rect"][key].as_i64().unwrap();
-        assert!(
-            (expected - actual).abs() <= 10,
-            "rect.{key} at {path}: expected {expected}, got {actual}"
-        );
+    // `geometry` gets the same tolerance: the pinned capture's client
+    // geometry also moved with font metrics (c2fa773c), and callers assert
+    // their exact requested geometry separately.
+    for rectangle in ["rect", "deco_rect", "window_rect", "geometry"] {
+        for key in ["x", "y", "width", "height"] {
+            let expected = expected[rectangle][key].as_i64().unwrap();
+            let actual = actual[rectangle][key].as_i64().unwrap();
+            assert!(
+                (expected - actual).abs() <= 10,
+                "{rectangle}.{key} at {path}: expected {expected}, got {actual}"
+            );
+        }
     }
     for child_key in ["nodes", "floating_nodes"] {
         for (index, (expected, actual)) in expected[child_key]

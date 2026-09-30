@@ -171,6 +171,31 @@ fn mutate_scalar(value: &mut Value) {
 }
 
 #[test]
+fn tree_fixture_comparison_rejects_every_rectangle_coordinate() {
+    let original: Value = serde_json::from_str(sway_fixture!("one_window.tree.json")).unwrap();
+    let mut paths = Vec::new();
+    for rectangle in ["rect", "deco_rect", "window_rect", "geometry"] {
+        for coordinate in ["x", "y", "width", "height"] {
+            paths.push(format!(
+                "/nodes/1/nodes/0/nodes/0/{rectangle}/{coordinate}"
+            ));
+        }
+    }
+
+    for pointer in paths {
+        let mut mutated = original.clone();
+        *mutated.pointer_mut(&pointer).unwrap() = Value::from(
+            mutated.pointer(&pointer).unwrap().as_i64().unwrap() + 100,
+        );
+        let rejected = std::panic::catch_unwind(|| {
+            assert_tree_rectangles_match_fixture(&original, &mutated, "$tree");
+            assert_rectangle_roles_match_fixture(&original, &mutated, "$tree");
+        });
+        assert!(rejected.is_err(), "rectangle mutation survived at {pointer}");
+    }
+}
+
+#[test]
 fn normalized_fixture_comparison_rejects_every_retained_value() {
     for (path, fixture, expected_scalars, expected_arrays) in [
         ("$tree", sway_fixture!("one_window.tree.json"), 111, 18),
