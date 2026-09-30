@@ -4154,6 +4154,7 @@ impl<W: LayoutElement> Layout<W> {
         let Some(window) = window else {
             return;
         };
+        self.finish_starting_interactive_move(&window);
         if self
             .scratchpad
             .iter()
@@ -6628,27 +6629,49 @@ impl<W: LayoutElement> Layout<W> {
                 let (cx, cy) = (pointer_delta.x, pointer_delta.y);
                 let sq_dist = cx * cx + cy * cy;
 
+                let is_rendered = self.monitors().any(|mon| {
+                    mon.workspaces_with_render_geo().any(|(ws, _)| {
+                        ws.tiles_with_render_positions()
+                            .any(|(tile, _, _)| tile.window().id() == &window_id)
+                    })
+                });
+                if !is_rendered {
+                    for mon in self.monitors_mut() {
+                        mon.dnd_scroll_gesture_end();
+                    }
+                    for ws in self.workspaces_mut() {
+                        ws.dnd_scroll_gesture_end();
+                    }
+                    return false;
+                }
+
                 let factor = RubberBand {
                     stiffness: 1.0,
                     limit: 0.5,
                 }
                 .band(sq_dist / INTERACTIVE_MOVE_START_THRESHOLD);
 
-                let (is_floating, source_workspace, tile, workspace_config) = self
+                let Some((is_floating, source_workspace, tile, workspace_config)) = self
                     .workspaces_mut()
                     .find(|ws| ws.has_window(&window_id))
-                    .map(|ws| {
+                    .and_then(|ws| {
                         let workspace_config = ws.layout_config().cloned().map(|c| (ws.id(), c));
-                        (
-                            ws.is_floating(&window_id),
-                            ws.id(),
-                            ws.tiles_mut()
-                                .find(|tile| *tile.window().id() == window_id)
-                                .unwrap(),
-                            workspace_config,
-                        )
+                        let is_floating = ws.is_floating(&window_id);
+                        let workspace_id = ws.id();
+                        let tile = ws
+                            .tiles_mut()
+                            .find(|tile| *tile.window().id() == window_id)?;
+                        Some((is_floating, workspace_id, tile, workspace_config))
                     })
-                    .unwrap();
+                else {
+                    for mon in self.monitors_mut() {
+                        mon.dnd_scroll_gesture_end();
+                    }
+                    for ws in self.workspaces_mut() {
+                        ws.dnd_scroll_gesture_end();
+                    }
+                    return false;
+                };
                 tile.interactive_move_offset = pointer_delta.upscale(factor);
 
                 // Put it back to be able to easily return.
@@ -6681,13 +6704,13 @@ impl<W: LayoutElement> Layout<W> {
                         .map(|rv| (mon, rv))
                 }) {
                     if mon.output() == &output {
-                        let (_, tile_offset, _) = ws
+                        if let Some((_, tile_offset, _)) = ws
                             .tiles_with_render_positions()
                             .find(|(tile, _, _)| tile.window().id() == window)
-                            .unwrap();
-
-                        let zoom = mon.overview_zoom();
-                        tile_pos = Some((ws_geo.loc + tile_offset.upscale(zoom), zoom));
+                        {
+                            let zoom = mon.overview_zoom();
+                            tile_pos = Some((ws_geo.loc + tile_offset.upscale(zoom), zoom));
+                        }
                     }
                 }
 

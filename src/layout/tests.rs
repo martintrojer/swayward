@@ -4285,6 +4285,35 @@ fn refreshing_after_hiding_an_interactive_move_does_not_panic() {
 }
 
 #[test]
+fn interactive_move_update_after_scratchpad_transfer_does_not_panic() {
+    check_ops([
+        Op::AddOutput(2),
+        Op::AddWindow {
+            params: TestWindowParams::new(1),
+        },
+        Op::AddWindow {
+            params: TestWindowParams::new(2),
+        },
+        Op::InteractiveMoveBegin {
+            window: 1,
+            output_idx: 2,
+            px: 0.,
+            py: 0.,
+        },
+        Op::MoveFocusedToScratchpad,
+        Op::ToggleFocusedContainerFloating,
+        Op::InteractiveMoveUpdate {
+            window: 1,
+            dx: 1.,
+            dy: 0.,
+            output_idx: 2,
+            px: 0.,
+            py: 0.,
+        },
+    ]);
+}
+
+#[test]
 fn unfloat_container_after_changing_its_layout_does_not_panic() {
     check_ops([
         Op::AddOutput(1),
