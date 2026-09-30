@@ -1,14 +1,13 @@
-//! niri config parsing.
+//! Parsing and resolved values for swayward's KDL configuration.
 //!
-//! The config can be constructed from multiple files (includes). To support this, many types are
-//! split into two. For example, `Layout` and `LayoutPart` where `Layout` is the final config and
-//! `LayoutPart` is one part parsed from one config file.
+//! [`Config`] is the resolved configuration used by the compositor. Types whose names end in
+//! `Part`, such as [`LayoutPart`], represent values from one file before includes and overrides are
+//! merged. Their `Option` fields distinguish an omitted setting from an explicit value.
 //!
-//! The convention for `Default` impls is to set the initial values before the parsing occurs.
-//! Then, parsing will update the values with those parsed from the config.
-//!
-//! The `Default` values match those from `default-config.kdl` in almost all cases, with a notable
-//! exception of `binds {}` and some window rules.
+//! Unless a field says otherwise, dimensions use logical pixels, durations with an `_ms` suffix
+//! use milliseconds, and proportions use values from `0.0` to `1.0`. `Default` supplies parser
+//! defaults before values from the config and its includes are merged. These defaults usually
+//! match `resources/default-config.kdl`; bindings and some window rules are exceptions.
 
 #[macro_use]
 extern crate tracing;

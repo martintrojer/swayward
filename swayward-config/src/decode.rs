@@ -35,6 +35,10 @@ struct SawMruBinds(Rc<Cell<bool>>);
 // merge the values into the config from the context as we go to support the positionality of
 // includes. The reason we need this type at all is because knuffel's only entry point that allows
 // setting default values on a context is `parse_with_context()` that needs a type to parse.
+/// Internal root decoder used to merge a KDL file into [`Config`].
+///
+/// This type is public only because `knuffel::parse_with_context` names it in the parser entry
+/// point. It carries no decoded data.
 pub struct ConfigPart;
 
 impl<S> knuffel::DecodeChildren<S> for ConfigPart
