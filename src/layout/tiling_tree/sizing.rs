@@ -113,13 +113,8 @@ impl<W: LayoutElement> TilingTree<W> {
                 layout, children, ..
             } => {
                 if matches!(layout, Layout::Tabbed | Layout::Stacked) {
-                    let focused_branch = self.focus.and_then(|focus| {
-                        children
-                            .iter()
-                            .find(|child| self.contains_node(**child, focus))
-                    });
-                    if let Some(child) = focused_branch.or_else(|| children.first()) {
-                        self.collect_visible(*child, visible);
+                    if let Some(child) = self.shown_child_in(id) {
+                        self.collect_visible(child, visible);
                     }
                 } else {
                     for child in children {

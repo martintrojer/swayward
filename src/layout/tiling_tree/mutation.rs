@@ -236,6 +236,24 @@ impl<W: LayoutElement> TilingTree<W> {
         }
     }
 
+    /// The child a tabbed or stacked `parent` shows: the one holding focus,
+    /// else the one its focus last visited. Sway arranges the container's
+    /// focused-inactive child (sway/desktop/transaction.c:468-470) and
+    /// disables the rest (:316-321).
+    pub(super) fn shown_child_in(&self, parent: NodeId) -> Option<NodeId> {
+        let TreeNode::Split { children, .. } = &self.nodes.get(&parent)?.value else {
+            return None;
+        };
+        self.focus
+            .and_then(|focus| {
+                children
+                    .iter()
+                    .copied()
+                    .find(|child| self.contains_node(*child, focus))
+            })
+            .or_else(|| self.focused_child_in(parent))
+    }
+
     pub(super) fn focused_child_in(&self, parent: NodeId) -> Option<NodeId> {
         let TreeNode::Split { children, .. } = &self.nodes.get(&parent)?.value else {
             return None;

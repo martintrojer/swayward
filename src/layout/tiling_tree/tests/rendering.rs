@@ -84,6 +84,40 @@ fn tab_and_stack_borders_follow_the_active_child() {
 }
 
 #[test]
+fn tab_container_shows_its_last_focused_child_when_focus_leaves_it() {
+    // H[T[A, B], C]: focusing B, then C, leaves the tabbed container showing
+    // B, the child its focus last visited. Sway arranges the
+    // focused-inactive child of a tabbed or stacked container
+    // (sway/desktop/transaction.c:468-470) and disables the others (:316-321).
+    for layout in [Layout::Tabbed, Layout::Stacked] {
+        let mut t = tree((1200., 800.), 0.);
+        let a = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+        let c = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+        t.set_focus(a);
+        t.split(a, layout);
+        let b = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+        t.set_focus(b);
+        t.set_focus(c);
+
+        assert_eq!(t.visible_leaves(), HashSet::from([b, c]), "{layout:?}");
+        let geometry = t.compute_geometry();
+        assert!(geometry.border_visible.contains(&b), "{layout:?}");
+        assert!(!geometry.border_visible.contains(&a), "{layout:?}");
+        assert_eq!(
+            geometry.leaf_boxes[&b], geometry.leaf_boxes[&a],
+            "{layout:?}"
+        );
+        let visible: Vec<_> = t
+            .tiles_with_render_positions()
+            .map(|(tile, _, visible)| (*tile.window().id(), visible))
+            .collect();
+        assert!(visible.contains(&(2, true)), "{layout:?}: {visible:?}");
+        assert!(visible.contains(&(1, false)), "{layout:?}: {visible:?}");
+        t.check_invariants();
+    }
+}
+
+#[test]
 fn tabbed_split_only_exposes_the_focused_branch() {
     let mut t = tree((1000., 800.), 0.);
     let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);

@@ -532,7 +532,7 @@ impl<W: LayoutElement> TilingTree<W> {
             let Some((area, _)) = self.tab_area(id, geometries) else {
                 continue;
             };
-            let active = self.active_tab(&children);
+            let active = self.shown_child_in(id);
             if self.tab_active.get(&id).copied() != active {
                 let movement = self.options.animations.window_movement.0;
                 let previous = self.tab_active.insert(id, active.unwrap_or(id));
@@ -587,16 +587,5 @@ impl<W: LayoutElement> TilingTree<W> {
                 self.scale,
             );
         }
-    }
-
-    fn active_tab(&self, children: &[NodeId]) -> Option<NodeId> {
-        self.focus
-            .and_then(|focus| {
-                children
-                    .iter()
-                    .find(|child| self.contains_node(**child, focus))
-            })
-            .copied()
-            .or_else(|| children.first().copied())
     }
 }
