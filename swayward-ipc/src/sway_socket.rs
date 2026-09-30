@@ -10,7 +10,7 @@ use std::path::Path;
 use std::{env, fmt};
 
 use crate::wire::{
-    decode_header, decode_header_raw, encode, WireError, HEADER_SIZE, MAX_PAYLOAD_SIZE,
+    checked_encode, decode_header, decode_header_raw, WireError, HEADER_SIZE, MAX_PAYLOAD_SIZE,
 };
 use crate::MessageType;
 
@@ -97,7 +97,8 @@ impl SwaySocket {
     /// it themselves, so this stays useful for message types whose schema this
     /// crate does not model.
     pub fn send(&mut self, msg_type: MessageType, payload: &str) -> Result<String, SwayError> {
-        self.stream.write_all(&encode(msg_type, payload))?;
+        self.stream
+            .write_all(&checked_encode(msg_type, payload).map_err(SwayError::Wire)?)?;
         self.stream.flush()?;
 
         let mut header = [0u8; HEADER_SIZE];

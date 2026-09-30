@@ -35,6 +35,8 @@ pub enum WireError {
         /// Maximum accepted payload length in bytes.
         maximum: u32,
     },
+    /// An outgoing payload whose length does not fit the u32 length field.
+    PayloadTooLong(usize),
 }
 
 impl fmt::Display for WireError {
@@ -45,6 +47,7 @@ impl fmt::Display for WireError {
             Self::FrameTooLarge { length, maximum } => {
                 write!(f, "IPC payload is {length} bytes, maximum is {maximum}")
             }
+            Self::PayloadTooLong(length) => write!(f, "IPC payload is too large: {length} bytes"),
         }
     }
 }
@@ -62,9 +65,28 @@ pub fn encode_raw(msg_type: u32, payload: &str) -> Vec<u8> {
 }
 
 pub fn encode_raw_bytes(msg_type: u32, payload: &[u8]) -> Vec<u8> {
+    encode_raw_with_length(msg_type, payload, payload.len() as u32)
+}
+
+/// Encodes an externally supplied payload, rejecting one whose length the u32
+/// wire field cannot represent instead of truncating it.
+pub fn checked_encode(msg_type: MessageType, payload: &str) -> Result<Vec<u8>, WireError> {
+    let len = checked_payload_length(payload.len())?;
+    Ok(encode_raw_with_length(
+        msg_type as u32,
+        payload.as_bytes(),
+        len,
+    ))
+}
+
+fn checked_payload_length(len: usize) -> Result<u32, WireError> {
+    len.try_into().map_err(|_| WireError::PayloadTooLong(len))
+}
+
+fn encode_raw_with_length(msg_type: u32, payload: &[u8], len: u32) -> Vec<u8> {
     let mut buf = Vec::with_capacity(HEADER_SIZE + payload.len());
     buf.extend_from_slice(MAGIC);
-    buf.extend_from_slice(&(payload.len() as u32).to_ne_bytes());
+    buf.extend_from_slice(&len.to_ne_bytes());
     buf.extend_from_slice(&msg_type.to_ne_bytes());
     buf.extend_from_slice(payload);
     buf
@@ -113,6 +135,15 @@ mod tests {
 
         assert_eq!(decode_header_raw(&hdr), Ok((event_type, 7)));
         assert!(decode_header(&hdr).is_err());
+    }
+
+    #[test]
+    fn checked_payload_length_rejects_values_above_the_wire_limit() {
+        assert_eq!(checked_payload_length(u32::MAX as usize), Ok(u32::MAX));
+        assert_eq!(
+            checked_payload_length(u32::MAX as usize + 1),
+            Err(WireError::PayloadTooLong(u32::MAX as usize + 1))
+        );
     }
 
     #[test]
