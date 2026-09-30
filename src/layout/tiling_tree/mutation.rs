@@ -82,7 +82,7 @@ impl<W: LayoutElement> TilingTree<W> {
         self.has_had_tile = true;
         tile.update_config(self.view_size, self.scale, self.options.clone());
         let pending_mode = tile.window().pending_sizing_mode();
-        let mapped_under_fullscreen = self.fullscreen_node().is_some();
+        let fullscreen = self.fullscreen_node();
         let previous_focus = self.focus;
         let old_geometries = self.compute_geometry();
         if !self.fullscreen_layout_wrappers.is_empty() {
@@ -96,6 +96,13 @@ impl<W: LayoutElement> TilingTree<W> {
         });
         let (parent, after) = self.insertion_slot(target);
         self.insert_child(parent, id, after);
+        // Sway never focuses a view mapped while its workspace has a
+        // fullscreen container (`should_focus`, `sway/tree/view.c:706-709`),
+        // but only a view added directly to the workspace stays unarranged:
+        // one added to a container is arranged with its siblings
+        // (`arrange_container(parent)`, `sway/tree/view.c:931-940`).
+        let focus_blocked = fullscreen.is_some();
+        let mapped_under_fullscreen = focus_blocked && parent == self.root;
         if parent == self.root {
             if let Some(layout) = match self.options.layout.workspace_layout {
                 swayward_config::WorkspaceLayout::Default => None,
@@ -105,11 +112,11 @@ impl<W: LayoutElement> TilingTree<W> {
                 self.wrap_node(id, layout);
             }
         }
-        if activate && !mapped_under_fullscreen {
+        if activate && !focus_blocked {
             self.set_focus_id(Some(id));
         } else if let Some(previous_focus) = previous_focus {
             self.focus_history.retain(|candidate| *candidate != id);
-            if mapped_under_fullscreen {
+            if focus_blocked {
                 self.focus_history.push(id);
             } else {
                 self.focus_history
@@ -119,16 +126,7 @@ impl<W: LayoutElement> TilingTree<W> {
         } else {
             self.set_focus_id(Some(id));
         }
-        if mapped_under_fullscreen
-            && !pending_mode.is_fullscreen()
-            && !matches!(
-                self.nodes.get(&parent).map(|node| &node.value),
-                Some(TreeNode::Split {
-                    layout: Layout::Tabbed | Layout::Stacked,
-                    ..
-                })
-            )
-        {
+        if mapped_under_fullscreen && !pending_mode.is_fullscreen() {
             self.mapped_under_fullscreen.insert(id);
         }
         if pending_mode.is_maximized() {

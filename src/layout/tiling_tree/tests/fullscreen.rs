@@ -80,6 +80,37 @@ fn nested_fullscreen_leaf_reports_area_relative_to_pending_parent() {
 #[test]
 fn mapping_under_fullscreen_tab_keeps_normal_ipc_state() {
     let mut t = tree((1920., 1080.), 0.);
+    t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let first = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.split(first, Layout::Tabbed);
+    t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+    assert!(t.set_node_fullscreen(first, Some(FullscreenMode::Workspace)));
+
+    let mapped = t.add_tile(tile(4, t.view_size()), InsertTarget::Focused);
+
+    assert!(!t.mapped_under_fullscreen.contains(&mapped));
+    let IpcNode::Split { children, .. } = t.ipc_tree() else {
+        panic!("IPC root must be a split");
+    };
+    let IpcNode::Split { children, .. } = &children[1] else {
+        panic!("tabbed container must be a split");
+    };
+    assert!(matches!(
+        &children[2],
+        IpcNode::Leaf {
+            percent: Some(1.),
+            mapped_under_fullscreen: false,
+            ..
+        }
+    ));
+    t.check_invariants();
+}
+
+// random seed 95 step 12: a view added directly to a tabbed workspace under
+// its fullscreen child stays unarranged, like any other workspace child.
+#[test]
+fn mapping_under_fullscreen_into_tabbed_workspace_stays_unarranged() {
+    let mut t = tree((1920., 1080.), 0.);
     let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
     t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
     t.set_layout(t.root, Layout::Tabbed);
@@ -87,14 +118,36 @@ fn mapping_under_fullscreen_tab_keeps_normal_ipc_state() {
 
     let mapped = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
 
+    assert!(t.mapped_under_fullscreen.contains(&mapped));
+    assert_eq!(t.focus(), Some(first));
+    t.check_invariants();
+}
+
+// random seeds 88 step 10 and 159 step 9: a view mapped into a split
+// container while the workspace is fullscreen is arranged with its siblings
+// (`arrange_container(parent)` in `view_map`) but does not take focus.
+#[test]
+fn mapping_into_container_under_fullscreen_is_arranged_without_focus() {
+    let mut t = tree((1920., 1080.), 0.);
+    t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let first = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.split(first, Layout::SplitV);
+    assert!(t.set_node_fullscreen(first, Some(FullscreenMode::Workspace)));
+
+    let mapped = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+
     assert!(!t.mapped_under_fullscreen.contains(&mapped));
+    assert_eq!(t.focus(), Some(first));
     let IpcNode::Split { children, .. } = t.ipc_tree() else {
         panic!("IPC root must be a split");
     };
+    let IpcNode::Split { children, .. } = &children[1] else {
+        panic!("first child must be the split container");
+    };
     assert!(matches!(
-        &children[2],
+        &children[1],
         IpcNode::Leaf {
-            percent: Some(1.),
+            percent: Some(0.5),
             mapped_under_fullscreen: false,
             ..
         }
