@@ -67,7 +67,9 @@ fn border_toggle_enters_csd_when_xdg_decoration_is_present() {
     tile.set_sway_border(BorderStyle::Toggle, None, true)
         .unwrap();
 
-    assert_eq!(tile.sway_border(), (BorderStyle::Csd, 2));
+    // The toggles keep the tile's default thickness (sway/commands/border.c:90-92).
+    let default_width = tile.sway_border_thickness().1;
+    assert_eq!(tile.sway_border(), (BorderStyle::Csd, default_width));
     assert_eq!(window.0.server_side_decoration_requested.get(), Some(false));
     assert!(!tile.has_sway_titlebar());
     assert_eq!(tile.effective_border_width(), None);

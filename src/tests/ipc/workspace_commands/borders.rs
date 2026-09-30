@@ -618,7 +618,9 @@ fn configured_border_width_matches_rendering_and_tree_for_tiled_and_floating_win
     .unwrap();
     let node = find_json_node(&tree, "floating_con", false).unwrap();
     assert_eq!(node["border"], "none");
-    assert_eq!(node["current_border_width"], 0);
+    // Sway reports the retained thickness whatever the style
+    // (sway/ipc-json.c:760-761).
+    assert_eq!(node["current_border_width"], 7);
 }
 
 #[test]
@@ -635,13 +637,29 @@ fn border_command_updates_rendering_and_tree_metadata() {
     window.ack_last_and_commit();
     f.double_roundtrip(client);
 
+    // The fixture's default thickness, which `border none` keeps.
+    let default_width = {
+        let swayward = f.swayward();
+        let mapped = swayward.layout.focus().unwrap();
+        let tile = swayward.layout.active_workspace().unwrap().tiles().next().unwrap();
+        assert_eq!(tile.window().id(), mapped.id());
+        i32::from(tile.sway_border_thickness().1)
+    };
     for (command, style, stored_width, ipc_width, has_titlebar, rendered_width) in [
-        ("border none", "none", 0, 2, false, None),
+        ("border none", "none", 0, default_width, false, None),
         ("border pixel 3", "pixel", 3, 3, false, Some(3.)),
         ("border normal 5", "normal", 5, 5, true, Some(5.)),
-        ("border toggle", "none", 0, 2, false, None),
-        ("border toggle", "pixel", 1, 1, false, Some(1.)),
-        ("border toggle", "normal", 2, 2, true, Some(2.)),
+        // Sway keeps the thickness across style changes without a width
+        // (cmd_border, sway/commands/border.c:90-92; oracle
+        // border_thickness_survives_style_changes). This test window has no
+        // xdg-decoration, so the first toggle goes straight to none.
+        ("border toggle", "none", 0, 5, false, None),
+        ("border toggle", "pixel", 5, 5, false, Some(5.)),
+        ("border toggle", "normal", 5, 5, true, Some(5.)),
+        ("border pixel 4", "pixel", 4, 4, false, Some(4.)),
+        ("border none", "none", 0, 4, false, None),
+        ("border pixel", "pixel", 4, 4, false, Some(4.)),
+        ("border normal", "normal", 4, 4, true, Some(4.)),
     ] {
         let outcome = crate::command::execute(f.niri_state(), command);
         assert!(outcome[0].success, "{command}: {outcome:?}");
@@ -686,7 +704,8 @@ fn border_command_updates_rendering_and_tree_metadata() {
     }
 
     assert!(crate::command::execute(f.niri_state(), "floating enable")[0].success);
-    for (command, style, width) in [("border none", "none", 0), ("border pixel 7", "pixel", 7)] {
+    // `border none` keeps the thickness the loop above left behind (4).
+    for (command, style, width) in [("border none", "none", 4), ("border pixel 7", "pixel", 7)] {
         assert!(crate::command::execute(f.niri_state(), command)[0].success);
         let swayward = f.swayward();
         let tree = serde_json::to_value(describe_tree(

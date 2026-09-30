@@ -214,7 +214,7 @@ pub(super) fn describe_workspace_node(context: WorkspaceNodeContext<'_>) -> Node
                         visible: true,
                     });
                     node.focused = active_window == Some(tile.window().id());
-                    let border = tile.sway_border();
+                    let border = tile.sway_border_thickness();
                     node.border = ipc_border(border.0);
                     node.current_border_width = i32::from(border.1);
                     let deco_rect = workspace.floating().ipc_decoration_rect(tile, &layout);

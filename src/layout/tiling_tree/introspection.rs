@@ -184,7 +184,7 @@ impl<W: LayoutElement> TilingTree<W> {
                             )
                         })
                     }),
-                border: tile.sway_border(),
+                border: tile.sway_border_thickness(),
                 border_edges: geometries
                     .border_edges
                     .get(&id)

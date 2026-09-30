@@ -1671,10 +1671,10 @@ citation = "tests/i3/t/168-regress-fullscreen-restart.t:26-32; src/tests/i3_conf
 [files."169-border-toggle.t"]
 assertions = 20
 tap_plan = 20
-pass = 18
+pass = 12
 reason = "i3_only_semantics"
 reason_verified = true
-note = "Fresh measurement after removing assertion interception: 18 pass, 2 documented skip. Raw TAP runs the real comparisons; each retained skip has an assertion-level sway citation below."
+note = "Fresh measurement: 12 pass, 8 documented skip. Assertions 3-4 use i3's legacy `border 1pixel` spelling, which sway rejects. Assertions 6, 8, 10, 12, 14 and 16 expect i3's width reset (0 for none, 2 for normal, 1 for pixel); sway keeps the stored thickness across style changes without a width and reports it whatever the style (`sway/sway/commands/border.c:90-92`; `sway/sway/ipc-json.c:760-761`). Captured from pinned sway as oracle scenario border_thickness_survives_style_changes."
 [[files."169-border-toggle.t".skip]]
 n = 3
 desc = "legacy `border 1pixel` reports pixel style"
@@ -1685,7 +1685,36 @@ n = 4
 desc = "legacy `border 1pixel` reports one-pixel width"
 reason = "Sway accepts `border pixel [<px>]`, not i3's legacy `1pixel` spelling."
 citation = "sway/sway/commands/border.c:58-91"
-note = "The fresh unchanged run emits no rejected-command diagnostic and reports exactly 18 passes and two explicit TAP skips. Runtime `border none`, `normal`, and `pixel` update rendering and GET_TREE metadata, including optional thickness. Assertions 3–4 use i3's legacy `border 1pixel` spelling, which sway rejects; sway's equivalent is `border pixel 1` (`sway/sway/commands/border.c:58-91`)."
+[[files."169-border-toggle.t".skip]]
+n = 6
+desc = "`border none` reports width 0"
+reason = "Sway writes border thickness only when `border` names a width; set_border and border_toggle never change it, so the width set before survives the style change."
+citation = "sway/sway/commands/border.c:90-92"
+[[files."169-border-toggle.t".skip]]
+n = 8
+desc = "`border normal` resets width to 2"
+reason = "Sway writes border thickness only when `border` names a width; set_border and border_toggle never change it, so the width set before survives the style change."
+citation = "sway/sway/commands/border.c:90-92"
+[[files."169-border-toggle.t".skip]]
+n = 10
+desc = "`border toggle` to none reports width 0"
+reason = "Sway writes border thickness only when `border` names a width; set_border and border_toggle never change it, so the width set before survives the style change."
+citation = "sway/sway/commands/border.c:90-92"
+[[files."169-border-toggle.t".skip]]
+n = 12
+desc = "`border toggle` to pixel resets width to 1"
+reason = "Sway writes border thickness only when `border` names a width; set_border and border_toggle never change it, so the width set before survives the style change."
+citation = "sway/sway/commands/border.c:90-92"
+[[files."169-border-toggle.t".skip]]
+n = 14
+desc = "`border toggle` to normal resets width to 2"
+reason = "Sway writes border thickness only when `border` names a width; set_border and border_toggle never change it, so the width set before survives the style change."
+citation = "sway/sway/commands/border.c:90-92"
+[[files."169-border-toggle.t".skip]]
+n = 16
+desc = "`border toggle 10` to none reports width 0"
+reason = "Sway writes border thickness only when `border` names a width; set_border and border_toggle never change it, so the width set before survives the style change."
+citation = "sway/sway/commands/border.c:90-92"
 
 [files."170-force_focus_wrapping.t"]
 assertions = 12

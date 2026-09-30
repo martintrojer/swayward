@@ -1807,6 +1807,15 @@ impl<W: LayoutElement> Tile<W> {
         (style, if style == BorderStyle::None { 0 } else { width })
     }
 
+    /// The stored border style and thickness, keeping the thickness under
+    /// `border none`. Sway reports it as GET_TREE `current_border_width`
+    /// (`c->current.border_thickness`, sway/ipc-json.c:760-761) whatever the
+    /// style.
+    pub fn sway_border_thickness(&self) -> (BorderStyle, u16) {
+        self.sway_border
+            .unwrap_or_else(|| self.default_sway_border())
+    }
+
     /// The border a window gets when no rule or command has set one.
     ///
     /// sway's `default_border` (`sway/sway/commands/default_border.c`).
@@ -1850,7 +1859,9 @@ impl<W: LayoutElement> Tile<W> {
         floating: bool,
     ) -> Result<f64, &'static str> {
         let old_width = self.effective_border_width().unwrap_or(0.);
-        let (current_style, current_width) = self.sway_border.unwrap_or((BorderStyle::Normal, 2));
+        let (current_style, current_width) = self
+            .sway_border
+            .unwrap_or_else(|| self.default_sway_border());
         let style = match style {
             BorderStyle::Toggle if self.sway_uses_csd => BorderStyle::None,
             BorderStyle::Toggle => match current_style {
@@ -1872,11 +1883,10 @@ impl<W: LayoutElement> Tile<W> {
         } else {
             style
         };
-        let width = width.unwrap_or(match style {
-            BorderStyle::Normal => 2,
-            BorderStyle::Pixel => 1,
-            BorderStyle::None | BorderStyle::Csd | BorderStyle::Toggle => current_width,
-        });
+        // Sway stores a thickness only when the command names one
+        // (cmd_border, sway/commands/border.c:90-92); a style change alone
+        // keeps it. i3 resets it to 2 or 1 instead.
+        let width = width.unwrap_or(current_width);
         self.sway_border = Some((style, width));
         self.update_border_config();
         Ok(self.effective_border_width().unwrap_or(0.) - old_width)

@@ -208,10 +208,7 @@ pub(super) fn empty_tiling_node(rect: Rect) -> Node {
 }
 
 pub(super) fn ipc_border_width(border: (swayward_ipc::command::BorderStyle, u16)) -> i32 {
-    match border.0 {
-        swayward_ipc::command::BorderStyle::None => 2,
-        _ => i32::from(border.1),
-    }
+    i32::from(border.1)
 }
 
 pub(super) fn ipc_border(style: swayward_ipc::command::BorderStyle) -> NodeBorder {
