@@ -51,26 +51,47 @@ struct Assignment {
     ipc_origin: Point<f64, Logical>,
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn compute<W: LayoutElement>(
-    nodes: &HashMap<NodeId, Node<W>>,
-    title_formats: &HashMap<NodeId, String>,
-    root: NodeId,
-    view_size: Size<f64, Logical>,
-    parent_area: Rectangle<f64, Logical>,
-    scale: f64,
-    struts: Struts,
-    gaps: f64,
-    outer_gaps_configured: bool,
-    gaps_to_edge: bool,
-    titlebar_height: f64,
-    fullscreen: &HashSet<NodeId>,
-    mapped_under_fullscreen: &HashSet<NodeId>,
-    hide_edge_borders: HideEdgeBorders,
-    smart_borders: SmartBorders,
-    visible_leaves: &HashSet<NodeId>,
-    draw_uncovered_top_border: bool,
-) -> Geometry<W::Id> {
+/// Everything one tree geometry pass reads, borrowed from the tree and its layout options.
+pub(crate) struct GeometryInput<'a, W: LayoutElement> {
+    pub nodes: &'a HashMap<NodeId, Node<W>>,
+    pub title_formats: &'a HashMap<NodeId, String>,
+    pub root: NodeId,
+    pub view_size: Size<f64, Logical>,
+    pub parent_area: Rectangle<f64, Logical>,
+    pub scale: f64,
+    pub struts: Struts,
+    pub gaps: f64,
+    pub outer_gaps_configured: bool,
+    pub gaps_to_edge: bool,
+    pub titlebar_height: f64,
+    pub fullscreen: &'a HashSet<NodeId>,
+    pub mapped_under_fullscreen: &'a HashSet<NodeId>,
+    pub hide_edge_borders: HideEdgeBorders,
+    pub smart_borders: SmartBorders,
+    pub visible_leaves: &'a HashSet<NodeId>,
+    pub draw_uncovered_top_border: bool,
+}
+
+pub(crate) fn compute<W: LayoutElement>(input: GeometryInput<'_, W>) -> Geometry<W::Id> {
+    let GeometryInput {
+        nodes,
+        title_formats,
+        root,
+        view_size,
+        parent_area,
+        scale,
+        struts,
+        gaps,
+        outer_gaps_configured,
+        gaps_to_edge,
+        titlebar_height,
+        fullscreen,
+        mapped_under_fullscreen,
+        hide_edge_borders,
+        smart_borders,
+        visible_leaves,
+        draw_uncovered_top_border,
+    } = input;
     let only_visible_view = visible_leaves.len() == 1;
     let mut result = Geometry {
         leaf_boxes: HashMap::new(),
@@ -246,25 +267,32 @@ pub(super) fn apply_struts(
     working_area
 }
 
-#[allow(clippy::too_many_arguments)]
 fn assign_leaf<W: LayoutElement>(
+    context: &AssignContext<'_, W>,
     tile: &crate::layout::tile::Tile<W>,
-    id: NodeId,
-    mut rect: Rectangle<f64, Logical>,
-    titlebar_height: f64,
-    fullscreen: &HashSet<NodeId>,
-    covering_titlebar: Option<Rectangle<f64, Logical>>,
-    decorated_by_parent: bool,
-    decorated_corners: DecoratedCorners,
-    ipc_origin: Point<f64, Logical>,
-    workspace_area: Rectangle<f64, Logical>,
-    gaps_to_edge: bool,
-    hide_edge_borders: HideEdgeBorders,
-    smart_borders: SmartBorders,
-    only_visible_view: bool,
-    draw_uncovered_top_border: bool,
+    assignment: Assignment,
     result: &mut Geometry<W::Id>,
 ) {
+    let Assignment {
+        id,
+        mut rect,
+        covering_titlebar,
+        decorated_by_parent,
+        decorated_corners,
+        ipc_origin,
+        ..
+    } = assignment;
+    let &AssignContext {
+        titlebar_height,
+        fullscreen,
+        workspace_area,
+        gaps_to_edge,
+        hide_edge_borders,
+        smart_borders,
+        only_visible_view,
+        draw_uncovered_top_border,
+        ..
+    } = context;
     let mut edges = ResizeEdge::all();
     if matches!(
         hide_edge_borders,
@@ -381,17 +409,30 @@ fn assign_leaf<W: LayoutElement>(
     result.leaf_contents.insert(id, rect);
 }
 
-#[allow(clippy::too_many_arguments)]
+/// A horizontal or vertical split container being laid out.
+struct LinearSplit<'a> {
+    layout: Layout,
+    children: &'a [NodeId],
+    percents: &'a [f64],
+}
+
 fn assign_linear_split<W: LayoutElement>(
     context: &AssignContext<'_, W>,
-    layout: Layout,
-    children: &[NodeId],
-    percents: &[f64],
-    rect: Rectangle<f64, Logical>,
-    decorated_corners: DecoratedCorners,
-    suppress_gaps: bool,
+    split: LinearSplit<'_>,
+    assignment: Assignment,
     result: &mut Geometry<W::Id>,
 ) {
+    let LinearSplit {
+        layout,
+        children,
+        percents,
+    } = split;
+    let Assignment {
+        rect,
+        decorated_corners,
+        suppress_gaps,
+        ..
+    } = assignment;
     let gaps = context.gaps;
     let mapped_under_fullscreen = context.mapped_under_fullscreen;
 
@@ -573,48 +614,12 @@ fn assign<W: LayoutElement>(
     assignment: Assignment,
     result: &mut Geometry<W::Id>,
 ) {
-    let Assignment {
-        id,
-        rect,
-        covering_titlebar,
-        decorated_by_parent,
-        decorated_corners,
-        suppress_gaps,
-        ipc_origin,
-    } = assignment;
-    let &AssignContext {
-        nodes,
-        titlebar_height,
-        fullscreen,
-        workspace_area,
-        gaps_to_edge,
-        hide_edge_borders,
-        smart_borders,
-        only_visible_view,
-        draw_uncovered_top_border,
-        ..
-    } = context;
-    let Some(node) = nodes.get(&id) else { return };
-    result.ipc_nodes.insert(id, rect);
+    let Some(node) = context.nodes.get(&assignment.id) else {
+        return;
+    };
+    result.ipc_nodes.insert(assignment.id, assignment.rect);
     match &node.value {
-        TreeNode::Leaf { tile } => assign_leaf(
-            tile,
-            id,
-            rect,
-            titlebar_height,
-            fullscreen,
-            covering_titlebar,
-            decorated_by_parent,
-            decorated_corners,
-            ipc_origin,
-            workspace_area,
-            gaps_to_edge,
-            hide_edge_borders,
-            smart_borders,
-            only_visible_view,
-            draw_uncovered_top_border,
-            result,
-        ),
+        TreeNode::Leaf { tile } => assign_leaf(context, tile, assignment, result),
         TreeNode::Split {
             layout,
             children,
@@ -622,17 +627,22 @@ fn assign<W: LayoutElement>(
         } => match layout {
             Layout::SplitH | Layout::SplitV => assign_linear_split(
                 context,
-                *layout,
-                children,
-                percents,
-                rect,
-                decorated_corners,
-                suppress_gaps,
+                LinearSplit {
+                    layout: *layout,
+                    children,
+                    percents,
+                },
+                assignment,
                 result,
             ),
-            Layout::Tabbed | Layout::Stacked => {
-                assign_strip(context, *layout, children, rect, decorated_corners, result)
-            }
+            Layout::Tabbed | Layout::Stacked => assign_strip(
+                context,
+                *layout,
+                children,
+                assignment.rect,
+                assignment.decorated_corners,
+                result,
+            ),
         },
     }
 }

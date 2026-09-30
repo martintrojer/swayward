@@ -8,29 +8,29 @@ impl<W: LayoutElement> TilingTree<W> {
     pub(super) fn compute_geometry(&self) -> geometry::Geometry<W::Id> {
         let fullscreen = self.fullscreen_node().into_iter().collect();
         let visible_leaves = self.visible_leaves();
-        geometry::compute(
-            &self.nodes,
-            &self.title_formats,
-            self.root,
-            self.view_size,
-            self.parent_area,
-            self.scale,
-            if self.resident_root {
+        geometry::compute(geometry::GeometryInput {
+            nodes: &self.nodes,
+            title_formats: &self.title_formats,
+            root: self.root,
+            view_size: self.view_size,
+            parent_area: self.parent_area,
+            scale: self.scale,
+            struts: if self.resident_root {
                 Default::default()
             } else {
                 self.options.layout.struts
             },
-            self.gaps,
-            self.options.layout.outer_gaps_configured || self.resident_root,
-            self.gaps_to_edge,
-            self.titlebar_height,
-            &fullscreen,
-            &self.mapped_under_fullscreen,
-            self.options.layout.hide_edge_borders,
-            self.options.layout.smart_borders,
-            &visible_leaves,
-            self.options.layout.draw_uncovered_top_border,
-        )
+            gaps: self.gaps,
+            outer_gaps_configured: self.options.layout.outer_gaps_configured || self.resident_root,
+            gaps_to_edge: self.gaps_to_edge,
+            titlebar_height: self.titlebar_height,
+            fullscreen: &fullscreen,
+            mapped_under_fullscreen: &self.mapped_under_fullscreen,
+            hide_edge_borders: self.options.layout.hide_edge_borders,
+            smart_borders: self.options.layout.smart_borders,
+            visible_leaves: &visible_leaves,
+            draw_uncovered_top_border: self.options.layout.draw_uncovered_top_border,
+        })
     }
 
     pub(super) fn animate_geometry_changes(

@@ -655,24 +655,24 @@ impl State {
                         &mut this.swayward.suppressed_keys,
                         &mut this.swayward.held_release_bind,
                         bindings,
-                        mod_key,
-                        &input_device,
-                        key_code,
-                        modified,
-                        raw,
-                        group,
+                        KeyEventContext {
+                            input_device: &input_device,
+                            key_code,
+                            modified,
+                            raw,
+                            group,
+                            code_modifiers,
+                            raw_modifiers,
+                            translated_modifiers,
+                        },
                         pressed,
-                        code_modifiers,
-                        raw_modifiers,
-                        translated_modifiers,
                         &this.swayward.screenshot_ui,
-                        locked,
-                        this.swayward
-                            .config
-                            .borrow()
-                            .input
-                            .disable_power_key_handling,
-                        is_inhibiting_shortcuts,
+                        BindingPolicy {
+                            mod_key,
+                            locked,
+                            inhibited: is_inhibiting_shortcuts,
+                            disable_power_key_handling: config.input.disable_power_key_handling,
+                        },
                     )
                 };
 
@@ -812,9 +812,5 @@ impl State {
     }
 }
 
-/// Check whether the key should be intercepted and mark intercepted
-/// pressed keys as `suppressed`, thus preventing `releases` corresponding
-/// to them from being delivered.
-#[allow(clippy::too_many_arguments)]
 #[cfg(test)]
 mod tests;

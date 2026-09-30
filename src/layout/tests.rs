@@ -2629,11 +2629,13 @@ fn floating_tree_entry_routes_geometry_focus_hit_testing_and_lifecycle() {
         workspace.add_tile(
             tile,
             WorkspaceAddWindowTarget::Auto,
-            ActivateWindow::Yes,
-            TiledWidth::Proportion(0.5),
-            false,
-            false,
-            None,
+            super::workspace::AddTileOptions {
+                activate: ActivateWindow::Yes,
+                width: TiledWidth::Proportion(0.5),
+                is_full_width: false,
+                is_floating: false,
+                anim: None,
+            },
         );
     }
     let first = workspace.tiling().node_for_window(&1).unwrap();
@@ -2715,11 +2717,13 @@ fn moving_the_only_child_of_a_floating_group_keeps_the_root_position() {
         workspace.add_tile(
             tile,
             WorkspaceAddWindowTarget::Auto,
-            ActivateWindow::Yes,
-            TiledWidth::Proportion(0.5),
-            false,
-            false,
-            None,
+            super::workspace::AddTileOptions {
+                activate: ActivateWindow::Yes,
+                width: TiledWidth::Proportion(0.5),
+                is_full_width: false,
+                is_floating: false,
+                anim: None,
+            },
         );
     }
     let second = workspace.tiling().node_for_window(&2).unwrap();
@@ -2782,11 +2786,13 @@ fn directional_move_reorders_a_floating_group_child() {
         workspace.add_tile(
             tile,
             WorkspaceAddWindowTarget::Auto,
-            ActivateWindow::Yes,
-            TiledWidth::Proportion(0.5),
-            false,
-            false,
-            None,
+            super::workspace::AddTileOptions {
+                activate: ActivateWindow::Yes,
+                width: TiledWidth::Proportion(0.5),
+                is_full_width: false,
+                is_floating: false,
+                anim: None,
+            },
         );
     }
     let second = workspace.tiling().node_for_window(&2).unwrap();
@@ -2844,11 +2850,13 @@ fn removing_a_floating_tree_leaf_uses_the_resident_tree() {
         workspace.add_tile(
             tile,
             WorkspaceAddWindowTarget::Auto,
-            ActivateWindow::Yes,
-            TiledWidth::Proportion(0.5),
-            false,
-            false,
-            None,
+            super::workspace::AddTileOptions {
+                activate: ActivateWindow::Yes,
+                width: TiledWidth::Proportion(0.5),
+                is_full_width: false,
+                is_floating: false,
+                anim: None,
+            },
         );
     }
     workspace.tiling_mut().focus_root();
@@ -2905,11 +2913,13 @@ fn floating_tree_root_tracks_output_geometry_changes() {
         workspace.add_tile(
             tile,
             WorkspaceAddWindowTarget::Auto,
-            ActivateWindow::Yes,
-            TiledWidth::Proportion(0.5),
-            false,
-            false,
-            None,
+            super::workspace::AddTileOptions {
+                activate: ActivateWindow::Yes,
+                width: TiledWidth::Proportion(0.5),
+                is_full_width: false,
+                is_floating: false,
+                anim: None,
+            },
         );
     }
     workspace.tiling_mut().focus_root();
@@ -2971,11 +2981,13 @@ fn floating_group_workspace() -> (Workspace<TestWindow>, tiling_tree::NodeId) {
         workspace.add_tile(
             tile,
             WorkspaceAddWindowTarget::Auto,
-            ActivateWindow::Yes,
-            TiledWidth::Proportion(0.5),
-            false,
-            false,
-            None,
+            super::workspace::AddTileOptions {
+                activate: ActivateWindow::Yes,
+                width: TiledWidth::Proportion(0.5),
+                is_full_width: false,
+                is_floating: false,
+                anim: None,
+            },
         );
     }
     workspace.tiling_mut().focus_root();
@@ -3061,11 +3073,13 @@ fn fullscreen_targets_a_node_inside_a_floating_tree() {
         workspace.add_tile(
             tile,
             WorkspaceAddWindowTarget::Auto,
-            ActivateWindow::Yes,
-            TiledWidth::Proportion(0.5),
-            false,
-            false,
-            None,
+            super::workspace::AddTileOptions {
+                activate: ActivateWindow::Yes,
+                width: TiledWidth::Proportion(0.5),
+                is_full_width: false,
+                is_floating: false,
+                anim: None,
+            },
         );
     }
     workspace.tiling_mut().focus_root();
@@ -3156,11 +3170,13 @@ fn floating_tree_root_survives_workspace_and_output_moves() {
         source.add_tile(
             tile,
             WorkspaceAddWindowTarget::Auto,
-            ActivateWindow::Yes,
-            TiledWidth::Proportion(0.5),
-            false,
-            false,
-            None,
+            super::workspace::AddTileOptions {
+                activate: ActivateWindow::Yes,
+                width: TiledWidth::Proportion(0.5),
+                is_full_width: false,
+                is_floating: false,
+                anim: None,
+            },
         );
     }
     let first = source.tiling().node_for_window(&1).unwrap();
@@ -3342,11 +3358,13 @@ fn mixed_layer_selection_filters_one_global_focus_order() {
         workspace.add_tile(
             tile,
             WorkspaceAddWindowTarget::Auto,
-            ActivateWindow::Yes,
-            TiledWidth::Proportion(0.5),
-            false,
-            false,
-            None,
+            super::workspace::AddTileOptions {
+                activate: ActivateWindow::Yes,
+                width: TiledWidth::Proportion(0.5),
+                is_full_width: false,
+                is_floating: false,
+                anim: None,
+            },
         );
         if id >= 3 {
             workspace.toggle_window_floating(Some(&id));

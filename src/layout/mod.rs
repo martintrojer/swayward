@@ -1287,17 +1287,17 @@ impl<W: LayoutElement> Layout<W> {
 
                 let ws_id_to_activate = self.last_active_workspace_id.remove(&output.name());
 
-                let mut monitor = Monitor::new(
+                let mut monitor = Monitor::new(monitor::MonitorInit {
                     output,
                     workspaces,
                     ws_id_to_activate,
-                    initial_workspace_name.clone(),
+                    initial_workspace_name: initial_workspace_name.clone(),
                     initial_workspace_number,
                     preserve_initial_auto_layout,
-                    self.clock.clone(),
-                    self.options.clone(),
+                    clock: self.clock.clone(),
+                    base_options: self.options.clone(),
                     layout_config,
-                );
+                });
                 monitor.overview_open = self.overview_open;
                 monitor.set_overview_progress(self.overview_progress.as_ref());
                 // Monitor::new adopts workspaces reclaimed from the primary
@@ -1326,17 +1326,17 @@ impl<W: LayoutElement> Layout<W> {
             MonitorSet::NoOutputs { workspaces } => {
                 let ws_id_to_activate = self.last_active_workspace_id.remove(&output.name());
 
-                let mut monitor = Monitor::new(
+                let mut monitor = Monitor::new(monitor::MonitorInit {
                     output,
                     workspaces,
                     ws_id_to_activate,
                     initial_workspace_name,
                     initial_workspace_number,
                     preserve_initial_auto_layout,
-                    self.clock.clone(),
-                    self.options.clone(),
+                    clock: self.clock.clone(),
+                    base_options: self.options.clone(),
                     layout_config,
-                );
+                });
                 monitor.overview_open = self.overview_open;
                 monitor.set_overview_progress(self.overview_progress.as_ref());
 
@@ -1416,11 +1416,13 @@ impl<W: LayoutElement> Layout<W> {
                         target_workspace.add_tile(
                             removed.tile,
                             WorkspaceAddWindowTarget::Auto,
-                            ActivateWindow::No,
-                            removed.width,
-                            removed.is_full_width,
-                            true,
-                            None,
+                            workspace::AddTileOptions {
+                                activate: ActivateWindow::No,
+                                width: removed.width,
+                                is_full_width: removed.is_full_width,
+                                is_floating: true,
+                                anim: None,
+                            },
                         );
                     }
                     primary.append_workspaces(workspaces);
@@ -1642,11 +1644,13 @@ impl<W: LayoutElement> Layout<W> {
                 ws.add_tile(
                     tile,
                     target,
-                    activate,
-                    scrolling_width,
-                    is_full_width,
-                    is_floating,
-                    None,
+                    workspace::AddTileOptions {
+                        activate,
+                        width: scrolling_width,
+                        is_full_width,
+                        is_floating,
+                        anim: None,
+                    },
                 );
 
                 // Set the default height for scrolling windows.
@@ -4254,11 +4258,13 @@ impl<W: LayoutElement> Layout<W> {
                 monitor.workspaces[target_idx].add_tile(
                     removed.tile,
                     WorkspaceAddWindowTarget::Auto,
-                    ActivateWindow::Yes,
-                    removed.width,
-                    removed.is_full_width,
-                    true,
-                    None,
+                    workspace::AddTileOptions {
+                        activate: ActivateWindow::Yes,
+                        width: removed.width,
+                        is_full_width: removed.is_full_width,
+                        is_floating: true,
+                        anim: None,
+                    },
                 );
             }
             if monitor.workspace_switch.is_none() {
@@ -4438,11 +4444,13 @@ impl<W: LayoutElement> Layout<W> {
         workspace.add_tile(
             removed.tile,
             WorkspaceAddWindowTarget::Auto,
-            ActivateWindow::Yes,
-            removed.width,
-            removed.is_full_width,
-            true,
-            None,
+            workspace::AddTileOptions {
+                activate: ActivateWindow::Yes,
+                width: removed.width,
+                is_full_width: removed.is_full_width,
+                is_floating: true,
+                anim: None,
+            },
         );
         Some(shown)
     }
@@ -7319,11 +7327,13 @@ impl<W: LayoutElement> Layout<W> {
                 ws.add_tile(
                     move_.tile,
                     WorkspaceAddWindowTarget::Auto,
-                    ActivateWindow::Yes,
-                    move_.width,
-                    move_.is_full_width,
-                    move_.is_floating,
-                    None,
+                    workspace::AddTileOptions {
+                        activate: ActivateWindow::Yes,
+                        width: move_.width,
+                        is_full_width: move_.is_full_width,
+                        is_floating: move_.is_floating,
+                        anim: None,
+                    },
                 );
             }
         }

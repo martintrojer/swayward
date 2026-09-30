@@ -146,13 +146,15 @@ pub fn refresh(state: &mut State) {
             } else {
                 refresh_toplevel(
                     protocol_state,
-                    wl_surface,
-                    mapped.id(),
-                    role,
-                    cur,
-                    output,
-                    false,
-                    minimized,
+                    ToplevelSnapshot {
+                        wl_surface,
+                        identifier: mapped.id(),
+                        role,
+                        current: cur,
+                        output,
+                        has_focus: false,
+                        minimized,
+                    },
                 );
             }
         });
@@ -170,13 +172,15 @@ pub fn refresh(state: &mut State) {
 
             refresh_toplevel(
                 protocol_state,
-                wl_surface,
-                identifier,
-                role,
-                cur,
-                output.as_ref(),
-                true,
-                minimized,
+                ToplevelSnapshot {
+                    wl_surface,
+                    identifier,
+                    role,
+                    current: cur,
+                    output: output.as_ref(),
+                    has_focus: true,
+                    minimized,
+                },
             );
         });
     }
@@ -207,19 +211,29 @@ pub fn on_output_bound(state: &mut State, output: &Output, wl_output: &WlOutput)
     }
 }
 
-// Inherited signature, now carrying the scratchpad-minimized flag as well. Each
-// argument is an independent piece of protocol state with no natural grouping.
-#[allow(clippy::too_many_arguments)]
-fn refresh_toplevel(
-    protocol_state: &mut ForeignToplevelManagerState,
-    wl_surface: &WlSurface,
+struct ToplevelSnapshot<'a> {
+    wl_surface: &'a WlSurface,
     identifier: MappedId,
-    role: &XdgToplevelSurfaceRoleAttributes,
-    current: &ToplevelState,
-    output: Option<&Output>,
+    role: &'a XdgToplevelSurfaceRoleAttributes,
+    current: &'a ToplevelState,
+    output: Option<&'a Output>,
     has_focus: bool,
     minimized: bool,
+}
+
+fn refresh_toplevel(
+    protocol_state: &mut ForeignToplevelManagerState,
+    snapshot: ToplevelSnapshot<'_>,
 ) {
+    let ToplevelSnapshot {
+        wl_surface,
+        identifier,
+        role,
+        current,
+        output,
+        has_focus,
+        minimized,
+    } = snapshot;
     let states = to_state_vec(&current.states, has_focus, minimized);
 
     match protocol_state.toplevels.entry(wl_surface.clone()) {

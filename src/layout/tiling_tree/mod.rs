@@ -78,6 +78,18 @@ pub struct DetachedSlot {
     focused: bool,
 }
 
+/// The fields of [`DetachedNode::Split`], passed whole when a split is reattached.
+struct DetachedSplit<W: LayoutElement> {
+    old_id: NodeId,
+    layout: Layout,
+    children: Vec<DetachedNode<W>>,
+    percents: Vec<f64>,
+    previous_layout: Option<Layout>,
+    title_format: Option<String>,
+    pending_mode: Option<PendingMode>,
+    sticky: bool,
+}
+
 #[derive(Debug)]
 enum DetachedNode<W: LayoutElement> {
     Split {

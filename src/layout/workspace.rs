@@ -207,6 +207,14 @@ pub enum WorkspaceAddWindowTarget<'a, W: LayoutElement> {
     NextTo(&'a W::Id),
 }
 
+pub struct AddTileOptions {
+    pub activate: ActivateWindow,
+    pub width: TiledWidth,
+    pub is_full_width: bool,
+    pub is_floating: bool,
+    pub anim: Option<swayward_config::Animation>,
+}
+
 impl OutputId {
     pub fn new(output: &Output) -> Self {
         let output_name = output.user_data().get::<OutputName>().unwrap();
@@ -963,17 +971,19 @@ impl<W: LayoutElement> Workspace<W> {
         )
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn add_tile(
         &mut self,
         mut tile: Tile<W>,
         target: WorkspaceAddWindowTarget<W>,
-        activate: ActivateWindow,
-        width: TiledWidth,
-        is_full_width: bool,
-        is_floating: bool,
-        anim: Option<swayward_config::Animation>,
+        options: AddTileOptions,
     ) {
+        let AddTileOptions {
+            activate,
+            width,
+            is_full_width,
+            is_floating,
+            anim,
+        } = options;
         self.enter_output_for_window(tile.window());
         tile.restore_to_floating = is_floating;
 

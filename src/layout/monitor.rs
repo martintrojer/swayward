@@ -293,19 +293,31 @@ impl From<&super::OverviewProgress> for OverviewProgress {
     }
 }
 
+pub struct MonitorInit<W: LayoutElement> {
+    pub output: Output,
+    pub workspaces: Vec<Workspace<W>>,
+    pub ws_id_to_activate: Option<WorkspaceId>,
+    pub initial_workspace_name: Option<String>,
+    pub initial_workspace_number: Option<i32>,
+    pub preserve_initial_auto_layout: bool,
+    pub clock: Clock,
+    pub base_options: Rc<Options>,
+    pub layout_config: Option<LayoutPart>,
+}
+
 impl<W: LayoutElement> Monitor<W> {
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        output: Output,
-        mut workspaces: Vec<Workspace<W>>,
-        ws_id_to_activate: Option<WorkspaceId>,
-        initial_workspace_name: Option<String>,
-        initial_workspace_number: Option<i32>,
-        preserve_initial_auto_layout: bool,
-        clock: Clock,
-        base_options: Rc<Options>,
-        layout_config: Option<LayoutPart>,
-    ) -> Self {
+    pub fn new(init: MonitorInit<W>) -> Self {
+        let MonitorInit {
+            output,
+            mut workspaces,
+            ws_id_to_activate,
+            initial_workspace_name,
+            initial_workspace_number,
+            preserve_initial_auto_layout,
+            clock,
+            base_options,
+            layout_config,
+        } = init;
         let options =
             Rc::new(Options::clone(&base_options).with_merged_layout(layout_config.as_ref()));
 
@@ -755,11 +767,13 @@ impl<W: LayoutElement> Monitor<W> {
         workspace.add_tile(
             tile,
             target,
-            activate,
-            width,
-            is_full_width,
-            is_floating,
-            anim,
+            super::workspace::AddTileOptions {
+                activate,
+                width,
+                is_full_width,
+                is_floating,
+                anim,
+            },
         );
 
         // After adding a new window, workspace becomes this output's own.
@@ -811,11 +825,13 @@ impl<W: LayoutElement> Monitor<W> {
             target.add_tile(
                 removed.tile,
                 WorkspaceAddWindowTarget::Auto,
-                ActivateWindow::No,
-                removed.width,
-                removed.is_full_width,
-                true,
-                None,
+                super::workspace::AddTileOptions {
+                    activate: ActivateWindow::No,
+                    width: removed.width,
+                    is_full_width: removed.is_full_width,
+                    is_floating: true,
+                    anim: None,
+                },
             );
         }
         if target_was_empty {

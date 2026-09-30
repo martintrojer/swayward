@@ -191,14 +191,16 @@ impl<W: LayoutElement> TilingTree<W> {
                     sticky,
                 } => {
                     self.attach_split_to_empty_root(
-                        old_id,
-                        layout,
-                        children,
-                        detached_percents,
-                        previous_layout,
-                        title_format,
-                        pending_mode,
-                        sticky,
+                        DetachedSplit {
+                            old_id,
+                            layout,
+                            children,
+                            percents: detached_percents,
+                            previous_layout,
+                            title_format,
+                            pending_mode,
+                            sticky,
+                        },
                         focus_history,
                         &mut remapped,
                     );
@@ -237,20 +239,22 @@ impl<W: LayoutElement> TilingTree<W> {
         (id, remapped)
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn attach_split_to_empty_root(
         &mut self,
-        old_id: NodeId,
-        layout: Layout,
-        children: Vec<DetachedNode<W>>,
-        detached_percents: Vec<f64>,
-        previous_layout: Option<Layout>,
-        title_format: Option<String>,
-        pending_mode: Option<PendingMode>,
-        sticky: bool,
+        split: DetachedSplit<W>,
         focus_history: Vec<W::Id>,
         remapped: &mut Vec<(NodeId, NodeId)>,
     ) {
+        let DetachedSplit {
+            old_id,
+            layout,
+            children,
+            percents: detached_percents,
+            previous_layout,
+            title_format,
+            pending_mode,
+            sticky,
+        } = split;
         if old_id != self.root {
             remapped.push((old_id, self.root));
         }
@@ -365,14 +369,16 @@ impl<W: LayoutElement> TilingTree<W> {
                 pending_mode,
                 sticky,
             } => self.insert_detached_split(
-                old_id,
-                layout,
-                children,
-                percents,
-                previous_layout,
-                title_format,
-                pending_mode,
-                sticky,
+                DetachedSplit {
+                    old_id,
+                    layout,
+                    children,
+                    percents,
+                    previous_layout,
+                    title_format,
+                    pending_mode,
+                    sticky,
+                },
                 parent,
                 remapped,
             ),
@@ -404,20 +410,22 @@ impl<W: LayoutElement> TilingTree<W> {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn insert_detached_split(
         &mut self,
-        old_id: NodeId,
-        layout: Layout,
-        children: Vec<DetachedNode<W>>,
-        percents: Vec<f64>,
-        previous_layout: Option<Layout>,
-        title_format: Option<String>,
-        pending_mode: Option<PendingMode>,
-        sticky: bool,
+        split: DetachedSplit<W>,
         parent: Option<NodeId>,
         remapped: &mut Vec<(NodeId, NodeId)>,
     ) -> NodeId {
+        let DetachedSplit {
+            old_id,
+            layout,
+            children,
+            percents,
+            previous_layout,
+            title_format,
+            pending_mode,
+            sticky,
+        } = split;
         let id = self.insert_with_id(
             old_id,
             Node {
