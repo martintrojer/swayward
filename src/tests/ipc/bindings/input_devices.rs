@@ -650,3 +650,30 @@ fn pointer_button_binding_requires_the_configured_rendered_region() {
         .is_none());
 }
 
+
+/// Startup continues without a seat keyboard when no keymap compiles, so every
+/// live input and reload path must tolerate its absence instead of panicking.
+#[test]
+fn input_and_reload_without_a_seat_keyboard_do_not_panic() {
+    let mut fixture = Fixture::new();
+    fixture.add_output(1, (1280, 720));
+    fixture.swayward().seat.remove_keyboard();
+    assert!(fixture.swayward().seat.get_keyboard().is_none());
+
+    pointer_motion_absolute(&mut fixture, 100., 100.);
+    pointer_button(&mut fixture, 0x110, true);
+    pointer_button(&mut fixture, 0x110, false);
+    pointer_axis(&mut fixture, 0., 120.);
+    key_event(&mut fixture, 38, true);
+    key_event(&mut fixture, 38, false);
+    fixture.niri_state().do_action(
+        swayward_config::Action::SwitchLayout(swayward_ipc::LayoutSwitchTarget::Next),
+        false,
+    );
+
+    let mut config = swayward_config::Config::default();
+    config.input.keyboard.repeat_rate = 42;
+    config.input.keyboard.xkb.layout = "us,de".into();
+    fixture.niri_state().reload_config(Ok(config));
+    assert!(fixture.swayward().seat.get_keyboard().is_none());
+}

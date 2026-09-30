@@ -367,6 +367,11 @@ impl XdgShellHandler for State {
         }
 
         let seat = &self.swayward.seat;
+        let Some(keyboard) = seat.get_keyboard() else {
+            trace!("ignoring popup grab because the seat has no keyboard");
+            let _ = PopupManager::dismiss_popup(&root, &popup);
+            return;
+        };
         let mut grab = match self
             .swayward
             .popups
@@ -379,7 +384,6 @@ impl XdgShellHandler for State {
             }
         };
 
-        let keyboard = seat.get_keyboard().unwrap();
         let pointer = seat.get_pointer().unwrap();
 
         // Smithay cannot do overlapping grabs, so if we have an IME keyboard grab, don't overwrite

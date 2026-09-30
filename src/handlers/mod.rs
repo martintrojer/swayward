@@ -140,7 +140,10 @@ impl SeatHandler for State {
 
 impl VirtualKeyboardHandler for State {
     fn process_virtual_keyboard_event(&mut self, event: InputEvent<VirtualKeyboardBackend>) {
-        let keyboard = self.swayward.seat.get_keyboard().unwrap();
+        let Some(keyboard) = self.swayward.seat.get_keyboard() else {
+            warn!("ignoring virtual keyboard event: the seat has no keyboard");
+            return;
+        };
         match event {
             InputEvent::DeviceAdded { device }
             | InputEvent::Special(VirtualKeyboardSpecialEvent::KeymapChanged { device }) => {
@@ -878,7 +881,9 @@ impl XdgActivationHandler for State {
 
         // Check the serial against both a keyboard and a pointer, since layer-shell surfaces
         // with no keyboard interactivity won't have any keyboard focus.
-        let kb_last_enter = seat.get_keyboard().unwrap().last_enter();
+        let kb_last_enter = seat
+            .get_keyboard()
+            .and_then(|keyboard| keyboard.last_enter());
         if kb_last_enter.is_some_and(|last_enter| serial.is_no_older_than(&last_enter)) {
             return true;
         }

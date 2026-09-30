@@ -637,7 +637,9 @@ impl State {
             return KbMonBlock::Pass;
         }
 
-        let keyboard = self.swayward.seat.get_keyboard().unwrap();
+        let Some(keyboard) = self.swayward.seat.get_keyboard() else {
+            return KbMonBlock::Pass;
+        };
 
         let (mods, keysym, unichar) = keyboard.with_xkb_state(self, |context| {
             let xkb = context.xkb().lock().unwrap();

@@ -107,7 +107,7 @@ impl State {
                     let under = self.swayward.contents_under(pos);
 
                     let mod_key = self.backend.mod_key(&self.swayward.config.borrow());
-                    let mods = self.swayward.seat.get_keyboard().unwrap().modifier_state();
+                    let mods = self.modifier_state();
                     let modifiers = modifiers_from_state(mods);
                     let mod_down = mod_key.is_pressed(modifiers);
 
@@ -349,7 +349,7 @@ impl State {
             if let Some(trigger) = trigger {
                 if event.button_state() == ButtonState::Pressed {
                     let mod_key = self.backend.mod_key(&self.swayward.config.borrow());
-                    let mods = self.swayward.seat.get_keyboard().unwrap().modifier_state();
+                    let mods = self.modifier_state();
                     let modifiers = modifiers_from_state(mods);
                     let input_device = event.device().sway_identifier();
 

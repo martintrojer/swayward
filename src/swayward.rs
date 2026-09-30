@@ -1298,6 +1298,16 @@ impl State {
         }
     }
 
+    /// The seat keyboard's modifier state, or no modifiers when startup could
+    /// not add a keyboard because no keymap compiled.
+    pub fn modifier_state(&self) -> smithay::input::keyboard::ModifiersState {
+        self.swayward
+            .seat
+            .get_keyboard()
+            .map(|keyboard| keyboard.modifier_state())
+            .unwrap_or_default()
+    }
+
     pub fn update_keyboard_focus(&mut self) {
         let Some(keyboard) = self.swayward.seat.get_keyboard() else {
             return;

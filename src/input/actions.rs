@@ -338,7 +338,10 @@ impl State {
                 }
             }
             Action::SwitchLayout(action) => {
-                let keyboard = &self.swayward.seat.get_keyboard().unwrap();
+                let Some(keyboard) = &self.swayward.seat.get_keyboard() else {
+                    warn!("cannot switch layout: the seat has no keyboard");
+                    return;
+                };
                 keyboard.with_xkb_state(self, |mut state| match action {
                     LayoutSwitchTarget::Next => state.cycle_next_layout(),
                     LayoutSwitchTarget::Prev => state.cycle_prev_layout(),

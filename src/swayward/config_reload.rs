@@ -10,7 +10,11 @@ impl State {
 
         let keymap = std::fs::read_to_string(xkb_file).context("failed to read xkb_file")?;
 
-        let keyboard = self.swayward.seat.get_keyboard().unwrap();
+        let keyboard = self
+            .swayward
+            .seat
+            .get_keyboard()
+            .context("the seat has no keyboard")?;
         let num_lock = keyboard.modifier_state().num_lock;
 
         keyboard
@@ -45,7 +49,10 @@ impl State {
     }
 
     pub fn set_xkb_config(&mut self, xkb: XkbConfig) {
-        let keyboard = self.swayward.seat.get_keyboard().unwrap();
+        let Some(keyboard) = self.swayward.seat.get_keyboard() else {
+            warn!("cannot update xkb config: the seat has no keyboard");
+            return;
+        };
         let num_lock = keyboard.modifier_state().num_lock;
         if let Err(err) = keyboard.set_xkb_config(self, xkb) {
             warn!("error updating xkb config: {err:?}");
@@ -139,11 +146,12 @@ impl State {
         if config.input.keyboard.repeat_rate != old_config.input.keyboard.repeat_rate
             || config.input.keyboard.repeat_delay != old_config.input.keyboard.repeat_delay
         {
-            let keyboard = self.swayward.seat.get_keyboard().unwrap();
-            keyboard.change_repeat_info(
-                config.input.keyboard.repeat_rate.into(),
-                config.input.keyboard.repeat_delay.into(),
-            );
+            if let Some(keyboard) = self.swayward.seat.get_keyboard() {
+                keyboard.change_repeat_info(
+                    config.input.keyboard.repeat_rate.into(),
+                    config.input.keyboard.repeat_delay.into(),
+                );
+            }
         }
 
         if config.input.touchpad != old_config.input.touchpad

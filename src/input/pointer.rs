@@ -489,7 +489,7 @@ impl State {
             }
         }
 
-        let mods = self.swayward.seat.get_keyboard().unwrap().modifier_state();
+        let mods = self.modifier_state();
         let modifiers = modifiers_from_state(mods);
         let mod_down = mod_key.is_pressed(modifiers);
 
@@ -966,7 +966,7 @@ impl State {
         if source == AxisSource::Wheel {
             // If we have a scroll bind with current modifiers, then accumulate and don't pass to
             // Wayland. If there's no bind, reset the accumulator.
-            let mods = self.swayward.seat.get_keyboard().unwrap().modifier_state();
+            let mods = self.modifier_state();
             let modifiers = modifiers_from_state(mods);
             let should_handle = should_handle_in_overview
                 || is_mru_open
@@ -1230,7 +1230,7 @@ impl State {
 
         // Handle touchpad and continuous scroll bindings.
         if source == AxisSource::Finger || source == AxisSource::Continuous {
-            let mods = self.swayward.seat.get_keyboard().unwrap().modifier_state();
+            let mods = self.modifier_state();
             let modifiers = modifiers_from_state(mods);
 
             let horizontal = horizontal_amount.unwrap_or(0.);

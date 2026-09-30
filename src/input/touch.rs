@@ -42,7 +42,7 @@ impl State {
         let under = self.swayward.contents_under(pos);
 
         let mod_key = self.backend.mod_key(&self.swayward.config.borrow());
-        let mods = self.swayward.seat.get_keyboard().unwrap().modifier_state();
+        let mods = self.modifier_state();
         let mods = modifiers_from_state(mods);
         let mod_down = mod_key.is_pressed(mods);
 

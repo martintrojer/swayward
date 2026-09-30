@@ -502,7 +502,7 @@ impl State {
         let serial = SERIAL_COUNTER.next_serial();
         let time = Event::time(&event);
         let pressed = event.state() == KeyState::Pressed;
-        let code_modifiers = self.swayward.seat.get_keyboard().unwrap().modifier_state();
+        let code_modifiers = self.modifier_state();
 
         // Stop bind key repeat on any release. This won't work 100% correctly in cases like:
         // 1. Press Mod
@@ -548,7 +548,10 @@ impl State {
         #[cfg(not(feature = "dbus"))]
         let _ = consumed_by_a11y;
 
-        let Some(Some(bind)) = self.swayward.seat.get_keyboard().unwrap().input(
+        let Some(keyboard) = self.swayward.seat.get_keyboard() else {
+            return;
+        };
+        let Some(Some(bind)) = keyboard.input(
             self,
             event.key_code(),
             event.state(),
