@@ -203,7 +203,9 @@ impl<W: LayoutElement> TilingTree<W> {
         };
         let boundary_root = self.resident_root().unwrap_or(self.root);
         if self.windows().nth(1).is_none() {
-            self.move_only_window(id, wanted_layout);
+            if boundary_root == self.root {
+                self.move_only_window(id, wanted_layout);
+            }
             return false;
         }
         if self.split_len(self.root) == Some(1) && self.root_branch(id) == Some(id) {

@@ -4394,6 +4394,20 @@ proptest! {
 }
 
 #[test]
+fn moving_a_floating_singleton_after_child_focus_keeps_its_resident_root() {
+    check_ops([
+        Op::AddOutput(1),
+        Op::AddWindow {
+            params: TestWindowParams::new(1),
+        },
+        Op::FocusParent,
+        Op::ToggleFocusedContainerFloating,
+        Op::FocusChild,
+        Op::MoveWindowDownOrToWorkspaceDown,
+    ]);
+}
+
+#[test]
 fn layout_changes_do_not_flatten_a_floating_group_resident_root() {
     check_ops([
         Op::AddOutput(1),
