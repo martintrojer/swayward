@@ -242,6 +242,9 @@ fn check_ops(ops: Vec<Op>) {
         assert_state(&mut fixture);
     }
 
+    for surface in windows.into_iter().flatten() {
+        unmap_window(&mut fixture, client, &surface);
+    }
     drop(fixture);
 }
 
