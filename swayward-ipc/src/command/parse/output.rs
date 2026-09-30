@@ -25,7 +25,7 @@ pub(super) fn parse_input_command(args: &[&str]) -> Result<Command, String> {
 
 pub(super) fn parse_output_command(args: &[&str]) -> Result<Command, String> {
     let Some((target, mut args)) = args.split_first() else {
-        return Err("Expected 'output <name> <subcommand>'".into());
+        return Err("Invalid output command (expected at least 1 argument, got 0)".into());
     };
     if args.is_empty() {
         return Err("Expected 'output <name> <subcommand>'".into());
