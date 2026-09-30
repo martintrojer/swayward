@@ -181,13 +181,7 @@ fn no_test_server_adopts_the_ambient_swaysock() {
 /// scripts run, which used to delete a live socket mid-test and surface as an
 /// intermittent ENOENT somewhere unrelated.
 fn test_socket_path() -> std::path::PathBuf {
-    static NEXT_SOCKET: AtomicU64 = AtomicU64::new(0);
-
-    std::env::temp_dir().join(format!(
-        "swayward-ipc-test.{}.{}.sock",
-        std::process::id(),
-        NEXT_SOCKET.fetch_add(1, Ordering::Relaxed)
-    ))
+    crate::ipc::server::test_socket_path("ipc-test.sock")
 }
 
 fn ipc_fixture() -> (Fixture, std::path::PathBuf) {

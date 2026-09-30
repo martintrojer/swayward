@@ -4,7 +4,6 @@ use std::ffi::OsStr;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::rc::Rc;
-#[cfg(not(test))]
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::{env, io, process};
 
@@ -55,6 +54,20 @@ const INITIAL_WRITE_BUFFER_SIZE: usize = 128;
 const MAX_WRITE_BUFFER_SIZE: usize = 4_000_000;
 #[cfg(not(test))]
 static IPC_SOCKET_ID: AtomicU64 = AtomicU64::new(0);
+#[cfg(test)]
+static TEST_SOCKET_ID: AtomicU64 = AtomicU64::new(0);
+
+#[cfg(test)]
+pub(crate) fn test_socket_path(label: &str) -> PathBuf {
+    env::var_os("SWAYWARD_TEST_TMPDIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/var/tmp"))
+        .join(format!(
+            "swayward-{label}-{}.{}",
+            process::id(),
+            TEST_SOCKET_ID.fetch_add(1, Ordering::Relaxed)
+        ))
+}
 
 pub struct IpcServer {
     pub socket_path: Option<PathBuf>,

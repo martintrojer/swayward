@@ -4,6 +4,14 @@ use super::transport::{queue_ipc_message, socket_dir_from};
 use super::*;
 
 #[test]
+fn test_socket_paths_are_unique_and_avoid_tmpfs() {
+    let first = test_socket_path("socket");
+    let second = test_socket_path("socket");
+    assert_ne!(first, second);
+    assert_eq!(first.parent(), Some(std::path::Path::new("/var/tmp")));
+}
+
+#[test]
 fn default_socket_path_uses_runtime_dir_and_falls_back_to_tmp() {
     let runtime = PathBuf::from("/run/user/1234");
     assert_eq!(socket_dir_from(Some(runtime.clone())), runtime);
@@ -16,7 +24,7 @@ fn default_socket_path_uses_runtime_dir_and_falls_back_to_tmp() {
 
 #[test]
 fn socket_path_honors_only_a_nonexistent_swaysock() {
-    let root = std::env::temp_dir().join(format!("swayward-socket-path-{}", process::id()));
+    let root = test_socket_path("socket-path");
     let requested = root.join("requested.sock");
     let fallback = root.join("fallback.sock");
     std::fs::create_dir_all(&root).unwrap();
@@ -38,7 +46,7 @@ fn socket_path_honors_only_a_nonexistent_swaysock() {
 
 #[test]
 fn binding_removes_a_stale_socket_and_drop_cleans_up() {
-    let root = std::env::temp_dir().join(format!("swayward-stale-socket-{}", process::id()));
+    let root = test_socket_path("stale-socket");
     std::fs::create_dir_all(&root).unwrap();
     let path = root.join("ipc.sock");
     drop(UnixListener::bind(&path).unwrap());
@@ -59,15 +67,12 @@ fn binding_removes_a_stale_socket_and_drop_cleans_up() {
 
 #[test]
 fn overlong_socket_path_fails_instead_of_truncating() {
-    let mut root = std::env::temp_dir();
-    for _ in 0..4 {
-        root.push("x".repeat(30));
-    }
+    let root = test_socket_path("overlong-socket");
     std::fs::create_dir_all(&root).unwrap();
-    let path = root.join("ipc.sock");
+    let path = root.join("x".repeat(108));
     assert!(bind_listener(&path).is_err());
     assert!(!path.exists());
-    std::fs::remove_dir_all(std::env::temp_dir().join("x".repeat(30))).unwrap();
+    std::fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
