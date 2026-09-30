@@ -40,6 +40,12 @@ pub fn execute(state: &mut State, input: &str) -> Vec<CommandOutcome> {
                 let message = error.error.as_deref().unwrap_or_default();
                 if message.starts_with("Expected 'border ") {
                     *error = swayward_ipc::command::parse_error("Only views can have borders");
+                } else if message == "Expected `shortcuts_inhibitor enable|disable`" {
+                    *error = swayward_ipc::command::parse_error(
+                        "Only views can have shortcuts inhibitors",
+                    );
+                } else if message == "opacity float invalid" {
+                    *error = command_failure("No current container");
                 } else if message.starts_with("Expected 'move [absolute] position")
                     || message.starts_with("Invalid x position")
                     || message.starts_with("Invalid y position")
@@ -53,6 +59,21 @@ pub fn execute(state: &mut State, input: &str) -> Vec<CommandOutcome> {
                     *error = swayward_ipc::command::parse_error("Cannot resize nothing");
                 }
             }
+        }
+    }
+    for parsed in &mut parsed {
+        let Err(error) = parsed else {
+            continue;
+        };
+        let message = error.error.as_deref().unwrap_or_default();
+        if matches!(
+            message,
+            "Expected 'mouse_warping output|container|none'"
+                | "Invalid split command (expected either horizontal or vertical)."
+                | "Invalid size specified"
+        ) || message.starts_with("Invalid unbindswitch command (expected binding with the form")
+        {
+            *error = command_failure(message);
         }
     }
     let mut retained_targets = None;
@@ -426,7 +447,9 @@ fn execute_one(
         }
         Command::TitleFormat(format) => {
             let Some(target) = focused_target(state) else {
-                return failure("Only valid containers can have a title_format");
+                return swayward_ipc::command::parse_error(
+                    "Only valid containers can have a title_format",
+                );
             };
             if let Err(error) = window::title_format(state, target, &format) {
                 return error;

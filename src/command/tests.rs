@@ -247,9 +247,58 @@ fn runtime_presentation_commands_fail_loud() {
 }
 
 #[test]
-fn parses_create_output_and_rejects_arguments() {
+fn parses_create_output_and_ignores_arguments_like_sway() {
     assert_eq!(command("create_output"), Command::CreateOutput);
-    assert!(parse("create_output extra")[0].is_err());
+    assert_eq!(command("create_output unterminated"), Command::CreateOutput);
+}
+
+#[test]
+fn invalid_arguments_follow_sways_handler_error_kind() {
+    let mut fixture = crate::tests::fixture::Fixture::new();
+    fixture.add_output(1, (1920, 1080));
+    for (input, expected, parse_error) in [
+        (
+            "mouse_warping unterminated",
+            "Expected 'mouse_warping output|container|none'",
+            false,
+        ),
+        ("opacity unterminated", "No current container", false),
+        (
+            "shortcuts_inhibitor unterminated",
+            "Only views can have shortcuts inhibitors",
+            true,
+        ),
+        (
+            "split unterminated",
+            "Invalid split command (expected either horizontal or vertical).",
+            false,
+        ),
+        (
+            "title_format unterminated",
+            "Only valid containers can have a title_format",
+            true,
+        ),
+        (
+            "titlebar_border_thickness unterminated",
+            "Invalid size specified",
+            false,
+        ),
+        (
+            "unbindswitch unterminated",
+            "Invalid unbindswitch command (expected binding with the form <switch>:<state>)",
+            false,
+        ),
+    ] {
+        let outcome = &execute(fixture.niri_state(), input)[0];
+        assert_eq!(outcome.error.as_deref(), Some(expected), "{input}");
+        assert_eq!(outcome.parse_error, Some(parse_error), "{input}");
+    }
+    let outcome = &execute(fixture.niri_state(), "unbindcode unterminated")[0];
+    assert_eq!(
+        outcome.error.as_deref(),
+        Some("Could not find binding `unterminated` for the given flags")
+    );
+    assert_eq!(outcome.parse_error, Some(false));
 }
 
 #[test]

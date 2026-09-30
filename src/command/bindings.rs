@@ -10,7 +10,9 @@ pub(super) fn mutate_switch_binding(
     locked: bool,
 ) -> Result<(), String> {
     let Some((switch, trigger)) = combo.split_once(':') else {
-        return Err("Expected switch binding in '<switch>:<state>' form".into());
+        return Err(
+            "Invalid unbindswitch command (expected binding with the form <switch>:<state>)".into(),
+        );
     };
     let switch = match switch {
         "lid" => smithay::backend::input::Switch::Lid,
@@ -111,12 +113,15 @@ pub(super) fn mutate_key_binding(
         let (modifiers, code) = key
             .rsplit_once('+')
             .map_or(("", key), |(mods, code)| (mods, code));
-        let code: u32 = code
-            .parse()
-            .map_err(|_| format!("Invalid keycode '{code}'"))?;
-        if !(8..=255).contains(&code) {
-            return Err(format!("Invalid keycode '{code}'"));
-        }
+        let code: u32 = match code.parse() {
+            Ok(code) if (8..=255).contains(&code) => code,
+            _ if command.is_none() => {
+                return Err(format!(
+                    "Could not find binding `{keycombo}` for the given flags"
+                ));
+            }
+            _ => return Err(format!("Invalid keycode '{code}'")),
+        };
         if modifiers.is_empty() {
             format!("code:{code}")
         } else {

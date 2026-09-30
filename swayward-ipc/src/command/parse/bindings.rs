@@ -41,9 +41,17 @@ pub(super) fn parse_switch_bind_command(args: &[&str], unbind: bool) -> Result<C
     };
     let combo = join_words(&[combo]);
     let Some((switch, state)) = combo.split_once(':') else {
-        return Err(format!(
-            "Invalid {name} command (expected binding with the form <switch>:<state>)"
-        ));
+        return if unbind {
+            Ok(Command::SwitchBind {
+                switch: combo,
+                command: None,
+                locked,
+            })
+        } else {
+            Err(format!(
+                "Invalid {name} command (expected binding with the form <switch>:<state>)"
+            ))
+        };
     };
     if !matches!(switch, "lid" | "tablet") {
         return Err(format!(

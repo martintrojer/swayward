@@ -272,7 +272,8 @@ fn parse_words(args: &[&str], input: &str) -> Result<Command, String> {
         }
         "opacity" => parse_opacity(rest),
         "inhibit_idle" => Err("inhibit_idle requires user inhibitor policy support".into()),
-        "create_output" => no_args(rest, "create_output").map(|()| Command::CreateOutput),
+        // Sway's developer-only create_output handler deliberately ignores argv.
+        "create_output" => Ok(Command::CreateOutput),
         "input" => parse_input_command(rest),
         "output" => parse_output_command(rest),
         "allow_tearing" => Err("allow_tearing requires immediate presentation support".into()),
