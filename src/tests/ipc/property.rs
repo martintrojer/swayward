@@ -354,6 +354,15 @@ fn sticky_floating_window_stays_active_after_workspace_changes() {
 }
 
 #[test]
+fn runtime_default_border_keeps_floating_tile_data_current() {
+    check_ops(vec![
+        Op::Command("layout tabbed"),
+        Op::Command("default_border pixel 2"),
+        Op::ConIdCommand(0, "floating toggle"),
+    ]);
+}
+
+#[test]
 fn changing_from_tabbed_to_split_keeps_visible_tiles_consistent() {
     check_ops(vec![
         Op::Command("layout tabbed"),
