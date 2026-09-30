@@ -1,10 +1,10 @@
 use super::*;
 
-/// Request from client to niri.
+/// Request from a client to swayward's legacy IPC endpoint.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub enum Request {
-    /// Request the version string for the running niri instance.
+    /// Request the version string for the running swayward instance.
     Version,
     /// Request information about connected outputs.
     Outputs,
@@ -60,7 +60,7 @@ pub enum Request {
     Casts,
 }
 
-/// Reply from niri to client.
+/// Reply from swayward's legacy IPC endpoint.
 ///
 /// Every request gets one reply.
 ///
@@ -70,13 +70,13 @@ pub enum Request {
 /// * Otherwise, it will be `Reply::Ok(response)` with one of the other [`Response`] variants.
 pub type Reply = Result<Response, String>;
 
-/// Successful response from niri to client.
+/// Successful response from swayward's legacy IPC endpoint.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub enum Response {
     /// A request that does not need a response was handled successfully.
     Handled,
-    /// The version string for the running niri instance.
+    /// The version string for the running swayward instance.
     Version(String),
     /// Information about connected outputs.
     ///

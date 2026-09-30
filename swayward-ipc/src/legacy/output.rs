@@ -1,6 +1,6 @@
 use super::*;
 
-/// Output actions that niri can perform.
+/// Output actions exposed by swayward's legacy IPC endpoint.
 // Variants in this enum should match the spelling of the ones in swayward-config. Most thigs from
 // swayward-config should be present here.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -381,7 +381,7 @@ pub struct Timestamp {
 /// Position- and size-related properties of a [`Window`].
 ///
 /// Optional properties will be unset for some windows, do not rely on them being present. Whether
-/// some optional properties are present or absent for certain window types may change across niri
+/// optional properties are present or absent for certain window types can change across swayward
 /// releases.
 ///
 /// All sizes and positions are in *logical pixels* unless stated otherwise. Logical sizes may be
@@ -407,14 +407,14 @@ pub struct WindowLayout {
     pub tile_size: (f64, f64),
     /// Size of the window's visual geometry itself.
     ///
-    /// Does not include niri decorations like borders.
+    /// Does not include compositor decorations such as borders.
     ///
     /// Currently, Wayland toplevel windows can only be integer-sized in logical pixels, even
     /// though it doesn't necessarily align to physical pixels.
     pub window_size: (i32, i32),
     /// Tile position within the current view of the workspace.
     ///
-    /// This is the same "workspace view" as in gradients' `relative-to` in the niri config.
+    /// This legacy field uses the visible workspace coordinate system.
     pub tile_pos_in_workspace_view: Option<(f64, f64)>,
     /// Location of the window's visual geometry within its tile.
     ///

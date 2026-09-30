@@ -1,6 +1,6 @@
 use super::*;
 
-/// Actions that niri can perform.
+/// Actions exposed by swayward's legacy IPC endpoint.
 // Variants in this enum should match the spelling of the ones in swayward-config. Most, but not
 // all, variants from swayward-config should be present here.
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -9,7 +9,7 @@ use super::*;
 #[cfg_attr(feature = "clap", command(subcommand_help_heading = "Actions"))]
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub enum Action {
-    /// Exit niri.
+    /// Exit swayward.
     Quit {
         /// Skip the "Press Enter to confirm" prompt.
         #[cfg_attr(feature = "clap", arg(short, long))]
@@ -751,8 +751,8 @@ pub enum Action {
     },
     /// Reload the config file.
     ///
-    /// Can be useful for scripts changing the config file, to avoid waiting the small duration for
-    /// niri's config file watcher to notice the changes.
+    /// Scripts that change the config file can use this action instead of waiting for the file
+    /// watcher.
     LoadConfigFile {
         /// Path of a new config file to load.
         ///

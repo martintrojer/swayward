@@ -1,12 +1,14 @@
-//! Types for communicating with niri via IPC.
+//! Types for swayward's legacy line-delimited JSON protocol.
 //!
-//! After connecting to the niri socket, you can send [`Request`]s. Niri will process them one by
-//! one, in order, and to each request it will respond with a single [`Reply`], which is a `Result`
-//! wrapping a [`Response`].
+//! This protocol uses `$SWAYWARD_SOCKET`. New clients that need sway-compatible IPC should use
+//! [`crate::sway_socket::SwaySocket`] with `$SWAYSOCK` instead.
 //!
-//! If you send a [`Request::EventStream`], niri will *stop* reading subsequent [`Request`]s, and
-//! will start continuously writing compositor [`Event`]s to the socket. If you'd like to read an
-//! event stream and write more requests at the same time, you need to use two IPC sockets.
+//! After connecting to the legacy socket, a client can send [`Request`]s. Swayward processes each
+//! request in order and responds with one [`Reply`], which wraps a [`Response`].
+//!
+//! After [`Request::EventStream`], swayward stops reading [`Request`]s and continuously writes
+//! compositor [`Event`]s to the socket. Use two connections to read events and send requests at
+//! the same time.
 //!
 //! <div class="warning">
 //!
@@ -26,16 +28,16 @@
 //! 1. Read the socket filesystem path from [`socket::SOCKET_PATH_ENV`] (`$SWAYWARD_SOCKET`).
 //! 2. Connect to the socket and write a JSON-formatted [`Request`] on a single line. You can follow
 //!    up with a line break and a flush, or just flush and shutdown the write end of the socket.
-//! 3. Niri will respond with a single line JSON-formatted [`Reply`].
-//! 4. You can keep writing [`Request`]s, each on a single line, and read [`Reply`]s, also each on a
-//!    separate line.
-//! 5. After you request an event stream, niri will keep responding with JSON-formatted [`Event`]s,
-//!    on a single line each.
+//! 3. Swayward responds with one JSON-formatted [`Reply`] on a single line.
+//! 4. You can keep writing [`Request`]s and reading [`Reply`]s, each on a separate line.
+//! 5. After you request an event stream, swayward keeps responding with one JSON-formatted
+//!    [`Event`] per line.
 //!
 //! ## Backwards compatibility
 //!
-//! This crate follows the niri version. It is **not** API-stable in terms of the Rust semver. In
-//! particular, expect new struct fields and enum variants to be added in patch version bumps.
+//! This legacy API is not stable under Rust semantic versioning. New struct fields and enum
+//! variants can appear in patch releases. Pin an exact version if those additions would break
+//! your client.
 //!
 //! Use an exact version requirement to avoid breaking changes:
 //!
@@ -49,7 +51,7 @@
 //! This crate defines the following features:
 //! - `json-schema`: derives the [schemars](https://lib.rs/crates/schemars) `JsonSchema` trait for
 //!   the types.
-//! - `clap`: derives the clap CLI parsing traits for some types. Used internally by niri itself.
+//! - `clap`: derives clap command-line parsing traits for selected types.
 #![warn(missing_docs)]
 
 use std::collections::HashMap;
