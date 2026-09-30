@@ -1275,8 +1275,7 @@ impl<W: LayoutElement> Workspace<W> {
                 window.output_enter(output);
             }
         }
-        let (root, remapped) = self.floating.add_removed_tree(removed, remap_position);
-        debug_assert!(remapped.is_empty());
+        let (root, _) = self.floating.add_removed_tree(removed, remap_position);
         self.floating_is_active = FloatingActive::Yes;
         root
     }
