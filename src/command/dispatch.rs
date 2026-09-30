@@ -40,6 +40,13 @@ pub fn execute(state: &mut State, input: &str) -> Vec<CommandOutcome> {
                 let message = error.error.as_deref().unwrap_or_default();
                 if message.starts_with("Expected 'border ") {
                     *error = swayward_ipc::command::parse_error("Only views can have borders");
+                } else if message.starts_with("Expected 'move [absolute] position")
+                    || message.starts_with("Invalid x position")
+                    || message.starts_with("Invalid y position")
+                {
+                    *error = command_failure(
+                        "Only floating containers can be moved to an absolute position",
+                    );
                 } else if message.starts_with("Expected 'resize ")
                     || message.starts_with("Invalid resize ")
                 {
