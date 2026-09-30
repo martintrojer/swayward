@@ -326,6 +326,10 @@ impl<W: LayoutElement> TilingTree<W> {
         .copied() else {
             return false;
         };
+        // The new wrapper holds both `id` and its sibling one level deeper.
+        if !self.can_wrap(id) || !self.can_wrap(sibling) {
+            return false;
+        }
 
         self.interactive_resize = None;
         let old = self.compute_geometry();

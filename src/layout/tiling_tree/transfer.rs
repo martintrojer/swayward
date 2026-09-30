@@ -211,6 +211,7 @@ impl<W: LayoutElement> TilingTree<W> {
         } else {
             subtree.node
         };
+        let height = node.height();
         let id = self.insert_detached_node(node, None, &mut remapped);
         let (parent, after) =
             match target.and_then(|target| self.nodes.get(&target).map(|node| (target, node))) {
@@ -230,6 +231,14 @@ impl<W: LayoutElement> TilingTree<W> {
                 )) => (target, None),
                 _ => (self.root, None),
             };
+        // Placing a deep subtree under a deep target could exceed the depth
+        // bound; the workspace root always has room, because the subtree came
+        // from a tree that respected it.
+        let (parent, after) = if self.fits_below(parent, height) {
+            (parent, after)
+        } else {
+            (self.root, None)
+        };
         self.insert_child(parent, id, after);
         self.restore_transferred_focus(focus_history);
         if self.focus.is_none() {

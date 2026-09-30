@@ -1,3 +1,4 @@
+mod depth;
 mod focus;
 mod fullscreen;
 mod geometry;
@@ -17,6 +18,9 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::time::Duration;
 
+#[cfg(test)]
+pub(crate) use depth::MAX_TREE_DEPTH;
+pub(crate) use depth::TOO_DEEP;
 use geometry::apply_struts;
 use node::Node;
 pub use node::{NodeId, TreeNode};

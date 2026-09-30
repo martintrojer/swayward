@@ -472,15 +472,6 @@ impl<W: LayoutElement> TilingTree<W> {
         0.
     }
 
-    fn node_depth(&self, mut id: NodeId) -> usize {
-        let mut depth = 0;
-        while let Some(parent) = self.nodes.get(&id).and_then(|node| node.parent) {
-            depth += 1;
-            id = parent;
-        }
-        depth
-    }
-
     fn first_tile_in(&self, id: NodeId) -> Option<&Tile<W>> {
         self.first_leaf_in(id).and_then(|id| self.tile(id))
     }

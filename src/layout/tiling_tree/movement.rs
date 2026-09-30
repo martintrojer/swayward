@@ -11,6 +11,11 @@ impl<W: LayoutElement> TilingTree<W> {
         if self.contains_node(first, second) || self.contains_node(second, first) {
             return Err("Cannot swap ancestor and descendant");
         }
+        if !self.fits_at(first, self.subtree_height(second))
+            || !self.fits_at(second, self.subtree_height(first))
+        {
+            return Err(TOO_DEEP);
+        }
 
         let old = self.compute_geometry();
         let first_parent = self.nodes[&first].parent.unwrap();
@@ -114,6 +119,9 @@ impl<W: LayoutElement> TilingTree<W> {
             } => (destination, None),
             _ => return false,
         };
+        if !self.fits_below(parent, self.subtree_height(id)) {
+            return false;
+        }
         let already_there = self.nodes[&id].parent == Some(parent)
             && self.child_index(parent, id)
                 == after
@@ -280,7 +288,7 @@ impl<W: LayoutElement> TilingTree<W> {
             branch = parent_id;
             parent = *grandparent;
         }
-        if boundary_root != self.root {
+        if boundary_root != self.root || !self.can_wrap_root_children() {
             return false;
         }
         let Some(old_parent) = self.detach_subtree_only(id) else {

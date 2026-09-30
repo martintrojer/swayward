@@ -563,3 +563,54 @@ fn split_wraps_a_leaf_with_multiple_or_tabbed_siblings() {
         }
     }
 }
+
+#[test]
+fn repeated_nested_splits_stop_at_the_tree_depth_limit() {
+    let mut t = tree((1200., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+
+    // Far past the depth that overflowed the stack before the bound existed.
+    for index in 0..8192 {
+        t.wrap_node(
+            first,
+            if index % 2 == 0 {
+                Layout::SplitV
+            } else {
+                Layout::SplitH
+            },
+        );
+    }
+
+    assert_eq!(t.tree_depth(), MAX_TREE_DEPTH);
+    t.compute_geometry();
+    t.ipc_tree();
+    t.check_invariants();
+}
+
+#[test]
+fn consume_at_the_depth_limit_is_refused() {
+    let mut t = tree((1200., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    for index in 0..MAX_TREE_DEPTH {
+        t.wrap_node(
+            first,
+            if index % 2 == 0 {
+                Layout::SplitV
+            } else {
+                Layout::SplitH
+            },
+        );
+    }
+    let depth = t.tree_depth();
+    assert_eq!(depth, MAX_TREE_DEPTH);
+    let leaf = t.add_tile_to_existing_parent(
+        tile(3, t.view_size()),
+        t.nodes[&first].parent.unwrap(),
+        true,
+    );
+    assert!(!t.consume(leaf, false));
+    assert_eq!(t.tree_depth(), depth);
+    t.check_invariants();
+}

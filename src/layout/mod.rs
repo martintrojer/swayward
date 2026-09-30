@@ -3680,6 +3680,21 @@ impl<W: LayoutElement> Layout<W> {
         second_workspace: WorkspaceId,
         second: tiling_tree::NodeId,
     ) -> Result<SwapRemap, String> {
+        let fits = |workspace: WorkspaceId, slot: tiling_tree::NodeId, other_ws, other| {
+            let height = self
+                .workspaces()
+                .find(|(_, _, candidate)| candidate.id() == other_ws)
+                .map(|(_, _, candidate)| candidate.tiling().node_height(other));
+            self.workspaces()
+                .find(|(_, _, candidate)| candidate.id() == workspace)
+                .zip(height)
+                .is_some_and(|((_, _, candidate), height)| candidate.tiling().fits_at(slot, height))
+        };
+        if !fits(first_workspace, first, second_workspace, second)
+            || !fits(second_workspace, second, first_workspace, first)
+        {
+            return Err(tiling_tree::TOO_DEEP.to_owned());
+        }
         let MonitorSet::Normal { monitors, .. } = &mut self.monitor_set else {
             return Err("cannot swap containers without an output".into());
         };

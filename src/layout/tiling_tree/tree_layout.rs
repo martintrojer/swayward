@@ -4,6 +4,9 @@ impl<W: LayoutElement> TilingTree<W> {
     pub fn split(&mut self, id: NodeId, layout: Layout) {
         self.interactive_resize = None;
         if id == self.root && self.split_len(id).is_some_and(|len| len > 0) {
+            if !self.can_wrap_root_children() {
+                return;
+            }
             let old_layout = match self.nodes[&id].value {
                 TreeNode::Split { layout, .. } => layout,
                 TreeNode::Leaf { .. } => unreachable!(),
@@ -92,6 +95,9 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     fn wrap_split_child(&mut self, id: NodeId, parent: NodeId, layout: Layout) {
+        if !self.can_wrap(id) {
+            return;
+        }
         let index = self.child_index(parent, id).unwrap();
         let old_percent = match &self.nodes[&parent].value {
             TreeNode::Split { percents, .. } => percents[index],
@@ -187,6 +193,9 @@ impl<W: LayoutElement> TilingTree<W> {
             })
             && layout != root_layout
         {
+            if !self.can_wrap_root_children() {
+                return remapped;
+            }
             let pre_layout_ipc_rects = self
                 .fullscreen_node()
                 .map(|_| self.compute_geometry().ipc_nodes);
@@ -415,7 +424,12 @@ impl<W: LayoutElement> TilingTree<W> {
         );
     }
 
+    /// Wraps `id` in a new container, or returns `id` unchanged when the
+    /// wrapper would exceed [`MAX_TREE_DEPTH`](super::depth::MAX_TREE_DEPTH).
     pub(super) fn wrap_node(&mut self, id: NodeId, layout: Layout) -> NodeId {
+        if !self.can_wrap(id) {
+            return id;
+        }
         let parent = self.nodes[&id].parent.unwrap_or(self.root);
         let index = self.child_index(parent, id).unwrap();
         let old_percent = match &self.nodes[&parent].value {
@@ -455,7 +469,13 @@ impl<W: LayoutElement> TilingTree<W> {
         wrapper
     }
 
+    /// Moves the root's children into a new container, or returns the root
+    /// unchanged when that would exceed
+    /// [`MAX_TREE_DEPTH`](super::depth::MAX_TREE_DEPTH).
     fn wrap_root_children(&mut self, layout: Layout) -> NodeId {
+        if !self.can_wrap_root_children() {
+            return self.root;
+        }
         let TreeNode::Split {
             layout: root_layout,
             children,

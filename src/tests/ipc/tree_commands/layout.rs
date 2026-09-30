@@ -602,3 +602,49 @@ fn wrapping_a_tiled_child_does_not_promote_it_past_an_older_floating_child() {
     assert_eq!(workspace["focus"][0], workspace["floating_nodes"][0]["id"]);
 }
 
+
+#[test]
+fn scripted_split_nesting_is_bounded() {
+    // `splitt; focus parent; splitt` wraps the focused container once per
+    // round. Sway nests without limit (container_split,
+    // sway/tree/container.c:1508-1560); swayward stops at its depth bound so
+    // the recursive geometry and GET_TREE walks cannot exhaust the stack.
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    for _ in 0..3 {
+        let window = f.client(client).create_window();
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+    for _ in 0..4096 {
+        for outcome in crate::command::execute(f.niri_state(), "splitt; focus parent; splitt") {
+            assert!(outcome.success, "{outcome:?}");
+        }
+    }
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &swayward.marks_by_window,
+        &swayward.marks_by_container,
+    ))
+    .unwrap();
+    fn depth(node: &Value) -> usize {
+        1 + node["nodes"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(depth)
+            .max()
+            .unwrap_or(0)
+    }
+    // root, output, workspace, then the tiling tree below the workspace.
+    assert!(depth(&tree) <= 3 + crate::layout::tiling_tree::MAX_TREE_DEPTH, "{}", depth(&tree));
+    swayward.layout.verify_invariants();
+}
