@@ -2,6 +2,7 @@ use super::requests::dispatch;
 use super::*;
 
 struct EventStreamClient {
+    pub(super) registration: EventStreamRegistration,
     pub(super) events: Receiver<Event>,
     pub(super) disconnect: Receiver<()>,
     pub(super) read: Box<dyn AsyncRead + Unpin>,
@@ -14,10 +15,28 @@ struct EventStreamClient {
 pub(super) struct ClientCtx {
     pub(super) query_state: Rc<RefCell<QueryState>>,
     pub(super) event_streams: Rc<RefCell<Vec<EventStreamSender>>>,
+    pub(super) next_event_stream_id: Rc<Cell<u64>>,
     pub(super) commands: channel::Sender<CommandRequest>,
 }
 
+/// Removes a subscriber's sender when its client future exits, whether by a
+/// clean close, EOF or an error, instead of waiting for the next event to
+/// discover the dead channel.
+pub(super) struct EventStreamRegistration {
+    id: u64,
+    event_streams: Rc<RefCell<Vec<EventStreamSender>>>,
+}
+
+impl Drop for EventStreamRegistration {
+    fn drop(&mut self) {
+        self.event_streams
+            .borrow_mut()
+            .retain(|stream| stream.id != self.id);
+    }
+}
+
 pub(super) struct EventStreamSender {
+    pub(super) id: u64,
     pub(super) events: Sender<Event>,
     pub(super) disconnect: Sender<()>,
 }
@@ -97,6 +116,7 @@ pub(super) fn on_new_ipc_client(state: &mut State, stream: UnixStream) {
     let ctx = ClientCtx {
         query_state: server.query_state.clone(),
         event_streams: server.event_streams.clone(),
+        next_event_stream_id: server.next_event_stream_id.clone(),
         commands: server.commands.clone(),
     };
     let future = async move {
@@ -158,10 +178,17 @@ pub(super) async fn handle_client(
             refresh_event_state(&ctx).await;
             let (events_tx, events_rx) = async_channel::bounded(4096);
             let (disconnect_tx, disconnect_rx) = async_channel::bounded(1);
+            let id = ctx.next_event_stream_id.get();
+            ctx.next_event_stream_id.set(id.wrapping_add(1));
             ctx.event_streams.borrow_mut().push(EventStreamSender {
+                id,
                 events: events_tx,
                 disconnect: disconnect_tx,
             });
+            let registration = EventStreamRegistration {
+                id,
+                event_streams: ctx.event_streams.clone(),
+            };
             write
                 .write_all(&encode(msg_type, r#"{"success": true}"#))
                 .await
@@ -177,6 +204,7 @@ pub(super) async fn handle_client(
                     .context("error writing initial tick event")?;
             }
             return handle_event_stream_client(EventStreamClient {
+                registration,
                 events: events_rx,
                 disconnect: disconnect_rx,
                 read: Box::new(read),
@@ -242,6 +270,7 @@ pub(super) fn parse_subscriptions(payload: &[u8]) -> Option<Vec<String>> {
 
 async fn handle_event_stream_client(client: EventStreamClient) -> anyhow::Result<()> {
     let EventStreamClient {
+        registration: _registration,
         events,
         disconnect,
         mut read,

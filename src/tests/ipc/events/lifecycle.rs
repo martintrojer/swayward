@@ -256,6 +256,59 @@ fn partial_event_stream_header_survives_an_interleaved_event() {
 }
 
 #[test]
+fn disconnected_event_subscribers_are_removed_without_an_event() {
+    let (mut fixture, socket) = ipc_fixture();
+
+    for clean_disconnect in [true, false] {
+        let mut subscriber = UnixStream::connect(&socket).unwrap();
+        subscriber
+            .write_all(&swayward_ipc::wire::encode(
+                MessageType::Subscribe,
+                r#"["output"]"#,
+            ))
+            .unwrap();
+        let _ = read_ipc_reply(&mut fixture, &mut subscriber);
+        assert_eq!(
+            fixture
+                .swayward()
+                .ipc_server
+                .as_ref()
+                .unwrap()
+                .event_stream_count(),
+            1
+        );
+
+        if clean_disconnect {
+            subscriber.write_all(swayward_ipc::wire::CLOSE_SENTINEL).unwrap();
+        }
+        drop(subscriber);
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while fixture
+            .swayward()
+            .ipc_server
+            .as_ref()
+            .unwrap()
+            .event_stream_count()
+            != 0
+            && Instant::now() < deadline
+        {
+            fixture.dispatch();
+        }
+
+        assert_eq!(
+            fixture
+                .swayward()
+                .ipc_server
+                .as_ref()
+                .unwrap()
+                .event_stream_count(),
+            0,
+            "subscriber must be removed after clean_disconnect={clean_disconnect}"
+        );
+    }
+}
+
+#[test]
 fn event_queue_overflow_removes_a_non_reading_subscriber() {
     let (mut fixture, socket) = ipc_fixture();
     let mut subscriber = UnixStream::connect(&socket).unwrap();

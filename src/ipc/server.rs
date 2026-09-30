@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -59,6 +59,7 @@ static IPC_SOCKET_ID: AtomicU64 = AtomicU64::new(0);
 pub struct IpcServer {
     pub socket_path: Option<PathBuf>,
     event_streams: Rc<RefCell<Vec<EventStreamSender>>>,
+    next_event_stream_id: Rc<Cell<u64>>,
     event_stream_state: Rc<RefCell<EventStreamState>>,
     query_state: Rc<RefCell<QueryState>>,
     workspace_events: RefCell<Option<WorkspaceEventTransaction>>,
@@ -130,6 +131,7 @@ impl IpcServer {
         Ok(Self {
             socket_path,
             event_streams: Rc::new(RefCell::new(Vec::new())),
+            next_event_stream_id: Rc::new(Cell::new(0)),
             event_stream_state: Rc::new(RefCell::new(EventStreamState::default())),
             query_state: Rc::new(RefCell::new(QueryState::default())),
             workspace_events: RefCell::new(None),
