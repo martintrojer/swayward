@@ -172,6 +172,99 @@ fn parses_standalone_split_aliases_with_no_arguments() {
 }
 
 #[test]
+fn command_arity_failures_match_sway() {
+    for (input, expected) in [
+        (
+            "default_border",
+            "Invalid default_border command (expected at least 1 argument, got 0)",
+        ),
+        (
+            "new_window",
+            "Invalid default_border command (expected at least 1 argument, got 0)",
+        ),
+        (
+            "focus_wrapping yes extra",
+            "Invalid focus_wrapping command (expected 1 argument, got 2)",
+        ),
+        (
+            "focus_follows_mouse",
+            "Invalid focus_follows_mouse command (expected 1 argument, got 0)",
+        ),
+        (
+            "for_window",
+            "Invalid for_window command (expected at least 2 arguments, got 0)",
+        ),
+        (
+            "reload extra",
+            "Invalid reload command (expected 0 arguments, got 1)",
+        ),
+        (
+            "floating_maximum_size 1",
+            "Invalid floating_maximum_size command (expected 3 arguments, got 1)",
+        ),
+        (
+            "splith extra",
+            "Invalid splith command (expected 0 arguments, got 1)",
+        ),
+        (
+            "swap",
+            "Invalid swap command (expected at least 4 arguments, got 0)",
+        ),
+        (
+            "tiling_drag_threshold 9 extra",
+            "Invalid tiling_drag_threshold command (expected 1 argument, got 2)",
+        ),
+        (
+            "unbindsym",
+            "Invalid unbindsym command (expected at least 1 argument, got 0)",
+        ),
+        (
+            "unbindswitch",
+            "Invalid unbindswitch command (expected at least 1 argument, got 0)",
+        ),
+        (
+            "input type:keyboard xkb_switch_layout next extra",
+            "Invalid xkb_switch_layout command (expected 1 argument, got 2)",
+        ),
+    ] {
+        assert_eq!(
+            parse(input)[0].as_ref().unwrap_err().error.as_deref(),
+            Some(expected),
+            "{input}"
+        );
+    }
+
+    for (input, expected) in [
+        (
+            "floating_maximum_size \"unterminated",
+            "Invalid floating_maximum_size command (expected 3 arguments, got 1)",
+        ),
+        (
+            "reload \"unterminated",
+            "Invalid reload command (expected 0 arguments, got 1)",
+        ),
+        (
+            "splith \"unterminated",
+            "Invalid splith command (expected 0 arguments, got 1)",
+        ),
+        (
+            "swap \"unterminated",
+            "Invalid swap command (expected at least 4 arguments, got 1)",
+        ),
+    ] {
+        assert_eq!(
+            parse(input)[0].as_ref().unwrap_err().error.as_deref(),
+            Some(expected),
+            "{input}"
+        );
+    }
+
+    assert!(parse("focus left extra")[0].is_ok());
+    assert!(parse("force_display_urgency_hint 500 ms extra")[0].is_ok());
+    assert!(parse("hide_edge_borders none extra")[0].is_ok());
+}
+
+#[test]
 fn parses_exit_and_rejects_arguments() {
     assert_eq!(command("exit"), Command::Exit);
     assert_eq!(
@@ -328,10 +421,19 @@ fn parses_urgent_boolean_modes_and_refuses_request_policy_modes() {
 #[test]
 fn parses_sticky_with_exactly_one_argument() {
     assert_eq!(command("sticky enabled"), Command::Sticky("enabled".into()));
-    for input in ["sticky", "sticky enable extra"] {
+    for (input, expected) in [
+        (
+            "sticky",
+            "Invalid sticky command (expected 1 argument, got 0)",
+        ),
+        (
+            "sticky enable extra",
+            "Invalid sticky command (expected 1 argument, got 2)",
+        ),
+    ] {
         assert_eq!(
             parse(input)[0].as_ref().unwrap_err().error.as_deref(),
-            Some("Expected 'sticky <enable|disable|toggle>'")
+            Some(expected)
         );
     }
 }
@@ -482,8 +584,11 @@ fn parses_move_and_swap_command_families() {
         id.error.as_deref(),
         Some("swap container with id is unsupported because X11 window IDs are unavailable")
     );
+    assert_eq!(
+        parse("swap")[0].as_ref().unwrap_err().error.as_deref(),
+        Some("Invalid swap command (expected at least 4 arguments, got 0)")
+    );
     for input in [
-        "swap",
         "swap window with con_id 42",
         "swap container to con_id 42",
         "swap container with nope 42",

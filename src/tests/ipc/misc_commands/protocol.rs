@@ -400,7 +400,7 @@ fn floating_sizes_accept_i32_values_and_reject_malformed_values() {
         ),
         (
             "floating_minimum_size 10 x 20 extra",
-            "Expected 'floating_minimum_size <width> x <height>'",
+            "Invalid floating_minimum_size command (expected 3 arguments, got 4)",
         ),
         (
             "floating_maximum_size wide x 20",
@@ -416,7 +416,7 @@ fn floating_sizes_accept_i32_values_and_reject_malformed_values() {
         ),
         (
             "floating_maximum_size 10 x",
-            "Expected 'floating_maximum_size <width> x <height>'",
+            "Invalid floating_maximum_size command (expected 3 arguments, got 2)",
         ),
     ] {
         let before = f.swayward().config.borrow().layout.clone();

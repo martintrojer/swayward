@@ -236,10 +236,11 @@ pub(super) fn parse(name: &str, rest: &[&str]) -> Result<Command, String> {
         "hide_edge_borders" => {
             // `sway/sway/commands/hide_edge_borders.c` accepts an --i3 flag
             // before the value; it selects i3's smart behaviour, which
-            // swayward expresses through smart_borders.
+            // swayward expresses through smart_borders. Sway's arity check is
+            // only a minimum; trailing arguments are ignored.
             let rest: Vec<&str> = rest.iter().copied().filter(|a| *a != "--i3").collect();
             match rest.as_slice() {
-                [value]
+                [value, ..]
                     if matches!(
                         *value,
                         "none" | "vertical" | "horizontal" | "both" | "smart" | "smart_no_gaps"
@@ -320,7 +321,7 @@ pub(super) fn parse(name: &str, rest: &[&str]) -> Result<Command, String> {
         },
         "force_display_urgency_hint" => {
             let value = match rest {
-                [value] | [value, "ms"] => value.trim_end_matches("ms"),
+                [value, ..] => value.trim_end_matches("ms"),
                 _ => return Err("Expected 'force_display_urgency_hint <timeout> [ms]'".into()),
             };
             let value: i64 = value

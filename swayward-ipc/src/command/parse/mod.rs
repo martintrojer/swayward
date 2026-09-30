@@ -214,7 +214,9 @@ fn parse_words(args: &[&str], input: &str) -> Result<Command, String> {
     let (_, rest) = args
         .split_first()
         .ok_or_else(|| "expected a command".to_owned())?;
-    match name.to_ascii_lowercase().as_str() {
+    let lower = name.to_ascii_lowercase();
+    check_arity(&lower, rest.len())?;
+    match lower.as_str() {
         "focus" => parse_focus(rest),
         "move" => parse_move(rest),
         "layout" => parse_layout(rest),
@@ -355,6 +357,46 @@ fn parse_words(args: &[&str], input: &str) -> Result<Command, String> {
         "no_focus" => parse_no_focus(input, name),
         _ => Err(format!("Unknown/invalid command '{name}'")),
     }
+}
+
+fn check_arity(name: &str, count: usize) -> Result<(), String> {
+    let display_name = match name {
+        "new_window" => "default_border",
+        "new_float" => "default_floating_border",
+        _ => name,
+    };
+    let expected = match name {
+        "default_border"
+        | "default_floating_border"
+        | "new_window"
+        | "new_float"
+        | "font"
+        | "mode"
+        | "title_align" => Some(("at least ", 1, false)),
+        "for_window" => Some(("at least ", 2, false)),
+        "swap" => Some(("at least ", 4, false)),
+        "focus_follows_mouse"
+        | "focus_on_window_activation"
+        | "focus_wrapping"
+        | "force_focus_wrapping"
+        | "popup_during_fullscreen"
+        | "sticky"
+        | "tiling_drag"
+        | "tiling_drag_threshold" => Some(("", 1, true)),
+        "floating_minimum_size" | "floating_maximum_size" => Some(("", 3, true)),
+        "reload" | "splith" | "splitv" | "splitt" => Some(("", 0, true)),
+        _ => None,
+    };
+    let Some((qualifier, expected, exact)) = expected else {
+        return Ok(());
+    };
+    if (exact && count != expected) || (!exact && count < expected) {
+        return Err(format!(
+            "Invalid {display_name} command (expected {qualifier}{expected} argument{}, got {count})",
+            if expected == 1 { "" } else { "s" }
+        ));
+    }
+    Ok(())
 }
 
 fn no_args(args: &[&str], syntax: &str) -> Result<(), String> {

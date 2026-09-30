@@ -5,7 +5,8 @@ pub(super) fn parse_switch_bind_command(args: &[&str], unbind: bool) -> Result<C
     let minimum = if unbind { 1 } else { 2 };
     if args.len() < minimum {
         return Err(format!(
-            "Invalid {name} command (expected at least {minimum} arguments, got {})",
+            "Invalid {name} command (expected at least {minimum} argument{}, got {})",
+            if minimum == 1 { "" } else { "s" },
             args.len()
         ));
     }
@@ -84,7 +85,8 @@ pub(super) fn parse_bind_command(
     let minimum = if unbind { 1 } else { 2 };
     if args.len() < minimum {
         return Err(format!(
-            "Invalid {name} command (expected at least {minimum} arguments, got {})",
+            "Invalid {name} command (expected at least {minimum} argument{}, got {})",
+            if minimum == 1 { "" } else { "s" },
             args.len()
         ));
     }

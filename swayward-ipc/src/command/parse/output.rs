@@ -1,10 +1,21 @@
 use super::*;
 
 pub(super) fn parse_input_command(args: &[&str]) -> Result<Command, String> {
-    let [identifier, "xkb_switch_layout", target] = args else {
+    let [identifier, subcommand, values @ ..] = args else {
         return Err(
             "only input <identifier> xkb_switch_layout <next|prev|index> is supported".into(),
         );
+    };
+    if *subcommand != "xkb_switch_layout" {
+        return Err(
+            "only input <identifier> xkb_switch_layout <next|prev|index> is supported".into(),
+        );
+    }
+    let [target] = values else {
+        return Err(format!(
+            "Invalid xkb_switch_layout command (expected 1 argument, got {})",
+            values.len()
+        ));
     };
     let target = match *target {
         "next" => XkbLayoutTarget::Next,

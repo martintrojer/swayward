@@ -172,17 +172,23 @@ fn layout_settings_apply_at_runtime_like_sway() {
     assert!(crate::command::execute(f.niri_state(), "floating_maximum_size 800 x 600")[0].success);
     assert_eq!(layout(&mut f).floating_maximum_size.width, 800);
     assert_eq!(layout(&mut f).floating_maximum_size.height, 600);
-    for bad in [
-        "floating_minimum_size 100 50",
-        "floating_minimum_size 100 x 50px",
-        "floating_minimum_size 100 by 50",
+    for (bad, expected) in [
+        (
+            "floating_minimum_size 100 50",
+            "Invalid floating_minimum_size command (expected 3 arguments, got 2)",
+        ),
+        (
+            "floating_minimum_size 100 x 50px",
+            "Expected 'floating_minimum_size <width> x <height>'",
+        ),
+        (
+            "floating_minimum_size 100 by 50",
+            "Expected 'floating_minimum_size <width> x <height>'",
+        ),
     ] {
         let outcome = crate::command::execute(f.niri_state(), bad);
         assert!(!outcome[0].success, "{bad} should have failed");
-        assert_eq!(
-            outcome[0].error.as_deref(),
-            Some("Expected 'floating_minimum_size <width> x <height>'")
-        );
+        assert_eq!(outcome[0].error.as_deref(), Some(expected));
     }
 
     // `sway/sway/commands/font.c` strips a leading pango: prefix and joins the

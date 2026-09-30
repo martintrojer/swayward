@@ -47,10 +47,9 @@ pub(super) fn parse_focus(args: &[&str]) -> Result<Command, String> {
             };
         }
     }
-    let arg = one(
-        args,
-        "focus <left|right|up|down|parent|child|next|prev|floating|tiling|mode_toggle>",
-    )?;
+    let Some(arg) = args.first() else {
+        return Ok(Command::Focus);
+    };
     if let Some(direction) = parse_direction(arg) {
         return Ok(Command::FocusDirection(direction));
     }
