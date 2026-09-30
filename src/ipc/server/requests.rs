@@ -1,7 +1,7 @@
 use super::query_state::serialize_outcomes;
 use super::*;
 
-pub(super) async fn dispatch(ctx: &ClientCtx, msg_type: MessageType, payload: &[u8]) -> String {
+pub(super) async fn dispatch(ctx: &ClientCtx, msg_type: MessageType, payload: &[u8]) -> Vec<u8> {
     // Sway serialises each query from the live tree when the request arrives
     // (`sway/sway/ipc-server.c:815-823`). We cache, so refresh first: a
     // connection that stays open (any subscriber) would otherwise answer from
@@ -32,7 +32,7 @@ pub(super) async fn dispatch(ctx: &ClientCtx, msg_type: MessageType, payload: &[
         }
     }
     match msg_type {
-        MessageType::GetVersion => serde_json::to_string(&Version {
+        MessageType::GetVersion => serde_json::to_vec(&Version {
             human_readable: format!("swayward {}", version()),
             variant: "swayward".into(),
             major: SWAYWARD_IPC_VERSION.0,
@@ -40,13 +40,13 @@ pub(super) async fn dispatch(ctx: &ClientCtx, msg_type: MessageType, payload: &[
             patch: SWAYWARD_IPC_VERSION.2,
             loaded_config_file_name: ctx.query_state.borrow().loaded_config_file_name.clone(),
         })
-        .unwrap_or_else(|_| r#"{"success":false,"error":"serialization failed"}"#.into()),
-        MessageType::GetTree => ctx.query_state.borrow().tree.clone(),
-        MessageType::GetWorkspaces => ctx.query_state.borrow().workspaces.clone(),
-        MessageType::GetOutputs => ctx.query_state.borrow().outputs.clone(),
-        MessageType::GetMarks => ctx.query_state.borrow().marks.clone(),
-        MessageType::GetBindingModes => ctx.query_state.borrow().binding_modes.clone(),
-        MessageType::GetBindingState => ctx.query_state.borrow().binding_state.clone(),
+        .unwrap_or_else(|_| br#"{"success":false,"error":"serialization failed"}"#.to_vec()),
+        MessageType::GetTree => ctx.query_state.borrow().tree.as_bytes().to_vec(),
+        MessageType::GetWorkspaces => ctx.query_state.borrow().workspaces.as_bytes().to_vec(),
+        MessageType::GetOutputs => ctx.query_state.borrow().outputs.as_bytes().to_vec(),
+        MessageType::GetMarks => ctx.query_state.borrow().marks.as_bytes().to_vec(),
+        MessageType::GetBindingModes => ctx.query_state.borrow().binding_modes.as_bytes().to_vec(),
+        MessageType::GetBindingState => ctx.query_state.borrow().binding_state.as_bytes().to_vec(),
         // GET_CONFIG is not implemented, and must not be faked.
         //
         // Sway's contract is the verbatim text of the sway config file:
@@ -64,18 +64,19 @@ pub(super) async fn dispatch(ctx: &ClientCtx, msg_type: MessageType, payload: &[
         // Sway itself sets the precedent for the honest answer: IPC_SYNC
         // returns `{"success": false}` rather than inventing a reply
         // (`sway/sway/ipc-server.c:919-925`).
-        MessageType::GetConfig => String::from(r#"{"success": false}"#),
-        MessageType::GetInputs => ctx.query_state.borrow().inputs.clone(),
-        MessageType::GetSeats => ctx.query_state.borrow().seats.clone(),
+        MessageType::GetConfig => br#"{"success": false}"#.to_vec(),
+        MessageType::GetInputs => ctx.query_state.borrow().inputs.as_bytes().to_vec(),
+        MessageType::GetSeats => ctx.query_state.borrow().seats.as_bytes().to_vec(),
         MessageType::RunCommand => {
             let input = match String::from_utf8(payload.to_vec()) {
                 Ok(input) => input,
                 Err(_) => {
-                    return serialize_outcomes(&[CommandOutcome {
-                        success: false,
-                        error: Some("command is not valid UTF-8".into()),
-                        parse_error: Some(true),
-                    }]);
+                    let mut reply =
+                        br#"[ { "success": false, "parse_error": true, "error": "Unknown\/invalid command '"#
+                            .to_vec();
+                    reply.extend_from_slice(payload);
+                    reply.extend_from_slice(br#"'" } ]"#);
+                    return reply;
                 }
             };
             let (reply, receiver) = async_channel::bounded(1);
@@ -91,23 +92,25 @@ pub(super) async fn dispatch(ctx: &ClientCtx, msg_type: MessageType, payload: &[
                     success: false,
                     error: Some("command dispatcher is unavailable".into()),
                     parse_error: None,
-                }]);
+                }])
+                .into_bytes();
             }
             match receiver.recv().await {
-                Ok(outcomes) => serialize_outcomes(&outcomes),
+                Ok(outcomes) => serialize_outcomes(&outcomes).into_bytes(),
                 Err(_) => serialize_outcomes(&[CommandOutcome {
                     success: false,
                     error: Some("command dispatcher stopped without replying".into()),
                     parse_error: None,
-                }]),
+                }])
+                .into_bytes(),
             }
         }
-        MessageType::GetBarConfig if payload.is_empty() => "[]".into(),
+        MessageType::GetBarConfig if payload.is_empty() => b"[]".to_vec(),
         // Byte-identical to sway, spaces included: it writes this as a C
         // string literal rather than serialising it
         // (`sway/ipc-server.c:870`).
         MessageType::GetBarConfig => {
-            r#"{ "success": false, "error": "No bar with that ID" }"#.into()
+            br#"{ "success": false, "error": "No bar with that ID" }"#.to_vec()
         }
         MessageType::SendTick => {
             let payload = String::from_utf8_lossy(payload).into_owned();
@@ -120,8 +123,8 @@ pub(super) async fn dispatch(ctx: &ClientCtx, msg_type: MessageType, payload: &[
             // Sway writes this literal with a space, and the two other
             // success replies in this file already match it
             // (`sway/ipc-server.c`, IPC_SEND_TICK).
-            r#"{"success": true}"#.into()
+            br#"{"success": true}"#.to_vec()
         }
-        _ => r#"{"success":false,"error":"not implemented"}"#.into(),
+        _ => br#"{"success":false,"error":"not implemented"}"#.to_vec(),
     }
 }

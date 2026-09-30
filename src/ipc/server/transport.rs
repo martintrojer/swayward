@@ -191,11 +191,11 @@ pub(super) async fn handle_client(
             Some(msg_type) => dispatch(&ctx, msg_type, &payload).await,
             // IPC_SYNC, sway/include/ipc.h:20: sway decided not to support it
             // and replies success:false rather than closing the socket.
-            None if raw_type == IPC_SYNC => r#"{"success": false}"#.to_owned(),
-            None => r#"{"success":false,"error":"not implemented"}"#.to_owned(),
+            None if raw_type == IPC_SYNC => br#"{"success": false}"#.to_vec(),
+            None => br#"{"success":false,"error":"not implemented"}"#.to_vec(),
         };
         write
-            .write_all(&encode_raw(raw_type, &reply))
+            .write_all(&swayward_ipc::wire::encode_raw_bytes(raw_type, &reply))
             .await
             .context("error writing IPC reply")?;
     }
@@ -314,13 +314,13 @@ async fn handle_event_stream_client(client: EventStreamClient) -> anyhow::Result
                 let Some(MessageType::Subscribe) = msg_type else {
                     let reply = match msg_type {
                         Some(msg_type) => dispatch(&ctx, msg_type, &payload).await,
-                        None if raw_type == IPC_SYNC => r#"{"success": false}"#.to_owned(),
-                        None => r#"{"success":false,"error":"not implemented"}"#.to_owned(),
+                        None if raw_type == IPC_SYNC => br#"{"success": false}"#.to_vec(),
+                        None => br#"{"success":false,"error":"not implemented"}"#.to_vec(),
                     };
                     queue_ipc_message(
                         &mut write_buffer,
                         &mut write_buffer_size,
-                        &encode_raw(raw_type, &reply),
+                        &swayward_ipc::wire::encode_raw_bytes(raw_type, &reply),
                     )?;
                     continue;
                 };

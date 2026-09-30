@@ -35,11 +35,15 @@ pub fn encode(msg_type: MessageType, payload: &str) -> Vec<u8> {
 }
 
 pub fn encode_raw(msg_type: u32, payload: &str) -> Vec<u8> {
+    encode_raw_bytes(msg_type, payload.as_bytes())
+}
+
+pub fn encode_raw_bytes(msg_type: u32, payload: &[u8]) -> Vec<u8> {
     let mut buf = Vec::with_capacity(HEADER_SIZE + payload.len());
     buf.extend_from_slice(MAGIC);
     buf.extend_from_slice(&(payload.len() as u32).to_ne_bytes());
     buf.extend_from_slice(&msg_type.to_ne_bytes());
-    buf.extend_from_slice(payload.as_bytes());
+    buf.extend_from_slice(payload);
     buf
 }
 

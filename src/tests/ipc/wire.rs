@@ -346,24 +346,34 @@ fn unknown_request_types_get_a_structured_reply_and_keep_the_connection() {
 }
 
 #[test]
-fn invalid_utf8_command_gets_a_structured_json_failure() {
+fn invalid_utf8_command_reply_is_byte_identical_to_sway() {
     let (mut fixture, socket) = ipc_fixture();
     let mut stream = UnixStream::connect(socket).unwrap();
     let mut frame = swayward_ipc::wire::encode_raw(0, "");
     frame[6..10].copy_from_slice(&1u32.to_ne_bytes());
     frame.push(0xff);
     stream.write_all(&frame).unwrap();
+    stream.set_nonblocking(true).unwrap();
 
-    let (reply_type, payload) = read_ipc_reply(&mut fixture, &mut stream);
-    assert_eq!(reply_type, 0);
-    assert_eq!(
-        serde_json::from_str::<Value>(&payload).unwrap(),
-        serde_json::json!([{
-            "success": false,
-            "error": "command is not valid UTF-8",
-            "parse_error": true,
-        }])
-    );
+    let payload = b"[ { \"success\": false, \"parse_error\": true, \"error\": \"Unknown\\/invalid command '\xff'\" } ]";
+    let mut expected = b"i3-ipc".to_vec();
+    expected.extend_from_slice(&(payload.len() as u32).to_ne_bytes());
+    expected.extend_from_slice(&0u32.to_ne_bytes());
+    expected.extend_from_slice(payload);
+    let mut actual = Vec::new();
+    let deadline = Instant::now() + Duration::from_secs(1);
+    while actual.len() < expected.len() {
+        fixture.dispatch();
+        let mut buf = [0; 4096];
+        match stream.read(&mut buf) {
+            Ok(0) => panic!("IPC connection closed before a reply"),
+            Ok(len) => actual.extend_from_slice(&buf[..len]),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
+            Err(error) => panic!("error reading IPC reply: {error}"),
+        }
+        assert!(Instant::now() < deadline, "timed out waiting for IPC reply");
+    }
+    assert_eq!(actual, expected);
 }
 
 #[test]
