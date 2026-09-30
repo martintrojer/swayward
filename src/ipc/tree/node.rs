@@ -168,6 +168,16 @@ pub(crate) fn describe_tiling<'a, I>(
                     height: workspace_rect.height,
                     ..Rect::default()
                 };
+            } else if fullscreen_mode != 0 && node.rect.width > 0 && node.rect.height > 0 {
+                // A fullscreen view's content is the output box, even while
+                // its container reports a tiled slot (`view_autoconfigure`,
+                // sway/tree/view.c:358-363).
+                node.window_rect = Rect {
+                    x: workspace_rect.x - node.rect.x,
+                    y: workspace_rect.y - node.rect.y,
+                    width: workspace_rect.width,
+                    height: workspace_rect.height,
+                };
             } else {
                 node.window_rect = Rect {
                     x: left,

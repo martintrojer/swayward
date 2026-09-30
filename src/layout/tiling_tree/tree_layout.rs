@@ -3,6 +3,7 @@ use super::*;
 impl<W: LayoutElement> TilingTree<W> {
     pub fn split(&mut self, id: NodeId, layout: Layout) {
         self.interactive_resize = None;
+        self.fullscreen_tile_slot = false;
         if id == self.root && self.split_len(id).is_some_and(|len| len > 0) {
             if !self.can_wrap_root_children() {
                 return;
@@ -137,6 +138,7 @@ impl<W: LayoutElement> TilingTree<W> {
 
     pub fn set_layout(&mut self, id: NodeId, layout: Layout) {
         self.interactive_resize = None;
+        self.fullscreen_tile_slot = false;
         if let Some(Node {
             value: TreeNode::Split {
                 layout: current, ..
@@ -199,6 +201,7 @@ impl<W: LayoutElement> TilingTree<W> {
             let pre_layout_ipc_rects = self
                 .fullscreen_node()
                 .map(|_| self.compute_geometry().ipc_nodes);
+            self.fullscreen_tile_slot = false;
             let wrapper = self.wrap_root_children(layout);
             if let Some(rects) = pre_layout_ipc_rects {
                 self.fullscreen_layout_wrappers.insert(wrapper);
@@ -537,6 +540,7 @@ impl<W: LayoutElement> TilingTree<W> {
     // (sway/commands/layout.c:134-149), unlike general tree compaction.
     fn set_layout_for_command(&mut self, id: NodeId, layout: Layout) {
         self.interactive_resize = None;
+        self.fullscreen_tile_slot = false;
         if let Some(Node {
             value: TreeNode::Split {
                 layout: current, ..

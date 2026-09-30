@@ -114,6 +114,18 @@ impl<W: LayoutElement> TilingTree<W> {
         })
     }
 
+    /// The tiled slot a fullscreen node reports after sway re-arranged its
+    /// parent without re-arranging the workspace.
+    fn fullscreen_tile_slot_rect(
+        &self,
+        id: NodeId,
+        geometries: &geometry::Geometry<W::Id>,
+    ) -> Option<Rectangle<f64, Logical>> {
+        (self.fullscreen_tile_slot && self.fullscreen_node() == Some(id))
+            .then(|| geometries.tiled_ipc_nodes.get(&id).copied())
+            .flatten()
+    }
+
     pub fn ipc_tree(&self) -> IpcNode<W::Id> {
         fn inset_split_by_parent_titlebar<I>(node: &mut IpcNode<I>, height: f64) {
             if let IpcNode::Split { rect, .. } = node {
@@ -138,9 +150,8 @@ impl<W: LayoutElement> TilingTree<W> {
                     || !geometries.titlebars.contains_key(&id)
                     || tree.pre_layout_ipc_rects.contains_key(&id));
             let mut rect = tree
-                .pre_layout_ipc_rects
-                .get(&id)
-                .copied()
+                .fullscreen_tile_slot_rect(id, geometries)
+                .or_else(|| tree.pre_layout_ipc_rects.get(&id).copied())
                 .or_else(|| {
                     (!inside_pending_wrapper)
                         .then(|| geometries.leaf_ipc_rects.get(&id).copied())
@@ -212,6 +223,8 @@ impl<W: LayoutElement> TilingTree<W> {
                         && tree.fullscreen_layout_wrappers.contains(&id)
                     {
                         Rectangle::default()
+                    } else if let Some(slot) = tree.fullscreen_tile_slot_rect(id, geometries) {
+                        slot
                     } else {
                         geometries.ipc_nodes.get(&id).copied().unwrap_or_default()
                     },
@@ -288,10 +301,9 @@ impl<W: LayoutElement> TilingTree<W> {
                                             .sum::<f64>();
                                         *stored_percent / visible_total
                                     } else if tree.fullscreen_node() == Some(*child) {
-                                        let child_rect = geometries
-                                            .ipc_nodes
-                                            .get(child)
-                                            .copied()
+                                        let child_rect = tree
+                                            .fullscreen_tile_slot_rect(*child, geometries)
+                                            .or_else(|| geometries.ipc_nodes.get(child).copied())
                                             .unwrap_or_default();
                                         let parent_area =
                                             parent_rect.size.w.round() * parent_rect.size.h.round();

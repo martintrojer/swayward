@@ -336,3 +336,34 @@ fn fullscreen_ignores_default_inner_gaps() {
         Point::default()
     );
 }
+
+// random seed 88 step 10: mapping a sibling of a fullscreen view makes sway
+// `arrange_container(parent)`, so the fullscreen container reports its tiled
+// slot until a workspace arrange (here `layout tabbed`, step 15) resets it.
+#[test]
+fn mapping_beside_fullscreen_reports_its_tile_slot_until_rearranged() {
+    let mut t = tree((1280., 720.), 0.);
+    t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let fullscreen = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.split(fullscreen, Layout::SplitV);
+    assert!(t.set_node_fullscreen(fullscreen, Some(FullscreenMode::Workspace)));
+
+    t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+
+    let slot = |t: &TilingTree<TestWindow>| {
+        let IpcNode::Split { children, .. } = t.ipc_tree() else {
+            panic!("IPC root must be a split");
+        };
+        let IpcNode::Split { children, .. } = &children[1] else {
+            panic!("second child must be the split container");
+        };
+        let IpcNode::Leaf { rect, percent, .. } = &children[0] else {
+            panic!("fullscreen view must be a leaf");
+        };
+        (rect.size.h, *percent)
+    };
+    assert_eq!(slot(&t), (360., Some(0.5)));
+    t.set_layout(t.root, Layout::Tabbed);
+    assert_eq!(slot(&t).0, 720.);
+    t.check_invariants();
+}

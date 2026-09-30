@@ -141,6 +141,7 @@ impl<W: LayoutElement> TilingTree<W> {
         } else {
             self.take_detached_node(id)?
         };
+        self.fullscreen_tile_slot = false;
         if moved_fullscreen {
             self.mapped_under_fullscreen.clear();
             self.fullscreen_layout_wrappers.clear();

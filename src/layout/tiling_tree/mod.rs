@@ -354,6 +354,10 @@ pub struct TilingTree<W: LayoutElement> {
     sticky_splits: HashSet<NodeId>,
     pending_modes: HashMap<NodeId, PendingMode>,
     mapped_under_fullscreen: HashSet<NodeId>,
+    /// The fullscreen node reports its tiled slot over IPC. Sway's
+    /// `arrange_container(parent)` gives it the slot's pending box until the
+    /// next workspace arrange restores the output box.
+    fullscreen_tile_slot: bool,
     fullscreen_layout_wrappers: HashSet<NodeId>,
     pre_layout_ipc_rects: HashMap<NodeId, Rectangle<f64, Logical>>,
     interactive_resize: Option<InteractiveResize<W::Id>>,

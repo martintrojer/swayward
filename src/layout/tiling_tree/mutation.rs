@@ -103,6 +103,23 @@ impl<W: LayoutElement> TilingTree<W> {
         // (`arrange_container(parent)`, `sway/tree/view.c:931-940`).
         let focus_blocked = fullscreen.is_some();
         let mapped_under_fullscreen = focus_blocked && parent == self.root;
+        // Only split layouts divide the parent box; tabbed and stacked
+        // children keep the full box (`apply_tabbed_layout`,
+        // sway/tree/arrange.c:163-187).
+        if fullscreen.is_some_and(|fullscreen| {
+            parent != self.root
+                && parent != fullscreen
+                && self.contains_node(parent, fullscreen)
+                && matches!(
+                    self.nodes.get(&parent).map(|node| &node.value),
+                    Some(TreeNode::Split {
+                        layout: Layout::SplitH | Layout::SplitV,
+                        ..
+                    })
+                )
+        }) {
+            self.fullscreen_tile_slot = true;
+        }
         if parent == self.root {
             if let Some(layout) = match self.options.layout.workspace_layout {
                 swayward_config::WorkspaceLayout::Default => None,

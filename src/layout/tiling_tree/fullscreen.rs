@@ -31,6 +31,7 @@ impl<W: LayoutElement> TilingTree<W> {
         {
             return false;
         }
+        self.fullscreen_tile_slot = false;
         if let Some(current) = current {
             if let Some(mode) = self.pending_modes.get_mut(&current) {
                 mode.fullscreen = None;
