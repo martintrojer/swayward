@@ -1368,7 +1368,7 @@ fn sticky_floating_tree_follows_workspace_focus() {
     workspace.tiling_mut().set_focus(focused);
     let (subtree, old_parent) = workspace.detach_tiling_subtree(root).unwrap();
     workspace.finish_tiling_subtree_detach(old_parent);
-    workspace.floating_mut().add_tree(
+    let (root, _) = workspace.floating_mut().add_tree(
         subtree,
         Rectangle::new((100., 120.).into(), (600., 450.).into()),
     );
@@ -2533,14 +2533,17 @@ fn floating_tree_entry_routes_geometry_focus_hit_testing_and_lifecycle() {
         .tiling_mut()
         .set_layout(first, tiling_tree::Layout::SplitV);
     workspace.tiling_mut().focus_root();
-    let root = workspace.tiling().focus().unwrap();
+    let tiling_root = workspace.tiling().focus().unwrap();
     workspace.tiling_mut().set_focus(first);
-    let (subtree, old_parent) = workspace.detach_tiling_subtree(root).unwrap();
+    let (subtree, old_parent) = workspace.detach_tiling_subtree(tiling_root).unwrap();
     workspace.finish_tiling_subtree_detach(old_parent);
     let rect = Rectangle::new((100., 120.).into(), (600., 450.).into());
 
     let (root, remapped) = workspace.floating_mut().add_tree(subtree, rect);
     assert!(remapped.is_empty());
+    // The emptied workspace root keeps its ID; the floated split gets its own.
+    assert_ne!(root, tiling_root);
+    assert!(workspace.tiling().is_root(tiling_root));
     assert_eq!(workspace.floating().tree(root).unwrap().parent_area(), rect);
     assert_eq!(
         workspace.floating().tree(root).unwrap().geometry(first),
@@ -2561,8 +2564,8 @@ fn floating_tree_entry_routes_geometry_focus_hit_testing_and_lifecycle() {
 
     let detached = workspace.floating_mut().remove_tree(root).unwrap();
     let (restored, remapped) = workspace.attach_tiling_subtree(detached);
-    assert_eq!(restored, root);
-    assert!(remapped.is_empty());
+    assert_eq!(restored, tiling_root);
+    assert_eq!(remapped, vec![(root, tiling_root)]);
     assert_eq!(workspace.tiling().windows().count(), 2);
     workspace.verify_invariants(None);
 }
@@ -2809,7 +2812,7 @@ fn fullscreen_targets_a_node_inside_a_floating_tree() {
     let root = workspace.tiling().focus().unwrap();
     let (subtree, old_parent) = workspace.detach_tiling_subtree(root).unwrap();
     workspace.finish_tiling_subtree_detach(old_parent);
-    workspace.floating_mut().add_tree(
+    let (root, _) = workspace.floating_mut().add_tree(
         subtree,
         Rectangle::new((100., 120.).into(), (600., 450.).into()),
     );

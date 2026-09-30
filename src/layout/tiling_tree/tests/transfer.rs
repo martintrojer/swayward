@@ -37,7 +37,8 @@ fn detached_subtree_keeps_node_ids_when_the_destination_has_no_collision() {
     source.split(first, Layout::SplitV);
     let second = source.add_tile(tile(2, source.view_size()), InsertTarget::Focused);
     let subtree = source.nodes[&first].parent.unwrap();
-    let old_ids = [subtree, first, second];
+    assert_eq!(subtree, source.root);
+    let old_ids = [first, second];
     let mut destination = tree((1200., 800.), 0.);
     destination.add_tile(tile(3, destination.view_size()), InsertTarget::Focused);
 
@@ -46,6 +47,11 @@ fn detached_subtree_keeps_node_ids_when_the_destination_has_no_collision() {
 
     assert!(remapped.is_empty());
     assert!(old_ids.into_iter().all(|id| destination.contains(id)));
+    // The emptied root keeps its ID in the source tree, so the detached split
+    // must not carry it into the destination.
+    assert!(source.contains(subtree));
+    assert!(!destination.contains(subtree));
+    source.check_invariants();
     destination.check_invariants();
 }
 
@@ -56,9 +62,10 @@ fn resident_subtree_uses_its_outer_rectangle_without_workspace_outer_gaps() {
     source.split(first, Layout::SplitV);
     source.add_tile(tile(2, source.view_size()), InsertTarget::Focused);
     let subtree = source.nodes[&first].parent.unwrap();
+    assert_eq!(subtree, source.root);
     let original_ids: HashSet<_> = source
         .iter_depth_first()
-        .filter(|(id, _)| source.contains_node(subtree, *id))
+        .filter(|(id, _)| *id != subtree && source.contains_node(subtree, *id))
         .map(|(id, _)| id)
         .collect();
     let (detached, _) = source.detach_subtree(subtree).unwrap();
@@ -76,6 +83,8 @@ fn resident_subtree_uses_its_outer_rectangle_without_workspace_outer_gaps() {
     assert_eq!(resident.compute_geometry().ipc_nodes[&root], rect);
     assert!(remapped.is_empty());
     assert!(original_ids.into_iter().all(|id| resident.contains(id)));
+    assert_ne!(root, subtree);
+    assert!(source.contains(subtree));
     assert_eq!(resident.windows().count(), 2);
     resident.check_invariants();
 }
@@ -146,7 +155,10 @@ fn attaching_split_to_empty_tree_preserves_root_state() {
         let (attached, remapped) = destination.attach_subtree(detached);
 
         assert_eq!(attached, destination.root);
-        assert_eq!(remapped, vec![(old_root, destination.root)]);
+        assert_eq!(remapped.len(), 1);
+        assert_ne!(remapped[0].0, old_root);
+        assert_eq!(remapped[0].1, destination.root);
+        assert!(source.contains(old_root));
         assert!(matches!(
             destination.nodes[&destination.root].value,
             TreeNode::Split {

@@ -3810,6 +3810,23 @@ impl<W: LayoutElement> Layout<W> {
         preserve_empty_workspace: bool,
         auto_back_and_forth: bool,
     ) -> Result<(WorkspaceId, Vec<(tiling_tree::NodeId, tiling_tree::NodeId)>), String> {
+        let floating_group_window = self
+            .workspaces()
+            .find(|(_, _, workspace)| workspace.id() == source_workspace)
+            .and_then(|(_, _, workspace)| {
+                let floating = workspace.floating();
+                floating.tree(node)?;
+                floating.window_in_node(node).cloned()
+            });
+        if let Some(window) = floating_group_window {
+            self.move_window_to_sway_workspace(&window, target, auto_back_and_forth)?;
+            let target_workspace = self
+                .workspaces()
+                .find(|(_, _, workspace)| workspace.has_window(&window))
+                .map(|(_, _, workspace)| workspace.id())
+                .ok_or_else(|| "No matching node.".to_owned())?;
+            return Ok((target_workspace, Vec::new()));
+        }
         let (floating, empty_root) = self
             .workspaces()
             .find(|(_, _, workspace)| workspace.id() == source_workspace)

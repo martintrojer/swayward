@@ -124,8 +124,12 @@ impl<W: LayoutElement> TilingTree<W> {
                 .into_iter()
                 .map(|child| self.take_detached_node(child))
                 .collect::<Option<Vec<_>>>()?;
+            // The emptied root stays behind with its ID, like sway's workspace
+            // keeping its identity while `workspace_wrap_children` creates a new
+            // container (`sway/tree/workspace.c:898-910`). Handing the root's ID
+            // to the detached split would leave the ID live in both trees.
             DetachedNode::Split {
-                old_id: id,
+                old_id: NodeId(NODE_ID_COUNTER.next()),
                 layout,
                 children,
                 percents,

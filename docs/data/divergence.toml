@@ -1780,3 +1780,9 @@ migrated = false
 paths = ["src/command/targeted.rs", "src/layout/mod.rs", "src/tests/ipc/workspace_commands/move_swap.rs"]
 what = "insert a container moved right or down across an output boundary before the destination's focused container."
 why = "Sway inserts right and down directional moves at the leading edge of a parallel destination workspace (`sway/commands/move.c:168-193`); generic workspace transfers insert after the focused container and reverse repeated moves. Oracle scenario `i3-derived/91f850a4f83f99d2` from `517-regress-move-direction-ipc.t:38` covers the ordering."
+
+[[edit]]
+migrated = false
+paths = ["src/layout/mod.rs", "src/layout/tiling_tree/transfer.rs"]
+what = "give a detached workspace root split a fresh node ID so the emptied root keeps its own, and route container moves of a floating-group root through the floating-tree transfer."
+why = "Sway floats or moves a whole workspace by wrapping its children in a new container while the workspace keeps its identity (`sway/tree/workspace.c:898-910`; `sway/commands/floating.c:28-33`; `sway/commands/move.c:928-933`). Reusing the root ID left it live in both the tiling tree and the floating group, so a restored scratchpad tree could collide with a later group (CI seed 4d1a7790) and moving a floating group only worked when its ID aliased the tiling root."

@@ -321,6 +321,20 @@ fn swapping_with_a_marked_floating_container_is_rejected_safely() {
 }
 
 #[test]
+fn showing_scratchpad_after_unfocused_floating_toggle_keeps_unique_trees() {
+    check_ops(vec![
+        Op::Command("focus parent"),
+        Op::Command("floating toggle"),
+        Op::Open(2),
+        Op::Command("focus parent"),
+        Op::Command("focus right"),
+        Op::ConIdCommand(1, "move scratchpad"),
+        Op::Command("floating toggle"),
+        Op::Command("scratchpad show"),
+    ]);
+}
+
+#[test]
 fn killed_windows_can_receive_late_configures() {
     check_ops(vec![
         Op::Command("focus parent"),
