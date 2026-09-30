@@ -437,6 +437,73 @@ fn arbitrary_tree_direction() -> impl Strategy<Value = tiling_tree::Direction> {
     ]
 }
 
+fn floating_group_lifecycle_op() -> impl Strategy<Value = Op> {
+    prop_oneof![
+        4 => (1..=5usize).prop_map(|id| Op::AddWindow {
+            params: TestWindowParams::new(id),
+        }),
+        4 => (1..=5usize).prop_map(Op::CloseWindow),
+        3 => (1..=5usize).prop_map(Op::FullscreenWindow),
+        3 => (1..=5usize, any::<bool>()).prop_map(|(window, is_fullscreen)| {
+            Op::SetFullscreenWindow {
+                window,
+                is_fullscreen,
+            }
+        }),
+        2 => (1..=5usize, arbitrary_resize_edge()).prop_map(|(window, edges)| {
+            Op::InteractiveResizeBegin { window, edges }
+        }),
+        2 => (1..=5usize, -20000f64..20000f64, -20000f64..20000f64).prop_map(
+            |(window, dx, dy)| Op::InteractiveResizeUpdate { window, dx, dy },
+        ),
+        2 => (1..=5usize).prop_map(|window| Op::InteractiveResizeEnd { window }),
+        3 => Just(Op::FocusParent),
+        3 => Just(Op::FocusChild),
+        3 => arbitrary_tree_layout().prop_map(Op::SplitFocused),
+        3 => arbitrary_tree_layout().prop_map(Op::SetFocusedLayout),
+        3 => Just(Op::ToggleFocusedContainerFloating),
+        4 => (0..=4usize, any::<bool>())
+            .prop_map(|(workspace, focus)| Op::MoveFocusedToWorkspace(workspace, focus)),
+        4 => (1..=2usize, prop::option::of(0..=4usize), any::<bool>()).prop_map(
+            |(output_id, target_ws_idx, activate)| Op::MoveFocusedToOutput {
+                output_id,
+                target_ws_idx,
+                activate,
+            },
+        ),
+        3 => (1..=2usize).prop_map(Op::MoveWorkspaceToOutput),
+        3 => Just(Op::MoveFocusedToScratchpad),
+        2 => Just(Op::MoveFocusedContainerToNextWorkspace),
+        2 => (1..=2usize).prop_map(Op::RemoveOutput),
+        2 => (1..=2usize).prop_map(Op::AddOutput),
+        2 => (1..=5usize).prop_map(Op::FocusWindow),
+        2 => (1..=2usize).prop_map(Op::FocusOutput),
+        1 => Just(Op::FocusFloating),
+        1 => Just(Op::FocusTiling),
+    ]
+}
+
+fn floating_group_lifecycle_ops() -> impl Strategy<Value = Vec<Op>> {
+    prop::collection::vec(floating_group_lifecycle_op(), 0..80).prop_map(|mut tail| {
+        let mut ops = vec![
+            Op::AddOutput(1),
+            Op::AddOutput(2),
+            Op::AddWindow {
+                params: TestWindowParams::new(1),
+            },
+            Op::AddWindow {
+                params: TestWindowParams::new(2),
+            },
+            Op::SplitFocused(tiling_tree::Layout::SplitV),
+            Op::FocusParent,
+            Op::ToggleFocusedContainerFloating,
+            Op::FocusChild,
+        ];
+        ops.append(&mut tail);
+        ops
+    })
+}
+
 mod operations;
 
 use operations::Op;
@@ -447,6 +514,47 @@ fn check_ops_on_layout(layout: &mut Layout<TestWindow>, ops: impl IntoIterator<I
         op.apply(layout);
         layout.verify_invariants();
     }
+}
+
+fn collect_ipc_windows(node: IpcNode<usize>, windows: &mut Vec<usize>) {
+    match node {
+        IpcNode::Split { children, .. } => {
+            for child in children {
+                collect_ipc_windows(child, windows);
+            }
+        }
+        IpcNode::Leaf { window, .. } => windows.push(window),
+    }
+}
+
+#[track_caller]
+fn verify_layout_windows_reachable_once(layout: &Layout<TestWindow>) {
+    let mut layout_windows = layout
+        .windows()
+        .map(|(_, window)| *window.id())
+        .collect::<Vec<_>>();
+    let layout_window_count = layout_windows.len();
+    layout_windows.sort_unstable();
+    layout_windows.dedup();
+    assert_eq!(layout_windows.len(), layout_window_count);
+
+    let mut ipc_windows = Vec::new();
+    for (_, _, workspace) in layout.workspaces() {
+        collect_ipc_windows(workspace.ipc_tiling_tree(), &mut ipc_windows);
+        for (_, tree, _) in workspace.ipc_floating_trees() {
+            collect_ipc_windows(tree, &mut ipc_windows);
+        }
+    }
+    for (tree, _) in layout.scratchpad_trees() {
+        collect_ipc_windows(tree, &mut ipc_windows);
+    }
+    for window in layout.scratchpad_windows() {
+        if !ipc_windows.contains(window.id()) {
+            ipc_windows.push(*window.id());
+        }
+    }
+    ipc_windows.sort_unstable();
+    assert_eq!(ipc_windows, layout_windows);
 }
 
 #[track_caller]
@@ -4260,6 +4368,53 @@ proptest! {
 
         check_ops_with_options(options, ops);
     }
+
+    #[test]
+    fn floating_group_lifecycle_operations_preserve_reachability(
+        ops in floating_group_lifecycle_ops(),
+    ) {
+        let mut layout = Layout::default();
+        for op in ops {
+            let before = layout.windows().count();
+            let is_add = matches!(&op, Op::AddWindow { .. });
+            let is_close = matches!(&op, Op::CloseWindow(_));
+            op.apply(&mut layout);
+            layout.verify_invariants();
+            verify_layout_windows_reachable_once(&layout);
+            let after = layout.windows().count();
+            if is_add {
+                assert!(after == before || after == before + 1);
+            } else if is_close {
+                assert!(after == before || after + 1 == before);
+            } else {
+                assert_eq!(after, before);
+            }
+        }
+    }
+}
+
+#[test]
+fn layout_changes_do_not_flatten_a_floating_group_resident_root() {
+    check_ops([
+        Op::AddOutput(1),
+        Op::AddOutput(2),
+        Op::AddWindow {
+            params: TestWindowParams::new(1),
+        },
+        Op::AddWindow {
+            params: TestWindowParams::new(2),
+        },
+        Op::SplitFocused(tiling_tree::Layout::SplitV),
+        Op::FocusParent,
+        Op::ToggleFocusedContainerFloating,
+        Op::FocusChild,
+        Op::FocusParent,
+        Op::FocusParent,
+        Op::SetFocusedLayout(tiling_tree::Layout::Tabbed),
+        Op::SetFocusedLayout(tiling_tree::Layout::SplitH),
+        Op::FocusWindow(2),
+        Op::SetFocusedLayout(tiling_tree::Layout::SplitH),
+    ]);
 }
 
 #[test]
@@ -4284,6 +4439,7 @@ fn closing_a_hidden_scratchpad_floating_group_child_removes_it() {
         Op::CloseWindow(5),
     ]);
 
+    verify_layout_windows_reachable_once(&layout);
     assert!(!layout.has_window(&5));
 }
 

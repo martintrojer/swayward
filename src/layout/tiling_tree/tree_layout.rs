@@ -538,14 +538,17 @@ impl<W: LayoutElement> TilingTree<W> {
             return (None, Vec::new());
         };
         let target = if focus == self.root {
-            self.root
+            self.resident_root().unwrap_or(self.root)
         } else {
             let Some(node) = self.nodes.get(&focus) else {
                 return (None, Vec::new());
             };
             node.parent.unwrap_or(self.root)
         };
-        if target == self.root || self.split_len(target) != Some(1) {
+        if target == self.root
+            || self.split_len(target) != Some(1)
+            || self.resident_root() == Some(target)
+        {
             return (Some(target), Vec::new());
         }
         let Some(grandparent) = self.nodes.get(&target).and_then(|node| node.parent) else {
