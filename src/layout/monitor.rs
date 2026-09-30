@@ -317,9 +317,14 @@ impl<W: LayoutElement> Monitor<W> {
         // Prepare the workspaces: set output, pick the active one.
         let mut active_workspace_idx = 0;
 
-        for (idx, ws) in workspaces.iter_mut().enumerate() {
-            assert!(ws.must_be_kept());
+        // Callers hand over only workspaces that must be kept. Should one slip
+        // through, drop it as sway would have destroyed it
+        // (workspace_consider_destroy, sway/tree/workspace.c:313-332) rather
+        // than abort the session while an output is being added.
+        debug_assert!(workspaces.iter().all(Workspace::must_be_kept));
+        workspaces.retain(Workspace::must_be_kept);
 
+        for (idx, ws) in workspaces.iter_mut().enumerate() {
             if preserve_initial_auto_layout {
                 ws.preserve_empty_auto_layout();
             }

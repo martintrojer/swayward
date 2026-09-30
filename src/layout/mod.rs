@@ -1770,11 +1770,24 @@ impl<W: LayoutElement> Layout<W> {
         None
     }
 
+    /// Drops the empty, non-persistent workspaces held while no output exists.
+    ///
+    /// Sway destroys such a workspace as soon as nothing retains it
+    /// (workspace_consider_destroy, sway/tree/workspace.c:313-332), and
+    /// `Monitor::new` adopts the outputless list assuming every entry must be
+    /// kept.
+    fn reap_outputless_workspaces(&mut self) {
+        if let MonitorSet::NoOutputs { workspaces } = &mut self.monitor_set {
+            workspaces.retain(Workspace::must_be_kept);
+        }
+    }
+
     fn clean_up_removed_window_workspace(&mut self, source_workspace: WorkspaceId) {
         let Some(monitor) = self
             .monitors_mut()
             .find(|monitor| monitor.has_ws(source_workspace))
         else {
+            self.reap_outputless_workspaces();
             return;
         };
         monitor.workspace_switch = None;
@@ -3456,6 +3469,7 @@ impl<W: LayoutElement> Layout<W> {
             .unwrap();
         workspace.set_sway_identity(name, number);
         workspace.set_persistent(declared);
+        self.reap_outputless_workspaces();
         if let MonitorSet::Normal { monitors, .. } = &mut self.monitor_set {
             if let Some(monitor) = monitors.iter_mut().find(|monitor| monitor.has_ws(id)) {
                 monitor.sort_sway_workspaces();
@@ -7533,9 +7547,7 @@ impl<W: LayoutElement> Layout<W> {
                     monitor.reap_empty_workspaces();
                 }
             }
-            MonitorSet::NoOutputs { workspaces } => {
-                workspaces.retain(Workspace::must_be_kept);
-            }
+            MonitorSet::NoOutputs { .. } => self.reap_outputless_workspaces(),
         }
     }
 

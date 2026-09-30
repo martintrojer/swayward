@@ -1858,3 +1858,9 @@ migrated = false
 paths = ["swayward-config/Cargo.toml", "swayward-config/src/tests/loader.rs", "swayward-config/tests/translator.rs"]
 what = "create config-test fixtures in uniquely named RAII temporary directories under Cargo's target temporary directory."
 why = "Process-ID-based names collide across repeated values and interrupted runs, while explicit cleanup leaks files on assertion or subprocess failure; isolated TempDir owners avoid both failure modes and keep scratch data out of the system temporary directory."
+
+[[edit]]
+migrated = false
+paths = ["src/layout/mod.rs", "src/layout/monitor.rs", "src/tests/ipc/outputs.rs"]
+what = "drop empty, non-persistent workspaces held while no output exists (after a rename away from a declared name, or after the last window leaves for the scratchpad), and have Monitor::new filter any that slip through instead of asserting."
+why = "Sway destroys an empty non-persistent workspace once nothing retains it (workspace_consider_destroy, sway/tree/workspace.c:313-332), and a re-enabled output creates its own initial workspace (restore_workspaces, sway/tree/output.c:31-57). niri's release assert in Monitor::new assumed every outputless workspace must be kept, so re-enabling the output aborted the session. Sway never reaches this state because it refuses rename and move commands while no output exists (sway/commands/rename.c:25-28, sway/commands/scratchpad.c:100-103); swayward does not yet refuse them."

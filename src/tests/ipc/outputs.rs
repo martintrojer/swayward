@@ -671,3 +671,62 @@ fn disabling_an_output_that_repositions_another_emits_one_output_event() {
         [((1 << 31) | 1, r#"{"change":"unspecified"}"#.to_owned())]
     );
 }
+
+#[test]
+fn renaming_a_declared_workspace_while_outputless_does_not_abort_output_enable() {
+    // Renaming the declared workspace away from its name drops its persistence
+    // while no output holds it. Sway destroys an empty non-persistent workspace
+    // (workspace_consider_destroy, sway/tree/workspace.c:313-332), and a
+    // re-enabled output then creates its own initial workspace
+    // (restore_workspaces, sway/tree/output.c:31-57).
+    let config = swayward_config::Config::parse_mem(r#"workspace "keep" {}"#).unwrap();
+    let mut fixture = Fixture::with_config(config);
+    fixture.add_output(1, (800, 600));
+    let disable = crate::command::execute(fixture.niri_state(), "output headless-1 disable");
+    assert!(disable[0].success, "{disable:?}");
+    // Sway refuses a rename while no output exists (sway/commands/rename.c:25-28).
+    // swayward still runs it, which drops the workspace's persistence; its
+    // reply is not asserted here.
+    crate::command::execute(fixture.niri_state(), "rename workspace keep to other");
+    let enable = crate::command::execute(fixture.niri_state(), "output headless-1 enable");
+    assert!(enable[0].success, "{enable:?}");
+    assert_eq!(fixture.swayward().layout.outputs().count(), 1);
+    assert_eq!(fixture.swayward().layout.workspaces().count(), 1);
+    assert!(!workspace_names(&mut fixture).contains(&"other".to_owned()));
+    fixture.swayward().layout.verify_invariants();
+}
+
+#[test]
+fn moving_a_floating_group_to_the_scratchpad_while_outputless_does_not_abort_output_enable() {
+    let mut fixture = Fixture::new();
+    fixture.add_output(1, (800, 600));
+    let client = fixture.add_client();
+    for app_id in ["fixture-1", "fixture-2"] {
+        let window = fixture.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        fixture.roundtrip(client);
+        let window = fixture.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        fixture.double_roundtrip(client);
+    }
+    for command in ["focus parent", "floating enable", "output headless-1 disable"] {
+        let outcome = crate::command::execute(fixture.niri_state(), command);
+        assert!(outcome[0].success, "{command}: {outcome:?}");
+    }
+    // Sway refuses this command while no output exists
+    // (sway/commands/scratchpad.c:100-103; oracle
+    // outputless_floating_group_scratchpad). swayward still runs it, which
+    // empties the outputless workspace; its reply is not asserted here.
+    crate::command::execute(fixture.niri_state(), "[app_id=fixture-1] move scratchpad");
+    let enable = crate::command::execute(fixture.niri_state(), "output headless-1 enable");
+    assert!(enable[0].success, "{enable:?}");
+
+    let layout = &fixture.swayward().layout;
+    assert_eq!(layout.outputs().count(), 1);
+    assert_eq!(layout.workspaces().count(), 1);
+    assert_eq!(layout.windows().count(), 2);
+    layout.verify_invariants();
+}
