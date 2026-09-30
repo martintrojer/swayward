@@ -1153,12 +1153,36 @@ impl<W: LayoutElement> Workspace<W> {
     }
 
     pub fn remove_tile(&mut self, id: &W::Id, transaction: Transaction) -> RemovedTile<W> {
+        self.remove_tile_inner(id, transaction, false)
+    }
+
+    /// Removes a window that moves to another workspace or the scratchpad, applying sway's
+    /// transfer focus rule rather than the close rule.
+    pub fn remove_tile_for_transfer(
+        &mut self,
+        id: &W::Id,
+        transaction: Transaction,
+    ) -> RemovedTile<W> {
+        self.remove_tile_inner(id, transaction, true)
+    }
+
+    fn remove_tile_inner(
+        &mut self,
+        id: &W::Id,
+        transaction: Transaction,
+        transfer: bool,
+    ) -> RemovedTile<W> {
         let mut from_floating = false;
         let removed = if self.floating.has_window(id) {
             from_floating = true;
             self.floating.remove_tile(id, transaction)
         } else {
-            let tile = self.tiling.remove_tile(id, transaction).unwrap();
+            let tile = if transfer {
+                self.tiling.remove_tile_for_transfer(id, transaction)
+            } else {
+                self.tiling.remove_tile(id, transaction)
+            }
+            .unwrap();
             let is_floating = tile.restore_to_floating;
             RemovedTile {
                 tile,

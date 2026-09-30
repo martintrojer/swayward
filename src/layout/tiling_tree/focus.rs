@@ -56,6 +56,85 @@ impl<W: LayoutElement> TilingTree<W> {
         self.focus_history = history.into_iter().map(|(node, _)| node).collect();
     }
 
+    /// The most recent focus entry strictly inside `node`, like sway's
+    /// `seat_get_focus_inactive` (sway/input/seat.c:1357-1372).
+    pub fn focus_inactive_in(&self, node: NodeId) -> Option<NodeId> {
+        self.focus_inactive_in_excluding(node, node)
+    }
+
+    /// As `focus_inactive_in`, ignoring `excluded` and everything inside it: sway runs this
+    /// after detaching the moved container, so its entries are no longer under `node`.
+    pub fn focus_inactive_in_excluding(&self, node: NodeId, excluded: NodeId) -> Option<NodeId> {
+        self.focus_history.iter().copied().find(|candidate| {
+            *candidate != node
+                && self.nodes.contains_key(candidate)
+                && self.contains_node(node, *candidate)
+                && !self.contains_node(excluded, *candidate)
+        })
+    }
+
+    /// Picks sway's refocus target for a container leaving `old_parent`: the most recent entry
+    /// under the old parent, else under the workspace (sway/commands/move.c:598-608). `moved`
+    /// names the container when it is still attached, so its own entries are skipped. Returns
+    /// the target with its ancestors so `resolve_transfer_focus` can follow a reaped target.
+    pub(super) fn transfer_focus_target(
+        &self,
+        moved: Option<NodeId>,
+        old_parent: Option<NodeId>,
+    ) -> Option<(NodeId, Vec<NodeId>)> {
+        let search = |node: NodeId| match moved {
+            Some(moved) => self.focus_inactive_in_excluding(node, moved),
+            None => self.focus_inactive_in(node),
+        };
+        let target = old_parent
+            .filter(|parent| *parent != self.root)
+            .and_then(search)
+            .or_else(|| search(self.root))?;
+        let mut ancestors = Vec::new();
+        let mut parent = self.nodes.get(&target).and_then(|node| node.parent);
+        while let Some(ancestor) = parent {
+            ancestors.push(ancestor);
+            parent = self.nodes.get(&ancestor).and_then(|node| node.parent);
+        }
+        Some((target, ancestors))
+    }
+
+    /// Focuses a target from `transfer_focus_target` after the move reaped empty containers.
+    /// When the target itself was reaped, sway's destroy handler focuses the most recent view
+    /// under its nearest surviving ancestor (sway/input/seat.c:273-286).
+    pub(super) fn resolve_transfer_focus(&mut self, target: Option<(NodeId, Vec<NodeId>)>) -> bool {
+        let Some((target, ancestors)) = target else {
+            return false;
+        };
+        let focus = if self.nodes.contains_key(&target) {
+            Some(target)
+        } else {
+            ancestors
+                .into_iter()
+                .find(|ancestor| self.nodes.contains_key(ancestor))
+                .and_then(|ancestor| self.focused_leaf_in(ancestor))
+        };
+        if focus.is_some() {
+            self.set_focus_id(focus);
+        }
+        focus.is_some()
+    }
+
+    /// Sway raises a split's new wrapper just below its focused child (`container_split`,
+    /// sway/tree/container.c:1554-1560).
+    pub(super) fn raise_split_wrapper(&mut self, child: NodeId, wrapper: NodeId) {
+        if self.focus != Some(child) {
+            return;
+        }
+        self.focus_history.retain(|candidate| *candidate != wrapper);
+        let index = self
+            .focus_history
+            .iter()
+            .position(|candidate| *candidate == child)
+            .map_or(0, |index| index + 1);
+        self.focus_history.insert(index, wrapper);
+    }
+
     pub fn root_is_focused(&self) -> bool {
         self.focus == Some(self.root)
     }

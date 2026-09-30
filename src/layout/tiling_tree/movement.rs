@@ -180,9 +180,23 @@ impl<W: LayoutElement> TilingTree<W> {
         let focus = self.focus;
         let focus_history = self.window_focus_history();
         let moved_focus = focus.is_some_and(|focus| self.contains_node(id, focus));
+        let containers_before = self
+            .focus_history
+            .iter()
+            .copied()
+            .filter(|node| self.is_split(*node))
+            .collect::<Vec<_>>();
         let changed = self.move_direction(id, direction);
         if changed {
             self.restore_window_focus_history(focus_history);
+            // Sway's seat focus stack also holds containers; keep the surviving ones after the
+            // windows so `seat_get_focus_inactive` can still find a container that was focused
+            // on its own.
+            for node in containers_before {
+                if self.nodes.contains_key(&node) && !self.focus_history.contains(&node) {
+                    self.focus_history.push(node);
+                }
+            }
         }
         // Restore focus that was elsewhere, unless the move reaped that node.
         // Moving a window out of its focused singleton parent removes the

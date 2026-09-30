@@ -241,7 +241,20 @@ impl<W: LayoutElement> TilingTree<W> {
     pub(super) fn set_focus_id(&mut self, focus: Option<NodeId>) {
         self.focus = focus;
         if let Some(id) = focus {
-            self.focus_history.retain(|candidate| *candidate != id);
+            // Sway raises every ancestor, outermost last, before the focused node itself, so the
+            // node's parents become focus-inactive entries (`seat_set_workspace_focus`,
+            // sway/input/seat.c:1178-1190).
+            let mut ancestors = Vec::new();
+            let mut parent = self.nodes.get(&id).and_then(|node| node.parent);
+            while let Some(ancestor) = parent.filter(|ancestor| *ancestor != self.root) {
+                ancestors.push(ancestor);
+                parent = self.nodes.get(&ancestor).and_then(|node| node.parent);
+            }
+            self.focus_history
+                .retain(|candidate| *candidate != id && !ancestors.contains(candidate));
+            for ancestor in ancestors {
+                self.focus_history.insert(0, ancestor);
+            }
             self.focus_history.insert(0, id);
             let stale = self.ipc_stale_nodes.clone();
             self.ipc_stale_nodes = stale
@@ -282,6 +295,26 @@ impl<W: LayoutElement> TilingTree<W> {
                     .find(|child| self.contains_node(*child, *focused))
             })
             .or_else(|| children.first().copied())
+    }
+
+    /// Removes a window that is being transferred elsewhere rather than closed. Sway refocuses
+    /// the most recent focus entry under the old parent, which is a container when that
+    /// container was focused on its own (sway/commands/move.c:598-608;
+    /// sway/tree/root.c:128-140). Closing uses the view-only rule in `remove_tile`.
+    pub fn remove_tile_for_transfer(
+        &mut self,
+        window: &W::Id,
+        transaction: Transaction,
+    ) -> Option<Tile<W>> {
+        let id = self.node_for_window(window)?;
+        let target = (self.focus == Some(id) && self.fullscreen_node().is_none())
+            .then(|| self.transfer_focus_target(Some(id), self.nodes[&id].parent))
+            .flatten();
+        let tile = self.remove_tile(window, transaction)?;
+        if self.focus.is_some() {
+            self.resolve_transfer_focus(target);
+        }
+        Some(tile)
     }
 
     pub fn remove_tile(&mut self, window: &W::Id, transaction: Transaction) -> Option<Tile<W>> {
@@ -630,8 +663,36 @@ impl<W: LayoutElement> TilingTree<W> {
             }
             self.remove_node(id);
             self.remove_child(parent, id);
+            self.raise_view_after_reap(parent);
             id = parent;
         }
+    }
+
+    /// Sway's seat-node destroy handler raises the most recent view under the reaped
+    /// container's parent into the focus stack below the current focus
+    /// (`handle_seat_node_destroy`, sway/input/seat.c:273-323).
+    fn raise_view_after_reap(&mut self, mut parent: NodeId) {
+        let view = loop {
+            if let Some(view) = self.focus_history.iter().copied().find(|candidate| {
+                self.tile(*candidate).is_some() && self.contains_node(parent, *candidate)
+            }) {
+                break view;
+            }
+            match self.nodes.get(&parent).and_then(|node| node.parent) {
+                Some(next) => parent = next,
+                None => return,
+            }
+        };
+        if Some(view) == self.focus {
+            return;
+        }
+        self.focus_history.retain(|candidate| *candidate != view);
+        let index = usize::from(
+            self.focus
+                .is_some_and(|focus| self.focus_history.first() == Some(&focus)),
+        );
+        self.focus_history
+            .insert(index.min(self.focus_history.len()), view);
     }
 
     pub(super) fn collapse_from(&mut self, mut id: NodeId) {

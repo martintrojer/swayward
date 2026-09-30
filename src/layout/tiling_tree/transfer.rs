@@ -320,11 +320,17 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub fn finish_subtree_detach(&mut self, old_parent: Option<NodeId>) {
+        // Sway refocuses the most recent focus entry under the old parent before reaping it,
+        // falling back to the workspace (sway/commands/move.c:598-608).
+        // The subtree is already detached, so nothing under the old parent needs excluding.
+        let target = old_parent.and_then(|_| self.transfer_focus_target(None, old_parent));
         if let Some(parent) = old_parent {
             self.reap_empty_from(parent);
         }
         self.compact_tree();
-        self.focus = self.focused_leaf_in(self.root);
+        if !self.resolve_transfer_focus(target) {
+            self.focus = self.focused_leaf_in(self.root);
+        }
         self.request_window_sizes();
     }
 

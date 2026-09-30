@@ -121,6 +121,7 @@ impl<W: LayoutElement> TilingTree<W> {
         children[index] = wrapper;
         percents[index] = old_percent;
         self.nodes.get_mut(&id).unwrap().parent = Some(wrapper);
+        self.raise_split_wrapper(id, wrapper);
         if let Some(fullscreen) = self
             .pending_modes
             .get_mut(&id)
@@ -456,6 +457,7 @@ impl<W: LayoutElement> TilingTree<W> {
         children[index] = wrapper;
         percents[index] = old_percent;
         self.nodes.get_mut(&id).unwrap().parent = Some(wrapper);
+        self.raise_split_wrapper(id, wrapper);
         if let Some(fullscreen) = self
             .pending_modes
             .get_mut(&id)

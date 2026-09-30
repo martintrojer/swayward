@@ -1744,6 +1744,15 @@ impl<W: LayoutElement> Layout<W> {
         window: &W::Id,
         transaction: Transaction,
     ) -> Option<(RemovedTile<W>, Option<WorkspaceId>)> {
+        self.detach_window_inner(window, transaction, false)
+    }
+
+    fn detach_window_inner(
+        &mut self,
+        window: &W::Id,
+        transaction: Transaction,
+        transfer: bool,
+    ) -> Option<(RemovedTile<W>, Option<WorkspaceId>)> {
         if let Some(index) = self
             .scratchpad
             .iter()
@@ -1813,7 +1822,11 @@ impl<W: LayoutElement> Layout<W> {
                         .find(|workspace| workspace.has_window(window))
                     {
                         let source_workspace = ws.id();
-                        let removed = ws.remove_tile(window, transaction);
+                        let removed = if transfer {
+                            ws.remove_tile_for_transfer(window, transaction)
+                        } else {
+                            ws.remove_tile(window, transaction)
+                        };
                         return Some((removed, Some(source_workspace)));
                     }
                 }
@@ -4335,7 +4348,8 @@ impl<W: LayoutElement> Layout<W> {
             }
             floating_working_area = Some(workspace.working_area());
         }
-        let Some((mut removed, source_workspace)) = self.detach_window(&window, Transaction::new())
+        let Some((mut removed, source_workspace)) =
+            self.detach_window_inner(&window, Transaction::new(), true)
         else {
             return;
         };

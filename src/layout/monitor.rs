@@ -1140,7 +1140,7 @@ impl<W: LayoutElement> Monitor<W> {
         let fullscreen = workspace.fullscreen_mode();
         let fullscreen_window = workspace.fullscreen_window().cloned();
         let transaction = Transaction::new();
-        let removed = workspace.remove_tile(&window, transaction);
+        let removed = workspace.remove_tile_for_transfer(&window, transaction);
 
         // If the view is following the tile, match the animation.
         let config = if activate {
