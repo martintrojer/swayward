@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 89d9215cfb7e4611cb9b514c2789ffbf9619bc9b7cad9aad243dce95a78a05de # shrinks to ops = [Create, Create, Create, InitialCommit, SetParent(0), AckAndMap, UnsetFullscreen, UnsetMaximized, Command("fullscreen toggle"), UnsetFullscreen]
+cc f827f0ac1e43a90e9fc1e85d9d595b420ea2b1a7669e6318f1e153d2c5cf3c91 # shrinks to ops = [Create, Create, SetParent(0), Unmap, AckAndMap, Command("fullscreen toggle"), UnsetFullscreen]

@@ -245,15 +245,21 @@ impl LayoutElement for Mapped {
         // in that case the window itself will restore its previous size upon receiving a (0, 0)
         // configure, whereas what we potentially want is to unfullscreen the window into its
         // fullscreen size.
+        //
+        // The pending state must match as well. A fullscreen or maximize
+        // request that has not been sent yet lives only in the pending state;
+        // returning early would leave it there, and the next configure would
+        // make a floating window fullscreen.
+        let wanted = |state: &smithay::wayland::shell::xdg::ToplevelState| {
+            state.size.unwrap_or_default() == size
+                && state.states.contains(xdg_toplevel::State::Fullscreen)
+                    == self.is_pending_windowed_fullscreen
+                && !state.states.contains(xdg_toplevel::State::Maximized)
+        };
+        let pending_matches = self.toplevel().with_pending_state(|state| wanted(state));
         let already_sent = with_toplevel_last_uncommitted_configure(self.toplevel(), |configure| {
             let ToplevelConfigure { state, serial } = configure?;
-
-            let same_size = state.size.unwrap_or_default() == size;
-            let has_fullscreen = state.states.contains(xdg_toplevel::State::Fullscreen);
-            let same_fullscreen = has_fullscreen == self.is_pending_windowed_fullscreen;
-            let has_maximized = state.states.contains(xdg_toplevel::State::Maximized);
-            let same_maximized = !has_maximized;
-            (same_size && same_fullscreen && same_maximized).then_some(*serial)
+            (pending_matches && wanted(state)).then_some(*serial)
         });
 
         if let Some(serial) = already_sent {

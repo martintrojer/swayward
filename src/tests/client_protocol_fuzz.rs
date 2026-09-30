@@ -394,3 +394,32 @@ proptest! {
         check_ops(ops);
     }
 }
+
+#[test]
+fn client_unfullscreen_of_mapped_child_after_fullscreen_toggle() {
+    check_ops(vec![
+        Op::Create,
+        Op::Create,
+        Op::SetParent(0),
+        Op::Unmap,
+        Op::AckAndMap,
+        Op::Command("fullscreen toggle"),
+        Op::UnsetFullscreen,
+    ]);
+}
+
+#[test]
+fn client_unfullscreen_after_unset_maximized_and_fullscreen_toggle() {
+    check_ops(vec![
+        Op::Create,
+        Op::Create,
+        Op::Create,
+        Op::InitialCommit,
+        Op::SetParent(0),
+        Op::AckAndMap,
+        Op::UnsetFullscreen,
+        Op::UnsetMaximized,
+        Op::Command("fullscreen toggle"),
+        Op::UnsetFullscreen,
+    ]);
+}
