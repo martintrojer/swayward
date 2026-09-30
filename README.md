@@ -215,8 +215,11 @@ raw non-pass counts include i3-only premises and gives the sway-relative
 comparison. The snapshot table publishes passes, skips, failures or unreached
 assertions, and unstable assertions together for the i3 suite, plus matches,
 not-applicable scenarios, and mismatches for the sway IPC suite. The underlying
-results live in `i3/results/swayward.toml` and
-`sway-ipc/results/swayward.toml` in the oracle repository.
+results are the versioned
+[`i3/results/swayward-eb170906.toml`](https://github.com/martintrojer/sway-ipc-oracle/blob/db7147c0908021f18090f73517daaa3f420ed54e/i3/results/swayward-eb170906.toml)
+and
+[`sway-ipc/results/swayward-eb170906.toml`](https://github.com/martintrojer/sway-ipc-oracle/blob/db7147c0908021f18090f73517daaa3f420ed54e/sway-ipc/results/swayward-eb170906.toml)
+files at the oracle revision this checkout pins.
 
 Swayward also keeps a faster in-process development harness. Its
 `tests/i3/coverage.toml` ledger records **2,218 passes, 867 documented skips,
