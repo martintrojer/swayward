@@ -845,7 +845,11 @@ fn execute_one(
                 }
             }
             if has_output_event {
-                state.swayward.ipc_output_changed();
+                // One event per configuration change, like sway's
+                // update_output_manager_config (sway/desktop/output.c:377-399),
+                // even when the change also repositioned surviving outputs.
+                state.swayward.ipc_outputs_changed = true;
+                state.refresh_ipc_outputs();
             }
             None
         }

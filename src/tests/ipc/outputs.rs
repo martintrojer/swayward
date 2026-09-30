@@ -635,3 +635,39 @@ fn output_power_survives_replug_and_idle_wake() {
     assert_eq!(outputs[0]["power"], false);
     assert_eq!(outputs[0]["dpms"], false);
 }
+
+#[test]
+fn disabling_an_output_that_repositions_another_emits_one_output_event() {
+    // Oracle: events/disabled_output_evacuation. Sway sends one output event
+    // for the whole configuration change, even when a surviving output is
+    // repositioned (update_output_manager_config, sway/desktop/output.c:377-399).
+    let (mut fixture, socket) = ipc_fixture();
+    fixture.add_output(1, (1280, 720));
+    fixture.add_output(2, (1280, 720));
+    fixture.niri_state().refresh_ipc_outputs();
+    let mut subscriber = UnixStream::connect(&socket).unwrap();
+    subscriber
+        .write_all(&swayward_ipc::wire::encode(
+            MessageType::Subscribe,
+            r#"["output"]"#,
+        ))
+        .unwrap();
+    let ((_, _), mut remainder) =
+        read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, Vec::new());
+
+    // headless-1 sits at x=0, so disabling it moves headless-2 left.
+    assert!(crate::command::execute(fixture.niri_state(), "output headless-1 disable")[0].success);
+    fixture.niri_state().refresh_ipc_outputs();
+
+    let mut events = Vec::new();
+    while let Some(((event_type, payload), rest)) =
+        try_read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder.clone())
+    {
+        remainder = rest;
+        events.push((event_type, payload));
+    }
+    assert_eq!(
+        events,
+        [((1 << 31) | 1, r#"{"change":"unspecified"}"#.to_owned())]
+    );
+}
