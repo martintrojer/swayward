@@ -3392,25 +3392,45 @@ impl<W: LayoutElement> Layout<W> {
         ) {
             return Err(format!("Cannot use special workspace name '{new_name}'"));
         }
-        // Ignore a workspace that sway would already have destroyed. Sway
+        // Destroy a workspace sway would already have destroyed. Sway
         // destroys an empty, non-visible workspace no seat retains, and does so
         // when focus LEAVES it (seat_set_focus, sway/sway/input/seat.c:1244),
-        // so by the time a rename runs the name is free. We keep such a
-        // workspace, so a stale one blocked the rename with `Workspace already
-        // exists`.
-        if let Some(existing) = self.workspaces().find_map(|(monitor, index, workspace)| {
-            // Sway also retains the workspace a seat's focus-inactive points
-            // at (workspace_consider_destroy, sway/sway/tree/workspace.c:
-            // 322-329), which is the one we would return to via
-            // back_and_forth, so do not treat that one as destroyed.
-            let retained_by_seat = monitor
-                .is_some_and(|monitor| monitor.previous_workspace_id() == Some(workspace.id()));
-            let destroyed_by_sway = !workspace.has_windows()
-                && !retained_by_seat
-                && monitor.is_some_and(|monitor| monitor.active_workspace_idx() != index);
-            if destroyed_by_sway {
-                return None;
+        // so by the time a rename runs the name is free. We can still hold
+        // such a workspace, and skipping it without removing it let the rename
+        // produce two workspaces with one name.
+        if let MonitorSet::Normal { monitors, .. } = &mut self.monitor_set {
+            for monitor in monitors
+                .iter_mut()
+                .filter(|monitor| monitor.workspace_switch.is_none())
+            {
+                let stale = monitor
+                    .workspaces
+                    .iter()
+                    .enumerate()
+                    .filter(|(index, workspace)| {
+                        // Sway also retains the workspace a seat's
+                        // focus-inactive points at (workspace_consider_destroy,
+                        // sway/sway/tree/workspace.c:322-329), which is the one
+                        // we would return to via back_and_forth.
+                        workspace.id() != id
+                            && !workspace.has_windows()
+                            && *index != monitor.active_workspace_idx()
+                            && monitor.previous_workspace_id() != Some(workspace.id())
+                            && workspace
+                                .sway_name()
+                                .is_some_and(|name| name.eq_ignore_ascii_case(&new_name))
+                    })
+                    .map(|(_, workspace)| workspace.id())
+                    .collect::<Vec<_>>();
+                for stale in stale {
+                    monitor.consider_destroy_workspace(stale);
+                }
             }
+        }
+        // Whatever survived (a persistent or still-visible workspace) is live,
+        // and sway refuses to rename onto a live name
+        // (sway/sway/commands/rename.c:84-91).
+        if let Some(existing) = self.workspaces().find_map(|(_, _, workspace)| {
             workspace
                 .sway_name()
                 .is_some_and(|name| name.eq_ignore_ascii_case(&new_name))

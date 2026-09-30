@@ -379,6 +379,28 @@ fn runtime_default_border_keeps_floating_tile_data_current() {
     ]);
 }
 
+/// Sway refuses to rename a workspace to another live workspace's name
+/// (`sway/sway/commands/rename.c:82-91`).
+#[test]
+fn rename_does_not_reuse_a_live_empty_workspace_name() {
+    check_ops(vec![
+        Op::Command("workspace 2"),
+        Op::ConIdCommand(2, "floating toggle"),
+        Op::ConIdCommand(0, "floating toggle"),
+        Op::Command("rename workspace to fuzzed"),
+        Op::Command("focus right"),
+        Op::Command("move workspace to output left"),
+        Op::Close(0),
+        Op::Open(2),
+        Op::ConIdCommand(0, "move scratchpad"),
+        Op::Open(3),
+        Op::ConIdCommand(1, "move scratchpad"),
+        Op::Command("workspace_auto_back_and_forth yes"),
+        Op::ConIdCommand(0, "move workspace 1"),
+        Op::Command("rename workspace to fuzzed"),
+    ]);
+}
+
 #[test]
 fn changing_from_tabbed_to_split_keeps_visible_tiles_consistent() {
     check_ops(vec![
