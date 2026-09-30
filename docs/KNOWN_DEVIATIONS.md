@@ -11,6 +11,7 @@ exact behaviour, the reason for it, and the sway source citations.
 | No managed bar | Swayward does not launch swaybar or read a `bar {}` block. Configure a layer-shell bar directly. | [Bars](#bars) |
 | GNOME portal backend | The GNOME backend is the default, with `xdg-desktop-portal-wlr` available as a fallback. | [Desktop integration](#desktop-integration) |
 | Reload keeps display changes | A display change made by a protocol client survives `reload` unless the file changes the output settings. | [Reload and transient output configuration](#reload-and-transient-output-configuration) |
+| Malformed IPC frames | A malformed IPC client is disconnected or receives a failure instead of waiting indefinitely. | [Malformed IPC frames](#malformed-ipc-frames) |
 | Layout and Xwayland limits | Scrollable tiling, some i3-only structures, and full X11 identity are not available. | [Layout and Xwayland](#layout-and-xwayland) |
 
 The details use three labels, because each kind needs something different from
@@ -248,6 +249,25 @@ Commands outside the implemented subset return a sway-shaped `RUN_COMMAND`
 failure. See
 the [compatibility matrix](SWAY_COMPATIBILITY.md) for the supported subset and
 the [IPC oracle coverage](IPC_ORACLE_COVERAGE.md) for its test boundary.
+
+### Malformed IPC frames
+
+**Deliberate.**
+
+Sway waits when a client half-closes after sending a truncated header, a
+truncated payload, or a header with an oversized payload length. Its IPC read
+handler returns until `FIONREAD` reports a complete header or the declared
+payload length (`sway/sway/ipc-server.c:201-252`). Sway also leaves the
+connection open without replying to an unknown request type
+(`sway/sway/ipc-server.c:927-929`). The wire-fuzz oracle records these four
+cases as timeouts.
+
+Swayward does not retain these waits. It closes a connection with an incomplete
+or oversized frame and returns a structured failure for an unknown request
+type. A malformed client therefore receives a failure or a closed socket, and
+cannot leave a server task waiting indefinitely. The `truncated-header`,
+`truncated-payload`, `oversized-length`, and `unknown-type` wire-fuzz mismatches
+are deliberate safety deviations.
 
 ### Per-view rendering and idle policy commands
 
