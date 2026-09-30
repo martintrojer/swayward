@@ -4263,6 +4263,31 @@ proptest! {
 }
 
 #[test]
+fn closing_a_hidden_scratchpad_floating_group_child_removes_it() {
+    let layout = check_ops([
+        Op::AddOutput(1),
+        Op::AddWindow {
+            params: TestWindowParams::new(1),
+        },
+        Op::AddWindow {
+            params: TestWindowParams::new(2),
+        },
+        Op::SplitFocused(tiling_tree::Layout::SplitV),
+        Op::FocusParent,
+        Op::ToggleFocusedContainerFloating,
+        Op::FocusChild,
+        Op::AddWindow {
+            params: TestWindowParams::new(5),
+        },
+        Op::ToggleFocusedContainerFloating,
+        Op::MoveFocusedToScratchpad,
+        Op::CloseWindow(5),
+    ]);
+
+    assert!(!layout.has_window(&5));
+}
+
+#[test]
 fn focus_parent_with_only_a_floating_window_preserves_tree_invariants() {
     let layout = check_ops([
         Op::AddOutput(1),

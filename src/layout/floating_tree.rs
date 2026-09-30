@@ -173,6 +173,26 @@ impl<W: LayoutElement> RemovedFloatingTree<W> {
         self.tree.windows().map(|(_, window)| window)
     }
 
+    pub(super) fn remove_window(
+        &mut self,
+        window: &W::Id,
+        transaction: crate::utils::transaction::Transaction,
+    ) -> Option<RemovedTile<W>> {
+        let mut tile = self.tree.remove_tile(window, transaction)?;
+        self.window_ids.retain(|id| id != window);
+        if let Some(size) = tile.window().expected_size() {
+            tile.floating_window_size = Some(size);
+        }
+        let width = TiledWidth::Fixed(tile.tile_expected_or_current_size().w);
+        Some(RemovedTile {
+            tile,
+            width,
+            is_full_width: false,
+            is_floating: true,
+            floating_working_area: Some(self.working_area),
+        })
+    }
+
     pub fn into_subtree(self) -> Option<DetachedSubtree<W>> {
         let root = self.tree.resident_root()?;
         self.tree.detach_resident_root(root)

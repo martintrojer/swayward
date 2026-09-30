@@ -1687,6 +1687,18 @@ impl<W: LayoutElement> Layout<W> {
             self.scratchpad_windows.retain(|id| id != window);
             return self.scratchpad.remove(index).map(|removed| (removed, None));
         }
+        if let Some(index) = self
+            .scratchpad_trees
+            .iter()
+            .position(|removed| removed.contains_window(window))
+        {
+            let removed = self.scratchpad_trees[index].remove_window(window, transaction)?;
+            self.scratchpad_windows.retain(|id| id != window);
+            if self.scratchpad_trees[index].window_ids().is_empty() {
+                self.scratchpad_trees.remove(index);
+            }
+            return Some((removed, None));
+        }
 
         if let Some(state) = &self.interactive_move {
             match state {
