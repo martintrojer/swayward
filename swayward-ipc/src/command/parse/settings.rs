@@ -112,7 +112,7 @@ pub(super) fn parse_gaps_amount(raw: &str) -> Option<i32> {
         .or_else(|| raw.strip_suffix("Px"))
         .or_else(|| raw.strip_suffix("pX"))
         .unwrap_or(raw);
-    digits.parse().ok()
+    digits.parse::<i64>().ok().map(|amount| amount as i32)
 }
 
 pub(super) fn parse_gaps(args: &[&str]) -> Result<Command, String> {

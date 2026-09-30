@@ -384,7 +384,7 @@ mod gap_form_tests {
     /// `cmd_gaps` (`sway/sway/commands/gaps.c:55-58`), including negatives for
     /// outer gaps.
     #[test]
-    fn gaps_amount_accepts_px_suffix_and_negatives() {
+    fn gaps_amount_accepts_px_suffix_negatives_and_sway_overflow() {
         assert_eq!(
             parse_ok("gaps outer -3"),
             Command::GapsDefaults {
@@ -399,6 +399,16 @@ mod gap_form_tests {
                 inner: true,
                 sides: [false; 4],
                 amount: 12,
+            }
+        );
+        assert_eq!(
+            parse_ok("gaps inner current set 2147483648"),
+            Command::Gaps {
+                inner: true,
+                sides: [false; 4],
+                all: false,
+                operation: GapOperation::Set,
+                amount: i32::MIN,
             }
         );
         assert!(parse_one("gaps inner 12em").is_err());
