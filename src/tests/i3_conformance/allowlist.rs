@@ -19,6 +19,10 @@ use super::Fixture;
 
 static NEXT_SOCKET: AtomicU64 = AtomicU64::new(0);
 
+fn pause_i3_poll() {
+    thread::sleep(Duration::from_millis(1));
+}
+
 fn oracle_i3_dir() -> PathBuf {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".cache/sway-ipc-oracle/i3");
     assert!(

@@ -247,7 +247,16 @@ fn run_i3_test(test: &str) {
                 tap_failure_summary(&stdout, &stderr),
             );
         }
-        thread::yield_now();
+        pause_i3_poll();
     }
+}
+
+#[test]
+fn i3_child_polling_yields_cpu_between_checks() {
+    let started = Instant::now();
+    for _ in 0..10 {
+        pause_i3_poll();
+    }
+    assert!(started.elapsed() >= Duration::from_millis(5));
 }
 
