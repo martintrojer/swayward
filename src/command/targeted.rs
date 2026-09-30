@@ -240,9 +240,6 @@ pub(super) fn execute_targeted(
             }
         }
         Command::MovePosition(position) => {
-            let CommandTarget::Window(target) = target else {
-                return failure("command requires a window target");
-            };
             if let Err(error) = move_position(state, Some(target), position) {
                 return failure(error);
             }

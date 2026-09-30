@@ -272,6 +272,52 @@ fn floating_group_command_serializes_one_recursive_root() {
 }
 
 #[test]
+fn move_position_moves_a_focused_floating_group() {
+    let mut fixture = nested_split_fixture();
+    assert!(crate::command::execute(fixture.niri_state(), "floating enable")[0].success);
+
+    let outcomes = crate::command::execute(fixture.niri_state(), "move position 120 100");
+
+    assert_eq!(outcomes.len(), 1, "{outcomes:?}");
+    assert!(outcomes[0].success, "{outcomes:?}");
+    let tree = command_tree(&mut fixture);
+    let floating = find_json_node(&tree, "floating_con", false).unwrap();
+    assert_eq!(floating["rect"]["x"], 120);
+    assert_eq!(floating["rect"]["y"], 100);
+
+    let id = floating["id"].as_u64().unwrap();
+    let outcomes = crate::command::execute(
+        fixture.niri_state(),
+        &format!("[con_id={id}] move position 75 50"),
+    );
+    assert_eq!(outcomes.len(), 1, "{outcomes:?}");
+    assert!(outcomes[0].success, "{outcomes:?}");
+    let tree = command_tree(&mut fixture);
+    let floating = find_json_node(&tree, "floating_con", false).unwrap();
+    assert_eq!(floating["rect"]["x"], 75);
+    assert_eq!(floating["rect"]["y"], 50);
+
+    let outcomes = crate::command::execute(fixture.niri_state(), "move position center");
+    assert!(outcomes[0].success, "{outcomes:?}");
+    let tree = command_tree(&mut fixture);
+    let floating = find_json_node(&tree, "floating_con", false).unwrap();
+    assert_eq!(floating["rect"]["x"], 200);
+    assert_eq!(floating["rect"]["y"], 75);
+
+    assert!(crate::command::execute(fixture.niri_state(), "focus child")[0].success);
+    let outcomes = crate::command::execute(fixture.niri_state(), "move position 300 250");
+    assert_eq!(
+        outcomes[0].error.as_deref(),
+        Some("Only floating containers can be moved to an absolute position"),
+        "{outcomes:?}"
+    );
+    let tree = command_tree(&mut fixture);
+    let floating = find_json_node(&tree, "floating_con", false).unwrap();
+    assert_eq!(floating["rect"]["x"], 200);
+    assert_eq!(floating["rect"]["y"], 75);
+}
+
+#[test]
 fn criteria_targeted_floating_group_commands_operate_on_the_root() {
     let mut fixture = nested_split_fixture();
     assert!(crate::command::execute(fixture.niri_state(), "mark floating-group")[0].success);

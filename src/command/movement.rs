@@ -130,18 +130,20 @@ fn move_target_geometry(
         .layout
         .workspaces()
         .find_map(|(monitor, _, workspace)| {
-            workspace
-                .tiles_with_ipc_layouts()
-                .find(|(tile, _)| &tile.window().window == id)
-                .map(|(tile, _)| {
-                    let output_origin = monitor.map_or_else(Default::default, |monitor| {
-                        monitor.output().current_location().to_f64()
-                    });
-                    (
-                        tile.tile_size(),
-                        output_origin + workspace.working_area().loc,
-                    )
-                })
+            let size = workspace
+                .floating_tree_root_for_window(id)
+                .and_then(|root| workspace.floating().tree_rect(root))
+                .map(|rect| rect.size)
+                .or_else(|| {
+                    workspace
+                        .tiles_with_ipc_layouts()
+                        .find(|(tile, _)| &tile.window().window == id)
+                        .map(|(tile, _)| tile.tile_size())
+                })?;
+            let output_origin = monitor.map_or_else(Default::default, |monitor| {
+                monitor.output().current_location().to_f64()
+            });
+            Some((size, output_origin + workspace.working_area().loc))
         })
 }
 
@@ -224,41 +226,60 @@ fn move_to_pointer(
 
 pub(super) fn move_position(
     state: &mut State,
-    target: Option<crate::window::mapped::MappedId>,
+    target: Option<CommandTarget>,
     position: &MovePosition,
 ) -> Result<(), &'static str> {
-    let window = match target {
-        Some(target) => Some(
+    let (window, floating_root) = match target {
+        Some(CommandTarget::Window(target)) => (
             state
                 .swayward
                 .layout
                 .windows()
                 .find_map(|(_, mapped)| (mapped.id() == target).then(|| mapped.window.clone()))
                 .ok_or("No matching node.")?,
+            false,
         ),
-        None => state
-            .swayward
-            .layout
-            .focus()
-            .map(|mapped| mapped.window.clone()),
-    };
-    let workspace = window
-        .as_ref()
-        .and_then(|window| {
-            state
+        Some(CommandTarget::Container(workspace, node)) => {
+            let workspace = state
                 .swayward
                 .layout
-                .workspaces()
-                .find_map(|(_, _, workspace)| workspace.has_window(window).then_some(workspace))
-        })
-        .or_else(|| state.swayward.layout.active_workspace())
+                .find_workspace_by_id(workspace)
+                .map(|(_, workspace)| workspace)
+                .ok_or("No matching node.")?;
+            if workspace.floating().tree_root_for_node(node) != Some(node) {
+                return Err("command requires a window target");
+            }
+            let window = workspace
+                .floating()
+                .tree(node)
+                .and_then(crate::layout::tiling_tree::TilingTree::active_window)
+                .map(|mapped| mapped.window.clone())
+                .ok_or("No matching node.")?;
+            (window, true)
+        }
+        None => {
+            let workspace = state
+                .swayward
+                .layout
+                .active_workspace()
+                .ok_or("Only floating containers can be moved to an absolute position")?;
+            let floating_root = workspace
+                .focused_floating_tree_root()
+                .is_some_and(|root| workspace.focused_container_node() == Some(root));
+            let window = workspace
+                .active_window()
+                .map(|mapped| mapped.window.clone())
+                .ok_or("Only floating containers can be moved to an absolute position")?;
+            (window, floating_root)
+        }
+    };
+    let workspace = state
+        .swayward
+        .layout
+        .workspaces()
+        .find_map(|(_, _, workspace)| workspace.has_window(&window).then_some(workspace))
         .ok_or("Only floating containers can be moved to an absolute position")?;
-    if !window
-        .as_ref()
-        .map_or(workspace.floating_is_active(), |window| {
-            workspace.is_floating(window)
-        })
-    {
+    if !(floating_root || workspace.is_floating(&window)) {
         return Err("Only floating containers can be moved to an absolute position");
     }
     let (x, y) = match *position {
@@ -270,8 +291,7 @@ pub(super) fn move_position(
                 return Err("Cannot move to absolute positions by ppt");
             }
             let offset: LogicalPoint = if absolute {
-                let Some((_, workspace_origin)) = move_target_geometry(state, window.as_ref())
-                else {
+                let Some((_, workspace_origin)) = move_target_geometry(state, Some(&window)) else {
                     return Err("Only floating containers can be moved to an absolute position");
                 };
                 (-workspace_origin.x, -workspace_origin.y).into()
@@ -284,7 +304,7 @@ pub(super) fn move_position(
             )
         }
         MovePosition::Center { absolute: false } => {
-            state.swayward.layout.center_window(window.as_ref());
+            state.swayward.layout.center_window(Some(&window));
             return Ok(());
         }
         MovePosition::Center { absolute: true } => {
@@ -295,7 +315,7 @@ pub(super) fn move_position(
                 .filter_map(|output| state.swayward.global_space.output_geometry(output))
                 .reduce(|root, output| root.merge(output));
             let Some(root) = root else { return Ok(()) };
-            let Some((tile_size, workspace_origin)) = move_target_geometry(state, window.as_ref())
+            let Some((tile_size, workspace_origin)) = move_target_geometry(state, Some(&window))
             else {
                 return Err("Only floating containers can be moved to an absolute position");
             };
@@ -306,12 +326,12 @@ pub(super) fn move_position(
                 PositionChange::SetFixed(position.y),
             )
         }
-        MovePosition::Pointer => return move_to_pointer(state, window.as_ref()),
+        MovePosition::Pointer => return move_to_pointer(state, Some(&window)),
     };
     state
         .swayward
         .layout
-        .move_floating_window(window.as_ref(), x, y, true);
+        .move_floating_window(Some(&window), x, y, true);
     Ok(())
 }
 
