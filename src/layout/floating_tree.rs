@@ -765,34 +765,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
         } else {
             removed.rect
         };
-        let forbidden: std::collections::HashSet<_> = self
-            .tree_entries
-            .iter()
-            .flat_map(|entry| entry.tree.iter_depth_first().map(|(id, _)| id))
-            .collect();
-        let sticky = removed.sticky;
-        let has_collision = removed
-            .tree
-            .iter_depth_first()
-            .any(|(id, _)| forbidden.contains(&id));
-        let (mut tree, root, remapped) = if has_collision {
-            let mut subtree = removed
-                .into_subtree()
-                .expect("invariant: a removed floating tree has a resident root");
-            let mut remapped = subtree.remap_node_ids_avoiding(&forbidden);
-            let (tree, root, attached_remapped) = TilingTree::from_detached_subtree(
-                self.view_size,
-                rect,
-                self.scale,
-                self.clock.clone(),
-                self.options.clone(),
-                subtree,
-            );
-            remapped.extend(attached_remapped);
-            (tree, root, remapped)
-        } else {
-            (removed.tree, removed.root, Vec::new())
-        };
+        let mut tree = removed.tree;
         tree.update_config(
             self.view_size,
             rect,
@@ -800,6 +773,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
             self.scale,
             self.options.clone(),
         );
+        let root = removed.root;
         self.active_window_id = tree.active_window().map(|window| window.id().clone());
         self.tree_entries.insert(
             0,
@@ -808,10 +782,10 @@ impl<W: LayoutElement> FloatingLayout<W> {
                 root,
                 rect,
                 pos: Data::logical_to_size_frac_in_working_area(self.working_area, rect.loc),
-                sticky,
+                sticky: removed.sticky,
             },
         );
-        (root, remapped)
+        (root, Vec::new())
     }
 
     pub fn remove_tree(&mut self, root: NodeId) -> Option<DetachedSubtree<W>> {

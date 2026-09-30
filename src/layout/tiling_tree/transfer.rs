@@ -1,39 +1,5 @@
 use super::*;
 
-impl<W: LayoutElement> DetachedSubtree<W> {
-    pub(crate) fn remap_node_ids_avoiding(
-        &mut self,
-        forbidden: &std::collections::HashSet<NodeId>,
-    ) -> Vec<(NodeId, NodeId)> {
-        fn remap<W: LayoutElement>(
-            node: &mut DetachedNode<W>,
-            forbidden: &std::collections::HashSet<NodeId>,
-            remapped: &mut Vec<(NodeId, NodeId)>,
-        ) {
-            let (old_id, children) = match node {
-                DetachedNode::Split {
-                    old_id, children, ..
-                } => (old_id, Some(children)),
-                DetachedNode::Leaf { old_id, .. } => (old_id, None),
-            };
-            if forbidden.contains(old_id) {
-                let previous = *old_id;
-                *old_id = NodeId(NODE_ID_COUNTER.next());
-                remapped.push((previous, *old_id));
-            }
-            if let Some(children) = children {
-                for child in children {
-                    remap(child, forbidden, remapped);
-                }
-            }
-        }
-
-        let mut remapped = Vec::new();
-        remap(&mut self.node, forbidden, &mut remapped);
-        remapped
-    }
-}
-
 impl<W: LayoutElement> TilingTree<W> {
     pub fn detach_subtree_for_swap(
         &mut self,

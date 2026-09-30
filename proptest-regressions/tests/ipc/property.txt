@@ -17,4 +17,3 @@ cc 4c1724cc827e7936ede3002b3baeeecfe26a787a4381978067dc27be612bef13 # shrinks to
 cc 912e3f93a82853e2d30d94326527989601376187d0281f2b331fedbf0e37201e # shrinks to ops = [Command("focus left")]
 cc 82efd1ceb1e5fa57eef412b9021b3c2aed30151f5d4d8ed2059e0203f06bfdee # shrinks to multiple fullscreen nodes
 cc fa821c5126a2e28cc885b28488923c5aed1533601979c2fb6e9788a899f857de # CI 200k: layout commands after closing a floating-group child must retain the resident root
-cc 4d1a7790783c0471d4d245e92682df6aac44a1fbd7fda36296c545eb9254a118 # CI: scratchpad restore collided with a newly reused resident floating root ID
