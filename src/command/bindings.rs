@@ -93,10 +93,15 @@ pub(super) struct BindingMutation<'a> {
     pub(super) input_device: String,
 }
 
+pub(super) enum BindingMutationError {
+    Parse(String),
+    Command(String),
+}
+
 pub(super) fn mutate_key_binding(
     state: &mut State,
     mutation: BindingMutation<'_>,
-) -> Result<(), String> {
+) -> Result<(), BindingMutationError> {
     let BindingMutation {
         mode,
         key,
@@ -116,11 +121,15 @@ pub(super) fn mutate_key_binding(
         let code: u32 = match code.parse() {
             Ok(code) if (8..=255).contains(&code) => code,
             _ if command.is_none() => {
-                return Err(format!(
+                return Err(BindingMutationError::Command(format!(
                     "Could not find binding `{keycombo}` for the given flags"
-                ));
+                )));
             }
-            _ => return Err(format!("Invalid keycode '{code}'")),
+            _ => {
+                return Err(BindingMutationError::Command(format!(
+                    "Invalid keycode '{code}'"
+                )))
+            }
         };
         if modifiers.is_empty() {
             format!("code:{code}")
@@ -132,12 +141,14 @@ pub(super) fn mutate_key_binding(
     };
     let key = key
         .parse::<swayward_config::Key>()
-        .map_err(|error| error.to_string())?;
+        .map_err(|_| BindingMutationError::Parse(format!("Unknown key or button '{keycombo}'")))?;
     if !matches!(
         key.trigger,
         swayward_config::Trigger::Keysym(_) | swayward_config::Trigger::Keycode(_)
     ) {
-        return Err("runtime mouse bindings require exact pointer-region semantics".into());
+        return Err(BindingMutationError::Command(
+            "runtime mouse bindings require exact pointer-region semantics".into(),
+        ));
     }
     let identity_matches = |bind: &swayward_config::Bind| {
         bind.key == key
@@ -158,7 +169,9 @@ pub(super) fn mutate_key_binding(
             .binding_modes
             .iter_mut()
             .find(|mode| mode.name == binding_mode)
-            .ok_or_else(|| format!("Unknown binding mode '{binding_mode}'"))?
+            .ok_or_else(|| {
+                BindingMutationError::Command(format!("Unknown binding mode '{binding_mode}'"))
+            })?
             .binds
             .0
     };
@@ -187,9 +200,9 @@ pub(super) fn mutate_key_binding(
     } else if let Some(index) = existing {
         binds.remove(index);
     } else {
-        return Err(format!(
+        return Err(BindingMutationError::Command(format!(
             "Could not find binding `{keycombo}` for the given flags"
-        ));
+        )));
     }
     drop(config);
     refresh_binding_caches(state);

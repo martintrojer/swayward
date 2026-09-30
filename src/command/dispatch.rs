@@ -2,7 +2,9 @@ use swayward_config::Action;
 use swayward_ipc::command::{parse_with_variables, set_variable};
 use swayward_ipc::{criteria, CommandOutcome};
 
-use super::bindings::{mutate_key_binding, mutate_switch_binding, BindingMutation};
+use super::bindings::{
+    mutate_key_binding, mutate_switch_binding, BindingMutation, BindingMutationError,
+};
 use super::movement::{
     move_position, move_target_to_mark, move_target_to_workspace, move_tiling_subtree_to_output,
     move_workspace_to_output, output_target,
@@ -999,7 +1001,12 @@ fn execute_one(
                                 input_device,
                             },
                         ) {
-                            return failure(error);
+                            return match error {
+                                BindingMutationError::Parse(error) => {
+                                    swayward_ipc::command::parse_error(error)
+                                }
+                                BindingMutationError::Command(error) => failure(error),
+                            };
                         }
                     }
                     Command::SwitchBind {
@@ -1075,7 +1082,10 @@ fn execute_one(
                     input_device,
                 },
             ) {
-                return failure(error);
+                return match error {
+                    BindingMutationError::Parse(error) => swayward_ipc::command::parse_error(error),
+                    BindingMutationError::Command(error) => failure(error),
+                };
             }
             None
         }

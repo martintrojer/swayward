@@ -153,6 +153,21 @@ fn runtime_unbindsym_missing_binding_fails_without_mutation() {
     assert_eq!(fixture.swayward().config.borrow().binds.0, before);
 }
 
+/// Sway rejects an unknown keysym before looking for an existing binding
+/// (`sway/sway/commands/bind.c:138-144`).
+#[test]
+fn runtime_unbindsym_unknown_keysym_is_a_parse_error() {
+    let mut fixture = Fixture::new();
+    let outcome = crate::command::execute(fixture.niri_state(), "unbindsym λ-日本語-🙂");
+
+    assert!(!outcome[0].success);
+    assert_eq!(
+        outcome[0].error.as_deref(),
+        Some("Unknown key or button 'λ-日本語-🙂'")
+    );
+    assert_eq!(outcome[0].parse_error, Some(true));
+}
+
 /// Top-level runtime binds target sway's current mode, not always the default
 /// (`sway/sway/commands/bind.c:291-298`).
 #[test]
