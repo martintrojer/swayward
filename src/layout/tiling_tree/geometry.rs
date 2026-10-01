@@ -416,6 +416,15 @@ struct LinearSplit<'a> {
     percents: &'a [f64],
 }
 
+/// A rect's extent along a linear split's axis: width for SplitH, height for SplitV.
+pub(super) fn axis_extent(layout: Layout, rect: Rectangle<f64, Logical>) -> f64 {
+    match layout {
+        Layout::SplitH => rect.size.w,
+        Layout::SplitV => rect.size.h,
+        Layout::Tabbed | Layout::Stacked => unreachable!("only linear splits have an axis"),
+    }
+}
+
 fn assign_linear_split<W: LayoutElement>(
     context: &AssignContext<'_, W>,
     split: LinearSplit<'_>,
