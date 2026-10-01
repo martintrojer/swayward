@@ -488,10 +488,6 @@ struct InteractiveMoveData<W: LayoutElement> {
     pub(self) output: Output,
     /// Current pointer position within output.
     pub(self) pointer_pos_within_output: Point<f64, Logical>,
-    /// Tiled window width.
-    pub(self) width: TiledWidth,
-    /// Whether the tiled window was full-width.
-    pub(self) is_full_width: bool,
     /// Whether the window targets the floating layout.
     pub(self) is_floating: bool,
     /// Workspace that owned the tile before the move began.
@@ -557,23 +553,10 @@ pub enum ConfigureIntent {
 #[derive(Debug)]
 pub struct RemovedTile<W: LayoutElement> {
     tile: Tile<W>,
-    /// Width of the tiled window.
-    width: TiledWidth,
-    /// Whether the tiled window was full-width.
-    is_full_width: bool,
     /// Whether the tile was floating.
     is_floating: bool,
     /// Working area whose coordinates the stored floating position uses.
     floating_working_area: Option<Rectangle<f64, Logical>>,
-}
-
-/// Width requested for a tiled window.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum TiledWidth {
-    /// Proportion of the current view width.
-    Proportion(f64),
-    /// Fixed width in logical pixels.
-    Fixed(f64),
 }
 
 /// Whether to activate a newly added window.
@@ -1078,10 +1061,7 @@ impl<W: LayoutElement> Layout<W> {
                             WorkspaceAddWindowTarget::Auto,
                             workspace::AddTileOptions {
                                 activate: ActivateWindow::No,
-                                width: removed.width,
-                                is_full_width: removed.is_full_width,
                                 is_floating: true,
-                                anim: None,
                             },
                         );
                     }
@@ -1138,9 +1118,7 @@ impl<W: LayoutElement> Layout<W> {
         &mut self,
         window: W,
         mut target: AddWindowTarget<W>,
-        width: Option<PresetSize>,
         height: Option<PresetSize>,
-        is_full_width: bool,
         is_floating: bool,
         activate: ActivateWindow,
     ) -> Option<&Output> {
@@ -1211,18 +1189,7 @@ impl<W: LayoutElement> Layout<W> {
                 };
                 let mon = &mut monitors[mon_idx];
 
-                let (ws_idx, _) = mon.resolve_add_window_target(target);
-                let ws = &mon.workspaces[ws_idx];
-                let scrolling_width = ws.resolve_scrolling_width(&window, width);
-
-                mon.add_window(
-                    window,
-                    target,
-                    activate,
-                    scrolling_width,
-                    is_full_width,
-                    is_floating,
-                );
+                mon.add_window(window, target, activate, is_floating);
 
                 if activate.map_smart(|| false) {
                     *active_monitor_idx = mon_idx;
@@ -1298,18 +1265,13 @@ impl<W: LayoutElement> Layout<W> {
                 };
                 let ws = &mut workspaces[ws_idx];
 
-                let scrolling_width = ws.resolve_scrolling_width(&window, width);
-
                 let tile = ws.make_tile(window);
                 ws.add_tile(
                     tile,
                     target,
                     workspace::AddTileOptions {
                         activate,
-                        width: scrolling_width,
-                        is_full_width,
                         is_floating,
-                        anim: None,
                     },
                 );
 
@@ -1399,8 +1361,6 @@ impl<W: LayoutElement> Layout<W> {
                         return Some((
                             RemovedTile {
                                 tile: move_.tile,
-                                width: move_.width,
-                                is_full_width: move_.is_full_width,
                                 is_floating: false,
                                 floating_working_area: None,
                             },
@@ -3979,10 +3939,7 @@ impl<W: LayoutElement> Layout<W> {
                 },
                 activate,
                 true,
-                removed.width,
-                removed.is_full_width,
                 removed.is_floating,
-                None,
             );
             if activate.map_smart(|| false) {
                 *active_monitor_idx = new_idx;
@@ -4672,8 +4629,6 @@ impl<W: LayoutElement> Layout<W> {
 
                 let RemovedTile {
                     mut tile,
-                    width,
-                    is_full_width,
                     is_floating,
                     floating_working_area: _,
                 } = ws.remove_tile(window, Transaction::new());
@@ -4718,8 +4673,6 @@ impl<W: LayoutElement> Layout<W> {
                     tile,
                     output,
                     pointer_pos_within_output,
-                    width,
-                    is_full_width,
                     is_floating,
                     source_workspace,
                     pointer_ratio_within_window,
@@ -4965,10 +4918,7 @@ impl<W: LayoutElement> Layout<W> {
                             },
                             ActivateWindow::Yes,
                             allow_to_activate_workspace,
-                            move_.width,
-                            move_.is_full_width,
                             false,
-                            None,
                         );
                     }
                     InsertPosition::SwapWith(target) => {
@@ -4995,10 +4945,7 @@ impl<W: LayoutElement> Layout<W> {
                             },
                             ActivateWindow::Yes,
                             allow_to_activate_workspace,
-                            move_.width,
-                            move_.is_full_width,
                             false,
-                            None,
                         );
                         if move_.source_workspace == ws_id {
                             if let Some(target_window) = target_window {
@@ -5061,10 +5008,7 @@ impl<W: LayoutElement> Layout<W> {
                             },
                             ActivateWindow::Yes,
                             allow_to_activate_workspace,
-                            move_.width,
-                            move_.is_full_width,
                             true,
-                            None,
                         );
                     }
                 }
@@ -5101,10 +5045,7 @@ impl<W: LayoutElement> Layout<W> {
                             },
                             ActivateWindow::No,
                             false,
-                            displaced.width,
-                            displaced.is_full_width,
                             displaced.is_floating,
-                            None,
                         );
                     }
                 }
@@ -5133,10 +5074,7 @@ impl<W: LayoutElement> Layout<W> {
                     WorkspaceAddWindowTarget::Auto,
                     workspace::AddTileOptions {
                         activate: ActivateWindow::Yes,
-                        width: move_.width,
-                        is_full_width: move_.is_full_width,
                         is_floating: move_.is_floating,
-                        anim: None,
                     },
                 );
             }

@@ -504,8 +504,6 @@ impl Op {
                     win,
                     AddWindowTarget::Auto,
                     None,
-                    None,
-                    false,
                     is_floating,
                     ActivateWindow::default(),
                 );
@@ -573,8 +571,6 @@ impl Op {
                     win,
                     AddWindowTarget::NextTo(&next_to_id),
                     None,
-                    None,
-                    false,
                     is_floating,
                     ActivateWindow::default(),
                 );
@@ -647,8 +643,6 @@ impl Op {
                     win,
                     AddWindowTarget::Workspace(ws_id),
                     None,
-                    None,
-                    false,
                     is_floating,
                     ActivateWindow::default(),
                 );

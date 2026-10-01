@@ -133,10 +133,7 @@ impl<W: LayoutElement> Layout<W> {
                     WorkspaceAddWindowTarget::Auto,
                     workspace::AddTileOptions {
                         activate: ActivateWindow::Yes,
-                        width: removed.width,
-                        is_full_width: removed.is_full_width,
                         is_floating: true,
-                        anim: None,
                     },
                 );
             }

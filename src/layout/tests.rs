@@ -2661,10 +2661,7 @@ fn floating_tree_entry_routes_geometry_focus_hit_testing_and_lifecycle() {
             WorkspaceAddWindowTarget::Auto,
             super::workspace::AddTileOptions {
                 activate: ActivateWindow::Yes,
-                width: TiledWidth::Proportion(0.5),
-                is_full_width: false,
                 is_floating: false,
-                anim: None,
             },
         );
     }
@@ -2749,10 +2746,7 @@ fn moving_the_only_child_of_a_floating_group_keeps_the_root_position() {
             WorkspaceAddWindowTarget::Auto,
             super::workspace::AddTileOptions {
                 activate: ActivateWindow::Yes,
-                width: TiledWidth::Proportion(0.5),
-                is_full_width: false,
                 is_floating: false,
-                anim: None,
             },
         );
     }
@@ -2818,10 +2812,7 @@ fn directional_move_reorders_a_floating_group_child() {
             WorkspaceAddWindowTarget::Auto,
             super::workspace::AddTileOptions {
                 activate: ActivateWindow::Yes,
-                width: TiledWidth::Proportion(0.5),
-                is_full_width: false,
                 is_floating: false,
-                anim: None,
             },
         );
     }
@@ -2882,10 +2873,7 @@ fn removing_a_floating_tree_leaf_uses_the_resident_tree() {
             WorkspaceAddWindowTarget::Auto,
             super::workspace::AddTileOptions {
                 activate: ActivateWindow::Yes,
-                width: TiledWidth::Proportion(0.5),
-                is_full_width: false,
                 is_floating: false,
-                anim: None,
             },
         );
     }
@@ -2945,10 +2933,7 @@ fn floating_tree_root_tracks_output_geometry_changes() {
             WorkspaceAddWindowTarget::Auto,
             super::workspace::AddTileOptions {
                 activate: ActivateWindow::Yes,
-                width: TiledWidth::Proportion(0.5),
-                is_full_width: false,
                 is_floating: false,
-                anim: None,
             },
         );
     }
@@ -3013,10 +2998,7 @@ fn floating_group_workspace() -> (Workspace<TestWindow>, tiling_tree::NodeId) {
             WorkspaceAddWindowTarget::Auto,
             super::workspace::AddTileOptions {
                 activate: ActivateWindow::Yes,
-                width: TiledWidth::Proportion(0.5),
-                is_full_width: false,
                 is_floating: false,
-                anim: None,
             },
         );
     }
@@ -3105,10 +3087,7 @@ fn fullscreen_targets_a_node_inside_a_floating_tree() {
             WorkspaceAddWindowTarget::Auto,
             super::workspace::AddTileOptions {
                 activate: ActivateWindow::Yes,
-                width: TiledWidth::Proportion(0.5),
-                is_full_width: false,
                 is_floating: false,
-                anim: None,
             },
         );
     }
@@ -3202,10 +3181,7 @@ fn floating_tree_root_survives_workspace_and_output_moves() {
             WorkspaceAddWindowTarget::Auto,
             super::workspace::AddTileOptions {
                 activate: ActivateWindow::Yes,
-                width: TiledWidth::Proportion(0.5),
-                is_full_width: false,
                 is_floating: false,
-                anim: None,
             },
         );
     }
@@ -3390,10 +3366,7 @@ fn mixed_layer_selection_filters_one_global_focus_order() {
             WorkspaceAddWindowTarget::Auto,
             super::workspace::AddTileOptions {
                 activate: ActivateWindow::Yes,
-                width: TiledWidth::Proportion(0.5),
-                is_full_width: false,
                 is_floating: false,
-                anim: None,
             },
         );
         if id >= 3 {

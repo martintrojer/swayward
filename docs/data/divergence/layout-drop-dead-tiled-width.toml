@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/mod.rs", "src/layout/monitor.rs", "src/layout/workspace.rs", "src/handlers/compositor.rs", "swayward-visual-tests/src/cases/layout.rs"]
+what = "remove niri's tiled column width, full-width flag and add-tile animation from `Layout::add_window`, `Monitor::add_window`/`add_tile`, `Workspace::add_tile`, `RemovedTile` and `InteractiveMoveData`, together with `TiledWidth` and `resolve_scrolling_width`. The nested tiling tree discarded all three on every add path."
+why = "The tiling tree has no column width, and sway re-arranges a moved container rather than preserving a width (`container_move_to_workspace`, sway/tree/container.c). Carrying the values let readers believe they survived moves."

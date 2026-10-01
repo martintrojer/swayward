@@ -352,14 +352,14 @@ impl State {
 
         let toplevel = window.toplevel().expect("no X11 support");
 
-        let (rules, width, height, is_full_width, output, workspace_id, is_pending_maximized) =
+        let (rules, height, output, workspace_id, is_pending_maximized) =
             if let InitialConfigureState::Configured {
                 rules,
-                width,
+                width: _,
                 height,
                 floating_width: _,
                 floating_height: _,
-                is_full_width,
+                is_full_width: _,
                 output,
                 workspace_name,
                 is_pending_maximized,
@@ -375,28 +375,12 @@ impl State {
                     .and_then(|n| self.swayward.layout.find_workspace_by_name(n))
                     .map(|(_, ws)| ws.id());
 
-                (
-                    rules,
-                    width,
-                    height,
-                    is_full_width,
-                    output,
-                    workspace_id,
-                    is_pending_maximized,
-                )
+                (rules, height, output, workspace_id, is_pending_maximized)
             } else {
                 // Can happen when a surface unmaps by attaching a null buffer while
                 // there are in-flight pending configures.
                 debug!("window mapped without proper initial configure");
-                (
-                    ResolvedWindowRules::default(),
-                    None,
-                    None,
-                    false,
-                    None,
-                    None,
-                    false,
-                )
+                (ResolvedWindowRules::default(), None, None, None, false)
             };
 
         // The GTK about dialog sets min/max size after the initial configure but
@@ -531,15 +515,7 @@ impl State {
         let output = self
             .swayward
             .layout
-            .add_window(
-                mapped,
-                target,
-                width,
-                height,
-                is_full_width,
-                is_floating,
-                activate,
-            )
+            .add_window(mapped, target, height, is_floating, activate)
             .cloned();
         if let Some((Some(style), width)) = floating_border {
             let _ = self

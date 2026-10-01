@@ -17,7 +17,7 @@ use super::workspace::{
     compute_working_area, OutputId, Workspace, WorkspaceAddWindowTarget, WorkspaceId,
     WorkspaceRenderElement,
 };
-use super::{compute_overview_zoom, ActivateWindow, HitType, LayoutElement, Options, TiledWidth};
+use super::{compute_overview_zoom, ActivateWindow, HitType, LayoutElement, Options};
 use crate::animation::{Animation, Clock};
 use crate::input::swipe_tracker::SwipeTracker;
 use crate::layout::RenderLayer;
@@ -709,24 +709,13 @@ impl<W: LayoutElement> Monitor<W> {
         window: W,
         target: MonitorAddWindowTarget<W>,
         activate: ActivateWindow,
-        width: TiledWidth,
-        is_full_width: bool,
         is_floating: bool,
     ) {
         // Currently, everything a workspace sets on a Tile is the same across all workspaces of a
         // monitor. So we can use any workspace, not necessarily the exact target workspace.
         let tile = self.workspaces[0].make_tile(window);
 
-        self.add_tile(
-            tile,
-            target,
-            activate,
-            true,
-            width,
-            is_full_width,
-            is_floating,
-            None,
-        );
+        self.add_tile(tile, target, activate, true, is_floating);
     }
 
     pub fn add_tiling_tile(&mut self, workspace_idx: usize, tile: Tile<W>, activate: bool) {
@@ -744,7 +733,6 @@ impl<W: LayoutElement> Monitor<W> {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn add_tile(
         &mut self,
         tile: Tile<W>,
@@ -753,10 +741,7 @@ impl<W: LayoutElement> Monitor<W> {
         // Kept separate from window activation until mu task layout-activate-window-api gives the
         // API an explicit workspace-activation policy.
         allow_to_activate_workspace: bool,
-        width: TiledWidth,
-        is_full_width: bool,
         is_floating: bool,
-        anim: Option<swayward_config::Animation>,
     ) {
         let (workspace_idx, target) = self.resolve_add_window_target(target);
 
@@ -767,10 +752,7 @@ impl<W: LayoutElement> Monitor<W> {
             target,
             super::workspace::AddTileOptions {
                 activate,
-                width,
-                is_full_width,
                 is_floating,
-                anim,
             },
         );
 
@@ -825,10 +807,7 @@ impl<W: LayoutElement> Monitor<W> {
                 WorkspaceAddWindowTarget::Auto,
                 super::workspace::AddTileOptions {
                     activate: ActivateWindow::No,
-                    width: removed.width,
-                    is_full_width: removed.is_full_width,
                     is_floating: true,
-                    anim: None,
                 },
             );
         }
@@ -1168,10 +1147,7 @@ impl<W: LayoutElement> Monitor<W> {
                 ActivateWindow::No
             },
             true,
-            removed.width,
-            removed.is_full_width,
             removed.is_floating,
-            Some(config),
         );
         if let (Some(fullscreen), Some(fullscreen_window)) = (fullscreen, fullscreen_window) {
             self.workspaces[new_idx].set_window_fullscreen(&fullscreen_window, Some(fullscreen));

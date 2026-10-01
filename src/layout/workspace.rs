@@ -11,7 +11,6 @@ use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Point, Rectangle, Serial, Size, Transform};
 use smithay::wayland::compositor::with_states;
 use smithay::wayland::shell::xdg::SurfaceCachedState;
-use swayward_config::utils::MergeWith as _;
 use swayward_config::{CornerRadius, OutputName, PresetSize, Workspace as WorkspaceConfig};
 use swayward_ipc::{ColumnDisplay, PositionChange, SizeChange, WindowLayout};
 
@@ -25,7 +24,7 @@ use super::tiling_tree::{
 };
 use super::{
     ActivateWindow, HitType, InsertPosition, InteractiveResizeData, LayoutElement, Options,
-    RemovedTile, SizeFrac, TiledWidth,
+    RemovedTile, SizeFrac,
 };
 use crate::animation::Clock;
 use crate::layout::RenderLayer;
@@ -209,10 +208,7 @@ pub enum WorkspaceAddWindowTarget<'a, W: LayoutElement> {
 
 pub struct AddTileOptions {
     pub activate: ActivateWindow,
-    pub width: TiledWidth,
-    pub is_full_width: bool,
     pub is_floating: bool,
-    pub anim: Option<swayward_config::Animation>,
 }
 
 impl OutputId {
@@ -983,10 +979,7 @@ impl<W: LayoutElement> Workspace<W> {
     ) {
         let AddTileOptions {
             activate,
-            width,
-            is_full_width,
             is_floating,
-            anim,
         } = options;
         self.enter_output_for_window(tile.window());
         tile.restore_to_floating = is_floating;
@@ -1005,7 +998,6 @@ impl<W: LayoutElement> Workspace<W> {
                         self.floating_is_active = FloatingActive::Yes;
                     }
                 } else {
-                    let _ = (width, is_full_width, anim);
                     self.tiling
                         .add_tile_with_activation(tile, InsertTarget::Focused, activate);
 
@@ -1026,7 +1018,6 @@ impl<W: LayoutElement> Workspace<W> {
                     .nth(col_idx)
                     .map(InsertTarget::Node)
                     .unwrap_or(InsertTarget::Focused);
-                let _ = (width, is_full_width, anim);
                 self.tiling.add_tile_with_activation(tile, target, activate);
 
                 if activate {
@@ -1067,7 +1058,6 @@ impl<W: LayoutElement> Workspace<W> {
                         self.floating_is_active = FloatingActive::Yes;
                     }
                 } else if floating_has_window {
-                    let _ = (width, is_full_width, anim);
                     self.tiling
                         .add_tile_with_activation(tile, InsertTarget::Focused, activate);
 
@@ -1075,7 +1065,6 @@ impl<W: LayoutElement> Workspace<W> {
                         self.floating_is_active = FloatingActive::No;
                     }
                 } else {
-                    let _ = (width, is_full_width, anim);
                     self.tiling.add_tile_right_of(next_to, tile, activate);
 
                     if activate {
@@ -1190,8 +1179,6 @@ impl<W: LayoutElement> Workspace<W> {
             let is_floating = tile.restore_to_floating;
             RemovedTile {
                 tile,
-                width: TiledWidth::Proportion(0.5),
-                is_full_width: false,
                 is_floating,
                 floating_working_area: None,
             }
@@ -1428,29 +1415,6 @@ impl<W: LayoutElement> Workspace<W> {
                 state.bounds = Some(self.tiling.new_window_toplevel_bounds(rules));
             }
         });
-    }
-
-    pub(super) fn resolve_scrolling_width(
-        &self,
-        window: &W,
-        width: Option<PresetSize>,
-    ) -> TiledWidth {
-        let width = width.unwrap_or_else(|| PresetSize::Fixed(window.size().w));
-        match width {
-            PresetSize::Fixed(fixed) => {
-                let mut fixed = f64::from(fixed);
-
-                // Add border width since TiledWidth includes borders.
-                let rules = window.rules();
-                let border = self.options.layout.border.merged_with(&rules.border);
-                if !border.off {
-                    fixed += border.width * 2.;
-                }
-
-                TiledWidth::Fixed(fixed)
-            }
-            PresetSize::Proportion(prop) => TiledWidth::Proportion(prop),
-        }
     }
 
     pub fn focus_parent(&mut self) -> bool {
@@ -2402,8 +2366,6 @@ impl<W: LayoutElement> Workspace<W> {
 
         if self.floating.has_window(&id) {
             let removed = self.floating.remove_tile(&id, Transaction::new());
-            // FIXME: compute closest pos?
-            let _ = (removed.width, removed.is_full_width);
             let rank = removed.tile.tiling_focus_rank;
             let parent = removed.tile.tiling_parent;
             if let Some(parent) = parent.filter(|parent| self.tiling.contains(*parent)) {

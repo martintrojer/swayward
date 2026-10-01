@@ -166,11 +166,8 @@ impl<W: LayoutElement> FloatingLayout<W> {
         if let Some(size) = tile.window().expected_size() {
             tile.floating_window_size = Some(size);
         }
-        let width = TiledWidth::Fixed(tile.tile_expected_or_current_size().w);
         RemovedTile {
             tile,
-            width,
-            is_full_width: false,
             is_floating: true,
             floating_working_area: Some(self.working_area),
         }
@@ -206,11 +203,8 @@ impl<W: LayoutElement> FloatingLayout<W> {
         // Store the floating position.
         tile.floating_pos = Some(data.pos);
 
-        let width = TiledWidth::Fixed(tile.tile_expected_or_current_size().w);
         RemovedTile {
             tile,
-            width,
-            is_full_width: false,
             is_floating: true,
             floating_working_area: Some(self.working_area),
         }
