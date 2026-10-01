@@ -469,7 +469,7 @@ fn move_position_targets_floating_windows_by_criteria() {
 
 #[test]
 fn floating_ipc_rect_uses_final_position_during_animation() {
-    let mut f = Fixture::new();
+    let (mut f, _) = ipc_fixture();
     f.add_output(1, (1920, 1080));
     let client = f.add_client();
     let window = f.client(client).create_window();
@@ -489,14 +489,7 @@ fn floating_ipc_rect_uses_final_position_during_animation() {
         true,
     );
 
-    let swayward = f.swayward();
-    let tree = serde_json::to_value(describe_tree(
-        &swayward.layout,
-        &swayward.global_space,
-        &Default::default(),
-        &Default::default(),
-    ))
-    .unwrap();
+    let tree = get_tree(&mut f);
     let node = find_json_node(&tree, "floating_con", false).unwrap();
     assert_eq!(node["rect"]["x"], 100);
     assert_eq!(node["rect"]["y"], 200);

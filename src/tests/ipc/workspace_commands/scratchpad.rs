@@ -94,7 +94,7 @@ fn fullscreen_with_a_focused_floating_window_does_not_target_the_tiling_parent()
 
 #[test]
 fn get_tree_has_one_focused_node_after_scratchpad_cycle() {
-    let mut f = Fixture::new();
+    let (mut f, _) = ipc_fixture();
     f.add_output(1, (1920, 1080));
     let client = f.add_client();
     for app_id in ["scratch", "tiled"] {
@@ -129,13 +129,7 @@ fn get_tree_has_one_focused_node_after_scratchpad_cycle() {
         assert!(crate::command::execute(f.niri_state(), command)[0].success);
     }
 
-    let swayward = f.swayward();
-    let tree = describe_tree(
-        &swayward.layout,
-        &swayward.global_space,
-        &swayward.marks_by_window,
-        &swayward.marks_by_container,
-    );
+    let tree: swayward_ipc::Node = serde_json::from_value(get_tree(&mut f)).unwrap();
     let mut focused = Vec::new();
     collect_focused_nodes(&tree, &mut focused);
     assert_eq!(focused.len(), 1, "focused nodes: {focused:?}");
@@ -155,21 +149,11 @@ fn get_tree_has_one_focused_node_after_scratchpad_cycle() {
     assert_eq!(focused_workspace.focus.first(), Some(&focused_id));
 
     assert!(crate::command::execute(f.niri_state(), "workspace empty")[0].success);
-    let swayward = f.swayward();
-    let tree = describe_tree(
-        &swayward.layout,
-        &swayward.global_space,
-        &swayward.marks_by_window,
-        &swayward.marks_by_container,
-    );
+    let tree: swayward_ipc::Node = serde_json::from_value(get_tree(&mut f)).unwrap();
+    let active = f.swayward().layout.active_workspace().unwrap().id().get();
     let mut focused = Vec::new();
     collect_focused_nodes(&tree, &mut focused);
-    assert_eq!(
-        focused,
-        [crate::ipc::tree::workspace_id(
-            swayward.layout.active_workspace().unwrap().id().get()
-        )]
-    );
+    assert_eq!(focused, [crate::ipc::tree::workspace_id(active)]);
 }
 
 #[test]
@@ -633,13 +617,13 @@ fn empty_scratch_workspace_is_always_serialized() {
 
 #[test]
 fn get_workspaces_distinguishes_seat_focus_from_output_visibility() {
-    let mut f = Fixture::new();
+    let (mut f, _) = ipc_fixture();
     f.add_output(1, (1920, 1080));
     f.add_output(2, (1920, 1080));
     f.niri_focus_output(2);
 
-    let swayward = f.swayward();
-    let workspaces = describe_workspaces(&swayward.layout, &swayward.global_space);
+    let workspaces: Vec<swayward_ipc::Workspace> =
+        serde_json::from_value(get_workspaces(&mut f)).unwrap();
     assert_eq!(
         workspaces
             .iter()

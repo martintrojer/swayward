@@ -326,12 +326,13 @@ fn binding_modes_switch_binds_emit_events_and_list_over_ipc() {
         "$binding",
     );
 
-    let swayward = fixture.swayward();
     // The bind switched to workspace 7, which is what this asserts. It is not
     // necessarily first: sway sorts numbered workspaces numerically
     // (sway/sway/tree/output.c:387-405), so the startup workspace 1 precedes it.
+    let workspaces: Vec<swayward_ipc::Workspace> =
+        serde_json::from_value(get_workspaces(&mut fixture)).unwrap();
     assert!(
-        describe_workspaces(&swayward.layout, &swayward.global_space)
+        workspaces
             .iter()
             .any(|workspace| workspace.num == 7 && workspace.focused)
     );

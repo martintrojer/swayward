@@ -92,6 +92,29 @@ fn query_ipc(fixture: &mut Fixture, stream: &mut UnixStream, message_type: Messa
     query_ipc_with_payload(fixture, stream, message_type, "")
 }
 
+fn get_tree(fixture: &mut Fixture) -> Value {
+    query_fixture(fixture, MessageType::GetTree)
+}
+
+fn get_workspaces(fixture: &mut Fixture) -> Value {
+    query_fixture(fixture, MessageType::GetWorkspaces)
+}
+
+fn get_outputs(fixture: &mut Fixture) -> Value {
+    query_fixture(fixture, MessageType::GetOutputs)
+}
+
+fn query_fixture(fixture: &mut Fixture, message_type: MessageType) -> Value {
+    let socket = fixture
+        .swayward()
+        .ipc_server
+        .as_ref()
+        .and_then(|server| server.socket_path.clone())
+        .expect("fixture has no IPC server");
+    let mut stream = UnixStream::connect(socket).unwrap();
+    query_ipc(fixture, &mut stream, message_type)
+}
+
 fn query_ipc_with_payload(
     fixture: &mut Fixture,
     stream: &mut UnixStream,

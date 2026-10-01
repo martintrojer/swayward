@@ -114,7 +114,7 @@ fn get_tree_ids_are_unique_across_workspaces() {
         }
     }
 
-    let mut f = Fixture::new();
+    let (mut f, _) = ipc_fixture();
     f.add_output(1, (800, 600));
     let client = f.add_client();
     for workspace in ["1", "2"] {
@@ -136,13 +136,7 @@ fn get_tree_ids_are_unique_across_workspaces() {
         }
     }
 
-    let swayward = f.swayward();
-    let tree = describe_tree(
-        &swayward.layout,
-        &swayward.global_space,
-        &swayward.marks_by_window,
-        &swayward.marks_by_container,
-    );
+    let tree: swayward_ipc::Node = serde_json::from_value(get_tree(&mut f)).unwrap();
     let mut ids = Vec::new();
     collect_ids(&tree, &mut ids);
     let count = ids.len();
@@ -167,11 +161,11 @@ fn ipc_output_reports_sways_subpixel_names() {
 
 #[test]
 fn ipc_output_rects_use_global_positions() {
-    let mut f = Fixture::new();
+    let (mut f, _) = ipc_fixture();
     f.add_output(1, (1280, 720));
     f.add_output(2, (1920, 1080));
-    let swayward = f.swayward();
-    let outputs = describe_outputs(&swayward.layout, &swayward.global_space);
+    let outputs: Vec<swayward_ipc::Output> =
+        serde_json::from_value(get_outputs(&mut f)).unwrap();
     let rects = outputs.iter().map(|output| output.rect).collect::<Vec<_>>();
     assert_eq!(rects[0].x, 0);
     assert_eq!(rects[0].width, 1280);
@@ -180,12 +174,7 @@ fn ipc_output_rects_use_global_positions() {
     assert_eq!(outputs[0].percent, Some((1280. * 720.) / (3200. * 1080.)));
     assert_eq!(outputs[1].percent, Some((1920. * 1080.) / (3200. * 1080.)));
 
-    let root = describe_tree(
-        &swayward.layout,
-        &swayward.global_space,
-        &Default::default(),
-        &Default::default(),
-    );
+    let root: swayward_ipc::Node = serde_json::from_value(get_tree(&mut f)).unwrap();
     assert_eq!(root.rect.width, 3200);
     assert_eq!(root.rect.height, 1080);
     assert_eq!(

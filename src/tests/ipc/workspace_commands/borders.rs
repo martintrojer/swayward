@@ -294,7 +294,7 @@ fn tiled_and_floating_default_borders_remain_independent_in_get_tree() {
         }"#,
     )
     .unwrap();
-    let mut f = Fixture::with_config(config);
+    let (mut f, _) = ipc_fixture_with_config(config);
     f.add_output(1, (800, 600));
     let client = f.add_client();
     for app_id in ["tiled", "floating"] {
@@ -309,14 +309,7 @@ fn tiled_and_floating_default_borders_remain_independent_in_get_tree() {
         f.double_roundtrip(client);
     }
 
-    let swayward = f.swayward();
-    let tree = serde_json::to_value(describe_tree(
-        &swayward.layout,
-        &swayward.global_space,
-        &swayward.marks_by_window,
-        &swayward.marks_by_container,
-    ))
-    .unwrap();
+    let tree = get_tree(&mut f);
     let workspace = &tree["nodes"][1]["nodes"][0];
     let tiled = &workspace["nodes"][0];
     let floating = &workspace["floating_nodes"][0];

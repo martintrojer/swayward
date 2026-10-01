@@ -460,7 +460,7 @@ fn mark_on_empty_workspace_fails_without_removing_existing_mark() {
 
 #[test]
 fn focused_leaf_con_id_matches_get_tree_and_focused_criteria() {
-    let mut f = Fixture::new();
+    let (mut f, _) = ipc_fixture();
     f.add_output(1, (1920, 1080));
     let client = f.add_client();
     let window = f.client(client).create_window();
@@ -473,14 +473,7 @@ fn focused_leaf_con_id_matches_get_tree_and_focused_criteria() {
     window.ack_last_and_commit();
     f.double_roundtrip(client);
 
-    let swayward = f.swayward();
-    let tree = serde_json::to_value(describe_tree(
-        &swayward.layout,
-        &swayward.global_space,
-        &swayward.marks_by_window,
-        &swayward.marks_by_container,
-    ))
-    .unwrap();
+    let tree = get_tree(&mut f);
     let focused_id = find_json_node(&tree, "con", true).unwrap()["id"]
         .as_i64()
         .unwrap();
