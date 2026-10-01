@@ -419,6 +419,34 @@ This rule is distinct from splitting a singleton horizontal or vertical
 container. In that case, sway changes the existing parent layout instead of
 creating another container (`sway/sway/tree/container.c:1565-1582`).
 
+### Tiled drag-and-drop targets
+
+**Infrastructure gap.**
+
+Sway picks a tiled drop target in three passes
+(`sway/input/seatop_move_tiling.c:handle_motion_tiling`, sway 1.12):
+
+1. Over a container's titlebar, the drop joins that container's tab group.
+   Sway wraps the target in a tabbed container unless its parent is already
+   tabbed or stacked (lines 203-219, 353-358).
+2. Within 30 px of an edge perpendicular to an ancestor's layout, the drop
+   goes beside that ancestor (lines 221-268).
+3. Otherwise the drop splits the hovered view at its closest edge, within
+   30 percent of the view's smaller side, or swaps with it (lines 270-306).
+
+Swayward implements only the third pass. Dropping on a titlebar does not make
+a tab group, and dropping near the outer edge of a nested split cannot place
+the window beside the ancestor. Sway also treats a tabbed parent as horizontal
+and a stacked parent as vertical when matching the edge (line 322), so a left
+or right drop into a tabbed parent joins it. Swayward wraps the target in a
+new split instead.
+
+The gap stays open until the IPC oracle can capture pinned sway after a real
+pointer drag. Scripting the drag over IPC does not work: `seat - cursor set`
+only rebases the cursor, and the tiling-move seat operation has no rebase hook,
+so sway's tree never changes. Capturing the drag needs a
+`zwlr_virtual_pointer_v1` client in the oracle harness.
+
 ### Workspace names beginning with `__`
 
 **Deliberate.**
