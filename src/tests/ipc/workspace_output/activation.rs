@@ -342,6 +342,30 @@ fn move_no_auto_back_and_forth_changes_the_same_workspace_destination() {
 /// assign_rule_creates_workspace_on_its_output and
 /// switch_to_assigned_workspace_focuses_its_output.
 #[test]
+fn workspace_output_assignment_names_are_case_sensitive() {
+    let config = swayward_config::Config::parse_mem(
+        r#"
+workspace "5" { sway-output-assignment "headless-1"; }
+workspace "Web" { sway-output-assignment "headless-1"; }
+"#,
+    )
+    .unwrap();
+    let mut f = Fixture::with_config(config);
+    f.add_output(1, (1280, 720));
+    f.add_output(2, (1280, 720));
+    assert!(crate::command::execute(f.niri_state(), "focus output headless-2")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "workspace web")[0].success);
+
+    let swayward = f.swayward();
+    let workspaces = describe_workspaces(&swayward.layout, &swayward.global_space);
+    let web = workspaces
+        .iter()
+        .find(|workspace| workspace.name == "web")
+        .unwrap();
+    assert_eq!(web.output, "headless-2");
+}
+
+#[test]
 fn new_workspaces_are_created_on_their_assigned_output() {
     for command in [
         "move container to workspace 7",

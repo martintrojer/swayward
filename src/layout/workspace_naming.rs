@@ -198,7 +198,7 @@ impl<W: LayoutElement> Layout<W> {
         let Some(config) = self
             .workspace_configs
             .iter()
-            .find(|config| config.name.0.eq_ignore_ascii_case(name))
+            .find(|config| config.name.0 == name)
         else {
             return true;
         };
@@ -266,7 +266,7 @@ impl<W: LayoutElement> Layout<W> {
         let Some(config) = self
             .workspace_configs
             .iter()
-            .find(|config| config.name.0.eq_ignore_ascii_case(name))
+            .find(|config| config.name.0 == name)
         else {
             return false;
         };
@@ -306,7 +306,7 @@ impl<W: LayoutElement> Layout<W> {
         let assigned = self
             .workspace_configs
             .iter()
-            .find(|config| config.name.0.eq_ignore_ascii_case(name))
+            .find(|config| config.name.0 == name)
             .and_then(Self::workspace_assignment)
             .and_then(|outputs| {
                 outputs.iter().find_map(|output| {
