@@ -3,29 +3,6 @@ use swayward_ipc::CommandOutcome;
 use super::{failure, parse_boolean, success};
 use crate::swayward::State;
 
-pub(super) fn criteria_global_setting(option: &swayward_ipc::command::LayoutOption) -> bool {
-    use swayward_ipc::command::LayoutOption;
-
-    matches!(
-        option,
-        LayoutOption::FloatingMinimumSize(..)
-            | LayoutOption::FloatingMaximumSize(..)
-            | LayoutOption::FocusWrapping(..)
-            | LayoutOption::ForceFocusWrapping(..)
-            | LayoutOption::PopupDuringFullscreen(..)
-            | LayoutOption::SmartBorders(..)
-            | LayoutOption::HideEdgeBordersSmart(..)
-            | LayoutOption::SmartGaps(..)
-            | LayoutOption::ShowMarks(..)
-            | LayoutOption::TitleAlignment(..)
-            | LayoutOption::TilingDrag(..)
-            | LayoutOption::TilingDragThreshold(..)
-            | LayoutOption::ForceDisplayUrgencyHint(..)
-            | LayoutOption::FocusOnWindowActivation(..)
-            | LayoutOption::WorkspaceAutoBackAndForth(..)
-    )
-}
-
 #[cfg(test)]
 std::thread_local! {
     static GLOBAL_SETTING_EXECUTIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };

@@ -1,7 +1,7 @@
 use swayward_ipc::command::parse_with_variables;
 use swayward_ipc::{criteria, CommandOutcome};
 
-use super::settings::{criteria_global_setting, execute_global_setting};
+use super::settings::execute_global_setting;
 use super::targeted::{
     execute_targeted, focused_con_id, mark_focused, matching_targets, set_client_colors,
     unmark_focused, unmark_target,
@@ -266,7 +266,7 @@ fn execute_one(
             return failure(format!("criteria are not supported for {name}"));
         }
         if let Command::SetLayoutOption(option) = &parsed.command {
-            if criteria_global_setting(option) {
+            if option.is_global() {
                 return for_each_match(targets, |_| execute_global_setting(state, option));
             }
         }
