@@ -41,7 +41,7 @@ jobs:
           unit="swayward-soak-${GITHUB_RUN_ID}-${{ matrix.outputs }}"
           # The runner shell owns the log; sudo only creates the capped scope.
           # shellcheck disable=SC2024
-          sudo systemd-run --scope --quiet --wait --collect --unit="$unit" \
+          sudo systemd-run --scope --quiet --collect --unit="$unit" \
             --uid="$(id -u)" -p MemoryMax=2G -p MemorySwapMax=0 \
             timeout --signal=TERM --kill-after=5s 1800s \
             target/release/swayward -c "$runtime/config.kdl" \
