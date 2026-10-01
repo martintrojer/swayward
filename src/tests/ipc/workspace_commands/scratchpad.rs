@@ -165,6 +165,36 @@ fn get_tree_has_one_focused_node_after_scratchpad_cycle() {
     assert_eq!(focused, [crate::ipc::tree::workspace_id(active)]);
 }
 
+/// Random oracle seed 380: `focus parent; move scratchpad` on a lone window
+/// hides its container and focuses the emptied workspace. Sway's
+/// root_scratchpad_add_container refocuses the parent's focus-inactive node
+/// (sway/tree/root.c:91-104), so nothing inside the scratchpad is focused.
+#[test]
+fn hiding_a_container_in_the_scratchpad_focuses_the_workspace() {
+    let (mut f, _) = ipc_fixture();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+
+    for command in ["focus parent", "move scratchpad"] {
+        let reply = crate::command::execute(f.niri_state(), command);
+        assert!(reply[0].success, "{command}: {reply:?}");
+    }
+
+    let tree: swayward_ipc::Node = serde_json::from_value(get_tree(&mut f)).unwrap();
+    let active = f.swayward().layout.active_workspace().unwrap().id().get();
+    let mut focused = Vec::new();
+    collect_focused_nodes(&tree, &mut focused);
+    assert_eq!(focused, [crate::ipc::tree::workspace_id(active)]);
+}
+
 #[test]
 fn scratchpad_hides_focused_window_and_show_cycles_windows() {
     let mut f = Fixture::new();

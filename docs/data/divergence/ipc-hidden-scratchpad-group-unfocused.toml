@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/ipc/tree.rs"]
+what = "clear the focused flag inside hidden scratchpad floating groups when describing the __i3_scratch workspace."
+why = "A hidden group kept its internal focus, so GET_TREE reported two focused nodes after `focus parent; move scratchpad`; sway refocuses the parent's focus-inactive node when hiding (sway/tree/root.c:91-104)."
