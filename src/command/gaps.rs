@@ -91,7 +91,9 @@ pub(super) fn workspace(
         let index = config
             .workspaces
             .iter()
-            .position(|ws| ws.name.0.eq_ignore_ascii_case(&name))
+            // Sway matches workspace configs with strcmp
+            // (`workspace_find_config`, sway/sway/tree/workspace.c:143-150).
+            .position(|ws| ws.name.0 == name)
             .unwrap_or_else(|| {
                 config.workspaces.push(swayward_config::Workspace {
                     name: swayward_config::workspace::WorkspaceName(name.clone()),
@@ -118,6 +120,22 @@ pub(super) fn workspace(
                 if selected {
                     *value = Some(swayward_config::FloatOrInt(f64::from(amount)));
                 }
+            }
+        }
+        // `prevent_invalid_outer_gaps` (sway/sway/commands/workspace.c:38-55)
+        // floors each set outer side at minus this config's inner gap. An
+        // unset inner gap is INT_MIN there, so nothing is clamped.
+        if let (Some(inner), Some(outer)) = (layout.0.gaps, layout.0.outer_gaps.as_mut()) {
+            for value in [
+                &mut outer.left,
+                &mut outer.right,
+                &mut outer.top,
+                &mut outer.bottom,
+            ]
+            .into_iter()
+            .flatten()
+            {
+                value.0 = value.0.max(-inner.0);
             }
         }
     }

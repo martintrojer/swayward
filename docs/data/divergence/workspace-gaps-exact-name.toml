@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/workspace_naming.rs"]
+what = "find a workspace's layout config (its gaps) by exact name, and floor a `workspace <name> gaps` outer side at minus that config's inner gap."
+why = "Sway matches workspace configs with strcmp (workspace_find_config, sway/sway/tree/workspace.c:143-150) and clamps outer gaps in prevent_invalid_outer_gaps (sway/sway/commands/workspace.c:38-55)."

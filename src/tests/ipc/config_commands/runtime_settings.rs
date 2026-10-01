@@ -281,3 +281,51 @@ fn workspace_gaps_apply_to_a_later_workspace_of_that_name() {
     add_two_tiled_windows(&mut fixture);
     assert_eq!(tiled_window_rects_on(&mut fixture, "plain")[0]["x"], 10);
 }
+
+/// Sway finds a workspace config with strcmp (`workspace_find_config`,
+/// sway/sway/tree/workspace.c:143-150), so `Web` and `web` keep separate
+/// gaps. It also floors each set outer side at minus that config's inner gap
+/// (`prevent_invalid_outer_gaps`, sway/sway/commands/workspace.c:38-55).
+#[test]
+fn workspace_gaps_are_per_exact_name_and_clamp_outer_to_inner() {
+    let mut config = swayward_config::Config::default();
+    config.layout.gaps = 10.;
+    config.layout.border.off = true;
+    let mut fixture = Fixture::with_config(config);
+    fixture.add_output(1, (1280, 800));
+    for command in ["workspace web gaps inner 5", "workspace Web gaps inner 30"] {
+        assert!(
+            crate::command::execute(fixture.niri_state(), command)[0].success,
+            "{command}"
+        );
+    }
+
+    // A workspace created as `Web` takes Web's inner gap, not web's.
+    assert!(crate::command::execute(fixture.niri_state(), "workspace Web")[0].success);
+    add_two_tiled_windows(&mut fixture);
+    assert_eq!(tiled_window_rects_on(&mut fixture, "Web")[0]["x"], 30);
+
+    assert!(
+        crate::command::execute(fixture.niri_state(), "workspace Web gaps outer -100")[0].success
+    );
+
+    let workspaces = &fixture.swayward().config.borrow().workspaces;
+    let gaps = |name: &str| {
+        let layout = workspaces
+            .iter()
+            .find(|ws| ws.name.0 == name)
+            .and_then(|ws| ws.layout.as_ref())
+            .unwrap_or_else(|| panic!("no config for {name}"));
+        (
+            layout.0.gaps.map(|gaps| gaps.0),
+            layout
+                .0
+                .outer_gaps
+                .as_ref()
+                .and_then(|outer| outer.top)
+                .map(|top| top.0),
+        )
+    };
+    assert_eq!(gaps("web"), (Some(5.), None));
+    assert_eq!(gaps("Web"), (Some(30.), Some(-30.)));
+}

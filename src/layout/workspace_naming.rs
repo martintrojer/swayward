@@ -107,9 +107,11 @@ fn layout_config_for(
     name: Option<&str>,
 ) -> Option<swayward_config::LayoutPart> {
     let name = name?;
+    // Sway applies a workspace config found with strcmp
+    // (`workspace_find_config`, sway/sway/tree/workspace.c:143-150,227).
     workspace_configs
         .iter()
-        .find(|config| config.name.0.eq_ignore_ascii_case(name))
+        .find(|config| config.name.0 == name)
         .and_then(|config| config.layout.clone())
         .map(|layout| layout.0)
 }
