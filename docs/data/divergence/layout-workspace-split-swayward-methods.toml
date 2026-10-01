@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/workspace.rs"]
+what = "move swayward-authored `Workspace` methods out of the inherited file, unchanged, into swayward-owned child modules: `workspace/{identity,fullscreen,sticky,scratchpad,ipc,tree_commands}.rs`, beside the existing `workspace/rendering.rs`."
+why = "Leaves niri's own code in workspace.rs so upstream merges touch less swayward code."
