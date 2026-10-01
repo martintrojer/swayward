@@ -166,13 +166,12 @@ fn tap_tally_follows_tap_counts_first_stream_rule() {
 /// re-runs every other file with recorded passes and asserts that none of
 /// them lost one.
 ///
-/// Opt in with `SWAYWARD_I3_RATCHET=1`. It runs about 140 files, and
-/// coverage.toml has drifted from a fresh measurement, so it is not yet part
-/// of the `RUN_SLOW_TESTS` CI job; see task i3-coverage-rebaseline. A rise is
-/// reported too, so the row can be updated.
+/// Runs under `RUN_SLOW_TESTS=1`, alongside the other expensive layout and
+/// conformance checks. `coverage.toml` is rebaselined from fresh TAP counts;
+/// a rise is reported without failing so it can be reviewed separately.
 #[test]
 fn i3_conformance_non_green_passes_do_not_drop() {
-    if std::env::var_os("SWAYWARD_I3_RATCHET").is_none() {
+    if std::env::var_os("RUN_SLOW_TESTS").is_none() {
         return;
     }
     let entries = coverage_report()["non_green_passes"]
