@@ -98,18 +98,10 @@ pub(super) fn execute_global_setting(
                 layout.hide_edge_borders = swayward_config::HideEdgeBorders::None;
                 layout.smart_borders = value;
             }),
+            // The parser already resolves `toggle` to off, as sway's
+            // parse_boolean(value, true) does (`sway/sway/commands/smart_borders.c:16`).
             LayoutOption::SmartBorders(value) => {
-                if value == "toggle" {
-                    layout.smart_borders =
-                        if layout.smart_borders == swayward_config::SmartBorders::On {
-                            swayward_config::SmartBorders::Off
-                        } else {
-                            swayward_config::SmartBorders::On
-                        };
-                    Ok(())
-                } else {
-                    value.parse().map(|value| layout.smart_borders = value)
-                }
+                value.parse().map(|value| layout.smart_borders = value)
             }
             LayoutOption::SmartGaps(value) => {
                 if value == "toggle" {
@@ -131,11 +123,7 @@ pub(super) fn execute_global_setting(
                 value.parse().map(|value| layout.titlebar.alignment = value)
             }
             LayoutOption::TilingDrag(value) => {
-                config.input.tiling_drag = if value == "toggle" {
-                    !config.input.tiling_drag
-                } else {
-                    parse_boolean(value, config.input.tiling_drag)
-                };
+                config.input.tiling_drag = parse_boolean(value, config.input.tiling_drag);
                 Ok(())
             }
             LayoutOption::TilingDragThreshold(value) => {
