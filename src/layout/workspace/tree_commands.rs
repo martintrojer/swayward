@@ -148,11 +148,14 @@ impl<W: LayoutElement> Workspace<W> {
             if self.floating.focus_parent() {
                 return true;
             }
-            if self.tiling.is_empty() {
-                return false;
-            }
+            // A floating root's parent is the workspace (`focus_parent`,
+            // sway/commands/focus.c:339-351), even when nothing is tiled. An empty tiling tree
+            // keeps no focus of its own, so the raised-but-inactive floating state alone stands
+            // for the focused workspace there.
             self.floating_is_active = FloatingActive::NoButRaised;
-            self.tiling.focus_root();
+            if !self.tiling.is_empty() {
+                self.tiling.focus_root();
+            }
             true
         } else {
             let changed = self.tiling.focus_parent();
@@ -220,7 +223,9 @@ impl<W: LayoutElement> Workspace<W> {
     }
 
     pub fn is_workspace_focused(&self) -> bool {
-        !self.floating_is_active.get() && self.tiling.root_is_focused()
+        !self.floating_is_active.get()
+            && (self.tiling.root_is_focused()
+                || self.tiling.is_empty() && self.floating_is_active == FloatingActive::NoButRaised)
     }
 
     pub fn toggle_tiling_target_layout(

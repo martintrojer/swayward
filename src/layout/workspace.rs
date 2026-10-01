@@ -813,7 +813,12 @@ impl<W: LayoutElement> Workspace<W> {
                 }
             }
             WorkspaceAddWindowTarget::NextTo(next_to) => {
-                let activate = activate.map_smart(|| self.active_window().unwrap().id() == next_to);
+                // With the workspace itself focused no window is active, so a window placed
+                // next to another does not take focus from it.
+                let activate = activate.map_smart(|| {
+                    self.active_window()
+                        .is_some_and(|window| window.id() == next_to)
+                });
 
                 let floating_has_window = self.floating.has_window(next_to);
 

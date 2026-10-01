@@ -4505,7 +4505,12 @@ fn focus_parent_with_only_a_floating_window_preserves_tree_invariants() {
         },
         Op::FocusParent,
     ]);
-    assert_eq!(layout.focus().unwrap().id(), &1);
+    // A floating root's parent is the workspace, so sway focuses the workspace and no view
+    // (`focus_parent`, sway/commands/focus.c:339-351). Oracle random seed 230 step 19.
+    assert!(layout.focus().is_none());
+    assert!(layout
+        .active_workspace()
+        .is_some_and(|workspace| workspace.is_workspace_focused()));
 }
 
 #[test]
@@ -5018,4 +5023,27 @@ fn singleton_move_after_floating_close_keeps_the_parent_live() {
     );
     assert!(!layout.has_window(&5));
     assert_eq!(layout.focus().map(|window| *window.id()), Some(3));
+}
+
+#[test]
+fn adding_next_to_a_window_while_the_workspace_is_focused_does_not_panic() {
+    // Seed a0956be7 (proptest-regressions/layout/tests.txt): after `focus parent` on a lone
+    // floating window the workspace is focused and no window is active, which the NextTo
+    // placement unwrapped.
+    check_ops([
+        Op::AddOutput(1),
+        Op::AddWindow {
+            params: TestWindowParams {
+                is_floating: true,
+                ..TestWindowParams::new(2)
+            },
+        },
+        Op::ToggleWindowFloating { id: None },
+        Op::ToggleWindowFloating { id: None },
+        Op::FocusParent,
+        Op::AddWindowNextTo {
+            params: TestWindowParams::new(3),
+            next_to_id: 2,
+        },
+    ]);
 }
