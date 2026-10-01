@@ -117,8 +117,8 @@ use smithay::wayland::xdg_toplevel_tag::XdgToplevelTagManager;
 use swayward_config::debug::PreviewRender;
 use swayward_config::output::MaxBpc;
 use swayward_config::{
-    Bind, Config, Key, Modifiers, OutputName, PositiveFloatOrInt, TrackLayout,
-    WarpMouseToFocusMode, WorkspaceReference, Xkb,
+    Bind, Config, Modifiers, OutputName, PositiveFloatOrInt, TrackLayout, WarpMouseToFocusMode,
+    WorkspaceReference, Xkb,
 };
 use wayland_server::protocol::wl_output::WlOutput;
 
@@ -392,9 +392,7 @@ pub struct Swayward {
     /// Button codes of the mouse buttons to suppress.
     pub suppressed_buttons: HashSet<u32>,
     pub held_release_buttons: HashMap<(String, u32), Bind>,
-    #[allow(clippy::type_complexity)]
-    pub bind_cooldown_timers:
-        HashMap<(Key, String, Option<u8>, bool, bool, bool), RegistrationToken>,
+    pub bind_cooldown_timers: HashMap<swayward_config::BindIdentity, RegistrationToken>,
     pub bind_repeat_timer: Option<RegistrationToken>,
     pub keyboard_focus: KeyboardFocus,
     pub layer_shell_on_demand_focus: Option<LayerSurface>,

@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use knuffel::errors::DecodeError;
 
-use super::{Action, Bind, Binds, Key, MouseRegions, Trigger};
+use super::{Action, Bind, BindIdentity, Binds, Key, MouseRegions, Trigger};
 use crate::utils::expect_only_children;
 
 impl Binds {
@@ -18,22 +18,13 @@ impl Binds {
         node: &knuffel::ast::SpannedNode<S>,
         ctx: &mut knuffel::decode::Context<S>,
     ) -> Self {
-        type BindIdentity = (Key, MouseRegions, String, Option<u8>, bool, bool, bool);
         let mut seen_keys: HashMap<BindIdentity, &knuffel::ast::SpannedNode<S>> = HashMap::new();
         let mut binds = Vec::new();
 
         for child in node.children() {
             match <Bind as knuffel::Decode<S>>::decode_node(child, ctx) {
                 Err(e) => ctx.emit_error(e),
-                Ok(bind) => match seen_keys.entry((
-                    bind.key,
-                    bind.mouse_regions,
-                    bind.input_device.clone(),
-                    bind.group,
-                    bind.release,
-                    bind.allow_when_locked,
-                    bind.allow_inhibiting,
-                )) {
+                Ok(bind) => match seen_keys.entry(bind.identity()) {
                     Entry::Occupied(entry) => {
                         // Even though it's technically incorrect, we use
                         // `DecodeError::Missing` here because it labels the bind with

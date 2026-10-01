@@ -76,15 +76,43 @@ pub struct Bind {
     pub hotkey_overlay_title: Option<Option<String>>,
 }
 
+/// The fields that make two bindings the same binding: a later one with an
+/// equal identity replaces the earlier.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct BindIdentity {
+    pub key: Key,
+    pub mouse_regions: MouseRegions,
+    pub input_device: String,
+    pub group: Option<u8>,
+    pub release: bool,
+    pub allow_when_locked: bool,
+    pub allow_inhibiting: bool,
+}
+
 impl Bind {
+    pub fn identity(&self) -> BindIdentity {
+        BindIdentity {
+            key: self.key,
+            mouse_regions: self.mouse_regions,
+            input_device: self.input_device.clone(),
+            group: self.group,
+            release: self.release,
+            allow_when_locked: self.allow_when_locked,
+            allow_inhibiting: self.allow_inhibiting,
+        }
+    }
+
+    /// The identity a cooldown is tracked under. Bindings that differ only in
+    /// mouse region share one cooldown.
+    pub fn cooldown_identity(&self) -> BindIdentity {
+        BindIdentity {
+            mouse_regions: MouseRegions::empty(),
+            ..self.identity()
+        }
+    }
+
     pub(crate) fn conflicts_with(&self, other: &Self) -> bool {
-        self.key == other.key
-            && self.mouse_regions == other.mouse_regions
-            && self.input_device == other.input_device
-            && self.group == other.group
-            && self.release == other.release
-            && self.allow_when_locked == other.allow_when_locked
-            && self.allow_inhibiting == other.allow_inhibiting
+        self.identity() == other.identity()
     }
 }
 

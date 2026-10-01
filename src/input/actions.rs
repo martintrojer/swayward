@@ -28,25 +28,15 @@ impl State {
         }
 
         if let Some(cooldown) = bind.cooldown {
-            match self.swayward.bind_cooldown_timers.entry((
-                bind.key,
-                bind.input_device.clone(),
-                bind.group,
-                bind.release,
-                bind.allow_when_locked,
-                bind.allow_inhibiting,
-            )) {
+            let cooldown_key = bind.cooldown_identity();
+            match self
+                .swayward
+                .bind_cooldown_timers
+                .entry(cooldown_key.clone())
+            {
                 Entry::Occupied(_) => return,
                 Entry::Vacant(entry) => {
                     let timer = Timer::from_duration(cooldown);
-                    let cooldown_key = (
-                        bind.key,
-                        bind.input_device.clone(),
-                        bind.group,
-                        bind.release,
-                        bind.allow_when_locked,
-                        bind.allow_inhibiting,
-                    );
                     let token = self
                         .swayward
                         .event_loop
