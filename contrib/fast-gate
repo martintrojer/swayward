@@ -1,0 +1,21 @@
+#!/bin/sh
+set -eu
+
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$root"
+export CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-4}
+
+cargo +nightly fmt --all -- --check
+./contrib/check-rustfmt-fragments
+cargo clippy --all --all-targets -- -D warnings
+cargo test --all
+./contrib/check-divergence
+./contrib/coverage-report --check
+
+base=${FAST_GATE_BASE:-origin/main}
+if git diff --name-only "$base" -- src/layout/ | grep -q .; then
+    RUN_SLOW_TESTS=1 PROPTEST_CASES=20000 \
+        cargo test -p swayward --lib tiling_tree
+    RUN_SLOW_TESTS=1 PROPTEST_CASES=20000 \
+        cargo test --release -p swayward --lib random_operations_dont_panic
+fi

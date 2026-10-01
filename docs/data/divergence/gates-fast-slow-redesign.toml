@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["AGENTS.md", ".github/workflows/ci.yml"]
+what = "codify a fast worker gate and targeted release-mode oracle selection, and run selector self-tests in CI."
+why = "Full oracle sweeps took 25 to 110 minutes and were duplicated by every worker; focused rows caught the observed behavior regressions, while exhaustive sweeps belong on the integrated batch tip and nightly CI."

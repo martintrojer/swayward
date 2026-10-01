@@ -1,0 +1,23 @@
+# Focused black-box checks for behavior changes. Keep this map narrow: an
+# unmapped production path makes contrib/targeted-oracle fail closed.
+
+[[target]]
+paths = ["src/command/", "src/ipc/", "swayward-ipc/"]
+state = ["command_coverage", "command_parser_errors"]
+events = ["command_coverage"]
+random_seeds = [0]
+
+[[target]]
+paths = ["src/layout/", "src/window/"]
+state = ["two_split_h", "one_floating", "fullscreen", "grouped_scratchpad_events"]
+events = ["fullscreen", "grouped_scratchpad_events"]
+random_seeds = [0, 50]
+
+[[target]]
+paths = ["src/backend/", "src/handlers/"]
+state = ["disabled_output_evacuation", "output_config_live_changes"]
+events = ["disabled_output_evacuation"]
+
+[[target]]
+paths = ["swayward-config/", "contrib/sway-to-kdl"]
+state = ["command_coverage"]

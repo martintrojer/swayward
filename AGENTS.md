@@ -25,10 +25,10 @@ session, and unlike a human watching a screen it runs in CI.
 ## Start from main, finish on the full gate
 
 Begin every fix from current `main` (`git checkout --detach main` in a
-worktree), and run the whole gate on that tree before calling it done:
-nightly fmt, clippy, `cargo test --all`, and the slow gates below when
-`src/layout/` changed. A fix verified on a stale base or with focused tests
-only broke main four times in one day: two fixes that each passed alone
+worktree), and run `./contrib/fast-gate` before calling it done. It runs nightly
+fmt, clippy, `cargo test --all`, ledger and coverage checks, plus the slow gates
+below when `src/layout/` changed. A fix verified on a stale base or with focused
+tests only broke main four times in one day: two fixes that each passed alone
 collided, and a command change regressed green i3 files that only the full
 conformance runner exercises.
 
@@ -204,6 +204,14 @@ The unchanged i3 tests live in `martintrojer/sway-ipc-oracle` at the commit in
 test you can edit to pass is not evidence. Run `./contrib/fetch-oracle` before
 the in-process harness. Where i3 and sway differ, record a skip with a citation
 into sway's source rather than changing the assertion.
+
+Refactor, test, documentation and tooling commits stop after the fast gate.
+Behavior changes also run only the named oracle scenarios or random seeds that
+the change can affect; use `contrib/targeted-oracle --out-dir <scratch>` to
+select them, then review the printed commands before adding `--run`. The tool
+uses a release binary and fails closed for an unmapped production path. Workers
+never run the full oracle corpus. The integrator runs it once on a pushed batch
+tip, and nightly CI owns exhaustive coverage.
 
 Measure swayward against the oracle from a clean worktree of it, passing
 `--out` outside the repo: the runners' default output path is a tracked
