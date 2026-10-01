@@ -430,7 +430,9 @@ impl ResolvedWindowRules {
         let (min_size, max_size) = self.apply_min_max_size(min_size, max_size);
 
         // Sway floats windows fixed on either axis, provided both minimum
-        // dimensions are set.
+        // dimensions are set (`sway/sway/desktop/xdg_shell.c:228-235`). Sway
+        // tests client sizes directly; swayward intentionally tests after
+        // min/max window-rule overrides so those rules can select floating.
         min_size.w > 0 && min_size.h > 0 && (min_size.w == max_size.w || min_size.h == max_size.h)
     }
 }

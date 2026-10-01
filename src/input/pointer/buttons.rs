@@ -74,6 +74,8 @@ pub(super) fn classify_press(
             return PressIntent::BorderResize(location, edges);
         }
     }
+    // Overview click-to-move is inherited niri behavior and remains on left;
+    // only floating drags follow sway's inverse modifier policy.
     if (overview && button == Some(MouseButton::Left) || regular_move) && !grabbed {
         let threshold = if is_tiling && !policy.mod_down {
             tiling_drag_threshold

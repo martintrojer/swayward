@@ -219,9 +219,6 @@ impl State {
             if let Some(mapped) = self.swayward.window_under_cursor() {
                 let window = mapped.window.clone();
 
-                // The overview is niri's and click-to-move there stays on
-                // the left button; only the floating drag follows sway's
-                // inverse bit.
                 let is_tiling = !mapped.is_floating();
                 let on_titlebar =
                     self.swayward
