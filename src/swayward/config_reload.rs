@@ -301,7 +301,6 @@ impl State {
         // sent only by the `mode` command (sway/sway/commands/mode.c:78).
         // Reset the mode silently.
         self.swayward.binding_mode = "default".into();
-        self.ipc_refresh_config();
         // Held release bindings own their action so a reload cannot invalidate them.
 
         // Now with a &mut self we can reload the xkb config.

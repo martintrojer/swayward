@@ -8,9 +8,10 @@ impl State {
 
         let _span = tracy_client::span!("State::ipc_refresh_workspaces");
 
-        let previous_tree =
-            serde_json::from_str::<swayward_ipc::Node>(&server.query_state.borrow().event_tree)
-                .ok();
+        let previous_tree = serde_json::from_str::<swayward_ipc::Node>(
+            &server.query_state.borrow().event_baseline_tree,
+        )
+        .ok();
         let mut state = server.event_stream_state.borrow_mut();
         let state = &mut state.workspaces;
 

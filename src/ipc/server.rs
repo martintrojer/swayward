@@ -39,8 +39,10 @@ mod transport;
 
 pub(crate) use event_bridge::ScratchpadEventOrder;
 use event_bridge::WorkspaceEventTransaction;
-pub(crate) use query_state::{find_node_by_id, ipc_outputs_snapshot, keyboard_layouts};
-use query_state::{refresh_all_query_state, QueryState};
+#[cfg(test)]
+pub(crate) use query_state::ipc_outputs_snapshot;
+pub(crate) use query_state::{find_node_by_id, keyboard_layouts};
+use query_state::{query_reply, serialize_outcomes, QueryState};
 use transport::{
     bind_listener, default_socket_path, on_new_ipc_client, select_socket_path, socket_dir,
     ClientCtx, CommandRequest, EventStreamSender, RequestKind,
@@ -105,11 +107,13 @@ impl IpcServer {
             .insert_source(command_rx, |event, _, state| {
                 if let ChannelEvent::Msg(request) = event {
                     let outcome = match request.kind {
-                        RequestKind::Command(input) => crate::command::execute(state, &input),
-                        RequestKind::RefreshQueryState => {
-                            refresh_all_query_state(state);
-                            Vec::new()
+                        RequestKind::Command(input) => {
+                            serialize_outcomes(&crate::command::execute(state, &input)).into_bytes()
                         }
+                        RequestKind::Query(msg_type) => query_reply(state, msg_type)
+                            .unwrap_or_else(|| {
+                                br#"{"success":false,"error":"not implemented"}"#.to_vec()
+                            }),
                         RequestKind::RefreshEventState => {
                             state.ipc_initialize_event_state();
                             Vec::new()

@@ -50,16 +50,14 @@ pub(super) struct EventStreamSender {
 
 pub(super) struct CommandRequest {
     pub(super) kind: RequestKind,
-    pub(super) reply: Sender<Vec<CommandOutcome>>,
+    /// The serialised reply.
+    pub(super) reply: Sender<Vec<u8>>,
 }
 
 pub(super) enum RequestKind {
     Command(String),
-    /// Recompute the cached query replies from the live compositor state, so a
-    /// long-lived connection does not answer from its connect-time snapshot.
-    /// Sway builds every query reply at request time
-    /// (`sway/sway/ipc-server.c:815-823`).
-    RefreshQueryState,
+    /// Serialise one query reply from live compositor state.
+    Query(MessageType),
     /// Establish an event diff baseline immediately before subscribing.
     RefreshEventState,
 }

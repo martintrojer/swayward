@@ -72,9 +72,9 @@ workspace "2" {}"#,
 /// server is holding at the moment it emits the event is the tree the bar
 /// draws.
 ///
-/// ipc_refresh_layout emits from ipc_refresh_workspaces first and only then
-/// calls refresh_query_state, so for that window query_state.tree still
-/// describes the workspace the user left.
+/// ipc_refresh_layout emits from ipc_refresh_workspaces before it records the
+/// new event baseline, so a reply served from a cached tree would still
+/// describe the workspace the user left.
 #[test]
 fn query_state_tree_is_current_when_a_workspace_event_is_emitted() {
     let config = swayward_config::Config::parse_mem(

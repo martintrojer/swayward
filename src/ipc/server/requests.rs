@@ -1,36 +1,16 @@
 use super::query_state::serialize_outcomes;
 use super::*;
 
+const SERIALIZATION_FAILED: &[u8] = br#"{"success":false,"error":"serialization failed"}"#;
+
+/// Ask the event loop for a reply computed from live compositor state.
+async fn ask_event_loop(ctx: &ClientCtx, kind: RequestKind) -> Option<Vec<u8>> {
+    let (reply, receiver) = async_channel::bounded(1);
+    ctx.commands.send(CommandRequest { kind, reply }).ok()?;
+    receiver.recv().await.ok()
+}
+
 pub(super) async fn dispatch(ctx: &ClientCtx, msg_type: MessageType, payload: &[u8]) -> Vec<u8> {
-    // Sway serialises each query from the live tree when the request arrives
-    // (`sway/sway/ipc-server.c:815-823`). We cache, so refresh first: a
-    // connection that stays open (any subscriber) would otherwise answer from
-    // the snapshot taken when it connected.
-    if matches!(
-        msg_type,
-        MessageType::GetTree
-            | MessageType::GetWorkspaces
-            | MessageType::GetOutputs
-            | MessageType::GetMarks
-            | MessageType::GetInputs
-            | MessageType::GetSeats
-            | MessageType::GetConfig
-            | MessageType::GetBindingModes
-            | MessageType::GetBindingState
-            | MessageType::GetVersion
-    ) {
-        let (reply, receiver) = async_channel::bounded(1);
-        if ctx
-            .commands
-            .send(CommandRequest {
-                kind: RequestKind::RefreshQueryState,
-                reply,
-            })
-            .is_ok()
-        {
-            let _ = receiver.recv().await;
-        }
-    }
     match msg_type {
         MessageType::GetVersion => serde_json::to_vec(&Version {
             human_readable: format!("swayward {}", version()),
@@ -40,13 +20,22 @@ pub(super) async fn dispatch(ctx: &ClientCtx, msg_type: MessageType, payload: &[
             patch: SWAYWARD_IPC_VERSION.2,
             loaded_config_file_name: ctx.query_state.borrow().loaded_config_file_name.clone(),
         })
-        .unwrap_or_else(|_| br#"{"success":false,"error":"serialization failed"}"#.to_vec()),
-        MessageType::GetTree => ctx.query_state.borrow().tree.as_bytes().to_vec(),
-        MessageType::GetWorkspaces => ctx.query_state.borrow().workspaces.as_bytes().to_vec(),
-        MessageType::GetOutputs => ctx.query_state.borrow().outputs.as_bytes().to_vec(),
-        MessageType::GetMarks => ctx.query_state.borrow().marks.as_bytes().to_vec(),
-        MessageType::GetBindingModes => ctx.query_state.borrow().binding_modes.as_bytes().to_vec(),
-        MessageType::GetBindingState => ctx.query_state.borrow().binding_state.as_bytes().to_vec(),
+        .unwrap_or_else(|_| SERIALIZATION_FAILED.to_vec()),
+        // Sway serialises each query from the live tree when the request
+        // arrives (`sway/sway/ipc-server.c:815-823`), so compute exactly the
+        // one requested reply on the event loop.
+        MessageType::GetTree
+        | MessageType::GetWorkspaces
+        | MessageType::GetOutputs
+        | MessageType::GetMarks
+        | MessageType::GetInputs
+        | MessageType::GetSeats
+        | MessageType::GetBindingModes
+        | MessageType::GetBindingState => ask_event_loop(ctx, RequestKind::Query(msg_type))
+            .await
+            .unwrap_or_else(|| {
+                br#"{"success":false,"error":"compositor is unavailable"}"#.to_vec()
+            }),
         // GET_CONFIG is not implemented, and must not be faked.
         //
         // Sway's contract is the verbatim text of the sway config file:
@@ -65,8 +54,6 @@ pub(super) async fn dispatch(ctx: &ClientCtx, msg_type: MessageType, payload: &[
         // returns `{"success": false}` rather than inventing a reply
         // (`sway/sway/ipc-server.c:919-925`).
         MessageType::GetConfig => br#"{"success": false}"#.to_vec(),
-        MessageType::GetInputs => ctx.query_state.borrow().inputs.as_bytes().to_vec(),
-        MessageType::GetSeats => ctx.query_state.borrow().seats.as_bytes().to_vec(),
         MessageType::RunCommand => {
             let input = match String::from_utf8(payload.to_vec()) {
                 Ok(input) => input,
@@ -80,31 +67,16 @@ pub(super) async fn dispatch(ctx: &ClientCtx, msg_type: MessageType, payload: &[
                 }
             };
             let input = split_payload_lines(&input);
-            let (reply, receiver) = async_channel::bounded(1);
-            if ctx
-                .commands
-                .send(CommandRequest {
-                    kind: RequestKind::Command(input),
-                    reply,
+            ask_event_loop(ctx, RequestKind::Command(input))
+                .await
+                .unwrap_or_else(|| {
+                    serialize_outcomes(&[CommandOutcome {
+                        success: false,
+                        error: Some("command dispatcher is unavailable".into()),
+                        parse_error: None,
+                    }])
+                    .into_bytes()
                 })
-                .is_err()
-            {
-                return serialize_outcomes(&[CommandOutcome {
-                    success: false,
-                    error: Some("command dispatcher is unavailable".into()),
-                    parse_error: None,
-                }])
-                .into_bytes();
-            }
-            match receiver.recv().await {
-                Ok(outcomes) => serialize_outcomes(&outcomes).into_bytes(),
-                Err(_) => serialize_outcomes(&[CommandOutcome {
-                    success: false,
-                    error: Some("command dispatcher stopped without replying".into()),
-                    parse_error: None,
-                }])
-                .into_bytes(),
-            }
         }
         MessageType::GetBarConfig if payload.is_empty() => b"[]".to_vec(),
         // Byte-identical to sway, spaces included: it writes this as a C

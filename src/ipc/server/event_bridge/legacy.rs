@@ -10,7 +10,6 @@ impl State {
             return;
         };
         let input = describe_input(&self.swayward, &device);
-        refresh_input_query_state(&self.swayward, &mut server.query_state.borrow_mut());
         server.send_event(Event::SwayInputChanged {
             change: change.into(),
             input,
@@ -38,7 +37,6 @@ impl State {
                     .borrow_mut()
                     .keyboard_layouts
                     .keyboard_layouts = None;
-                refresh_input_query_state(&self.swayward, &mut server.query_state.borrow_mut());
             }
             return;
         };
@@ -54,7 +52,6 @@ impl State {
             state.apply(event.clone());
             server.send_event(event);
         }
-        refresh_input_query_state(&self.swayward, &mut server.query_state.borrow_mut());
         self.ipc_keyboard_input_changed("xkb_keymap");
     }
 
@@ -82,18 +79,7 @@ impl State {
             state.apply(event.clone());
             server.send_event(event);
         }
-        refresh_input_query_state(&self.swayward, &mut server.query_state.borrow_mut());
         self.ipc_keyboard_input_changed("xkb_layout");
-    }
-
-    pub(crate) fn ipc_refresh_config(&mut self) {
-        let Some(server) = &self.swayward.ipc_server else {
-            return;
-        };
-        let mut query_state = server.query_state.borrow_mut();
-        query_state.binding_modes = binding_modes(&self.swayward.config.borrow());
-        query_state.binding_state = binding_state(&self.swayward.binding_mode);
-        refresh_input_query_state(&self.swayward, &mut query_state);
     }
 
     pub fn ipc_refresh_layout(&mut self) {
@@ -109,26 +95,20 @@ impl State {
     }
 
     pub(crate) fn ipc_initialize_event_state(&mut self) {
-        let previous_tree =
-            self.swayward.ipc_server.as_ref().and_then(|server| {
-                serde_json::from_str(&server.query_state.borrow().event_tree).ok()
-            });
+        let previous_tree = self.swayward.ipc_server.as_ref().and_then(|server| {
+            serde_json::from_str(&server.query_state.borrow().event_baseline_tree).ok()
+        });
         self.ipc_refresh_workspaces();
         if let Some(server) = &self.swayward.ipc_server {
-            let mut query_state = server.query_state.borrow_mut();
-            query_state.binding_state = binding_state(&self.swayward.binding_mode);
-            refresh_input_query_state(&self.swayward, &mut query_state);
-            let ipc_outputs = ipc_outputs_snapshot(self);
-            refresh_query_state(
+            let tree = describe_tree_with_power(
                 &self.swayward.layout,
                 &self.swayward.global_space,
-                &self.swayward.output_power,
-                &ipc_outputs,
                 &self.swayward.marks_by_window,
                 &self.swayward.marks_by_container,
-                &mut query_state,
+                &self.swayward.output_power,
             );
-            query_state.event_tree = query_state.tree.clone();
+            server.query_state.borrow_mut().event_baseline_tree = serde_json::to_string(&tree)
+                .unwrap_or_else(|_| r#"{"success":false,"error":"serialization failed"}"#.into());
         }
         self.ipc_refresh_windows(previous_tree.as_ref());
     }

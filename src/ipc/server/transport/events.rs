@@ -111,9 +111,10 @@ pub(super) fn sway_event(
             serde_json::json!({"change":change,"container":container}),
         ),
         Event::WindowMoved { id } => {
-            let container = serde_json::from_str::<serde_json::Value>(&query_state.tree)
-                .ok()
-                .and_then(|tree| find_node_by_id(&tree, id).cloned());
+            let container =
+                serde_json::from_str::<serde_json::Value>(&query_state.event_baseline_tree)
+                    .ok()
+                    .and_then(|tree| find_node_by_id(&tree, id).cloned());
             (
                 SwayEventType::Window,
                 serde_json::json!({"change":"move","container":container}),

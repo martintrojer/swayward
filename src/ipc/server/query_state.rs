@@ -3,23 +3,10 @@ use super::*;
 #[derive(Default)]
 pub(super) struct QueryState {
     pub(super) loaded_config_file_name: String,
-    pub(super) tree: String,
-    pub(super) event_tree: String,
-    pub(super) workspaces: String,
-    pub(super) outputs: String,
-    pub(super) marks: String,
-    pub(super) binding_modes: String,
-    pub(super) binding_state: String,
-    pub(super) inputs: String,
-    pub(super) seats: String,
-    /// GET_TREE's focused node id, which is also the seat's focus.
-    pub(super) seat_focus: i64,
-    /// The serialised input devices, kept to rebuild `seats` when focus moves.
-    pub(super) seat_devices: Vec<serde_json::Value>,
-    pub(super) seat_capabilities: u32,
+    /// The serialised tree the event diff last ran against.
+    pub(super) event_baseline_tree: String,
 }
 
-/// Recompute every cached query reply from live compositor state.
 pub(crate) fn ipc_outputs_snapshot(state: &State) -> crate::backend::IpcOutputMap {
     state
         .backend
@@ -32,24 +19,65 @@ pub(crate) fn ipc_outputs_snapshot(state: &State) -> crate::backend::IpcOutputMa
         .clone()
 }
 
-pub(super) fn refresh_all_query_state(state: &mut State) {
-    let Some(server) = &state.swayward.ipc_server else {
-        return;
-    };
-    let mut query_state = server.query_state.borrow_mut();
-    query_state.binding_modes = binding_modes(&state.swayward.config.borrow());
-    query_state.binding_state = binding_state(&state.swayward.binding_mode);
-    refresh_input_query_state(&state.swayward, &mut query_state);
-    let ipc_outputs = ipc_outputs_snapshot(state);
-    refresh_query_state(
+const SERIALIZATION_FAILED: &str = r#"{"success":false,"error":"serialization failed"}"#;
+
+fn to_reply(value: &impl serde::Serialize) -> Vec<u8> {
+    serde_json::to_vec(value).unwrap_or_else(|_| SERIALIZATION_FAILED.as_bytes().to_vec())
+}
+
+fn describe_live_tree(state: &State) -> swayward_ipc::Node {
+    describe_tree_with_power(
         &state.swayward.layout,
         &state.swayward.global_space,
-        &state.swayward.output_power,
-        &ipc_outputs,
         &state.swayward.marks_by_window,
         &state.swayward.marks_by_container,
-        &mut query_state,
-    );
+        &state.swayward.output_power,
+    )
+}
+
+/// Serialise the reply to one query from live compositor state.
+///
+/// Sway builds each query reply when the request arrives
+/// (`sway/sway/ipc-server.c:815-823`), so a long-lived connection never
+/// answers from a connect-time snapshot.
+pub(super) fn query_reply(state: &State, msg_type: MessageType) -> Option<Vec<u8>> {
+    let swayward = &state.swayward;
+    Some(match msg_type {
+        MessageType::GetTree => to_reply(&describe_live_tree(state)),
+        MessageType::GetWorkspaces => to_reply(&describe_workspaces_with_marks(
+            &swayward.layout,
+            &swayward.global_space,
+            &swayward.marks_by_window,
+            &swayward.marks_by_container,
+        )),
+        MessageType::GetOutputs => to_reply(&describe_all_outputs(state)),
+        MessageType::GetMarks => {
+            // Sway walks the container tree and appends each container's
+            // marks in the order it meets them (`sway/tree/root.c:246-260`,
+            // `sway/ipc-server.c:604-610,825-834`). Collecting from the tree
+            // gives that order, and reaches marks on split containers as well
+            // as on views.
+            let mut all_marks = Vec::new();
+            collect_marks(&describe_live_tree(state), &mut all_marks);
+            to_reply(&all_marks)
+        }
+        MessageType::GetBindingModes => binding_modes(&swayward.config.borrow()).into_bytes(),
+        MessageType::GetBindingState => binding_state(&swayward.binding_mode).into_bytes(),
+        MessageType::GetInputs => {
+            serde_json::to_vec(&describe_inputs(swayward)).unwrap_or_else(|_| b"[]".to_vec())
+        }
+        MessageType::GetSeats => {
+            let devices = describe_inputs(swayward);
+            serde_json::to_vec(&[IpcSeat {
+                name: "seat0",
+                capabilities: seat_capabilities(&devices),
+                focus: tree_focus(&describe_live_tree(state)).unwrap_or(0),
+                devices: &devices,
+            }])
+            .unwrap_or_else(|_| b"[]".to_vec())
+        }
+        _ => return None,
+    })
 }
 
 pub(super) fn binding_modes(config: &swayward_config::Config) -> String {
@@ -159,19 +187,6 @@ pub(super) fn describe_inputs(swayward: &crate::swayward::Swayward) -> Vec<serde
         .collect()
 }
 
-pub(super) fn refresh_input_query_state(
-    swayward: &crate::swayward::Swayward,
-    state: &mut QueryState,
-) {
-    let devices = describe_inputs(swayward);
-    state.inputs = serde_json::to_string(&devices).unwrap_or_else(|_| "[]".into());
-
-    let capabilities = seat_capabilities(&devices);
-    state.seat_devices = devices;
-    state.seat_capabilities = capabilities;
-    refresh_seats(state);
-}
-
 /// The seat's `wl_seat` capability bits, folded from its input devices.
 ///
 /// Sway gives a tablet tool the pointer capability, while switches and tablet
@@ -186,17 +201,6 @@ fn seat_capabilities(devices: &[serde_json::Value]) -> u32 {
                 _ => 0,
             }
     })
-}
-
-/// Rebuild GET_SEATS from the cached devices and the tree's focused node.
-fn refresh_seats(state: &mut QueryState) {
-    state.seats = serde_json::to_string(&[IpcSeat {
-        name: "seat0",
-        capabilities: state.seat_capabilities,
-        focus: state.seat_focus,
-        devices: &state.seat_devices,
-    }])
-    .unwrap_or_else(|_| "[]".into());
 }
 
 /// The id of the single node GET_TREE marks focused.
@@ -307,34 +311,13 @@ pub(super) fn collect_marks(node: &swayward_ipc::Node, out: &mut Vec<String>) {
     }
 }
 
-pub(super) fn refresh_query_state(
-    layout: &crate::layout::Layout<Mapped>,
-    global_space: &smithay::desktop::Space<smithay::desktop::Window>,
-    output_power: &std::collections::HashMap<String, bool>,
-    ipc_outputs: &crate::backend::IpcOutputMap,
-    marks: &std::collections::HashMap<crate::window::mapped::MappedId, Vec<String>>,
-    container_marks: &std::collections::HashMap<crate::layout::tiling_tree::NodeId, Vec<String>>,
-    state: &mut QueryState,
-) {
-    let tree = describe_tree_with_power(layout, global_space, marks, container_marks, output_power);
-    let focus = tree_focus(&tree).unwrap_or(0);
-    if focus != state.seat_focus {
-        state.seat_focus = focus;
-        refresh_seats(state);
-    }
-    state.tree = serde_json::to_string(&tree)
-        .unwrap_or_else(|_| r#"{"success":false,"error":"serialization failed"}"#.into());
-    state.workspaces = serde_json::to_string(&describe_workspaces_with_marks(
-        layout,
-        global_space,
-        marks,
-        container_marks,
-    ))
-    .unwrap_or_else(|_| r#"{"success":false,"error":"serialization failed"}"#.into());
+/// GET_OUTPUTS: every logical output, then each disabled connector.
+fn describe_all_outputs(state: &State) -> serde_json::Value {
+    let ipc_outputs = ipc_outputs_snapshot(state);
     let mut outputs = serde_json::to_value(crate::ipc::tree::describe_outputs_with_power(
-        layout,
-        global_space,
-        output_power,
+        &state.swayward.layout,
+        &state.swayward.global_space,
+        &state.swayward.output_power,
     ))
     .unwrap_or_default();
     if let Some(outputs) = outputs.as_array_mut() {
@@ -367,19 +350,7 @@ pub(super) fn refresh_query_state(
                 }),
         );
     }
-    state.outputs = serde_json::to_string(&outputs)
-        .unwrap_or_else(|_| r#"{"success":false,"error":"serialization failed"}"#.into());
-    // Sway walks the container tree and appends each container's marks in the
-    // order it meets them (`sway/tree/root.c:246-260`,
-    // `sway/ipc-server.c:604-610,825-834`). Collecting from the tree we just
-    // built gives that order for free, and reaches marks on split containers
-    // as well as on views. Sorting the per-window map did neither: it imposed
-    // an order sway never uses, and omitted container marks that GET_TREE was
-    // already reporting.
-    let mut all_marks = Vec::new();
-    collect_marks(&tree, &mut all_marks);
-    state.marks = serde_json::to_string(&all_marks)
-        .unwrap_or_else(|_| r#"{"success":false,"error":"serialization failed"}"#.into());
+    outputs
 }
 
 #[cfg(test)]
