@@ -77,13 +77,8 @@ impl<W: LayoutElement> FloatingLayout<W> {
         let (idx, above_rect) = if let Some(idx) = self.idx_of(above) {
             let data = self.entries[idx].data;
             (idx, Rectangle::new(data.logical_pos, data.size))
-        } else if let Some((idx, entry)) = self
-            .tree_entries
-            .iter()
-            .enumerate()
-            .find(|(_, entry)| entry.tree.node_for_window(above).is_some())
-        {
-            (idx.min(self.entries.len()), entry.rect)
+        } else if let Some((idx, _)) = self.tree_entry_for_window(above) {
+            (idx.min(self.entries.len()), self.tree_entries[idx].rect)
         } else {
             return;
         };
@@ -138,12 +133,10 @@ impl<W: LayoutElement> FloatingLayout<W> {
             return self.remove_tile_by_idx(idx);
         }
 
-        let tree_idx = self
-            .tree_entries
-            .iter()
-            .position(|entry| entry.tree.node_for_window(id).is_some())
+        let (tree_idx, _) = self
+            .tree_entry_for_window(id)
             .expect("window must belong to a floating entry");
-        let mut tile = self.tree_entries[tree_idx]
+        let tile = self.tree_entries[tree_idx]
             .tree
             .remove_tile(id, transaction)
             .expect("floating tree window must remain present until removal");
@@ -163,14 +156,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
                         .map(|entry| entry.tile.window().id().clone())
                 });
         }
-        if let Some(size) = tile.window().expected_size() {
-            tile.floating_window_size = Some(size);
-        }
-        RemovedTile {
-            tile,
-            is_floating: true,
-            floating_working_area: Some(self.working_area),
-        }
+        removed_floating_tile(tile, self.working_area)
     }
 
     fn remove_tile_by_idx(&mut self, idx: usize) -> RemovedTile<W> {
@@ -196,18 +182,10 @@ impl<W: LayoutElement> FloatingLayout<W> {
             }
         }
 
-        // Store the floating size if we have one.
-        if let Some(size) = tile.window().expected_size() {
-            tile.floating_window_size = Some(size);
-        }
         // Store the floating position.
         tile.floating_pos = Some(data.pos);
 
-        RemovedTile {
-            tile,
-            is_floating: true,
-            floating_working_area: Some(self.working_area),
-        }
+        removed_floating_tile(tile, self.working_area)
     }
 
     pub fn start_close_animation_for_window(
@@ -216,11 +194,8 @@ impl<W: LayoutElement> FloatingLayout<W> {
         id: &W::Id,
         blocker: TransactionBlocker,
     ) {
-        if let Some(entry) = self
-            .tree_entries
-            .iter_mut()
-            .find(|entry| entry.tree.node_for_window(id).is_some())
-        {
+        if let Some((idx, _)) = self.tree_entry_for_window(id) {
+            let entry = &mut self.tree_entries[idx];
             entry
                 .tree
                 .start_close_animation_for_window(renderer, id, blocker);
@@ -247,11 +222,8 @@ impl<W: LayoutElement> FloatingLayout<W> {
         if !self.contains(id) {
             return false;
         }
-        if let Some(entry) = self
-            .tree_entries
-            .iter_mut()
-            .find(|entry| entry.tree.node_for_window(id).is_some())
-        {
+        if let Some((idx, _)) = self.tree_entry_for_window(id) {
+            let entry = &mut self.tree_entries[idx];
             entry.tree.activate_window(id);
         }
         self.active_window_id = Some(id.clone());
@@ -265,11 +237,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
             self.bring_up_descendants_of(0);
             return true;
         }
-        let Some(idx) = self
-            .tree_entries
-            .iter()
-            .position(|entry| entry.tree.node_for_window(id).is_some())
-        else {
+        let Some((idx, _)) = self.tree_entry_for_window(id) else {
             return false;
         };
         let mut entry = self.tree_entries.remove(idx);
@@ -590,11 +558,8 @@ impl<W: LayoutElement> FloatingLayout<W> {
         // A floating group's child is not itself floating, so sway resizes it
         // inside the group like a tiled child (`container_is_floating`,
         // sway/commands/resize.c:523-550).
-        if let Some(entry) = self
-            .tree_entries
-            .iter_mut()
-            .find(|entry| entry.tree.node_for_window(&id).is_some())
-        {
+        if let Some((idx, _)) = self.tree_entry_for_window(&id) {
+            let entry = &mut self.tree_entries[idx];
             return entry.tree.resize_window_edge(Some(&id), edge, change);
         }
         let Some(idx) = self.idx_of(&id) else {
@@ -689,11 +654,8 @@ impl<W: LayoutElement> FloatingLayout<W> {
         let Some(active_id) = &self.active_window_id else {
             return false;
         };
-        if let Some(entry) = self
-            .tree_entries
-            .iter_mut()
-            .find(|entry| entry.tree.node_for_window(active_id).is_some())
-        {
+        if let Some((idx, _)) = self.tree_entry_for_window(active_id) {
+            let entry = &mut self.tree_entries[idx];
             let moved = entry.tree.focus_direction(direction);
             self.active_window_id = entry.tree.active_window().map(|window| window.id().clone());
             return moved;
@@ -805,11 +767,8 @@ impl<W: LayoutElement> FloatingLayout<W> {
         let Some(active_id) = &self.active_window_id else {
             return;
         };
-        if let Some(entry) = self
-            .tree_entries
-            .iter_mut()
-            .find(|entry| entry.tree.node_for_window(active_id).is_some())
-        {
+        if let Some((idx, _)) = self.tree_entry_for_window(active_id) {
+            let entry = &mut self.tree_entries[idx];
             entry.rect.loc += amount;
             entry.pos =
                 Data::logical_to_size_frac_in_working_area(self.working_area, entry.rect.loc);
@@ -854,11 +813,8 @@ impl<W: LayoutElement> FloatingLayout<W> {
         let Some(id) = id.or(self.active_window_id.as_ref()) else {
             return;
         };
-        if let Some(entry) = self
-            .tree_entries
-            .iter_mut()
-            .find(|entry| entry.tree.node_for_window(id).is_some())
-        {
+        if let Some((idx, _)) = self.tree_entry_for_window(id) {
+            let entry = &mut self.tree_entries[idx];
             let mut pos = entry.rect.loc;
             pos.x =
                 apply_position_change(pos.x, x, self.working_area.size.w, self.working_area.loc.x);
@@ -893,11 +849,8 @@ impl<W: LayoutElement> FloatingLayout<W> {
         let Some(id) = id.or(self.active_window_id.as_ref()).cloned() else {
             return;
         };
-        if let Some(entry) = self
-            .tree_entries
-            .iter_mut()
-            .find(|entry| entry.tree.node_for_window(&id).is_some())
-        {
+        if let Some((idx, _)) = self.tree_entry_for_window(&id) {
+            let entry = &mut self.tree_entries[idx];
             entry.rect.loc = center_preferring_top_left_in_area(self.working_area, entry.rect.size);
             entry.pos =
                 Data::logical_to_size_frac_in_working_area(self.working_area, entry.rect.loc);
@@ -929,11 +882,8 @@ impl<W: LayoutElement> FloatingLayout<W> {
     }
 
     pub fn update_window(&mut self, id: &W::Id, serial: Option<Serial>) -> bool {
-        if let Some(entry) = self
-            .tree_entries
-            .iter_mut()
-            .find(|entry| entry.tree.node_for_window(id).is_some())
-        {
+        if let Some((idx, _)) = self.tree_entry_for_window(id) {
+            let entry = &mut self.tree_entries[idx];
             return entry.tree.update_window(id, serial);
         }
         let Some(tile_idx) = self.idx_of(id) else {

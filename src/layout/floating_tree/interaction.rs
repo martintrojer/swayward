@@ -217,17 +217,9 @@ impl<W: LayoutElement> FloatingLayout<W> {
         let Some(pos) = tile.floating_pos else {
             return;
         };
-        let old_pos = Data::scale_by_working_area(old_area, pos);
-        let size = tile.tile_size();
-        let old_center = old_pos + size.downscale(2.);
-        let relative_center = old_center - old_area.loc;
-        let new_center = Point::from((
-            self.working_area.loc.x
-                + relative_center.x * self.working_area.size.w / old_area.size.w,
-            self.working_area.loc.y
-                + relative_center.y * self.working_area.size.h / old_area.size.h,
-        ));
-        tile.floating_pos = Some(self.logical_to_size_frac(new_center - size.downscale(2.)));
+        let old_rect = Rectangle::new(Data::scale_by_working_area(old_area, pos), tile.tile_size());
+        let new_rect = remap_rect_center(old_rect, old_area, self.working_area);
+        tile.floating_pos = Some(self.logical_to_size_frac(new_rect.loc));
     }
 
     pub fn stored_or_default_tile_pos(&self, tile: &Tile<W>) -> Option<Point<f64, Logical>> {

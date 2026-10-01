@@ -51,6 +51,22 @@ fn remap_rect_center(
     Rectangle::new(new_center - rect.size.downscale(2.), rect.size)
 }
 
+/// A tile leaving the floating layer, remembering its floating size and the
+/// working area its stored position is relative to.
+fn removed_floating_tile<W: LayoutElement>(
+    mut tile: Tile<W>,
+    working_area: Rectangle<f64, Logical>,
+) -> RemovedTile<W> {
+    if let Some(size) = tile.window().expected_size() {
+        tile.floating_window_size = Some(size);
+    }
+    RemovedTile {
+        tile,
+        is_floating: true,
+        floating_working_area: Some(working_area),
+    }
+}
+
 pub(super) fn apply_position_change(
     current: f64,
     change: PositionChange,
@@ -177,16 +193,9 @@ impl<W: LayoutElement> RemovedFloatingTree<W> {
         window: &W::Id,
         transaction: crate::utils::transaction::Transaction,
     ) -> Option<RemovedTile<W>> {
-        let mut tile = self.tree.remove_tile(window, transaction)?;
+        let tile = self.tree.remove_tile(window, transaction)?;
         self.window_ids.retain(|id| id != window);
-        if let Some(size) = tile.window().expected_size() {
-            tile.floating_window_size = Some(size);
-        }
-        Some(RemovedTile {
-            tile,
-            is_floating: true,
-            floating_working_area: Some(self.working_area),
-        })
+        Some(removed_floating_tile(tile, self.working_area))
     }
 
     pub fn into_subtree(mut self) -> Option<DetachedSubtree<W>> {
@@ -619,12 +628,10 @@ impl<W: LayoutElement> FloatingLayout<W> {
     /// During animations, assumes the final tile position.
     pub fn active_window_visual_rectangle(&self) -> Option<Rectangle<f64, Logical>> {
         let active_id = self.active_window_id.as_ref()?;
-        if let Some(rect) = self.tree_entries.iter().find_map(|entry| {
-            entry
-                .tree
-                .node_for_window(active_id)
-                .and_then(|_| entry.tree.active_window_visual_rectangle())
-        }) {
+        if let Some(rect) = self
+            .active_tree_entry()
+            .and_then(|entry| entry.tree.active_window_visual_rectangle())
+        {
             return Some(rect);
         }
         let (tile, offset) = self
@@ -695,6 +702,34 @@ impl<W: LayoutElement> FloatingLayout<W> {
         self.has_window(id)
     }
 
+    /// The index of the nested tree holding `window`, and the window's leaf node there.
+    fn tree_entry_for_window(&self, window: &W::Id) -> Option<(usize, NodeId)> {
+        self.tree_entries
+            .iter()
+            .enumerate()
+            .find_map(|(idx, entry)| entry.tree.node_for_window(window).map(|node| (idx, node)))
+    }
+
+    fn tree_entry_with_window(&self, window: &W::Id) -> Option<&FloatingTreeEntry<W>> {
+        let (idx, _) = self.tree_entry_for_window(window)?;
+        self.tree_entries.get(idx)
+    }
+
+    fn tree_entry_with_window_mut(&mut self, window: &W::Id) -> Option<&mut FloatingTreeEntry<W>> {
+        let (idx, _) = self.tree_entry_for_window(window)?;
+        self.tree_entries.get_mut(idx)
+    }
+
+    /// The nested tree holding the active window.
+    fn active_tree_entry(&self) -> Option<&FloatingTreeEntry<W>> {
+        self.tree_entry_with_window(self.active_window_id.as_ref()?)
+    }
+
+    fn active_tree_entry_mut(&mut self) -> Option<&mut FloatingTreeEntry<W>> {
+        let (idx, _) = self.tree_entry_for_window(self.active_window_id.as_ref()?)?;
+        self.tree_entries.get_mut(idx)
+    }
+
     pub fn active_window(&self) -> Option<&W> {
         let id = self.active_window_id.as_ref()?;
         self.entries
@@ -734,10 +769,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
             .iter()
             .map(|entry| &entry.tile)
             .any(|tile| tile.window().id() == id)
-            || self
-                .tree_entries
-                .iter()
-                .any(|entry| entry.tree.node_for_window(id).is_some())
+            || self.tree_entry_for_window(id).is_some()
     }
 
     pub fn window_is_floating_root(&self, id: &W::Id) -> bool {
@@ -747,9 +779,8 @@ impl<W: LayoutElement> FloatingLayout<W> {
     }
 
     pub fn window_is_tree_root(&self, window: &W::Id) -> bool {
-        self.tree_entries
-            .iter()
-            .any(|entry| entry.tree.node_for_window(window) == Some(entry.root))
+        self.tree_entry_for_window(window)
+            .is_some_and(|(idx, node)| self.tree_entries[idx].root == node)
     }
 
     pub fn is_empty(&self) -> bool {
@@ -875,10 +906,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
     }
 
     pub fn tree_root_for_window(&self, window: &W::Id) -> Option<NodeId> {
-        self.tree_entries
-            .iter()
-            .find(|entry| entry.tree.node_for_window(window).is_some())
-            .map(|entry| entry.root)
+        self.tree_entry_with_window(window).map(|entry| entry.root)
     }
 
     pub fn tree_roots(&self) -> impl Iterator<Item = NodeId> + '_ {
@@ -915,12 +943,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
     }
 
     pub fn focused_leaf_is_only_child_of_tree_root(&self) -> bool {
-        let Some(active) = self.active_window_id.as_ref() else {
-            return false;
-        };
-        self.tree_entries
-            .iter()
-            .find(|entry| entry.tree.node_for_window(active).is_some())
+        self.active_tree_entry()
             .is_some_and(|entry| entry.tree.focused_leaf_is_only_child_of_resident_root())
     }
 
@@ -935,25 +958,21 @@ impl<W: LayoutElement> FloatingLayout<W> {
         &self,
         window: &W::Id,
     ) -> Option<super::tiling_tree::FullscreenMode> {
-        self.tree_entries.iter().find_map(|entry| {
-            let fullscreen = entry.tree.fullscreen_node()?;
-            let node = entry.tree.node_for_window(window)?;
-            entry
-                .tree
-                .contains_node(fullscreen, node)
-                .then(|| entry.tree.fullscreen_mode(fullscreen))
-                .flatten()
-        })
+        let (idx, node) = self.tree_entry_for_window(window)?;
+        let tree = &self.tree_entries[idx].tree;
+        let fullscreen = tree.fullscreen_node()?;
+        tree.contains_node(fullscreen, node)
+            .then(|| tree.fullscreen_mode(fullscreen))
+            .flatten()
     }
 
     pub fn fullscreen_contains_window(&self, window: &W::Id) -> bool {
-        self.tree_entries.iter().any(|entry| {
-            entry
-                .tree
-                .fullscreen_node()
-                .zip(entry.tree.node_for_window(window))
-                .is_some_and(|(fullscreen, node)| entry.tree.contains_node(fullscreen, node))
-        })
+        self.tree_entry_for_window(window)
+            .is_some_and(|(idx, node)| {
+                let tree = &self.tree_entries[idx].tree;
+                tree.fullscreen_node()
+                    .is_some_and(|fullscreen| tree.contains_node(fullscreen, node))
+            })
     }
 
     pub fn fullscreen_window(&self) -> Option<&W::Id> {
@@ -976,31 +995,17 @@ impl<W: LayoutElement> FloatingLayout<W> {
         window: &W::Id,
         mode: Option<super::tiling_tree::FullscreenMode>,
     ) -> bool {
-        let Some(entry) = self
-            .tree_entries
-            .iter_mut()
-            .find(|entry| entry.tree.node_for_window(window).is_some())
-        else {
+        let Some((idx, node)) = self.tree_entry_for_window(window) else {
             return false;
         };
-        let Some(node) = entry.tree.node_for_window(window) else {
-            return false;
-        };
-        entry.tree.set_node_fullscreen(node, mode)
+        self.tree_entries[idx].tree.set_node_fullscreen(node, mode)
     }
 
     pub fn set_focused_fullscreen(
         &mut self,
         mode: Option<super::tiling_tree::FullscreenMode>,
     ) -> bool {
-        let Some(active) = self.active_window_id.as_ref() else {
-            return false;
-        };
-        let Some(entry) = self
-            .tree_entries
-            .iter_mut()
-            .find(|entry| entry.tree.node_for_window(active).is_some())
-        else {
+        let Some(entry) = self.active_tree_entry_mut() else {
             return false;
         };
         let Some(focus) = entry.tree.focus() else {
@@ -1010,11 +1015,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
     }
 
     pub fn focused_container_node(&self) -> Option<NodeId> {
-        let active = self.active_window_id.as_ref()?;
-        let entry = self
-            .tree_entries
-            .iter()
-            .find(|entry| entry.tree.node_for_window(active).is_some())?;
+        let entry = self.active_tree_entry()?;
         entry.tree.focus().filter(|node| entry.tree.is_split(*node))
     }
 
@@ -1024,51 +1025,35 @@ impl<W: LayoutElement> FloatingLayout<W> {
         style: swayward_ipc::command::BorderStyle,
         width: Option<u16>,
     ) -> bool {
-        self.tree_entries
-            .iter_mut()
-            .find(|entry| entry.tree.node_for_window(id).is_some())
+        self.tree_entry_with_window_mut(id)
             .is_some_and(|entry| entry.tree.set_window_border(id, style, width))
     }
 
     pub fn focused_tree_child(&self) -> bool {
-        let Some(active) = self.active_window_id.as_ref() else {
-            return false;
-        };
-        self.tree_entries
-            .iter()
-            .find(|entry| entry.tree.node_for_window(active).is_some())
+        self.active_tree_entry()
             .and_then(|entry| entry.tree.focus().map(|focus| focus != entry.root))
             .unwrap_or(false)
     }
 
     pub fn focused_child_tree_mut(&mut self) -> Option<&mut TilingTree<W>> {
-        let active = self.active_window_id.as_ref()?;
-        self.tree_entries
-            .iter_mut()
-            .find(|entry| {
-                entry.tree.node_for_window(active).is_some()
-                    && entry.tree.focus().is_some_and(|focus| focus != entry.root)
-            })
+        self.active_tree_entry_mut()
+            .filter(|entry| entry.tree.focus().is_some_and(|focus| focus != entry.root))
             .map(|entry| &mut entry.tree)
     }
 
     pub fn move_focused_tree_child(&mut self, direction: Direction) -> Option<bool> {
-        let active = self.active_window_id.as_ref()?;
-        let entry = self
-            .tree_entries
-            .iter_mut()
-            .find(|entry| entry.tree.node_for_window(active).is_some())?;
+        let entry = self.active_tree_entry_mut()?;
         let focus = entry.tree.focus().filter(|focus| *focus != entry.root)?;
         Some(entry.tree.move_node_direction(focus, direction))
     }
 
     pub fn move_tree_window(&mut self, window: &W::Id, direction: Direction) -> Option<bool> {
-        let entry = self
-            .tree_entries
-            .iter_mut()
-            .find(|entry| entry.tree.node_for_window(window).is_some())?;
-        let node = entry.tree.node_for_window(window)?;
-        Some(entry.tree.move_node_direction(node, direction))
+        let (idx, node) = self.tree_entry_for_window(window)?;
+        Some(
+            self.tree_entries[idx]
+                .tree
+                .move_node_direction(node, direction),
+        )
     }
 
     pub fn window_in_node(&self, node: NodeId) -> Option<&W::Id> {
@@ -1082,22 +1067,12 @@ impl<W: LayoutElement> FloatingLayout<W> {
     }
 
     pub fn focus_parent(&mut self) -> bool {
-        let Some(active) = self.active_window_id.as_ref() else {
-            return false;
-        };
-        self.tree_entries
-            .iter_mut()
-            .find(|entry| entry.tree.node_for_window(active).is_some())
+        self.active_tree_entry_mut()
             .is_some_and(|entry| entry.tree.focus_parent())
     }
 
     pub fn focus_child(&mut self) -> bool {
-        let Some(active) = self.active_window_id.as_ref() else {
-            return false;
-        };
-        self.tree_entries
-            .iter_mut()
-            .find(|entry| entry.tree.node_for_window(active).is_some())
+        self.active_tree_entry_mut()
             .is_some_and(|entry| entry.tree.focus_child())
     }
 
@@ -1117,14 +1092,11 @@ impl<W: LayoutElement> FloatingLayout<W> {
     }
 
     pub fn window_is_sticky(&self, window: &W::Id) -> bool {
-        let Some(entry) = self
-            .tree_entries
-            .iter()
-            .find(|entry| entry.tree.node_for_window(window).is_some())
-        else {
+        let Some((idx, node)) = self.tree_entry_for_window(window) else {
             return false;
         };
-        if entry.tree.node_for_window(window) == Some(entry.root) {
+        let entry = &self.tree_entries[idx];
+        if node == entry.root {
             entry.sticky
         } else {
             entry
@@ -1136,14 +1108,11 @@ impl<W: LayoutElement> FloatingLayout<W> {
     }
 
     pub fn set_window_sticky(&mut self, window: &W::Id, sticky: bool) -> bool {
-        let Some(entry) = self
-            .tree_entries
-            .iter_mut()
-            .find(|entry| entry.tree.node_for_window(window).is_some())
-        else {
+        let Some((idx, node)) = self.tree_entry_for_window(window) else {
             return false;
         };
-        if entry.tree.node_for_window(window) == Some(entry.root) {
+        let entry = &mut self.tree_entries[idx];
+        if node == entry.root {
             entry.sticky = sticky;
             return true;
         }
