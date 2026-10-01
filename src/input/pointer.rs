@@ -1,5 +1,9 @@
 use super::*;
 
+#[path = "pointer/scroll_binds.rs"]
+mod scroll_binds;
+use scroll_binds::synthetic_bind;
+
 impl State {
     pub(super) fn on_pointer_motion<I: InputBackend>(&mut self, event: I::PointerMotionEvent) {
         let was_inside_hot_corner = self.swayward.pointer_inside_hot_corner;
@@ -981,88 +985,29 @@ impl State {
                 if ticks != 0 {
                     let (bind_left, bind_right) =
                         if should_handle_in_overview && modifiers.is_empty() {
-                            let bind_left = Some(Bind {
-                                key: Key {
-                                    trigger: Trigger::WheelScrollLeft,
-                                    modifiers: Modifiers::empty(),
-                                },
-                                action: Action::FocusColumnLeftUnderMouse,
-                                mouse_regions: MouseRegions::empty(),
-                                input_device: "*".into(),
-                                group: None,
-                                release: false,
-                                repeat: true,
-                                cooldown: None,
-                                allow_when_locked: false,
-                                allow_inhibiting: false,
-                                hotkey_overlay_title: None,
-                            });
-                            let bind_right = Some(Bind {
-                                key: Key {
-                                    trigger: Trigger::WheelScrollRight,
-                                    modifiers: Modifiers::empty(),
-                                },
-                                action: Action::FocusColumnRightUnderMouse,
-                                mouse_regions: MouseRegions::empty(),
-                                input_device: "*".into(),
-                                group: None,
-                                release: false,
-                                repeat: true,
-                                cooldown: None,
-                                allow_when_locked: false,
-                                allow_inhibiting: false,
-                                hotkey_overlay_title: None,
-                            });
+                            let bind_left = Some(synthetic_bind(
+                                Trigger::WheelScrollLeft,
+                                Action::FocusColumnLeftUnderMouse,
+                                None,
+                            ));
+                            let bind_right = Some(synthetic_bind(
+                                Trigger::WheelScrollRight,
+                                Action::FocusColumnRightUnderMouse,
+                                None,
+                            ));
                             (bind_left, bind_right)
                         } else {
-                            let config = self.swayward.config.borrow();
-                            let bindings = make_binds_iter(
-                                &config,
-                                &self.swayward.binding_mode,
-                                &mut self.swayward.window_mru_ui,
+                            self.resolve_axis_binds(
+                                (Trigger::WheelScrollLeft, Trigger::WheelScrollRight),
+                                mods,
                                 modifiers,
-                            );
-                            let bind_left = find_configured_bind_for_device(
-                                bindings.clone(),
                                 mod_key,
-                                Trigger::WheelScrollLeft,
-                                mods,
                                 &input_device,
-                            );
-                            let bind_right = find_configured_bind_for_device(
-                                bindings,
-                                mod_key,
-                                Trigger::WheelScrollRight,
-                                mods,
-                                &input_device,
-                            );
-                            let bind_left = bind_left
-                                .filter(|bind| self.mouse_bind_matches_region(bind))
-                                .filter(|bind| {
-                                    !self.swayward.screenshot_ui.is_open()
-                                        || allowed_during_screenshot(&bind.action)
-                                });
-                            let bind_right = bind_right
-                                .filter(|bind| self.mouse_bind_matches_region(bind))
-                                .filter(|bind| {
-                                    !self.swayward.screenshot_ui.is_open()
-                                        || allowed_during_screenshot(&bind.action)
-                                });
-                            (bind_left, bind_right)
+                                true,
+                            )
                         };
 
-                    if let Some(right) = bind_right {
-                        for _ in 0..ticks {
-                            self.handle_bind(right.clone());
-                            handled = true;
-                        }
-                    }
-                    if let Some(left) = bind_left {
-                        for _ in ticks..0 {
-                            self.handle_bind(left.clone());
-                            handled = true;
-                        }
-                    }
+                    handled |= self.fire_axis_ticks(ticks, bind_left, bind_right);
                 }
 
                 let vertical = vertical_amount_v120.unwrap_or(0.);
@@ -1070,122 +1015,41 @@ impl State {
                 if ticks != 0 {
                     let (bind_up, bind_down) = if should_handle_in_overview && modifiers.is_empty()
                     {
-                        let bind_up = Some(Bind {
-                            key: Key {
-                                trigger: Trigger::WheelScrollUp,
-                                modifiers: Modifiers::empty(),
-                            },
-                            action: Action::FocusWorkspaceUpUnderMouse,
-                            mouse_regions: MouseRegions::empty(),
-                            input_device: "*".into(),
-                            group: None,
-                            release: false,
-                            repeat: true,
-                            cooldown: Some(Duration::from_millis(50)),
-                            allow_when_locked: false,
-                            allow_inhibiting: false,
-                            hotkey_overlay_title: None,
-                        });
-                        let bind_down = Some(Bind {
-                            key: Key {
-                                trigger: Trigger::WheelScrollDown,
-                                modifiers: Modifiers::empty(),
-                            },
-                            action: Action::FocusWorkspaceDownUnderMouse,
-                            mouse_regions: MouseRegions::empty(),
-                            input_device: "*".into(),
-                            group: None,
-                            release: false,
-                            repeat: true,
-                            cooldown: Some(Duration::from_millis(50)),
-                            allow_when_locked: false,
-                            allow_inhibiting: false,
-                            hotkey_overlay_title: None,
-                        });
+                        let bind_up = Some(synthetic_bind(
+                            Trigger::WheelScrollUp,
+                            Action::FocusWorkspaceUpUnderMouse,
+                            Some(Duration::from_millis(50)),
+                        ));
+                        let bind_down = Some(synthetic_bind(
+                            Trigger::WheelScrollDown,
+                            Action::FocusWorkspaceDownUnderMouse,
+                            Some(Duration::from_millis(50)),
+                        ));
                         (bind_up, bind_down)
                     } else if should_handle_in_overview && modifiers == Modifiers::SHIFT {
-                        let bind_up = Some(Bind {
-                            key: Key {
-                                trigger: Trigger::WheelScrollUp,
-                                modifiers: Modifiers::empty(),
-                            },
-                            action: Action::FocusColumnLeftUnderMouse,
-                            mouse_regions: MouseRegions::empty(),
-                            input_device: "*".into(),
-                            group: None,
-                            release: false,
-                            repeat: true,
-                            cooldown: Some(Duration::from_millis(50)),
-                            allow_when_locked: false,
-                            allow_inhibiting: false,
-                            hotkey_overlay_title: None,
-                        });
-                        let bind_down = Some(Bind {
-                            key: Key {
-                                trigger: Trigger::WheelScrollDown,
-                                modifiers: Modifiers::empty(),
-                            },
-                            action: Action::FocusColumnRightUnderMouse,
-                            mouse_regions: MouseRegions::empty(),
-                            input_device: "*".into(),
-                            group: None,
-                            release: false,
-                            repeat: true,
-                            cooldown: Some(Duration::from_millis(50)),
-                            allow_when_locked: false,
-                            allow_inhibiting: false,
-                            hotkey_overlay_title: None,
-                        });
+                        let bind_up = Some(synthetic_bind(
+                            Trigger::WheelScrollUp,
+                            Action::FocusColumnLeftUnderMouse,
+                            Some(Duration::from_millis(50)),
+                        ));
+                        let bind_down = Some(synthetic_bind(
+                            Trigger::WheelScrollDown,
+                            Action::FocusColumnRightUnderMouse,
+                            Some(Duration::from_millis(50)),
+                        ));
                         (bind_up, bind_down)
                     } else {
-                        let config = self.swayward.config.borrow();
-                        let bindings = make_binds_iter(
-                            &config,
-                            &self.swayward.binding_mode,
-                            &mut self.swayward.window_mru_ui,
+                        self.resolve_axis_binds(
+                            (Trigger::WheelScrollUp, Trigger::WheelScrollDown),
+                            mods,
                             modifiers,
-                        );
-                        let bind_up = find_configured_bind_for_device(
-                            bindings.clone(),
                             mod_key,
-                            Trigger::WheelScrollUp,
-                            mods,
                             &input_device,
-                        );
-                        let bind_down = find_configured_bind_for_device(
-                            bindings,
-                            mod_key,
-                            Trigger::WheelScrollDown,
-                            mods,
-                            &input_device,
-                        );
-                        let bind_up = bind_up
-                            .filter(|bind| self.mouse_bind_matches_region(bind))
-                            .filter(|bind| {
-                                !self.swayward.screenshot_ui.is_open()
-                                    || allowed_during_screenshot(&bind.action)
-                            });
-                        let bind_down = bind_down
-                            .filter(|bind| self.mouse_bind_matches_region(bind))
-                            .filter(|bind| {
-                                !self.swayward.screenshot_ui.is_open()
-                                    || allowed_during_screenshot(&bind.action)
-                            });
-                        (bind_up, bind_down)
+                            true,
+                        )
                     };
 
-                    if let Some(down) = bind_down {
-                        for _ in 0..ticks {
-                            self.handle_bind(down.clone());
-                            handled = true;
-                        }
-                    }
-                    if let Some(up) = bind_up {
-                        for _ in ticks..0 {
-                            self.handle_bind(up.clone());
-                            handled = true;
-                        }
-                    }
+                    handled |= self.fire_axis_ticks(ticks, bind_up, bind_down);
                 }
 
                 if handled {
@@ -1313,47 +1177,16 @@ impl State {
                     .horizontal_finger_scroll_tracker
                     .accumulate(horizontal);
                 if ticks != 0 {
-                    let config = self.swayward.config.borrow();
-                    let bindings = make_binds_iter(
-                        &config,
-                        &self.swayward.binding_mode,
-                        &mut self.swayward.window_mru_ui,
+                    let (bind_left, bind_right) = self.resolve_axis_binds(
+                        (Trigger::TouchpadScrollLeft, Trigger::TouchpadScrollRight),
+                        mods,
                         modifiers,
+                        mod_key,
+                        &input_device,
+                        false,
                     );
-                    let bind_left = find_configured_bind_for_device(
-                        bindings.clone(),
-                        mod_key,
-                        Trigger::TouchpadScrollLeft,
-                        mods,
-                        &input_device,
-                    )
-                    .filter(|bind| {
-                        !self.swayward.screenshot_ui.is_open()
-                            || allowed_during_screenshot(&bind.action)
-                    });
-                    let bind_right = find_configured_bind_for_device(
-                        bindings,
-                        mod_key,
-                        Trigger::TouchpadScrollRight,
-                        mods,
-                        &input_device,
-                    )
-                    .filter(|bind| {
-                        !self.swayward.screenshot_ui.is_open()
-                            || allowed_during_screenshot(&bind.action)
-                    });
-                    drop(config);
 
-                    if let Some(right) = bind_right {
-                        for _ in 0..ticks {
-                            self.handle_bind(right.clone());
-                        }
-                    }
-                    if let Some(left) = bind_left {
-                        for _ in ticks..0 {
-                            self.handle_bind(left.clone());
-                        }
-                    }
+                    self.fire_axis_ticks(ticks, bind_left, bind_right);
                 }
 
                 let ticks = self
@@ -1361,47 +1194,16 @@ impl State {
                     .vertical_finger_scroll_tracker
                     .accumulate(vertical);
                 if ticks != 0 {
-                    let config = self.swayward.config.borrow();
-                    let bindings = make_binds_iter(
-                        &config,
-                        &self.swayward.binding_mode,
-                        &mut self.swayward.window_mru_ui,
+                    let (bind_up, bind_down) = self.resolve_axis_binds(
+                        (Trigger::TouchpadScrollUp, Trigger::TouchpadScrollDown),
+                        mods,
                         modifiers,
+                        mod_key,
+                        &input_device,
+                        false,
                     );
-                    let bind_up = find_configured_bind_for_device(
-                        bindings.clone(),
-                        mod_key,
-                        Trigger::TouchpadScrollUp,
-                        mods,
-                        &input_device,
-                    )
-                    .filter(|bind| {
-                        !self.swayward.screenshot_ui.is_open()
-                            || allowed_during_screenshot(&bind.action)
-                    });
-                    let bind_down = find_configured_bind_for_device(
-                        bindings,
-                        mod_key,
-                        Trigger::TouchpadScrollDown,
-                        mods,
-                        &input_device,
-                    )
-                    .filter(|bind| {
-                        !self.swayward.screenshot_ui.is_open()
-                            || allowed_during_screenshot(&bind.action)
-                    });
-                    drop(config);
 
-                    if let Some(down) = bind_down {
-                        for _ in 0..ticks {
-                            self.handle_bind(down.clone());
-                        }
-                    }
-                    if let Some(up) = bind_up {
-                        for _ in ticks..0 {
-                            self.handle_bind(up.clone());
-                        }
-                    }
+                    self.fire_axis_ticks(ticks, bind_up, bind_down);
                 }
 
                 return;
