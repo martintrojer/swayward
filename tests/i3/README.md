@@ -603,7 +603,7 @@ it cannot claim a file we have already vendored or omit one we have not. The
 prose audit this replaced had no such check and had drifted by five files
 before anyone noticed.
 
-The **current green ceiling is 109 files**: the 101 green in `coverage.toml` plus
+The **current green ceiling is 108 files**: the 100 green in `coverage.toml` plus
 8 vendored files whose only obstacles are implementation or adapter gaps.
 A file carrying a documented skip can never join them, because a documented
 skip records that the assertion is wrong about sway and is permanent; a file

@@ -350,3 +350,69 @@ fn translated_for_window_nop_has_no_observable_window_effect() {
     assert_eq!(with_nop, baseline);
 }
 
+
+/// Oracle: sway-ipc-oracle events scenario reload_from_resize_mode. Sway's
+/// reload resets the binding mode with no `mode` event; only `mode resize`
+/// itself emits one (sway/sway/commands/reload.c:34-45; commands/mode.c:78).
+/// It then re-applies output configs and emits one output::unspecified.
+#[test]
+fn reload_from_a_non_default_mode_resets_it_without_a_mode_event() {
+    static NEXT_CONFIG: AtomicU64 = AtomicU64::new(0);
+
+    let (mut fixture, socket) = ipc_fixture();
+    fixture.add_output(1, (1920, 1080));
+    let path = std::env::temp_dir().join(format!(
+        "swayward-reload-mode-test-{}-{}.kdl",
+        std::process::id(),
+        NEXT_CONFIG.fetch_add(1, Ordering::Relaxed)
+    ));
+    std::fs::write(&path, r#"mode "resize" { Escape { command "mode default"; }; }"#).unwrap();
+    crate::utils::watcher::setup(
+        fixture.niri_state(),
+        &swayward_config::ConfigPath::Explicit(path.clone()),
+        Vec::new(),
+    );
+    fixture
+        .niri_state()
+        .reload_config(swayward_config::Config::load(&path).config.map_err(|_| ()));
+    assert!(crate::command::execute(fixture.niri_state(), "mode resize")[0].success);
+    assert_eq!(fixture.swayward().binding_mode, "resize");
+
+    let mut subscriber = UnixStream::connect(socket).unwrap();
+    subscriber
+        .write_all(&swayward_ipc::wire::encode(
+            MessageType::Subscribe,
+            r#"["mode","workspace","output"]"#,
+        ))
+        .unwrap();
+    let _ = read_ipc_reply(&mut fixture, &mut subscriber);
+
+    assert!(crate::command::execute(fixture.niri_state(), "reload")[0].success);
+    // The watcher applies the reload on the event loop, whose refresh then
+    // emits the output event; both can arrive in one read.
+    let mut remainder = Vec::new();
+    for (expected_type, expected_change) in [(1 << 31, "reload"), ((1 << 31) | 1, "unspecified")] {
+        let ((event_type, payload), rest) =
+            read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder);
+        remainder = rest;
+        assert_eq!(event_type, expected_type, "{payload}");
+        assert_eq!(
+            serde_json::from_str::<Value>(&payload).unwrap()["change"],
+            expected_change
+        );
+    }
+    assert!(remainder.is_empty(), "unexpected trailing event bytes");
+    assert_eq!(fixture.swayward().binding_mode, "default");
+    subscriber.set_nonblocking(true).unwrap();
+    fixture.dispatch();
+    let mut byte = [0];
+    assert!(
+        matches!(
+            subscriber.read(&mut byte),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock
+        ),
+        "reload must emit nothing after output::unspecified, in particular no mode event"
+    );
+
+    std::fs::remove_file(path).unwrap();
+}

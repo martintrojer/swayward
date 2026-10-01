@@ -295,17 +295,13 @@ impl State {
         self.swayward.sway_variables.clear();
         // Sway frees and rebuilds each mode's switch binding list on reload.
         self.swayward.runtime_switch_bindings.clear();
-        let mode_changed = self.swayward.binding_mode != "default";
+        // Sway's reload builds a fresh config whose current mode is "default"
+        // (sway/sway/config.c:232-235) and emits only workspace::reload and
+        // bar updates (sway/sway/commands/reload.c:34-45); ipc_event_mode is
+        // sent only by the `mode` command (sway/sway/commands/mode.c:78).
+        // Reset the mode silently.
         self.swayward.binding_mode = "default".into();
         self.ipc_refresh_config();
-        if mode_changed {
-            if let Some(server) = &self.swayward.ipc_server {
-                server.send_event(swayward_ipc::legacy::Event::BindingModeChanged {
-                    mode: "default".into(),
-                    pango_markup: false,
-                });
-            }
-        }
         // Held release bindings own their action so a reload cannot invalidate them.
 
         // Now with a &mut self we can reload the xkb config.
@@ -405,6 +401,12 @@ impl State {
         if let Some(server) = &self.swayward.ipc_server {
             server.send_event(swayward_ipc::legacy::Event::WorkspaceReloaded);
         }
+        // A successful sway reload re-applies every output config
+        // (request_modeset, sway/sway/config.c:540), which ends in
+        // update_output_manager_config and one output::unspecified event
+        // (sway/sway/desktop/output.c:377-399), whether or not anything
+        // changed. The next IPC refresh emits it after workspace::reload.
+        self.swayward.ipc_outputs_changed = true;
     }
 
     pub fn reload_output_config(&mut self) {

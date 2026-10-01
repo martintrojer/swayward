@@ -222,7 +222,7 @@ and
 files at the oracle revision this checkout pins.
 
 Swayward also keeps a faster in-process development harness. Its
-`tests/i3/coverage.toml` ledger records **2,212 passes, 873 documented skips,
+`tests/i3/coverage.toml` ledger records **2,210 passes, 875 documented skips,
 30 failures, and 56 unreached assertions**. Differences between that harness and
 the public black-box run are filed in the oracle's
 `i3/results/swayward-black-box-findings.tsv`.

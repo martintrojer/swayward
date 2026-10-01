@@ -3365,8 +3365,20 @@ file_skip = { reason = "The harness emits a file-level skip because the file inv
 [files."263-config-reload-reverts-bind-mode.t"]
 assertions = 2
 tap_plan = 2
-pass = 2
-note = "A successful asynchronous reload resets the active binding mode to `default` and emits one sway-shaped mode event. Sway builds a fresh defaulted config before replacing the old one (`sway/sway/config.c:446-475`), while runtime mode changes update that config's current mode and emit the event (`sway/sway/commands/mode.c:72-80`). A held release binding remains safe because swayward owns the selected"
+pass = 0
+reason = "i3_only_semantics"
+reason_verified = true
+note = "A successful reload resets the active binding mode to `default`, but sway emits no mode event for it: do_reload sends workspace::reload and bar updates only (`sway/sway/commands/reload.c:34-45`), and ipc_event_mode is called solely by the `mode` command (`sway/sway/commands/mode.c:78`). The file asserts i3's ticket #2228 behaviour, one `default` mode event. Pinned sway 1.12 fails both assertions too (oracle i3/results/sway-1.12.toml), and the oracle events scenario reload_from_resize_mode captures sway emitting workspace::reload and output::unspecified only."
+[[files."263-config-reload-reverts-bind-mode.t".skip]]
+n = 1
+desc = "reload in a non-default mode emits one mode event"
+reason = "Sway resets the mode on reload without a mode event; i3 emits one."
+citation = "tests/i3/t/263-config-reload-reverts-bind-mode.t:30-34; sway/sway/commands/reload.c:34-45; sway/sway/commands/mode.c:78"
+[[files."263-config-reload-reverts-bind-mode.t".skip]]
+n = 2
+desc = "the reload mode event names `default`"
+reason = "Depends on assertion 1's mode event, which sway does not send."
+citation = "tests/i3/t/263-config-reload-reverts-bind-mode.t:35; sway/sway/commands/reload.c:34-45"
 
 [files."264-dock-criteria.t"]
 assertions = 14
