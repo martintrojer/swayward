@@ -171,14 +171,6 @@ pub(super) const ALLOWED_REJECTIONS: &[AllowedRejection] = &[
                  liveness assertion matters (sway/sway/commands/layout.c:128-131)",
     },
     AllowedRejection {
-        test: "184-regress-float-split-resize.t",
-        command: "resize grow up 10 px or 10 ppt",
-        count: 1,
-        reason: "the test only checks that the compositor remains live; sway \
-                 answers `Cannot resize any further` when the grouped resize changes \
-                 neither size fraction (sway/sway/commands/resize.c:273-279)",
-    },
-    AllowedRejection {
         test: "191-resize-levels.t",
         command: "resize grow left 10px or 25ppt",
         count: 1,

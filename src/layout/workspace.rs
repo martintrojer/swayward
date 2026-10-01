@@ -2068,6 +2068,29 @@ impl<W: LayoutElement> Workspace<W> {
         self.floating.logical_to_size_frac(logical_pos)
     }
 
+    pub fn adjust_floating_tree_size(
+        &mut self,
+        root: NodeId,
+        edge: Option<ResizeEdge>,
+        horizontal: bool,
+        amount: i32,
+        automatic_maximum: Size<f64, Logical>,
+    ) -> bool {
+        self.floating
+            .adjust_tree_size(root, edge, horizontal, amount, automatic_maximum)
+    }
+
+    pub fn set_floating_tree_size(
+        &mut self,
+        root: NodeId,
+        width: Option<f64>,
+        height: Option<f64>,
+        automatic_maximum: Size<f64, Logical>,
+    ) -> bool {
+        self.floating
+            .set_tree_size(root, width, height, automatic_maximum)
+    }
+
     pub fn working_area(&self) -> Rectangle<f64, Logical> {
         self.working_area
     }

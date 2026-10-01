@@ -593,6 +593,81 @@ fn tiled_grow_at_workspace_edge_reports_failure() {
     );
 }
 
+/// Oracle: floating_group_root_resize. A floated split is itself the
+/// floating container, so `resize grow|shrink` takes resize_adjust_floating
+/// (px, keeping the centre for width/height and the far edge for left/up)
+/// and `resize set` takes resize_set_floating (sway/commands/resize.c:180-230,
+/// 341-401, 521-537). ppt alone is refused.
+#[test]
+fn resize_of_a_floating_group_root_resizes_the_group() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    for app_id in ["group-first", "group-second"] {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+    for command in ["focus parent", "floating enable"] {
+        let outcome = crate::command::execute(f.niri_state(), command);
+        assert!(outcome[0].success, "{command}: {outcome:?}");
+    }
+    let group_rect = |f: &mut Fixture| {
+        f.niri_state().ipc_refresh_layout();
+        let swayward = f.swayward();
+        let tree = describe_tree(
+            &swayward.layout,
+            &swayward.global_space,
+            &swayward.marks_by_window,
+            &swayward.marks_by_container,
+        );
+        let group = tree
+            .nodes
+            .iter()
+            .flat_map(|output| &output.nodes)
+            .flat_map(|workspace| &workspace.floating_nodes)
+            .find(|node| !node.nodes.is_empty())
+            .unwrap();
+        (
+            group.rect.x,
+            group.rect.y,
+            group.rect.width,
+            group.rect.height,
+        )
+    };
+    let (x, y, w, h) = group_rect(&mut f);
+
+    let run = |f: &mut Fixture, command: &str| {
+        let outcome = crate::command::execute(f.niri_state(), command);
+        assert!(outcome[0].success, "{command}: {outcome:?}");
+    };
+    run(&mut f, "resize grow width 10 px");
+    assert_eq!(group_rect(&mut f), (x - 5, y, w + 10, h));
+    run(&mut f, "resize grow left 20 px");
+    assert_eq!(group_rect(&mut f), (x - 25, y, w + 30, h));
+    run(&mut f, "resize shrink height 30");
+    assert_eq!(group_rect(&mut f), (x - 25, y + 15, w + 30, h - 30));
+
+    let (x, y, w, h) = group_rect(&mut f);
+    run(&mut f, "resize set 500 px 400 px");
+    assert_eq!(
+        group_rect(&mut f),
+        (x - (500 - w) / 2, y - (400 - h) / 2, 500, 400)
+    );
+
+    let outcome = crate::command::execute(f.niri_state(), "resize grow width 5 ppt");
+    assert_eq!(
+        outcome[0].error.as_deref(),
+        Some("Floating containers cannot use ppt measurements")
+    );
+}
+
 #[test]
 fn directional_resize_of_a_floating_group_child_resizes_inside_the_group() {
     // A floating group's child is not itself floating, so sway resizes it like

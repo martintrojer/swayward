@@ -1225,6 +1225,88 @@ impl<W: LayoutElement> FloatingLayout<W> {
             .collect()
     }
 
+    /// Grows or shrinks a floating group root by `amount` px along `edge`, as
+    /// sway's resize_adjust_floating does (sway/commands/resize.c:180-230):
+    /// the size is clamped to the floating constraints, a width or height
+    /// change keeps the centre, and LEFT or TOP keeps the opposite edge.
+    /// Returns false when nothing changes ("Cannot resize any further").
+    pub fn adjust_tree_size(
+        &mut self,
+        root: NodeId,
+        edge: Option<ResizeEdge>,
+        horizontal: bool,
+        amount: i32,
+        automatic_maximum: Size<f64, Logical>,
+    ) -> bool {
+        let Some(mut rect) = self.tree_rect(root) else {
+            return false;
+        };
+        let (min, max) = floating_constraints(
+            self.options.layout.floating_minimum_size,
+            self.options.layout.floating_maximum_size,
+            automatic_maximum,
+        );
+        let clamp_grow = |current: f64, min: f64, max: f64| {
+            let grown = current + f64::from(amount);
+            if grown < min {
+                min - current
+            } else if grown > max {
+                max - current
+            } else {
+                f64::from(amount)
+            }
+        };
+        let (grow_w, grow_h) = if horizontal {
+            (clamp_grow(rect.size.w, min.w, max.w), 0.)
+        } else {
+            (0., clamp_grow(rect.size.h, min.h, max.h))
+        };
+        if grow_w == 0. && grow_h == 0. {
+            return false;
+        }
+        match edge {
+            None if horizontal => rect.loc.x -= (grow_w / 2.).trunc(),
+            None => rect.loc.y -= (grow_h / 2.).trunc(),
+            Some(edge) if edge.contains(ResizeEdge::LEFT) => rect.loc.x -= grow_w,
+            Some(edge) if edge.contains(ResizeEdge::TOP) => rect.loc.y -= grow_h,
+            Some(_) => {}
+        }
+        rect.size.w += grow_w;
+        rect.size.h += grow_h;
+        self.move_tree(root, rect)
+    }
+
+    /// Sets a floating group root's outer size, keeping its centre, as sway's
+    /// resize_set_floating does (sway/commands/resize.c:341-401). `None`
+    /// leaves that dimension unchanged.
+    pub fn set_tree_size(
+        &mut self,
+        root: NodeId,
+        width: Option<f64>,
+        height: Option<f64>,
+        automatic_maximum: Size<f64, Logical>,
+    ) -> bool {
+        let Some(mut rect) = self.tree_rect(root) else {
+            return false;
+        };
+        let (min, max) = floating_constraints(
+            self.options.layout.floating_minimum_size,
+            self.options.layout.floating_maximum_size,
+            automatic_maximum,
+        );
+        if let Some(width) = width {
+            let width = width.min(max.w).max(min.w);
+            rect.loc.x -= ((width - rect.size.w) / 2.).trunc();
+            rect.size.w = width;
+        }
+        if let Some(height) = height {
+            let height = height.min(max.h).max(min.h);
+            rect.loc.y -= ((height - rect.size.h) / 2.).trunc();
+            rect.size.h = height;
+        }
+        self.move_tree(root, rect)
+    }
+
     pub fn move_tree(&mut self, root: NodeId, rect: Rectangle<f64, Logical>) -> bool {
         let Some(entry) = self
             .tree_entries

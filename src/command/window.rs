@@ -291,7 +291,11 @@ pub(super) fn resize_set(
             .layout
             .windows()
             .any(|(_, mapped)| mapped.id() == target && mapped.is_floating()),
-        CommandTarget::Container(_, _) => false,
+        CommandTarget::Container(workspace, node) => state
+            .swayward
+            .layout
+            .floating_tree_root(workspace, node)
+            .is_some(),
     };
     let width = width.and_then(|amount| set_size_change(amount, floating));
     let height = height.and_then(|amount| set_size_change(amount, floating));
@@ -307,6 +311,10 @@ pub(super) fn resize_set(
                 .set_window_size_sway(&window, width, height);
         }
         CommandTarget::Container(workspace, node) => {
+            if let Some(root) = state.swayward.layout.floating_tree_root(workspace, node) {
+                set_floating_tree_size(state, workspace, root, width, height);
+                return Ok(());
+            }
             state
                 .swayward
                 .layout
@@ -314,6 +322,36 @@ pub(super) fn resize_set(
         }
     }
     Ok(())
+}
+
+/// `resize set` on a floating group root: px and the unitless default are
+/// outer pixels, ppt is a share of the workspace (resize_set_floating,
+/// sway/commands/resize.c:341-401).
+fn set_floating_tree_size(
+    state: &mut State,
+    workspace: crate::layout::workspace::WorkspaceId,
+    root: crate::layout::tiling_tree::NodeId,
+    width: Option<SizeChange>,
+    height: Option<SizeChange>,
+) {
+    let area = state
+        .swayward
+        .layout
+        .workspaces()
+        .find(|(_, _, ws)| ws.id() == workspace)
+        .map(|(_, _, ws)| ws.working_area().size)
+        .unwrap_or_default();
+    let pixels = |change: Option<SizeChange>, available: f64| match change? {
+        SizeChange::SetFixed(px) => Some(f64::from(px)),
+        SizeChange::SetProportion(ppt) => Some((available * ppt / 100.).trunc()),
+        SizeChange::AdjustFixed(_) | SizeChange::AdjustProportion(_) => None,
+    };
+    let width = pixels(width, area.w);
+    let height = pixels(height, area.h);
+    state
+        .swayward
+        .layout
+        .set_floating_tree_size(workspace, root, width, height);
 }
 
 enum ResolvedResizeTarget {
@@ -324,6 +362,12 @@ enum ResolvedResizeTarget {
     Container {
         workspace: crate::layout::workspace::WorkspaceId,
         node: crate::layout::tiling_tree::NodeId,
+    },
+    /// A floated container: sway's `container_is_floating` is true for it, so
+    /// it resizes as one floating container, in px.
+    FloatingRoot {
+        workspace: crate::layout::workspace::WorkspaceId,
+        root: crate::layout::tiling_tree::NodeId,
     },
 }
 
@@ -346,12 +390,20 @@ impl ResolvedResizeTarget {
                 }
                 Ok(Self::Window { window, floating })
             }
-            CommandTarget::Container(workspace, node) => Ok(Self::Container { workspace, node }),
+            CommandTarget::Container(workspace, node) => Ok(
+                match state.swayward.layout.floating_tree_root(workspace, node) {
+                    Some(root) => Self::FloatingRoot { workspace, root },
+                    None => Self::Container { workspace, node },
+                },
+            ),
         }
     }
 
     fn is_floating(&self) -> bool {
-        matches!(self, Self::Window { floating: true, .. })
+        matches!(
+            self,
+            Self::Window { floating: true, .. } | Self::FloatingRoot { .. }
+        )
     }
 }
 
@@ -414,6 +466,28 @@ fn apply_resize(
             .swayward
             .layout
             .resize_tiling_node_edge(workspace, node, resize_edge(direction), change),
+        (ResolvedResizeTarget::FloatingRoot { workspace, root }, axis) => {
+            // resize_change picked px or the unitless default for a floating
+            // target; a ppt-only request never reaches here.
+            let (SizeChange::AdjustFixed(amount) | SizeChange::SetFixed(amount)) = change else {
+                return Some(false);
+            };
+            let (edge, horizontal) = match axis {
+                ResizeAxis::Width => (None, true),
+                ResizeAxis::Height => (None, false),
+                direction => {
+                    let edge = resize_edge(direction);
+                    (
+                        Some(edge),
+                        edge.intersects(crate::utils::ResizeEdge::LEFT_RIGHT),
+                    )
+                }
+            };
+            state
+                .swayward
+                .layout
+                .adjust_floating_tree_size(workspace, root, edge, horizontal, amount)
+        }
     }
 }
 
@@ -426,6 +500,17 @@ pub(super) fn resize(
     second: Option<ResizeAmount>,
 ) -> Result<(), CommandOutcome> {
     let target = ResolvedResizeTarget::resolve(state, target)?;
+    if matches!(target, ResolvedResizeTarget::FloatingRoot { .. })
+        && [Some(first), second]
+            .into_iter()
+            .flatten()
+            .all(|amount| amount.unit == ResizeUnit::PercentagePoints)
+    {
+        // sway/commands/resize.c:521-537
+        return Err(swayward_ipc::command::parse_error(
+            "Floating containers cannot use ppt measurements",
+        ));
+    }
     let change = resize_change(grow, first, second, target.is_floating());
     if apply_resize(state, target, axis, change) == Some(false) {
         return Err(swayward_ipc::command::parse_error(

@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/mod.rs", "src/layout/workspace.rs", "src/layout/floating_tree.rs"]
+what = "add root-level resize for floating groups: adjust by px along an axis or edge and set the outer size, both clamped to the floating constraints, and route resize commands on a floated container there."
+why = "A floated split is itself sway's floating container, so `resize grow|shrink` and `resize set` resize its rect (resize_adjust_floating / resize_set_floating); swayward sent them to the tiling tree, which answered \"Cannot resize any further\" or did nothing."

@@ -3482,6 +3482,50 @@ impl<W: LayoutElement> Layout<W> {
         })
     }
 
+    /// The floating group root `node` names on `workspace_id`, if it is one.
+    pub fn floating_tree_root(
+        &self,
+        workspace_id: workspace::WorkspaceId,
+        node: tiling_tree::NodeId,
+    ) -> Option<tiling_tree::NodeId> {
+        let workspace = self
+            .workspaces()
+            .find(|(_, _, ws)| ws.id() == workspace_id)?
+            .2;
+        (workspace.floating().tree_root_for_node(node) == Some(node)).then_some(node)
+    }
+
+    /// Grows or shrinks a floating group root in px; see
+    /// [`floating_tree::FloatingLayout::adjust_tree_size`].
+    pub fn adjust_floating_tree_size(
+        &mut self,
+        workspace_id: workspace::WorkspaceId,
+        root: tiling_tree::NodeId,
+        edge: Option<ResizeEdge>,
+        horizontal: bool,
+        amount: i32,
+    ) -> Option<bool> {
+        let automatic_maximum = self.output_layout_size().to_f64();
+        self.workspace_mut(workspace_id).map(|workspace| {
+            workspace.adjust_floating_tree_size(root, edge, horizontal, amount, automatic_maximum)
+        })
+    }
+
+    /// Sets a floating group root's outer size; see
+    /// [`floating_tree::FloatingLayout::set_tree_size`].
+    pub fn set_floating_tree_size(
+        &mut self,
+        workspace_id: workspace::WorkspaceId,
+        root: tiling_tree::NodeId,
+        width: Option<f64>,
+        height: Option<f64>,
+    ) {
+        let automatic_maximum = self.output_layout_size().to_f64();
+        if let Some(workspace) = self.workspace_mut(workspace_id) {
+            workspace.set_floating_tree_size(root, width, height, automatic_maximum);
+        }
+    }
+
     pub fn resize_tiling_node_edge(
         &mut self,
         workspace_id: workspace::WorkspaceId,

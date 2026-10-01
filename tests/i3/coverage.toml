@@ -2091,8 +2091,8 @@ note = "All four configuration phases load without translation warnings. The def
 assertions = 1
 tap_plan = 1
 pass = 1
-citation = "sway/sway/commands/floating.c:23-55; sway/sway/commands/layout.c:128-131; sway/sway/commands/resize.c:273-279"
-note = "Fresh unchanged measurement reaches `1..1`: swayward floats the selected split as one group, rejects `layout stacking` on that floating root like sway, then remains live after the grouped resize is rejected with `Cannot resize any further`. The assertion remains a liveness check rather than proof of either state transition."
+citation = "sway/sway/commands/floating.c:23-55; sway/sway/commands/layout.c:128-131; sway/sway/commands/resize.c:180-230,521-537"
+note = "Fresh unchanged measurement reaches `1..1`: swayward floats the selected split as one group, rejects `layout stacking` on that floating root like sway, then grows the group's floating root by 10 px like sway's resize_adjust_floating and remains live. The assertion remains a liveness check rather than proof of either state transition."
 
 [files."185-scratchpad.t"]
 plan_unknown = true
