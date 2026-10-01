@@ -84,26 +84,16 @@ pub fn parse_with_variables(
         }
 
         let mut criteria_start = false;
-        if criteria_allowed && text.starts_with('[') {
-            match criteria_end(text).and_then(|end| text.split_at_checked(end + ']'.len_utf8())) {
-                Some((raw, tail)) => {
-                    let raw = raw.to_owned();
-                    if let Err(error) = crate::criteria::Criteria::parse(&raw, None) {
-                        results.push(Err(parse_error(error)));
-                        break;
-                    }
+        if criteria_allowed {
+            match take_criteria(text) {
+                Ok(Some((raw, tail))) => {
                     criteria = Some(raw);
                     criteria_start = true;
-                    text = tail.trim_start();
+                    text = tail;
                 }
-                None => {
-                    // Sway's criteria parser reports a more specific token or
-                    // quote error before noticing a missing closing bracket.
-                    let completed = format!("{text}]");
-                    let error = crate::criteria::Criteria::parse(&completed, None)
-                        .err()
-                        .unwrap_or_else(|| "No closing brace found in criteria".into());
-                    results.push(Err(parse_error(error)));
+                Ok(None) => {}
+                Err(error) => {
+                    results.push(Err(error));
                     break;
                 }
             }
@@ -138,20 +128,7 @@ pub fn parse_with_variables(
                 // same payload. Carry it through the parse for those later
                 // segments; execution writes the compositor-global table.
                 if criteria.is_none() {
-                    let set = match &command {
-                        Command::Set { name, value } => Some((name, value)),
-                        Command::Mode {
-                            subcommand: Some(subcommand),
-                            ..
-                        } => match subcommand.as_ref() {
-                            Command::Set { name, value } => Some((name, value)),
-                            _ => None,
-                        },
-                        _ => None,
-                    };
-                    if let Some((name, value)) = set {
-                        set_variable(&mut variables, name.clone(), value.clone());
-                    }
+                    carry_set(&command, &mut variables);
                 }
                 results.push(Ok(ParsedCommand {
                     command,
@@ -170,6 +147,50 @@ pub fn parse_with_variables(
         criteria_allowed = delimiter != Some(',');
     }
     results
+}
+
+/// Split a leading `[criteria]` off a command, validating it. Returns `None`
+/// when the command does not start with criteria.
+fn take_criteria(text: &str) -> Result<Option<(String, &str)>, CommandOutcome> {
+    if !text.starts_with('[') {
+        return Ok(None);
+    }
+    match criteria_end(text).and_then(|end| text.split_at_checked(end + ']'.len_utf8())) {
+        Some((raw, tail)) => {
+            if let Err(error) = crate::criteria::Criteria::parse(raw, None) {
+                return Err(parse_error(error));
+            }
+            Ok(Some((raw.to_owned(), tail.trim_start())))
+        }
+        None => {
+            // Sway's criteria parser reports a more specific token or quote
+            // error before noticing a missing closing bracket.
+            let completed = format!("{text}]");
+            let error = crate::criteria::Criteria::parse(&completed, None)
+                .err()
+                .unwrap_or_else(|| "No closing brace found in criteria".into());
+            Err(parse_error(error))
+        }
+    }
+}
+
+/// Record an unscoped `set`, bare or inside `mode`, for later commands in the
+/// same list.
+fn carry_set(command: &Command, variables: &mut Vec<(String, String)>) {
+    let set = match command {
+        Command::Set { name, value } => Some((name, value)),
+        Command::Mode {
+            subcommand: Some(subcommand),
+            ..
+        } => match subcommand.as_ref() {
+            Command::Set { name, value } => Some((name, value)),
+            _ => None,
+        },
+        _ => None,
+    };
+    if let Some((name, value)) = set {
+        set_variable(variables, name.clone(), value.clone());
+    }
 }
 
 /// Expand all command arguments except the name being defined by `set`.

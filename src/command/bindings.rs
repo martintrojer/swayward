@@ -14,44 +14,25 @@ pub(super) fn mutate_switch_binding(
             "Invalid unbindswitch command (expected binding with the form <switch>:<state>)".into(),
         );
     };
+    // The parser already rejected any other switch or state.
     let switch = match switch {
         "lid" => smithay::backend::input::Switch::Lid,
         "tablet" => smithay::backend::input::Switch::TabletMode,
-        _ => unreachable!("parser validated switch"),
+        _ => return Err(format!("unknown switch {switch}")),
     };
     let trigger = match trigger {
         "on" => Some(smithay::backend::input::SwitchState::On),
         "off" => Some(smithay::backend::input::SwitchState::Off),
         "toggle" => None,
-        _ => unreachable!("parser validated switch state"),
+        _ => return Err(format!("unknown state {trigger}")),
     };
     let mode = mode.to_owned();
-    if mode == "default" {
-        let config = state.swayward.config.borrow();
-        let file_binding_exists = match (switch, trigger) {
-            (
-                smithay::backend::input::Switch::Lid,
-                Some(smithay::backend::input::SwitchState::On),
-            ) => config.switch_events.lid_close.is_some(),
-            (
-                smithay::backend::input::Switch::Lid,
-                Some(smithay::backend::input::SwitchState::Off),
-            ) => config.switch_events.lid_open.is_some(),
-            (
-                smithay::backend::input::Switch::TabletMode,
-                Some(smithay::backend::input::SwitchState::On),
-            ) => config.switch_events.tablet_mode_on.is_some(),
-            (
-                smithay::backend::input::Switch::TabletMode,
-                Some(smithay::backend::input::SwitchState::Off),
-            ) => config.switch_events.tablet_mode_off.is_some(),
-            _ => false,
-        };
-        if file_binding_exists {
-            return Err(
-                "runtime switch binding conflicts with a narrower KDL switch-event binding".into(),
-            );
-        }
+    if mode == "default"
+        && kdl_switch_binding_exists(&state.swayward.config.borrow(), switch, trigger)
+    {
+        return Err(
+            "runtime switch binding conflicts with a narrower KDL switch-event binding".into(),
+        );
     }
     let bindings = &mut state.swayward.runtime_switch_bindings;
     let existing = bindings.iter().position(|binding| {
@@ -79,6 +60,24 @@ pub(super) fn mutate_switch_binding(
         return Err(format!("Could not find switch binding `{combo}`"));
     }
     Ok(())
+}
+
+/// Whether the KDL config binds this exact switch transition. A `toggle`
+/// binding has no KDL counterpart.
+fn kdl_switch_binding_exists(
+    config: &swayward_config::Config,
+    switch: smithay::backend::input::Switch,
+    trigger: Option<smithay::backend::input::SwitchState>,
+) -> bool {
+    use smithay::backend::input::{Switch, SwitchState};
+    let events = &config.switch_events;
+    match (switch, trigger) {
+        (Switch::Lid, Some(SwitchState::On)) => events.lid_close.is_some(),
+        (Switch::Lid, Some(SwitchState::Off)) => events.lid_open.is_some(),
+        (Switch::TabletMode, Some(SwitchState::On)) => events.tablet_mode_on.is_some(),
+        (Switch::TabletMode, Some(SwitchState::Off)) => events.tablet_mode_off.is_some(),
+        _ => false,
+    }
 }
 
 pub(super) struct BindingMutation<'a> {
@@ -114,34 +113,7 @@ pub(super) fn mutate_key_binding(
         input_device,
     } = mutation;
     let keycombo = key.to_owned();
-    let key = if keycode {
-        let (modifiers, code) = key
-            .rsplit_once('+')
-            .map_or(("", key), |(mods, code)| (mods, code));
-        let code: u32 = match code.parse() {
-            Ok(code) if (8..=255).contains(&code) => code,
-            _ if command.is_none() => {
-                return Err(BindingMutationError::Command(format!(
-                    "Could not find binding `{keycombo}` for the given flags"
-                )));
-            }
-            _ => {
-                return Err(BindingMutationError::Command(format!(
-                    "Invalid keycode '{code}'"
-                )))
-            }
-        };
-        if modifiers.is_empty() {
-            format!("code:{code}")
-        } else {
-            format!("{modifiers}+code:{code}")
-        }
-    } else {
-        key.to_owned()
-    };
-    let key = key
-        .parse::<swayward_config::Key>()
-        .map_err(|_| BindingMutationError::Parse(format!("Unknown key or button '{keycombo}'")))?;
+    let key = normalise_key(key, keycode, command.is_some())?;
     if !matches!(
         key.trigger,
         swayward_config::Trigger::Keysym(_) | swayward_config::Trigger::Keycode(_)
@@ -160,21 +132,8 @@ pub(super) fn mutate_key_binding(
             && bind.mouse_regions.is_empty()
     };
 
-    let binding_mode = mode;
     let mut config = state.swayward.config.borrow_mut();
-    let binds = if binding_mode == "default" {
-        &mut config.binds.0
-    } else {
-        &mut config
-            .binding_modes
-            .iter_mut()
-            .find(|mode| mode.name == binding_mode)
-            .ok_or_else(|| {
-                BindingMutationError::Command(format!("Unknown binding mode '{binding_mode}'"))
-            })?
-            .binds
-            .0
-    };
+    let binds = binds_for_mode(&mut config, mode)?;
     let existing = binds.iter().position(identity_matches);
     if let Some(command) = command {
         let bind = swayward_config::Bind {
@@ -207,6 +166,59 @@ pub(super) fn mutate_key_binding(
     drop(config);
     refresh_binding_caches(state);
     Ok(())
+}
+
+/// Parse a bindsym or bindcode combo into a config key. A bindcode combo's
+/// last component becomes `code:<n>`; sway accepts codes 8 to 255.
+fn normalise_key(
+    key: &str,
+    keycode: bool,
+    has_command: bool,
+) -> Result<swayward_config::Key, BindingMutationError> {
+    let keycombo = key;
+    let key = if keycode {
+        let (modifiers, code) = key
+            .rsplit_once('+')
+            .map_or(("", key), |(mods, code)| (mods, code));
+        let code: u32 = match code.parse() {
+            Ok(code) if (8..=255).contains(&code) => code,
+            _ if !has_command => {
+                return Err(BindingMutationError::Command(format!(
+                    "Could not find binding `{keycombo}` for the given flags"
+                )));
+            }
+            _ => {
+                return Err(BindingMutationError::Command(format!(
+                    "Invalid keycode '{code}'"
+                )))
+            }
+        };
+        if modifiers.is_empty() {
+            format!("code:{code}")
+        } else {
+            format!("{modifiers}+code:{code}")
+        }
+    } else {
+        key.to_owned()
+    };
+    key.parse::<swayward_config::Key>()
+        .map_err(|_| BindingMutationError::Parse(format!("Unknown key or button '{keycombo}'")))
+}
+
+/// The binding list of `mode`, where "default" is the top-level list.
+fn binds_for_mode<'a>(
+    config: &'a mut swayward_config::Config,
+    mode: &str,
+) -> Result<&'a mut Vec<swayward_config::Bind>, BindingMutationError> {
+    if mode == "default" {
+        return Ok(&mut config.binds.0);
+    }
+    config
+        .binding_modes
+        .iter_mut()
+        .find(|binding_mode| binding_mode.name == mode)
+        .map(|binding_mode| &mut binding_mode.binds.0)
+        .ok_or_else(|| BindingMutationError::Command(format!("Unknown binding mode '{mode}'")))
 }
 
 fn refresh_binding_caches(state: &mut State) {

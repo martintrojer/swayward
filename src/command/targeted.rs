@@ -108,51 +108,12 @@ pub(super) fn move_direction(
         Direction::Down => crate::layout::tiling_tree::Direction::Down,
     };
     let moved_within_workspace = if focused {
-        let moved = match target {
-            CommandTarget::Container(workspace, node) => state
-                .swayward
-                .layout
-                .move_tiling_node_in_direction(workspace, node, layout_direction),
-            CommandTarget::Window(_) => match direction {
-                Direction::Left => state.swayward.layout.move_left(),
-                Direction::Right => state.swayward.layout.move_right(),
-                Direction::Up => state.swayward.layout.move_up(),
-                Direction::Down => state.swayward.layout.move_down(),
-            },
-        };
-        if !moved && state.swayward.layout.focused_fullscreen_mode().is_none() {
-            move_target_to_adjacent_output(state, target, direction, activate);
-        }
-        moved
+        move_focused_direction(state, target, direction, layout_direction, activate)
     } else {
-        match target {
-            CommandTarget::Window(target) => {
-                let window =
-                    state.swayward.layout.windows().find_map(|(_, mapped)| {
-                        (mapped.id() == target).then(|| mapped.window.clone())
-                    });
-                let Some(window) = window else {
-                    return failure("No matching node.");
-                };
-                let moved = state.swayward.layout.move_window_in_direction(
-                    &window,
-                    layout_direction,
-                    f64::from(pixels.unwrap_or(10)),
-                );
-                if !moved {
-                    move_target_to_adjacent_output(
-                        state,
-                        CommandTarget::Window(target),
-                        direction,
-                        activate,
-                    );
-                }
-                moved
-            }
-            CommandTarget::Container(workspace, node) => state
-                .swayward
-                .layout
-                .move_tiling_node_in_direction(workspace, node, layout_direction),
+        match move_targeted_direction(state, target, direction, layout_direction, pixels, activate)
+        {
+            Ok(moved) => moved,
+            Err(outcome) => return outcome,
         }
     };
     state.swayward.queue_redraw_all();
@@ -167,6 +128,71 @@ pub(super) fn move_direction(
         }
     }
     success()
+}
+
+/// `move <direction>` on the focused container: tiled moves follow the
+/// focus, and a move that leaves the workspace edge crosses outputs.
+fn move_focused_direction(
+    state: &mut State,
+    target: CommandTarget,
+    direction: Direction,
+    layout_direction: crate::layout::tiling_tree::Direction,
+    activate: crate::layout::ActivateWindow,
+) -> bool {
+    let moved = match target {
+        CommandTarget::Container(workspace, node) => state
+            .swayward
+            .layout
+            .move_tiling_node_in_direction(workspace, node, layout_direction),
+        CommandTarget::Window(_) => match direction {
+            Direction::Left => state.swayward.layout.move_left(),
+            Direction::Right => state.swayward.layout.move_right(),
+            Direction::Up => state.swayward.layout.move_up(),
+            Direction::Down => state.swayward.layout.move_down(),
+        },
+    };
+    if !moved && state.swayward.layout.focused_fullscreen_mode().is_none() {
+        move_target_to_adjacent_output(state, target, direction, activate);
+    }
+    moved
+}
+
+/// `move <direction>` on a criteria target.
+fn move_targeted_direction(
+    state: &mut State,
+    target: CommandTarget,
+    direction: Direction,
+    layout_direction: crate::layout::tiling_tree::Direction,
+    pixels: Option<i32>,
+    activate: crate::layout::ActivateWindow,
+) -> Result<bool, CommandOutcome> {
+    let target = match target {
+        CommandTarget::Window(target) => target,
+        CommandTarget::Container(workspace, node) => {
+            return Ok(state.swayward.layout.move_tiling_node_in_direction(
+                workspace,
+                node,
+                layout_direction,
+            ));
+        }
+    };
+    let window = state
+        .swayward
+        .layout
+        .windows()
+        .find_map(|(_, mapped)| (mapped.id() == target).then(|| mapped.window.clone()));
+    let Some(window) = window else {
+        return Err(failure("No matching node."));
+    };
+    let moved = state.swayward.layout.move_window_in_direction(
+        &window,
+        layout_direction,
+        f64::from(pixels.unwrap_or(10)),
+    );
+    if !moved {
+        move_target_to_adjacent_output(state, CommandTarget::Window(target), direction, activate);
+    }
+    Ok(moved)
 }
 
 pub(super) fn set_client_colors(

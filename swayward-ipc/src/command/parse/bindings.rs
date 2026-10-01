@@ -1,15 +1,31 @@
 use super::*;
 
+/// Sway's bind arity errors: one before options are stripped, one after.
+fn require_bind_args(
+    name: &str,
+    minimum: usize,
+    got: usize,
+    after_options: bool,
+) -> Result<(), String> {
+    if got >= minimum {
+        return Ok(());
+    }
+    Err(if after_options {
+        format!(
+            "Invalid {name} command (expected at least {minimum} non-option arguments, got {got})"
+        )
+    } else {
+        format!(
+            "Invalid {name} command (expected at least {minimum} argument{}, got {got})",
+            if minimum == 1 { "" } else { "s" },
+        )
+    })
+}
+
 pub(super) fn parse_switch_bind_command(args: &[&str], unbind: bool) -> Result<Command, String> {
     let name = if unbind { "unbindswitch" } else { "bindswitch" };
     let minimum = if unbind { 1 } else { 2 };
-    if args.len() < minimum {
-        return Err(format!(
-            "Invalid {name} command (expected at least {minimum} argument{}, got {})",
-            if minimum == 1 { "" } else { "s" },
-            args.len()
-        ));
-    }
+    require_bind_args(name, minimum, args.len(), false)?;
     let mut locked = false;
     let mut index = 0;
     while let Some(option) = args.get(index).filter(|arg| arg.starts_with("--")) {
@@ -31,12 +47,7 @@ pub(super) fn parse_switch_bind_command(args: &[&str], unbind: bool) -> Result<C
         index += 1;
     }
     let remaining = args.get(index..).unwrap_or_default();
-    if remaining.len() < minimum {
-        return Err(format!(
-            "Invalid {name} command (expected at least {minimum} non-option arguments, got {})",
-            remaining.len()
-        ));
-    }
+    require_bind_args(name, minimum, remaining.len(), true)?;
     let Some((combo, command)) = remaining.split_first() else {
         return Err(format!("Invalid {name} command"));
     };
@@ -83,13 +94,7 @@ pub(super) fn parse_bind_command(
         (true, true) => "unbindcode",
     };
     let minimum = if unbind { 1 } else { 2 };
-    if args.len() < minimum {
-        return Err(format!(
-            "Invalid {name} command (expected at least {minimum} argument{}, got {})",
-            if minimum == 1 { "" } else { "s" },
-            args.len()
-        ));
-    }
+    require_bind_args(name, minimum, args.len(), false)?;
 
     let mut release = false;
     let mut locked = false;
@@ -119,12 +124,7 @@ pub(super) fn parse_bind_command(
         index += 1;
     }
     let remaining = args.get(index..).unwrap_or_default();
-    if remaining.len() < minimum {
-        return Err(format!(
-            "Invalid {name} command (expected at least {minimum} non-option arguments, got {})",
-            remaining.len()
-        ));
-    }
+    require_bind_args(name, minimum, remaining.len(), true)?;
     let Some((key, command)) = remaining.split_first() else {
         return Err(format!("Invalid {name} command"));
     };
