@@ -715,3 +715,46 @@ fn nested_for_window_command_keeps_the_outer_scratchpad_event_order() {
         ]
     );
 }
+
+/// Two independent windows moved by one criteria command must retain their
+/// own container ids in every floating/move event. The transaction used to
+/// copy the first visible/hidden snapshot onto every event.
+#[test]
+fn criteria_scratchpad_events_keep_each_windows_container_id() {
+    let (mut fixture, socket) = ipc_fixture();
+    fixture.add_output(1, (1920, 1080));
+    let client = fixture.add_client();
+    map_test_window(&mut fixture, client, "scratch-a");
+    map_test_window(&mut fixture, client, "scratch-b");
+    fixture.niri_state().ipc_refresh_layout();
+    let mut subscriber = subscribe_to_window_events(&mut fixture, &socket);
+
+    let outcome = crate::command::execute(
+        fixture.niri_state(),
+        "[app_id=\"^scratch-[ab]$\"] move scratchpad",
+    );
+    assert!(outcome[0].success, "{outcome:?}");
+    fixture.niri_state().ipc_refresh_layout();
+
+    let mut remainder = Vec::new();
+    let mut by_change = std::collections::HashMap::<String, Vec<i64>>::new();
+    while let Some(((_, payload), rest)) =
+        try_read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder.clone())
+    {
+        remainder = rest;
+        let event = serde_json::from_str::<Value>(&payload).unwrap();
+        let change = event["change"].as_str().unwrap().to_owned();
+        if matches!(change.as_str(), "floating" | "move") {
+            by_change
+                .entry(change)
+                .or_default()
+                .push(event["container"]["id"].as_i64().unwrap());
+        }
+    }
+    for change in ["floating", "move"] {
+        let mut ids = by_change.remove(change).unwrap_or_default();
+        ids.sort_unstable();
+        ids.dedup();
+        assert_eq!(ids.len(), 2, "{change}: {ids:?}");
+    }
+}

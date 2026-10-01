@@ -202,39 +202,51 @@ impl State {
         );
         let mut events = transaction.events;
         if let Some(order) = transaction.scratchpad {
-            let scratchpad_snapshots = events
-                .iter()
-                .filter_map(|event| match event {
-                    Event::SwayWindowChanged { change, container }
-                        if matches!(change.as_str(), "floating" | "move" | "focus") =>
-                    {
-                        Some(container.clone())
+            fn typed(container: &serde_json::Value) -> Option<swayward_ipc::Node> {
+                serde_json::from_value(container.clone()).ok()
+            }
+            fn store(container: &mut serde_json::Value, node: swayward_ipc::Node) {
+                if let Ok(value) = serde_json::to_value(node) {
+                    *container = value;
+                }
+            }
+
+            // Pair the visible and hidden snapshots by container id. A criteria
+            // command can move several independent windows in one transaction;
+            // taking the first snapshot made every event describe one window.
+            let mut visible = std::collections::HashMap::new();
+            let mut hidden = std::collections::HashMap::new();
+            for event in &events {
+                let Event::SwayWindowChanged { change, container } = event else {
+                    continue;
+                };
+                if !matches!(change.as_str(), "floating" | "move" | "focus") {
+                    continue;
+                }
+                let Some(node) = typed(container) else {
+                    continue;
+                };
+                match node.scratchpad_state.as_deref() {
+                    Some("fresh") => {
+                        hidden.insert(node.id, node);
                     }
-                    _ => None,
-                })
-                .collect::<Vec<_>>();
-            let hidden = scratchpad_snapshots
+                    Some("none") => {
+                        visible.insert(node.id, node);
+                    }
+                    _ => {}
+                }
+            }
+
+            let mut reordered = events
                 .iter()
-                .find(|container| container["scratchpad_state"] == "fresh")
-                .cloned();
-            let visible = scratchpad_snapshots
-                .iter()
-                .find(|container| container["scratchpad_state"] == "none")
-                .cloned();
-            let mut scratchpad_events = events
-                .iter()
-                .enumerate()
-                .filter_map(|(index, event)| match event {
+                .filter(|event| {
+                    matches!(event,
                     Event::SwayWindowChanged { change, .. }
-                        if matches!(change.as_str(), "floating" | "move" | "focus") =>
-                    {
-                        Some(index)
-                    }
-                    _ => None,
+                    if matches!(change.as_str(), "floating" | "move" | "focus"))
                 })
+                .cloned()
                 .collect::<Vec<_>>();
-            let positions = scratchpad_events.clone();
-            scratchpad_events.sort_by_key(|index| match (&order, &events[*index]) {
+            reordered.sort_by_key(|event| match (&order, event) {
                 (ScratchpadEventOrder::Hide, Event::SwayWindowChanged { change, .. })
                     if change == "floating" =>
                 {
@@ -247,40 +259,46 @@ impl State {
                 }
                 _ => 1,
             });
-            let reordered = scratchpad_events
-                .iter()
-                .map(|index| events[*index].clone())
-                .collect::<Vec<_>>();
-            for (index, mut event) in positions.into_iter().zip(reordered) {
+            let mut reordered = reordered.into_iter();
+            for slot in &mut events {
+                if !matches!(slot, Event::SwayWindowChanged { change, .. }
+                    if matches!(change.as_str(), "floating" | "move" | "focus"))
+                {
+                    continue;
+                }
+                let Some(mut event) = reordered.next() else {
+                    break;
+                };
                 if let Event::SwayWindowChanged { change, container } = &mut event {
+                    let Some(mut node) = typed(container) else {
+                        *slot = event;
+                        continue;
+                    };
                     match order {
                         ScratchpadEventOrder::Hide if change == "floating" => {
-                            if let Some(visible) = &visible {
-                                *container = visible.clone();
+                            if let Some(snapshot) = visible.get(&node.id) {
+                                node = snapshot.clone();
                             }
-                            container["scratchpad_state"] = "none".into();
-                            container["focused"] = true.into();
-                            container["visible"] = true.into();
+                            node.scratchpad_state = Some("none".into());
+                            node.focused = true;
+                            if let swayward_ipc::NodeProperties::View(view) = &mut node.properties {
+                                view.visible = true;
+                            }
                         }
                         ScratchpadEventOrder::Hide if change == "move" => {
-                            if let Some(hidden) = &hidden {
-                                *container = hidden.clone();
+                            if let Some(snapshot) = hidden.get(&node.id) {
+                                node = snapshot.clone();
                             }
-                            container["focused"] = false.into();
-                            if container["type"] == "floating_con"
-                                && container["nodes"]
-                                    .as_array()
-                                    .is_some_and(|nodes| !nodes.is_empty())
-                            {
-                                container.as_object_mut().unwrap().remove("visible");
-                            } else {
-                                container["visible"] = false.into();
+                            node.focused = false;
+                            if let swayward_ipc::NodeProperties::View(view) = &mut node.properties {
+                                view.visible = false;
                             }
                         }
                         _ => {}
                     }
+                    store(container, node);
                 }
-                events[index] = event;
+                *slot = event;
             }
         }
 
