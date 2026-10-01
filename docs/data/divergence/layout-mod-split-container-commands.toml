@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/mod.rs"]
+what = "move swayward-authored container-command `Layout` methods (border, sticky, nest, split, flatten, layout, title format) into the swayward-owned `container_commands.rs`, unchanged."
+why = "Leaves niri's own code in mod.rs so upstream merges touch less swayward code."
