@@ -838,15 +838,18 @@ fn sway_workspace_identity(
                 .ok_or_else(|| format!("invalid workspace number '{name}'"))?;
             Ok(((name != number.to_string()).then_some(name), Some(number)))
         }
-        crate::command::WorkspaceTarget::Name(name) => {
-            let number = parse_workspace_num(&name);
-            Ok((
-                (number.is_none() || name != number.unwrap().to_string()).then_some(name),
-                number,
-            ))
-        }
+        crate::command::WorkspaceTarget::Name(name) => Ok(sway_identity_from_name(name)),
         _ => Err("relative workspace target cannot be created".into()),
     }
+}
+
+/// The sway identity of a workspace created by name: its parsed number, and
+/// the name too unless it is exactly that number. Unlike
+/// [`sway_workspace_identity`], a name always yields an identity.
+fn sway_identity_from_name(name: String) -> (Option<String>, Option<i32>) {
+    let number = parse_workspace_num(&name);
+    let keep_name = number.is_none_or(|number| name != number.to_string());
+    (keep_name.then_some(name), number)
 }
 
 fn initial_workspace_name_from_action(action: &swayward_config::Action) -> Option<String> {
@@ -1058,12 +1061,31 @@ impl<W: LayoutElement> Layout<W> {
     /// (`sway/sway/tree/workspace.c:224-243`), so every creation path consults
     /// it, not just the eager startup one.
     fn workspace_layout_config(&self, name: Option<&str>) -> Option<swayward_config::LayoutPart> {
-        let name = name?;
-        self.workspace_configs
-            .iter()
-            .find(|config| config.name.0.eq_ignore_ascii_case(name))
-            .and_then(|config| config.layout.clone())
-            .map(|layout| layout.0)
+        layout_config_for(&self.workspace_configs, name)
+    }
+
+    /// The output and index of the workspace `target` names, preferring a
+    /// named workspace when duplicate numeric identities match.
+    fn find_sway_workspace_position(
+        &self,
+        target: &crate::command::WorkspaceTarget,
+    ) -> Option<(Option<Output>, usize)> {
+        let mut found = self
+            .workspaces()
+            .filter(|(_, _, workspace)| workspace_matches_target(workspace, target))
+            .map(|(monitor, index, workspace)| {
+                (
+                    monitor.map(|monitor| monitor.output().clone()),
+                    index,
+                    workspace.name().is_some(),
+                )
+            })
+            .collect::<Vec<_>>();
+        found.sort_by_key(|(_, _, named)| !*named);
+        found
+            .into_iter()
+            .next()
+            .map(|(output, index, _)| (output, index))
     }
 
     /// The ordered output list a workspace config assigns, under either
@@ -1246,9 +1268,7 @@ impl<W: LayoutElement> Layout<W> {
             // with the index-derived identity the workspace model forbids.
             let (name, number) = match self.next_initial_workspace_name_for_output(output.as_ref())
             {
-                Some(name) => {
-                    sway_workspace_identity(crate::command::WorkspaceTarget::Name(name)).unwrap()
-                }
+                Some(name) => sway_identity_from_name(name),
                 None => self.next_free_workspace_identity_for_output(output.as_ref()),
             };
             self.workspaces_mut()
@@ -2003,11 +2023,7 @@ impl<W: LayoutElement> Layout<W> {
         if self.find_workspace_by_name(workspace_name).is_some() {
             return;
         }
-        let Ok((name, number)) = sway_workspace_identity(crate::command::WorkspaceTarget::Name(
-            workspace_name.to_owned(),
-        )) else {
-            return;
-        };
+        let (name, number) = sway_identity_from_name(workspace_name.to_owned());
         // An outputless layout has nowhere to create it; sway would use its
         // fallback output, and the assigned window lands on the active
         // workspace instead.
@@ -3237,31 +3253,9 @@ impl<W: LayoutElement> Layout<W> {
         &mut self,
         target: crate::command::WorkspaceTarget,
     ) -> Result<(), String> {
-        use crate::command::WorkspaceTarget;
-
         let existing = self.workspaces().find_map(|(monitor, index, workspace)| {
-            let matches = match &target {
-                // Sway matches the digit PREFIX of the name, not a stored
-                // number: _workspace_by_number (sway/sway/tree/workspace.c:
-                // 493-502) walks the digits of the target against the name and
-                // requires the name to have no further digits. So "1" matches
-                // "1:first" but not "11". Comparing a stored number missed a
-                // workspace whose number was derived rather than stored, and a
-                // duplicate was created instead.
-                // Only a workspace with a real identity can be matched by
-                // number.
-                WorkspaceTarget::Number(value) => {
-                    workspace.has_sway_identity()
-                        && workspace
-                            .sway_name()
-                            .is_some_and(|name| workspace_name_matches_number(&name, value))
-                }
-                WorkspaceTarget::Name(value) => workspace
-                    .sway_name()
-                    .is_some_and(|name| name.eq_ignore_ascii_case(value)),
-                _ => false,
-            };
-            matches.then(|| (monitor.map(|monitor| monitor.output().clone()), index))
+            workspace_matches_target(workspace, &target)
+                .then(|| (monitor.map(|monitor| monitor.output().clone()), index))
         });
         let Some((output, index)) = existing else {
             return self.activate_sway_workspace(target);
@@ -3322,38 +3316,7 @@ impl<W: LayoutElement> Layout<W> {
 
         // Collect every candidate so duplicate numeric identities resolve to
         // the explicitly named workspace.
-        let mut candidates = self
-            .workspaces()
-            .filter_map(|(monitor, index, workspace)| {
-                let matches = match &target {
-                    // Match the digit prefix of the name, as sway's
-                    // _workspace_by_number does (sway/sway/tree/workspace.c:
-                    // 493-502), and only for a workspace with a real identity.
-                    WorkspaceTarget::Number(value) => {
-                        workspace.has_sway_identity()
-                            && workspace
-                                .sway_name()
-                                .is_some_and(|name| workspace_name_matches_number(&name, value))
-                    }
-                    WorkspaceTarget::Name(value) => workspace
-                        .sway_name()
-                        .is_some_and(|name| name.eq_ignore_ascii_case(value)),
-                    _ => false,
-                };
-                matches.then(|| {
-                    (
-                        monitor.map(|monitor| monitor.output().clone()),
-                        index,
-                        workspace.name().is_some(),
-                    )
-                })
-            })
-            .collect::<Vec<_>>();
-        candidates.sort_by_key(|(_, _, named)| !*named);
-        let existing = candidates
-            .into_iter()
-            .next()
-            .map(|(output, index, _)| (output, index));
+        let existing = self.find_sway_workspace_position(&target);
 
         if let Some((output, index)) = existing {
             if let Some(output) = output.as_ref() {
@@ -3483,8 +3446,7 @@ impl<W: LayoutElement> Layout<W> {
             .workspace_configs
             .iter()
             .any(|config| config.name.0.eq_ignore_ascii_case(&new_name));
-        let (name, number) =
-            sway_workspace_identity(crate::command::WorkspaceTarget::Name(new_name))?;
+        let (name, number) = sway_identity_from_name(new_name);
         let workspace = self
             .workspaces_mut()
             .find(|workspace| workspace.id() == id)
@@ -4032,26 +3994,7 @@ impl<W: LayoutElement> Layout<W> {
                 let next = target == WorkspaceTarget::NextOnOutput;
                 self.relative_sway_workspace_position_on_output(next)
             }
-            _ => {
-                // Prefer a named workspace when duplicate numeric identities
-                // match the target.
-                let mut found = self
-                    .workspaces()
-                    .filter(|(_, _, workspace)| workspace_matches_target(workspace, &target))
-                    .map(|(monitor, index, workspace)| {
-                        (
-                            monitor.map(|monitor| monitor.output().clone()),
-                            index,
-                            workspace.name().is_some(),
-                        )
-                    })
-                    .collect::<Vec<_>>();
-                found.sort_by_key(|(_, _, named)| !*named);
-                found
-                    .into_iter()
-                    .next()
-                    .map(|(output, index, _)| (output, index))
-            }
+            _ => self.find_sway_workspace_position(&target),
         };
         if let Some(position) = target_position {
             Ok(position)
@@ -6280,9 +6223,7 @@ impl<W: LayoutElement> Layout<W> {
         let replacement_identity = old_output
             .as_ref()
             .and_then(|output| self.next_initial_workspace_name_for_output(Some(output)))
-            .map(|name| {
-                sway_workspace_identity(crate::command::WorkspaceTarget::Name(name)).unwrap()
-            })
+            .map(sway_identity_from_name)
             .unwrap_or_else(|| self.next_free_workspace_identity_for_output(old_output.as_ref()));
         let replacement_layout_config =
             self.workspace_layout_config(replacement_identity.0.as_deref());

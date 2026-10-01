@@ -356,9 +356,7 @@ impl<W: LayoutElement> Monitor<W> {
             // configured mode, then keeps that workspace's original split.
             ws.preserve_empty_auto_layout();
             if let Some(name) = initial_workspace_name {
-                let (name, number) =
-                    super::sway_workspace_identity(crate::command::WorkspaceTarget::Name(name))
-                        .unwrap();
+                let (name, number) = super::sway_identity_from_name(name);
                 ws.set_sway_identity(name, number);
             } else if let Some(number) = initial_workspace_number {
                 ws.set_sway_identity(None, Some(number));
