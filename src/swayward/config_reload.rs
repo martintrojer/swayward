@@ -261,47 +261,13 @@ impl State {
         }
 
         *old_config = config;
-        // Runtime-added criteria are part of sway's active config and vanish
-        // when reload replaces it. A failed reload returns above and keeps both
-        // the rules and their per-view execution history.
-        let runtime_for_window = mem::take(&mut self.swayward.runtime_for_window);
-        self.swayward.for_window.retain(|(raw, command, _)| {
-            !runtime_for_window.contains(&(raw.clone(), command.clone()))
-        });
-        self.swayward.runtime_window_rules.clear();
-        self.swayward.executed_for_window.clear();
-
         if let Some(outputs) = preserved_output_config {
             old_config.outputs = outputs;
         }
 
         // Release the borrow.
         drop(old_config);
-        self.swayward.output_power.clear();
-        for output in self
-            .swayward
-            .global_space
-            .outputs()
-            .cloned()
-            .collect::<Vec<_>>()
-        {
-            self.backend.set_output_power(&output, true);
-            self.swayward.queue_redraw(&output);
-        }
-        // Sway frees the symbol table on reload and rebuilds it from the file
-        // (`sway/sway/config.c:111-115`), so a runtime `set` does not outlive a
-        // reload. swayward has no KDL variables to rebuild, so the table is
-        // simply emptied.
-        self.swayward.sway_variables.clear();
-        // Sway frees and rebuilds each mode's switch binding list on reload.
-        self.swayward.runtime_switch_bindings.clear();
-        // Sway's reload builds a fresh config whose current mode is "default"
-        // (sway/sway/config.c:232-235) and emits only workspace::reload and
-        // bar updates (sway/sway/commands/reload.c:34-45); ipc_event_mode is
-        // sent only by the `mode` command (sway/sway/commands/mode.c:78).
-        // Reset the mode silently.
-        self.swayward.binding_mode = "default".into();
-        // Held release bindings own their action so a reload cannot invalidate them.
+        self.reset_sway_runtime_state_on_reload();
 
         // Now with a &mut self we can reload the xkb config.
         if let Some(mut xkb) = reload_xkb {
@@ -319,7 +285,7 @@ impl State {
             }
 
             if set_xkb_config {
-                // If xkb is unset in the niri config, use settings from locale1.
+                // If xkb is unset in the swayward config, use settings from locale1.
                 if xkb == Xkb::default() {
                     trace!("using xkb from locale1");
                     xkb = self.swayward.xkb_from_locale1.clone().unwrap_or_default();
@@ -397,14 +363,47 @@ impl State {
         }
 
         self.swayward.queue_redraw_all();
+        self.emit_reload_events();
+    }
+
+    /// Reset runtime-only sway configuration after a successful reload.
+    ///
+    /// Sway replaces these tables while loading a fresh config
+    /// (`sway/sway/config.c:load_main_config`; `sway/sway/commands/reload.c:15-52`).
+    fn reset_sway_runtime_state_on_reload(&mut self) {
+        // Runtime-added criteria vanish with the old active config. Failed
+        // reloads return before this step and retain their execution history.
+        let runtime_for_window = mem::take(&mut self.swayward.runtime_for_window);
+        self.swayward.for_window.retain(|(raw, command, _)| {
+            !runtime_for_window.contains(&(raw.clone(), command.clone()))
+        });
+        self.swayward.runtime_window_rules.clear();
+        self.swayward.executed_for_window.clear();
+
+        self.swayward.output_power.clear();
+        for output in self
+            .swayward
+            .global_space
+            .outputs()
+            .cloned()
+            .collect::<Vec<_>>()
+        {
+            self.backend.set_output_power(&output, true);
+            self.swayward.queue_redraw(&output);
+        }
+        // Runtime `set` values and switch binds do not outlive reload.
+        self.swayward.sway_variables.clear();
+        self.swayward.runtime_switch_bindings.clear();
+        // A fresh sway config starts in default mode, without a mode event.
+        self.swayward.binding_mode = "default".into();
+    }
+
+    fn emit_reload_events(&mut self) {
         if let Some(server) = &self.swayward.ipc_server {
             server.send_event(swayward_ipc::legacy::Event::WorkspaceReloaded);
         }
-        // A successful sway reload re-applies every output config
-        // (request_modeset, sway/sway/config.c:540), which ends in
-        // update_output_manager_config and one output::unspecified event
-        // (sway/sway/desktop/output.c:377-399), whether or not anything
-        // changed. The next IPC refresh emits it after workspace::reload.
+        // A successful sway reload reapplies every output config and emits one
+        // output::unspecified event after workspace::reload.
         self.swayward.ipc_outputs_changed = true;
     }
 
