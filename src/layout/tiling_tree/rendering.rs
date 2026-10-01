@@ -180,7 +180,11 @@ impl<W: LayoutElement> TilingTree<W> {
                 },
             ));
         }
-        for (split, indicator) in &self.tab_indicators {
+        // Nested tab containers can overlap; as with titlebars, the deepest wins, and HashMap
+        // order never decides.
+        let mut indicators: Vec<_> = self.tab_indicators.iter().collect();
+        indicators.sort_by_key(|(split, _)| (std::cmp::Reverse(self.node_depth(**split)), **split));
+        for (split, indicator) in indicators {
             let Some((area, children)) = self.tab_area(*split, &geometries.leaf_boxes) else {
                 continue;
             };

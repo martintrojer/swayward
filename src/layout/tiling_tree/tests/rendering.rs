@@ -522,3 +522,30 @@ fn strips_inside_hidden_tabs_are_not_drawn() {
     );
     let _ = inner;
 }
+
+#[test]
+fn overlapping_tab_indicators_hit_the_innermost_container() {
+    // An inner tabbed container shown inside an outer one has the same area, so their
+    // indicators overlap. The deeper one must win on every hash seed.
+    for _ in 0..32 {
+        let mut t = tree((1000., 800.), 0.);
+        let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+        t.split(first, Layout::Tabbed);
+        let second = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+        t.split(second, Layout::Tabbed);
+        t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+        t.update_render_elements(true, crate::layout::RenderLayer::Normal);
+        let mut clock = t.clock().clone();
+        clock.set_complete_instantly(true);
+        t.advance_animations();
+
+        let area = t.geometry(second).unwrap();
+        let config = Options::default().layout.tab_indicator;
+        let pos = Point::from((
+            area.loc.x - config.gap - config.width / 2.,
+            area.loc.y + area.size.h * 3. / 8.,
+        ));
+        let (window, _) = t.window_under(pos).expect("indicator hit");
+        assert_eq!(window.id(), &2);
+    }
+}
