@@ -117,6 +117,31 @@ enum DetachedNode<W: LayoutElement> {
 }
 
 impl<W: LayoutElement> DetachedNode<W> {
+    fn into_split(self) -> Result<DetachedSplit<W>, Self> {
+        match self {
+            Self::Split {
+                old_id,
+                layout,
+                children,
+                percents,
+                previous_layout,
+                title_format,
+                pending_mode,
+                sticky,
+            } => Ok(DetachedSplit {
+                old_id,
+                layout,
+                children,
+                percents,
+                previous_layout,
+                title_format,
+                pending_mode,
+                sticky,
+            }),
+            leaf @ Self::Leaf { .. } => Err(leaf),
+        }
+    }
+
     fn pending_mode(&self) -> Option<PendingMode> {
         match self {
             Self::Split { pending_mode, .. } | Self::Leaf { pending_mode, .. } => *pending_mode,

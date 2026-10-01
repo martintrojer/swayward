@@ -319,6 +319,45 @@ impl<W: LayoutElement> TilingTree<W> {
             .or(self.focus)
     }
 
+    /// The extent along the preset axis of `id`'s branch in the nearest split that runs along
+    /// that axis and has siblings, and of that split itself.
+    fn preset_extents(&self, id: NodeId, width: bool) -> Option<(f64, f64)> {
+        let wanted = if width {
+            Layout::SplitH
+        } else {
+            Layout::SplitV
+        };
+        let extent = |rect: &Rectangle<f64, Logical>| {
+            if width {
+                rect.size.w
+            } else {
+                rect.size.h
+            }
+        };
+        let mut branch = id;
+        let mut parent = self.nodes.get(&id)?.parent;
+        while let Some(parent_id) = parent {
+            let Node {
+                parent: grandparent,
+                value: TreeNode::Split {
+                    layout, children, ..
+                },
+            } = self.nodes.get(&parent_id)?
+            else {
+                return None;
+            };
+            if *layout == wanted && children.len() > 1 {
+                let geometries = self.compute_geometry();
+                let current = geometries.ipc_nodes.get(&branch)?;
+                let available = geometries.ipc_nodes.get(&parent_id)?;
+                return Some((extent(current), extent(available)));
+            }
+            branch = parent_id;
+            parent = *grandparent;
+        }
+        None
+    }
+
     fn toggle_preset(&mut self, window: Option<&W::Id>, width: bool, forwards: bool) {
         let presets = if width {
             &self.options.layout.preset_column_widths
@@ -331,45 +370,7 @@ impl<W: LayoutElement> TilingTree<W> {
         let Some(id) = self.resolve_node(window) else {
             return;
         };
-        let wanted = if width {
-            Layout::SplitH
-        } else {
-            Layout::SplitV
-        };
-        let geometries = self.compute_geometry();
-        let extent = |rect: &Rectangle<f64, Logical>| {
-            if width {
-                rect.size.w
-            } else {
-                rect.size.h
-            }
-        };
-        let mut branch = id;
-        let mut parent = self.nodes.get(&id).and_then(|node| node.parent);
-        let current_and_available = loop {
-            let Some(parent_id) = parent else {
-                break None;
-            };
-            let Some(Node {
-                parent: grandparent,
-                value: TreeNode::Split {
-                    layout, children, ..
-                },
-            }) = self.nodes.get(&parent_id)
-            else {
-                break None;
-            };
-            if *layout == wanted && children.len() > 1 {
-                break geometries
-                    .ipc_nodes
-                    .get(&branch)
-                    .zip(geometries.ipc_nodes.get(&parent_id))
-                    .map(|(current, parent)| (extent(current), extent(parent)));
-            }
-            branch = parent_id;
-            parent = *grandparent;
-        };
-        let Some((current, available)) = current_and_available else {
+        let Some((current, available)) = self.preset_extents(id, width) else {
             return;
         };
         let resolved = |preset| match preset {

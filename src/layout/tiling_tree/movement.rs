@@ -2,21 +2,7 @@ use super::*;
 
 impl<W: LayoutElement> TilingTree<W> {
     pub fn swap_nodes(&mut self, first: NodeId, second: NodeId) -> Result<(), &'static str> {
-        if !self.nodes.contains_key(&first) || !self.nodes.contains_key(&second) {
-            return Err("No matching node.");
-        }
-        if first == second {
-            return Err("Cannot swap a container with itself");
-        }
-        if self.contains_node(first, second) || self.contains_node(second, first) {
-            return Err("Cannot swap ancestor and descendant");
-        }
-        if !self.fits_at(first, self.subtree_height(second))
-            || !self.fits_at(second, self.subtree_height(first))
-        {
-            return Err(TOO_DEEP);
-        }
-
+        self.check_swappable(first, second)?;
         // The workspace root is not a container (sway's swap only accepts
         // containers and views, sway/commands/swap.c:73-75); its missing
         // parent is what the lookups below would trip over.
@@ -33,46 +19,11 @@ impl<W: LayoutElement> TilingTree<W> {
             return Err("No matching node.");
         };
         let old = self.compute_geometry();
-        let parent_is_tabbed = |parent| {
-            matches!(
-                self.nodes.get(&parent).map(|node| &node.value),
-                Some(TreeNode::Split {
-                    layout: Layout::Tabbed | Layout::Stacked,
-                    ..
-                })
-            )
-        };
-        let focus_after_swap = if self.focus == Some(first) && parent_is_tabbed(second_parent) {
-            Some(second)
-        } else if self.focus == Some(second) && parent_is_tabbed(first_parent) {
-            Some(first)
-        } else {
-            self.focus
-        };
-        // Both parents and indices were resolved above and nothing has
-        // mutated the arena since.
-        if first_parent == second_parent {
-            if let Some(TreeNode::Split { children, .. }) = self
-                .nodes
-                .get_mut(&first_parent)
-                .map(|node| &mut node.value)
-            {
-                children.swap(first_index, second_index);
-            }
-        } else {
-            for (parent, index, child) in [
-                (first_parent, first_index, second),
-                (second_parent, second_index, first),
-            ] {
-                if let Some(TreeNode::Split { children, .. }) =
-                    self.nodes.get_mut(&parent).map(|node| &mut node.value)
-                {
-                    if let Some(slot) = children.get_mut(index) {
-                        *slot = child;
-                    }
-                }
-            }
-        }
+        let focus_after_swap = self.focus_after_swap(first, first_parent, second, second_parent);
+        // Both parents and indices were resolved above and nothing has mutated the arena since.
+        // Writing each slot works for a shared parent too: the two indices simply trade nodes.
+        self.replace_child(first_parent, first_index, second);
+        self.replace_child(second_parent, second_index, first);
         for (id, parent) in [(first, second_parent), (second, first_parent)] {
             if let Some(node) = self.nodes.get_mut(&id) {
                 node.parent = Some(parent);
@@ -85,6 +36,61 @@ impl<W: LayoutElement> TilingTree<W> {
         self.animate_geometry_changes(old, None);
         self.request_window_sizes();
         Ok(())
+    }
+
+    fn check_swappable(&self, first: NodeId, second: NodeId) -> Result<(), &'static str> {
+        if !self.nodes.contains_key(&first) || !self.nodes.contains_key(&second) {
+            return Err("No matching node.");
+        }
+        if first == second {
+            return Err("Cannot swap a container with itself");
+        }
+        if self.contains_node(first, second) || self.contains_node(second, first) {
+            return Err("Cannot swap ancestor and descendant");
+        }
+        if !self.fits_at(first, self.subtree_height(second))
+            || !self.fits_at(second, self.subtree_height(first))
+        {
+            return Err(TOO_DEEP);
+        }
+        Ok(())
+    }
+
+    /// A focused node moving into a tabbed or stacked parent keeps the focus with it, so that
+    /// parent shows it; otherwise focus stays where it is.
+    fn focus_after_swap(
+        &self,
+        first: NodeId,
+        first_parent: NodeId,
+        second: NodeId,
+        second_parent: NodeId,
+    ) -> Option<NodeId> {
+        let parent_is_tabbed = |parent| {
+            matches!(
+                self.nodes.get(&parent).map(|node| &node.value),
+                Some(TreeNode::Split {
+                    layout: Layout::Tabbed | Layout::Stacked,
+                    ..
+                })
+            )
+        };
+        if self.focus == Some(first) && parent_is_tabbed(second_parent) {
+            Some(second)
+        } else if self.focus == Some(second) && parent_is_tabbed(first_parent) {
+            Some(first)
+        } else {
+            self.focus
+        }
+    }
+
+    fn replace_child(&mut self, parent: NodeId, index: usize, child: NodeId) {
+        if let Some(TreeNode::Split { children, .. }) =
+            self.nodes.get_mut(&parent).map(|node| &mut node.value)
+        {
+            if let Some(slot) = children.get_mut(index) {
+                *slot = child;
+            }
+        }
     }
 
     fn swap_fullscreen_modes(&mut self, first: NodeId, second: NodeId) {
@@ -271,24 +277,7 @@ impl<W: LayoutElement> TilingTree<W> {
                     );
                 }
                 if parent_id == boundary_root {
-                    if branch == id {
-                        return false;
-                    }
-                    let Some(boundary) = children
-                        .get(if backwards { 0 } else { children.len() - 1 })
-                        .copied()
-                    else {
-                        return false;
-                    };
-                    let insert_index = if backwards { 0 } else { children.len() };
-                    let Some(old_parent) = self.detach_subtree_only(id) else {
-                        return false;
-                    };
-                    self.insert_existing_child(boundary_root, id, insert_index, boundary);
-                    self.reap_empty_from(old_parent);
-                    self.compact_tree();
-                    self.finish_directional_move(id);
-                    return true;
+                    return branch != id && self.promote_to_boundary(id, boundary_root, backwards);
                 }
             }
             branch = parent_id;
@@ -297,11 +286,48 @@ impl<W: LayoutElement> TilingTree<W> {
         if boundary_root != self.root || !self.can_wrap_root_children() {
             return false;
         }
+        self.promote_by_wrapping_root(id, direction, exhausted_axis && !vacated_explicit_split)
+    }
+
+    /// Promotes `id` to the outer end of `boundary_root`, a parallel root it has escaped
+    /// ("Container will be promoted", sway/commands/move.c:394-412).
+    fn promote_to_boundary(&mut self, id: NodeId, boundary_root: NodeId, backwards: bool) -> bool {
+        let Some(TreeNode::Split { children, .. }) =
+            self.nodes.get(&boundary_root).map(|node| &node.value)
+        else {
+            return false;
+        };
+        let Some(boundary) = children
+            .get(if backwards { 0 } else { children.len() - 1 })
+            .copied()
+        else {
+            return false;
+        };
+        let insert_index = if backwards { 0 } else { children.len() };
+        let Some(old_parent) = self.detach_subtree_only(id) else {
+            return false;
+        };
+        self.insert_existing_child(boundary_root, id, insert_index, boundary);
+        self.reap_empty_from(old_parent);
+        self.compact_tree();
+        self.finish_directional_move(id);
+        true
+    }
+
+    /// No ancestor runs along the move axis, so the root's children are wrapped and `id` becomes
+    /// their sibling along that axis (sway/commands/move.c:333-344). `collapse` flattens the
+    /// old parent instead of only reaping it when empty.
+    fn promote_by_wrapping_root(
+        &mut self,
+        id: NodeId,
+        direction: Direction,
+        collapse: bool,
+    ) -> bool {
         let Some(old_parent) = self.detach_subtree_only(id) else {
             return false;
         };
         self.wrap_root_for_direction(id, direction);
-        if exhausted_axis && !vacated_explicit_split {
+        if collapse {
             self.collapse_from(old_parent);
         } else {
             self.reap_empty_from(old_parent);

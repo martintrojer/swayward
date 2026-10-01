@@ -268,98 +268,130 @@ impl<W: LayoutElement> TilingTree<W> {
                 push(closing.render(ctx.as_gles(), view, scale).into());
             }
         }
-        let focus = self.focus;
         for indicator in self.tab_indicators.values() {
             indicator.render(ctx.renderer, Point::default(), &mut |element| {
                 push(element.into())
             });
         }
         let geometries = self.compute_geometry();
-        let visible = self.visible_leaves();
         self.titlebars.retain(geometries.titlebars.keys().copied());
         // Collected front to back in DECORATION_LAYERS order; see its comment for
         // why the uncovered top border must come before titlebars.
         for decoration_layer in Self::DECORATION_LAYERS {
             match decoration_layer {
                 DecorationLayer::UncoveredTopBorders => {
-                    for (id, parts) in &geometries.uncovered_top_borders {
-                        let Some(tile) = self.tile(*id) else { continue };
-                        for (index, rect) in parts.iter().copied().enumerate() {
-                            if let Some(element) = self.titlebars.render_uncovered_top_border(
-                                *id,
-                                index,
-                                rect,
-                                *tile.border().config(),
-                                focus_ring && Some(*id) == focus,
-                                tile.window().is_urgent(),
-                            ) {
-                                push(element.into());
-                            }
-                        }
-                    }
+                    self.render_uncovered_top_borders(&geometries, focus_ring, push)
                 }
                 DecorationLayer::Titlebars => {
-                    for (id, titlebar) in &geometries.titlebars {
-                        // A strip entry maps to the leaf it labels; anything
-                        // else is its own leaf.
-                        let leaf = geometries.titlebar_leaves.get(id).copied().unwrap_or(*id);
-                        let mut titlebar = titlebar.clone();
-                        titlebar.state = self.titlebar_state(leaf, focus_ring);
-                        if titlebar.visible {
-                            // Match the decorated box's top corners, so a tab bar does not
-                            // draw square shoulders above a rounded frame.
-                            let radius = self
-                                .tile(leaf)
-                                .map(|tile| {
-                                    tile.geometry_corner_radius_for(
-                                        geometries
-                                            .titlebar_corners
-                                            .get(id)
-                                            .copied()
-                                            .unwrap_or(DecoratedCorners::NONE),
-                                    )
-                                })
-                                .unwrap_or_default();
-                            if let Some(element) = self.titlebars.render(
-                                ctx.renderer,
-                                *id,
-                                &titlebar,
-                                self.scale,
-                                &self.options.layout.titlebar,
-                                (f64::from(radius.top_left), f64::from(radius.top_right)),
-                            ) {
-                                push(element.into());
-                            }
-                        }
-                    }
+                    self.render_titlebars(ctx.renderer, &geometries, focus_ring, push)
                 }
                 DecorationLayer::Tiles => {
-                    for (id, node) in self.leaf_render_order(focus) {
-                        let TreeNode::Leaf { tile } = node else {
-                            continue;
-                        };
-                        if (!visible.contains(&id) && tile.alpha_animation.is_none())
-                            || layer.is_normal() == tile.is_moving_between_workspaces()
-                        {
-                            continue;
-                        }
-                        let Some(rect) = geometries.leaf_boxes.get(&id) else {
-                            continue;
-                        };
-                        let tile_pos = (rect.loc + tile.render_offset())
-                            .to_physical_precise_round(self.scale)
-                            .to_logical(self.scale);
-                        let xray = xray_pos.offset(tile_pos);
-                        tile.render(
-                            ctx.r(),
-                            tile_pos,
-                            xray,
-                            focus_ring && Some(id) == focus,
-                            &mut |element| push(element.into()),
-                        );
-                    }
+                    self.render_tiles(ctx.r(), &geometries, xray_pos, focus_ring, layer, push)
                 }
             }
+        }
+    }
+
+    fn render_uncovered_top_borders<R: NiriRenderer>(
+        &self,
+        geometries: &geometry::Geometry<W::Id>,
+        focus_ring: bool,
+        push: &mut dyn FnMut(TilingTreeRenderElement<R>),
+    ) {
+        for (id, parts) in &geometries.uncovered_top_borders {
+            let Some(tile) = self.tile(*id) else { continue };
+            for (index, rect) in parts.iter().copied().enumerate() {
+                if let Some(element) = self.titlebars.render_uncovered_top_border(
+                    *id,
+                    index,
+                    rect,
+                    *tile.border().config(),
+                    focus_ring && Some(*id) == self.focus,
+                    tile.window().is_urgent(),
+                ) {
+                    push(element.into());
+                }
+            }
+        }
+    }
+
+    fn render_titlebars<R: NiriRenderer>(
+        &self,
+        renderer: &mut R,
+        geometries: &geometry::Geometry<W::Id>,
+        focus_ring: bool,
+        push: &mut dyn FnMut(TilingTreeRenderElement<R>),
+    ) {
+        for (id, titlebar) in &geometries.titlebars {
+            // A strip entry maps to the leaf it labels; anything
+            // else is its own leaf.
+            let leaf = geometries.titlebar_leaves.get(id).copied().unwrap_or(*id);
+            let mut titlebar = titlebar.clone();
+            titlebar.state = self.titlebar_state(leaf, focus_ring);
+            if !titlebar.visible {
+                continue;
+            }
+            // Match the decorated box's top corners, so a tab bar does not
+            // draw square shoulders above a rounded frame.
+            let radius = self
+                .tile(leaf)
+                .map(|tile| {
+                    tile.geometry_corner_radius_for(
+                        geometries
+                            .titlebar_corners
+                            .get(id)
+                            .copied()
+                            .unwrap_or(DecoratedCorners::NONE),
+                    )
+                })
+                .unwrap_or_default();
+            if let Some(element) = self.titlebars.render(
+                renderer,
+                *id,
+                &titlebar,
+                self.scale,
+                &self.options.layout.titlebar,
+                (f64::from(radius.top_left), f64::from(radius.top_right)),
+            ) {
+                push(element.into());
+            }
+        }
+    }
+
+    fn render_tiles<R: NiriRenderer>(
+        &self,
+        mut ctx: RenderCtx<R>,
+        geometries: &geometry::Geometry<W::Id>,
+        xray_pos: XrayPos,
+        focus_ring: bool,
+        layer: RenderLayer,
+        push: &mut dyn FnMut(TilingTreeRenderElement<R>),
+    ) {
+        let focus = self.focus;
+        let visible = self.visible_leaves();
+        for (id, node) in self.leaf_render_order(focus) {
+            let TreeNode::Leaf { tile } = node else {
+                continue;
+            };
+            if (!visible.contains(&id) && tile.alpha_animation.is_none())
+                || layer.is_normal() == tile.is_moving_between_workspaces()
+            {
+                continue;
+            }
+            let Some(rect) = geometries.leaf_boxes.get(&id) else {
+                continue;
+            };
+            let tile_pos = (rect.loc + tile.render_offset())
+                .to_physical_precise_round(self.scale)
+                .to_logical(self.scale);
+            let xray = xray_pos.offset(tile_pos);
+            tile.render(
+                ctx.r(),
+                tile_pos,
+                xray,
+                focus_ring && Some(id) == focus,
+                &mut |element| push(element.into()),
+            );
         }
     }
 
@@ -484,6 +516,53 @@ impl<W: LayoutElement> TilingTree<W> {
         Some((area?, children.clone()))
     }
 
+    /// When the tab a tabbed container shows changes, fades the newly shown tab in and the
+    /// previously shown one out (every other tab when the container is new).
+    fn animate_tab_switch(&mut self, id: NodeId, children: &[NodeId]) {
+        let active = self.shown_child_in(id);
+        if self.tab_active.get(&id).copied() == active {
+            return;
+        }
+        let movement = self.options.animations.window_movement.0;
+        let previous = self.tab_active.insert(id, active.unwrap_or(id));
+        for child in children {
+            let Some(leaf) = self.first_leaf_in(*child) else {
+                continue;
+            };
+            if let Some(tile) = self.tile_mut(leaf) {
+                if Some(*child) == active {
+                    tile.ensure_alpha_animates_to_1();
+                } else if previous.is_none() || previous == Some(*child) {
+                    tile.animate_alpha(1., 0., movement);
+                }
+            }
+        }
+    }
+
+    fn tab_infos(
+        &self,
+        children: &[NodeId],
+        geometries: &HashMap<NodeId, Rectangle<f64, Logical>>,
+    ) -> Vec<TabInfo> {
+        let config = self.options.layout.tab_indicator;
+        children
+            .iter()
+            .filter_map(|child| {
+                let leaf = self.first_leaf_in(*child)?;
+                let tile = self.tile(leaf)?;
+                let rect = geometries.get(&leaf)?;
+                Some(TabInfo::from_tile(
+                    tile,
+                    rect.loc,
+                    self.focus
+                        .is_some_and(|focus| self.contains_node(*child, focus)),
+                    tile.window().is_urgent(),
+                    &config,
+                ))
+            })
+            .collect()
+    }
+
     fn update_tab_indicators(
         &mut self,
         is_active: bool,
@@ -509,40 +588,9 @@ impl<W: LayoutElement> TilingTree<W> {
             let Some((area, _)) = self.tab_area(id, geometries) else {
                 continue;
             };
-            let active = self.shown_child_in(id);
-            if self.tab_active.get(&id).copied() != active {
-                let movement = self.options.animations.window_movement.0;
-                let previous = self.tab_active.insert(id, active.unwrap_or(id));
-                for child in &children {
-                    let Some(leaf) = self.first_leaf_in(*child) else {
-                        continue;
-                    };
-                    if let Some(tile) = self.tile_mut(leaf) {
-                        if Some(*child) == active {
-                            tile.ensure_alpha_animates_to_1();
-                        } else if previous.is_none() || previous == Some(*child) {
-                            tile.animate_alpha(1., 0., movement);
-                        }
-                    }
-                }
-            }
+            self.animate_tab_switch(id, &children);
             let config = self.options.layout.tab_indicator;
-            let tabs: Vec<_> = children
-                .iter()
-                .filter_map(|child| {
-                    let leaf = self.first_leaf_in(*child)?;
-                    let tile = self.tile(leaf)?;
-                    let rect = geometries.get(&leaf)?;
-                    Some(TabInfo::from_tile(
-                        tile,
-                        rect.loc,
-                        self.focus
-                            .is_some_and(|focus| self.contains_node(*child, focus)),
-                        tile.window().is_urgent(),
-                        &config,
-                    ))
-                })
-                .collect();
+            let tabs = self.tab_infos(&children, geometries);
             let is_new = !self.tab_indicators.contains_key(&id);
             let indicator = self
                 .tab_indicators

@@ -98,40 +98,7 @@ impl<W: LayoutElement> TilingTree<W> {
         };
         let moved_fullscreen = self.fullscreen_node() == Some(id);
         let node = if id == self.root {
-            let TreeNode::Split {
-                layout,
-                children,
-                percents,
-            } = std::mem::replace(
-                &mut self.nodes.get_mut(&self.root)?.value,
-                TreeNode::Split {
-                    layout: Layout::SplitH,
-                    children: Vec::new(),
-                    percents: Vec::new(),
-                },
-            )
-            else {
-                return None;
-            };
-            self.empty_representation_layout = Some(Layout::SplitH);
-            let children = children
-                .into_iter()
-                .map(|child| self.take_detached_node(child))
-                .collect::<Option<Vec<_>>>()?;
-            // The emptied root stays behind with its ID, like sway's workspace
-            // keeping its identity while `workspace_wrap_children` creates a new
-            // container (`sway/tree/workspace.c:898-910`). Handing the root's ID
-            // to the detached split would leave the ID live in both trees.
-            DetachedNode::Split {
-                old_id: NodeId(NODE_ID_COUNTER.next()),
-                layout,
-                children,
-                percents,
-                previous_layout: self.previous_split_layouts.remove(&id),
-                title_format: self.title_formats.remove(&id),
-                pending_mode: self.pending_modes.remove(&id),
-                sticky: self.sticky_splits.remove(&id),
-            }
+            self.take_root_as_detached()?
         } else {
             self.take_detached_node(id)?
         };
@@ -152,6 +119,45 @@ impl<W: LayoutElement> TilingTree<W> {
             },
             parent,
         ))
+    }
+
+    /// Detaches the root's contents as a new split, leaving an empty root behind.
+    fn take_root_as_detached(&mut self) -> Option<DetachedNode<W>> {
+        let id = self.root;
+        let TreeNode::Split {
+            layout,
+            children,
+            percents,
+        } = std::mem::replace(
+            &mut self.nodes.get_mut(&id)?.value,
+            TreeNode::Split {
+                layout: Layout::SplitH,
+                children: Vec::new(),
+                percents: Vec::new(),
+            },
+        )
+        else {
+            return None;
+        };
+        self.empty_representation_layout = Some(Layout::SplitH);
+        let children = children
+            .into_iter()
+            .map(|child| self.take_detached_node(child))
+            .collect::<Option<Vec<_>>>()?;
+        // The emptied root stays behind with its ID, like sway's workspace
+        // keeping its identity while `workspace_wrap_children` creates a new
+        // container (`sway/tree/workspace.c:898-910`). Handing the root's ID
+        // to the detached split would leave the ID live in both trees.
+        Some(DetachedNode::Split {
+            old_id: NodeId(NODE_ID_COUNTER.next()),
+            layout,
+            children,
+            percents,
+            previous_layout: self.previous_split_layouts.remove(&id),
+            title_format: self.title_formats.remove(&id),
+            pending_mode: self.pending_modes.remove(&id),
+            sticky: self.sticky_splits.remove(&id),
+        })
     }
 
     pub fn attach_subtree(
@@ -196,58 +202,19 @@ impl<W: LayoutElement> TilingTree<W> {
         let focus_history = subtree.focus_history;
         let mut remapped = Vec::new();
         let node = if self.is_empty() && unwrap_into_empty_root {
-            match subtree.node {
-                DetachedNode::Split {
-                    old_id,
-                    layout,
-                    children,
-                    percents: detached_percents,
-                    previous_layout,
-                    title_format,
-                    pending_mode,
-                    sticky,
-                } => {
-                    self.attach_split_to_empty_root(
-                        DetachedSplit {
-                            old_id,
-                            layout,
-                            children,
-                            percents: detached_percents,
-                            previous_layout,
-                            title_format,
-                            pending_mode,
-                            sticky,
-                        },
-                        focus_history,
-                        &mut remapped,
-                    );
+            match subtree.node.into_split() {
+                Ok(split) => {
+                    self.attach_split_to_empty_root(split, focus_history, &mut remapped);
                     return (self.root, remapped);
                 }
-                node => node,
+                Err(node) => node,
             }
         } else {
             subtree.node
         };
         let height = node.height();
         let id = self.insert_detached_node(node, None, &mut remapped);
-        let (parent, after) =
-            match target.and_then(|target| self.nodes.get(&target).map(|node| (target, node))) {
-                Some((
-                    target,
-                    Node {
-                        parent: Some(parent),
-                        value: TreeNode::Leaf { .. },
-                    },
-                )) => (*parent, Some(target)),
-                Some((
-                    target,
-                    Node {
-                        value: TreeNode::Split { .. },
-                        ..
-                    },
-                )) => (target, None),
-                _ => (self.root, None),
-            };
+        let (parent, after) = self.attach_slot(target);
         // Placing a deep subtree under a deep target could exceed the depth
         // bound; the workspace root always has room, because the subtree came
         // from a tree that respected it.
@@ -269,6 +236,28 @@ impl<W: LayoutElement> TilingTree<W> {
         }
         self.request_window_sizes();
         (id, remapped)
+    }
+
+    /// Where an attached subtree goes: after a target leaf, inside a target split, else at the
+    /// end of the root.
+    fn attach_slot(&self, target: Option<NodeId>) -> (NodeId, Option<NodeId>) {
+        match target.and_then(|target| self.nodes.get(&target).map(|node| (target, node))) {
+            Some((
+                target,
+                Node {
+                    parent: Some(parent),
+                    value: TreeNode::Leaf { .. },
+                },
+            )) => (*parent, Some(target)),
+            Some((
+                target,
+                Node {
+                    value: TreeNode::Split { .. },
+                    ..
+                },
+            )) => (target, None),
+            _ => (self.root, None),
+        }
     }
 
     fn attach_split_to_empty_root(
