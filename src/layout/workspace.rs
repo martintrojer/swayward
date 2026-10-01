@@ -1287,7 +1287,9 @@ impl<W: LayoutElement> Workspace<W> {
     }
 
     pub fn clear_floating_tree_fullscreen(&mut self, root: NodeId) {
-        let tree = self.floating.tree_mut(root).unwrap();
+        let Some(tree) = self.floating.tree_mut(root) else {
+            return;
+        };
         if let Some(fullscreen) = tree.fullscreen_node() {
             tree.set_node_fullscreen(fullscreen, None);
         }
@@ -2668,7 +2670,10 @@ impl<W: LayoutElement> Workspace<W> {
                 .tree_root_for_node(id)
                 .filter(|root| *root != id)
             {
-                Some(root) => self.floating.tree_mut(root).unwrap(),
+                Some(root) => match self.floating.tree_mut(root) {
+                    Some(tree) => tree,
+                    None => return false,
+                },
                 None => return false,
             }
         };
@@ -2813,7 +2818,7 @@ impl<W: LayoutElement> Workspace<W> {
             if floating {
                 return Some(root);
             }
-            let subtree = self.floating.remove_tree(root).unwrap();
+            let subtree = self.floating.remove_tree(root)?;
             let (root, _) = self.attach_tiling_subtree(subtree);
             if self.floating.is_empty() {
                 self.floating_is_active = FloatingActive::No;

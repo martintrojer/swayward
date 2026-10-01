@@ -1077,10 +1077,11 @@ impl<W: LayoutElement> Monitor<W> {
         activate: ActivateWindow,
     ) {
         let source_workspace_idx = if let Some(window) = window {
-            self.workspaces
-                .iter()
-                .position(|ws| ws.has_window(window))
-                .unwrap()
+            let Some(idx) = self.workspaces.iter().position(|ws| ws.has_window(window)) else {
+                warn!("move_to_workspace: window is not on this monitor");
+                return;
+            };
+            idx
         } else {
             self.active_workspace_idx
         };
@@ -1116,9 +1117,11 @@ impl<W: LayoutElement> Monitor<W> {
                     .flatten()
             });
         if let Some(root) = tree_root {
-            let removed = self.workspaces[source_workspace_idx]
-                .remove_floating_tree(root)
-                .unwrap();
+            let Some(removed) = self.workspaces[source_workspace_idx].remove_floating_tree(root)
+            else {
+                warn!("move_to_workspace: floating tree root reported for the window is gone");
+                return;
+            };
             self.workspaces[new_idx].add_floating_tree(removed, false);
             if self.workspace_switch.is_none() {
                 self.consider_destroy_workspace(source_id);
@@ -1132,10 +1135,16 @@ impl<W: LayoutElement> Monitor<W> {
         };
         let window = window.clone();
 
+        if !workspace.has_window(&window) {
+            warn!("move_to_workspace: active window is not on its workspace");
+            return;
+        }
+        // A tile with no render position (one whose geometry was not assigned)
+        // still moves; only its animation starts from the origin.
         let mut old_render_pos = workspace
             .tiles_with_render_positions()
             .find_map(|(tile, offset, _visible)| (tile.window().id() == &window).then_some(offset))
-            .unwrap();
+            .unwrap_or_default();
 
         let fullscreen = workspace.fullscreen_mode();
         let fullscreen_window = workspace.fullscreen_window().cloned();
@@ -1177,7 +1186,11 @@ impl<W: LayoutElement> Monitor<W> {
             self.consider_destroy_workspace(source_id);
         }
 
-        let new_idx = self.idx_of_ws(new_id).unwrap();
+        // The target holds the moved window, so clean-up keeps it.
+        let Some(new_idx) = self.idx_of_ws(new_id) else {
+            warn!("move_to_workspace: target workspace vanished after the move");
+            return;
+        };
 
         // Animate vertical movement between workspaces.
         //
@@ -1189,12 +1202,13 @@ impl<W: LayoutElement> Monitor<W> {
                 self.workspace_size_with_gap(1.).h * (source_workspace_idx as f64 - new_idx as f64);
         }
 
-        let (tile, new_render_pos) = self.workspaces[new_idx]
+        if let Some((tile, new_render_pos)) = self.workspaces[new_idx]
             .tiles_with_render_positions_mut(false)
             .find(|(tile, _)| tile.window().id() == &window)
-            .unwrap();
-        tile.animate_move_from_with_config(old_render_pos - new_render_pos, config);
-        tile.set_anim_y_between_workspaces();
+        {
+            tile.animate_move_from_with_config(old_render_pos - new_render_pos, config);
+            tile.set_anim_y_between_workspaces();
+        }
     }
 
     pub fn move_focused_to_workspace(&mut self, target: WorkspaceId, activate: bool) {
@@ -1203,8 +1217,12 @@ impl<W: LayoutElement> Monitor<W> {
             return;
         }
 
-        let source_idx = self.idx_of_ws(source_workspace).unwrap();
-        let target_idx = self.idx_of_ws(target).unwrap();
+        let (Some(source_idx), Some(target_idx)) =
+            (self.idx_of_ws(source_workspace), self.idx_of_ws(target))
+        else {
+            warn!("move_focused_to_workspace: source or target workspace is not on this monitor");
+            return;
+        };
         let workspace = &mut self.workspaces[source_idx];
         if workspace.floating_is_active() {
             let activate = if activate {
@@ -1222,8 +1240,11 @@ impl<W: LayoutElement> Monitor<W> {
         let mut old_render_pos = workspace
             .tiles_with_render_positions()
             .find_map(|(tile, pos, _)| (tile.window().id() == &window).then_some(pos))
-            .unwrap();
-        let tile = workspace.remove_active_tiling_tile().unwrap();
+            .unwrap_or_default();
+        let Some(tile) = workspace.remove_active_tiling_tile() else {
+            warn!("move_focused_to_workspace: active window has no tiling tile");
+            return;
+        };
 
         old_render_pos.y +=
             self.workspace_size_with_gap(1.).h * (source_idx as f64 - target_idx as f64);
@@ -1238,13 +1259,18 @@ impl<W: LayoutElement> Monitor<W> {
             self.consider_destroy_workspace(source_workspace);
         }
 
-        let target_idx = self.idx_of_ws(target).unwrap();
-        let (tile, new_render_pos) = self.workspaces[target_idx]
+        // The target holds the moved window, so clean-up keeps it.
+        let Some(target_idx) = self.idx_of_ws(target) else {
+            warn!("move_focused_to_workspace: target workspace vanished after the move");
+            return;
+        };
+        if let Some((tile, new_render_pos)) = self.workspaces[target_idx]
             .tiles_with_render_positions_mut(false)
             .find(|(tile, _)| tile.window().id() == &window)
-            .unwrap();
-        tile.animate_move_from_with_config(old_render_pos - new_render_pos, config);
-        tile.set_anim_y_between_workspaces();
+        {
+            tile.animate_move_from_with_config(old_render_pos - new_render_pos, config);
+            tile.set_anim_y_between_workspaces();
+        }
     }
 
     pub fn switch_workspace_up(&mut self) {

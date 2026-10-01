@@ -3723,42 +3723,9 @@ impl<W: LayoutElement> Layout<W> {
         let MonitorSet::Normal { monitors, .. } = &mut self.monitor_set else {
             return Err("cannot swap containers without an output".into());
         };
-        let first_monitor = monitors
-            .iter()
-            .position(|monitor| monitor.has_ws(first_workspace))
-            .ok_or_else(|| "No matching node.".to_owned())?;
-        let second_monitor = monitors
-            .iter()
-            .position(|monitor| monitor.has_ws(second_workspace))
-            .ok_or_else(|| "No matching node.".to_owned())?;
-        let (first_ws, second_ws) = if first_monitor == second_monitor {
-            let monitor = &mut monitors[first_monitor];
-            let first_idx = monitor.idx_of_ws(first_workspace).unwrap();
-            let second_idx = monitor.idx_of_ws(second_workspace).unwrap();
-            if first_idx < second_idx {
-                let (before, after) = monitor.workspaces.split_at_mut(second_idx);
-                (&mut before[first_idx], &mut after[0])
-            } else {
-                let (before, after) = monitor.workspaces.split_at_mut(first_idx);
-                (&mut after[0], &mut before[second_idx])
-            }
-        } else if first_monitor < second_monitor {
-            let (before, after) = monitors.split_at_mut(second_monitor);
-            let first_idx = before[first_monitor].idx_of_ws(first_workspace).unwrap();
-            let second_idx = after[0].idx_of_ws(second_workspace).unwrap();
-            (
-                &mut before[first_monitor].workspaces[first_idx],
-                &mut after[0].workspaces[second_idx],
-            )
-        } else {
-            let (before, after) = monitors.split_at_mut(first_monitor);
-            let first_idx = after[0].idx_of_ws(first_workspace).unwrap();
-            let second_idx = before[second_monitor].idx_of_ws(second_workspace).unwrap();
-            (
-                &mut after[0].workspaces[first_idx],
-                &mut before[second_monitor].workspaces[second_idx],
-            )
-        };
+        let (first_ws, second_ws) =
+            Self::distinct_workspaces_mut(monitors, first_workspace, second_workspace)
+                .ok_or_else(|| "No matching node.".to_owned())?;
         let (mut first_subtree, first_slot) = first_ws
             .detach_tiling_subtree_for_swap(first)
             .ok_or_else(|| "No matching node.".to_owned())?;
@@ -3778,6 +3745,55 @@ impl<W: LayoutElement> Layout<W> {
             first: first_remapped,
             second: second_remapped,
         })
+    }
+
+    /// Mutable borrows of two distinct workspaces, wherever they live.
+    ///
+    /// Returns `None` when either is missing or both name the same workspace,
+    /// so callers report "No matching node." instead of panicking on a stale
+    /// id or an aliasing borrow.
+    fn distinct_workspaces_mut(
+        monitors: &mut [Monitor<W>],
+        first: WorkspaceId,
+        second: WorkspaceId,
+    ) -> Option<(&mut Workspace<W>, &mut Workspace<W>)> {
+        if first == second {
+            return None;
+        }
+        let first_monitor = monitors.iter().position(|monitor| monitor.has_ws(first))?;
+        let second_monitor = monitors.iter().position(|monitor| monitor.has_ws(second))?;
+        if first_monitor == second_monitor {
+            let monitor = &mut monitors[first_monitor];
+            let first_idx = monitor.idx_of_ws(first)?;
+            let second_idx = monitor.idx_of_ws(second)?;
+            if first_idx < second_idx {
+                let (before, after) = monitor.workspaces.split_at_mut(second_idx);
+                Some((&mut before[first_idx], after.first_mut()?))
+            } else {
+                let (before, after) = monitor.workspaces.split_at_mut(first_idx);
+                Some((after.first_mut()?, &mut before[second_idx]))
+            }
+        } else if first_monitor < second_monitor {
+            let (before, after) = monitors.split_at_mut(second_monitor);
+            let first_monitor = &mut before[first_monitor];
+            let second_monitor = after.first_mut()?;
+            let first_idx = first_monitor.idx_of_ws(first)?;
+            let second_idx = second_monitor.idx_of_ws(second)?;
+            Some((
+                &mut first_monitor.workspaces[first_idx],
+                &mut second_monitor.workspaces[second_idx],
+            ))
+        } else {
+            let (before, after) = monitors.split_at_mut(first_monitor);
+            let first_monitor = after.first_mut()?;
+            let second_monitor = &mut before[second_monitor];
+            let first_idx = first_monitor.idx_of_ws(first)?;
+            let second_idx = second_monitor.idx_of_ws(second)?;
+            Some((
+                &mut first_monitor.workspaces[first_idx],
+                &mut second_monitor.workspaces[second_idx],
+            ))
+        }
     }
 
     pub fn move_tiling_subtree_to_node(
@@ -3805,38 +3821,9 @@ impl<W: LayoutElement> Layout<W> {
                 .iter()
                 .position(|monitor| monitor.has_ws(source_workspace))
                 .ok_or_else(|| "No matching node.".to_owned())?;
-            let target_monitor = monitors
-                .iter()
-                .position(|monitor| monitor.has_ws(target_workspace))
-                .ok_or_else(|| "No matching node.".to_owned())?;
-            let (source_ws, target_ws) = if source_monitor == target_monitor {
-                let monitor = &mut monitors[source_monitor];
-                let source_idx = monitor.idx_of_ws(source_workspace).unwrap();
-                let target_idx = monitor.idx_of_ws(target_workspace).unwrap();
-                if source_idx < target_idx {
-                    let (before, after) = monitor.workspaces.split_at_mut(target_idx);
-                    (&mut before[source_idx], &mut after[0])
-                } else {
-                    let (before, after) = monitor.workspaces.split_at_mut(source_idx);
-                    (&mut after[0], &mut before[target_idx])
-                }
-            } else if source_monitor < target_monitor {
-                let (before, after) = monitors.split_at_mut(target_monitor);
-                let source_idx = before[source_monitor].idx_of_ws(source_workspace).unwrap();
-                let target_idx = after[0].idx_of_ws(target_workspace).unwrap();
-                (
-                    &mut before[source_monitor].workspaces[source_idx],
-                    &mut after[0].workspaces[target_idx],
-                )
-            } else {
-                let (before, after) = monitors.split_at_mut(source_monitor);
-                let source_idx = after[0].idx_of_ws(source_workspace).unwrap();
-                let target_idx = before[target_monitor].idx_of_ws(target_workspace).unwrap();
-                (
-                    &mut after[0].workspaces[source_idx],
-                    &mut before[target_monitor].workspaces[target_idx],
-                )
-            };
+            let (source_ws, target_ws) =
+                Self::distinct_workspaces_mut(monitors, source_workspace, target_workspace)
+                    .ok_or_else(|| "No matching node.".to_owned())?;
             let (subtree, old_parent) = source_ws
                 .detach_tiling_subtree(source)
                 .ok_or_else(|| "No matching node.".to_owned())?;
@@ -4148,10 +4135,14 @@ impl<W: LayoutElement> Layout<W> {
             self.move_to_workspace_id(window, target_workspace, ActivateWindow::No);
         }
         if let Some(window) = moved_window.filter(|_| moved_window_was_focused) {
-            self.workspaces_mut()
+            // The move may have been refused, so the target need not exist or
+            // hold the window any more.
+            if let Some(workspace) = self
+                .workspaces_mut()
                 .find(|workspace| workspace.id() == target_workspace)
-                .unwrap()
-                .activate_window(&window);
+            {
+                workspace.activate_window(&window);
+            }
         }
         Ok(())
     }
@@ -4259,7 +4250,9 @@ impl<W: LayoutElement> Layout<W> {
         else {
             return false;
         };
-        let source_idx = monitor.idx_of_ws(source).unwrap();
+        let Some(source_idx) = monitor.idx_of_ws(source) else {
+            return false;
+        };
         let whole_tree =
             group.is_some() || monitor.workspaces[source_idx].window_is_floating_root(window);
         let changed = match group {
@@ -4271,9 +4264,13 @@ impl<W: LayoutElement> Layout<W> {
         }
         let target = monitor.active_workspace_ref().id();
         if whole_tree && sticky && source != target {
+            // The active workspace is on this monitor by construction.
+            let Some(target_idx) = monitor.idx_of_ws(target) else {
+                warn!("set_sticky: active workspace is not on its own monitor");
+                return true;
+            };
             let removed_trees = monitor.workspaces[source_idx].take_sticky_trees();
             let removed = monitor.workspaces[source_idx].take_sticky_tiles();
-            let target_idx = monitor.idx_of_ws(target).unwrap();
             for removed in removed_trees {
                 monitor.workspaces[target_idx].add_floating_tree(removed, false);
             }
@@ -4323,12 +4320,18 @@ impl<W: LayoutElement> Layout<W> {
         });
         if let Some((source_workspace, root)) = floating_tree {
             let removed = {
-                let workspace = self
+                let Some(workspace) = self
                     .workspaces_mut()
                     .find(|workspace| workspace.id() == source_workspace)
-                    .unwrap();
+                else {
+                    return;
+                };
                 workspace.clear_floating_tree_fullscreen(root);
-                workspace.remove_floating_tree(root).unwrap()
+                let Some(removed) = workspace.remove_floating_tree(root) else {
+                    warn!("move_to_scratchpad: floating tree root reported for the window is gone");
+                    return;
+                };
+                removed
             };
             for id in removed.window_ids() {
                 if !self.scratchpad_windows.contains(id) {
@@ -4363,6 +4366,29 @@ impl<W: LayoutElement> Layout<W> {
         }
     }
 
+    /// Moves scratchpad tree `index` onto `workspace` and returns the window
+    /// it shows. The tree stays hidden if the workspace or its first window is
+    /// missing, instead of being dropped.
+    fn show_scratchpad_tree(&mut self, index: usize, workspace: WorkspaceId) -> Option<W::Id> {
+        let shown = self
+            .scratchpad_trees
+            .get(index)?
+            .window_ids()
+            .first()?
+            .clone();
+        if !self
+            .workspaces()
+            .any(|(_, _, candidate)| candidate.id() == workspace)
+        {
+            return None;
+        }
+        let removed = self.scratchpad_trees.remove(index)?;
+        self.workspaces_mut()
+            .find(|candidate| candidate.id() == workspace)?
+            .add_floating_tree(removed, true);
+        Some(shown)
+    }
+
     pub fn show_scratchpad(&mut self, window: Option<&W::Id>) -> Option<W::Id> {
         let focused = self.focus().map(|window| window.id().clone());
         let shown = focused
@@ -4393,13 +4419,7 @@ impl<W: LayoutElement> Layout<W> {
                     workspace.disable_fullscreen();
                 }
             }
-            let removed = self.scratchpad_trees.remove(index)?;
-            let shown = removed.window_ids().first()?.clone();
-            self.workspaces_mut()
-                .find(|workspace| workspace.id() == active_workspace)
-                .unwrap()
-                .add_floating_tree(removed, true);
-            return Some(shown);
+            return self.show_scratchpad_tree(index, active_workspace);
         }
         let mut target_index = window.and_then(|window| {
             self.scratchpad
@@ -4432,13 +4452,7 @@ impl<W: LayoutElement> Layout<W> {
                 .position(|removed| removed.contains_window(&shown))
             {
                 let active_workspace = self.active_workspace()?.id();
-                let removed = self.scratchpad_trees.remove(index)?;
-                let shown = removed.window_ids().first()?.clone();
-                self.workspaces_mut()
-                    .find(|workspace| workspace.id() == active_workspace)
-                    .unwrap()
-                    .add_floating_tree(removed, true);
-                return Some(shown);
+                return self.show_scratchpad_tree(index, active_workspace);
             }
             target_index = self
                 .scratchpad
@@ -4457,13 +4471,20 @@ impl<W: LayoutElement> Layout<W> {
             }
         }
 
+        // Find the destination before taking the window out of the scratchpad,
+        // so a missing workspace leaves it hidden rather than dropping it.
+        if !self
+            .workspaces()
+            .any(|(_, _, workspace)| workspace.id() == active_workspace)
+        {
+            return None;
+        }
         let mut removed = self.scratchpad.remove(index)?;
         removed.is_floating = true;
         let shown = removed.tile.window().id().clone();
         let workspace = self
             .workspaces_mut()
-            .find(|workspace| workspace.id() == active_workspace)
-            .unwrap();
+            .find(|workspace| workspace.id() == active_workspace)?;
         workspace.remap_floating_position(&mut removed.tile, removed.floating_working_area);
         workspace.add_tile(
             removed.tile,
@@ -5990,10 +6011,9 @@ impl<W: LayoutElement> Layout<W> {
             ..
         } = &mut self.monitor_set
         {
-            let new_idx = monitors
-                .iter()
-                .position(|mon| &mon.output == output)
-                .unwrap();
+            let Some(new_idx) = monitors.iter().position(|mon| &mon.output == output) else {
+                return;
+            };
 
             let (mon_idx, ws_idx) = if let Some(window) = window {
                 let Some(location) = monitors.iter().enumerate().find_map(|(mon_idx, mon)| {
@@ -6030,11 +6050,19 @@ impl<W: LayoutElement> Layout<W> {
             else {
                 unreachable!()
             };
-            let new_idx = monitors
-                .iter()
-                .position(|mon| mon.output == destination_output)
-                .unwrap();
-            let ws_idx = monitors[mon_idx].idx_of_ws(source_ws_id).unwrap();
+            // prepare_workspace_at may have created or reaped workspaces, so
+            // find both ends again by identity.
+            let (Some(new_idx), Some(ws_idx)) = (
+                monitors
+                    .iter()
+                    .position(|mon| mon.output == destination_output),
+                monitors
+                    .get(mon_idx)
+                    .and_then(|mon| mon.idx_of_ws(source_ws_id)),
+            ) else {
+                warn!("move_to_output: source or destination vanished while preparing the target");
+                return;
+            };
 
             let mon = &mut monitors[mon_idx];
             let activate = activate.map_smart(|| {
@@ -6056,7 +6084,10 @@ impl<W: LayoutElement> Layout<W> {
             let window = window.clone();
 
             if let Some(root) = ws.floating_tree_root_for_window(&window) {
-                let removed = ws.remove_floating_tree(root).unwrap();
+                let Some(removed) = ws.remove_floating_tree(root) else {
+                    warn!("move_to_output: floating tree root reported for the window is gone");
+                    return;
+                };
                 monitors[new_idx].workspaces[workspace_idx].add_floating_tree(removed, true);
                 if activate.map_smart(|| false) {
                     *active_monitor_idx = new_idx;
@@ -6162,28 +6193,32 @@ impl<W: LayoutElement> Layout<W> {
         else {
             return;
         };
-        let source_monitor = monitors
-            .iter()
-            .position(|monitor| monitor.has_ws(source_workspace))
-            .unwrap();
-        let target_monitor = monitors
-            .iter()
-            .position(|monitor| monitor.has_ws(target))
-            .unwrap();
+        // prepare_workspace_at may have created or reaped workspaces.
+        let (Some(source_monitor), Some(target_monitor)) = (
+            monitors
+                .iter()
+                .position(|monitor| monitor.has_ws(source_workspace)),
+            monitors.iter().position(|monitor| monitor.has_ws(target)),
+        ) else {
+            warn!("move_focused_to_output: source or target workspace vanished");
+            return;
+        };
         if source_monitor == target_monitor {
             monitors[source_monitor].move_focused_to_workspace(target, activate);
             return;
         }
 
-        let source_idx = monitors[source_monitor]
-            .idx_of_ws(source_workspace)
-            .unwrap();
+        let (Some(source_idx), Some(target_idx)) = (
+            monitors[source_monitor].idx_of_ws(source_workspace),
+            monitors[target_monitor].idx_of_ws(target),
+        ) else {
+            return;
+        };
         let Some(tile) =
             monitors[source_monitor].workspaces[source_idx].remove_active_tiling_tile()
         else {
             return;
         };
-        let target_idx = monitors[target_monitor].idx_of_ws(target).unwrap();
         monitors[target_monitor].add_tiling_tile(target_idx, tile, activate);
         if activate {
             *active_monitor_idx = target_monitor;
