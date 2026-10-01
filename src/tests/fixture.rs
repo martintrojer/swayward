@@ -13,6 +13,9 @@ use super::client::{Client, ClientId};
 use super::server::Server;
 use crate::swayward::{NewClient, SecurityContextMetadata, Swayward};
 
+/// Field order is drop order and is load-bearing: `state`, which holds the
+/// clients and the compositor, must drop before `event_loop`, or backend
+/// resources outlive their poller and leak fds across fixtures (012ac559).
 pub struct Fixture {
     pub state: State,
     pub handle: LoopHandle<'static, State>,
@@ -195,10 +198,10 @@ impl Fixture {
     /// For some reason, when running tests on many threads at once, a single roundtrip is
     /// sometimes not sufficient to get the configure events to the client.
     ///
-    /// I suspect that this is because these configure events are sent from the niri loop callback,
-    /// so they arrive after the sync done event and don't get processed in that client dispatch
-    /// cycle. I'm not sure why this would be dependent on multithreading. But if this is indeed
-    /// the issue, then a double roundtrip fixes it.
+    /// I suspect that this is because these configure events are sent from the compositor loop
+    /// callback, so they arrive after the sync done event and don't get processed in that
+    /// client dispatch cycle. I'm not sure why this would be dependent on multithreading. But
+    /// if this is indeed the issue, then a double roundtrip fixes it.
     pub fn double_roundtrip(&mut self, id: ClientId) {
         self.roundtrip(id);
         self.roundtrip(id);
@@ -211,11 +214,18 @@ impl State {
     }
 }
 
+const TEARDOWN_DISPATCHES: usize = 4;
+
 impl Drop for Fixture {
     fn drop(&mut self) {
         self.state.server.state.swayward.seat.remove_keyboard();
         self.state.clients.clear();
-        for _ in 0..4 {
+        // Dropping the clients only queues their disconnects; dispatch so the
+        // compositor destroys their resources before the fields drop. Four
+        // passes is a margin, not a measured minimum:
+        // repeated_property_fixtures_release_file_descriptors passes even with
+        // zero, so no test pins this count.
+        for _ in 0..TEARDOWN_DISPATCHES {
             self.dispatch();
         }
     }
