@@ -198,6 +198,39 @@ fn tree_fixture_comparison_rejects_every_rectangle_coordinate() {
 }
 
 #[test]
+fn tree_fixture_comparators_reject_a_missing_or_extra_child() {
+    type Comparator = fn(&Value, &Value, &str);
+    let comparators: [(&str, Comparator); 4] = [
+        ("focus", assert_focus_matches_fixture),
+        ("rectangle roles", assert_rectangle_roles_match_fixture),
+        ("percent", assert_percent_matches_fixture),
+        ("rectangles", assert_tree_rectangles_match_fixture),
+    ];
+    let original: Value = serde_json::from_str(&sway_fixture!("one_floating.tree.json")).unwrap();
+    let workspace = "/nodes/1/nodes/0";
+    for (name, compare) in comparators {
+        compare(&original, &original, "$tree");
+        for key in ["nodes", "floating_nodes"] {
+            let pointer = format!("{workspace}/{key}");
+            let mut missing = original.clone();
+            let children = missing.pointer_mut(&pointer).unwrap().as_array_mut().unwrap();
+            let child = children.pop().expect("fixture workspace has the child");
+            let mut extra = original.clone();
+            extra
+                .pointer_mut(&pointer)
+                .unwrap()
+                .as_array_mut()
+                .unwrap()
+                .push(child);
+            for (shape, actual) in [("missing", &missing), ("extra", &extra)] {
+                let rejected = std::panic::catch_unwind(|| compare(&original, actual, "$tree"));
+                assert!(rejected.is_err(), "{shape} {key} child accepted by {name}");
+            }
+        }
+    }
+}
+
+#[test]
 fn normalized_fixture_comparison_rejects_every_retained_value() {
     for (path, fixture, expected_scalars, expected_arrays) in [
         ("$tree", sway_fixture!("one_window.tree.json"), 111, 18),

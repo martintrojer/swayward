@@ -80,20 +80,31 @@ fn assert_event_shape(expected: &Value, actual: &Value, path: &str) {
     }
 }
 
+/// Pairs the `nodes` and `floating_nodes` children of two GET_TREE nodes,
+/// asserting first that both sides have the same number of each, so a
+/// dropped or extra child fails instead of being skipped by `zip`.
+fn tree_children<'a>(
+    expected: &'a Value,
+    actual: &'a Value,
+    path: &str,
+) -> Vec<(&'a Value, &'a Value, String)> {
+    let mut pairs = Vec::new();
+    for key in ["nodes", "floating_nodes"] {
+        let expected = expected[key].as_array().unwrap();
+        let actual = actual[key].as_array().unwrap();
+        assert_eq!(expected.len(), actual.len(), "{key} length at {path}");
+        for (index, (expected, actual)) in expected.iter().zip(actual).enumerate() {
+            pairs.push((expected, actual, format!("{path}.{key}[{index}]")));
+        }
+    }
+    pairs
+}
+
 fn assert_focus_matches_fixture(expected: &Value, actual: &Value, path: &str) {
-    let expected_children = expected["nodes"]
-        .as_array()
-        .unwrap()
+    let children = tree_children(expected, actual, path);
+    let id_map = children
         .iter()
-        .chain(expected["floating_nodes"].as_array().unwrap());
-    let actual_children = actual["nodes"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .chain(actual["floating_nodes"].as_array().unwrap());
-    let id_map = expected_children
-        .zip(actual_children)
-        .map(|(expected, actual)| (expected["id"].clone(), actual["id"].clone()))
+        .map(|(expected, actual, _)| (expected["id"].clone(), actual["id"].clone()))
         .collect::<Vec<_>>();
     let expected_focus = expected["focus"]
         .as_array()
@@ -112,16 +123,8 @@ fn assert_focus_matches_fixture(expected: &Value, actual: &Value, path: &str) {
         "focus at {path}"
     );
 
-    for key in ["nodes", "floating_nodes"] {
-        for (index, (expected, actual)) in expected[key]
-            .as_array()
-            .unwrap()
-            .iter()
-            .zip(actual[key].as_array().unwrap())
-            .enumerate()
-        {
-            assert_focus_matches_fixture(expected, actual, &format!("{path}.{key}[{index}]"));
-        }
+    for (expected, actual, path) in children {
+        assert_focus_matches_fixture(expected, actual, &path);
     }
 }
 
@@ -175,20 +178,8 @@ fn assert_rectangle_roles_match_fixture(expected: &Value, actual: &Value, path: 
         }
     }
 
-    for key in ["nodes", "floating_nodes"] {
-        for (index, (expected, actual)) in expected[key]
-            .as_array()
-            .unwrap()
-            .iter()
-            .zip(actual[key].as_array().unwrap())
-            .enumerate()
-        {
-            assert_rectangle_roles_match_fixture(
-                expected,
-                actual,
-                &format!("{path}.{key}[{index}]"),
-            );
-        }
+    for (expected, actual, path) in tree_children(expected, actual, path) {
+        assert_rectangle_roles_match_fixture(expected, actual, &path);
     }
 }
 
@@ -197,16 +188,8 @@ fn assert_percent_matches_fixture(expected: &Value, actual: &Value, path: &str) 
         assert_percent_value_matches_fixture(expected, actual, path);
     }
 
-    for key in ["nodes", "floating_nodes"] {
-        for (index, (expected, actual)) in expected[key]
-            .as_array()
-            .unwrap()
-            .iter()
-            .zip(actual[key].as_array().unwrap())
-            .enumerate()
-        {
-            assert_percent_matches_fixture(expected, actual, &format!("{path}.{key}[{index}]"));
-        }
+    for (expected, actual, path) in tree_children(expected, actual, path) {
+        assert_percent_matches_fixture(expected, actual, &path);
     }
 
     let expected_children = expected["nodes"].as_array().unwrap();
@@ -248,20 +231,8 @@ fn assert_tree_rectangles_match_fixture(expected: &Value, actual: &Value, path: 
             );
         }
     }
-    for child_key in ["nodes", "floating_nodes"] {
-        for (index, (expected, actual)) in expected[child_key]
-            .as_array()
-            .unwrap()
-            .iter()
-            .zip(actual[child_key].as_array().unwrap())
-            .enumerate()
-        {
-            assert_tree_rectangles_match_fixture(
-                expected,
-                actual,
-                &format!("{path}.{child_key}[{index}]"),
-            );
-        }
+    for (expected, actual, path) in tree_children(expected, actual, path) {
+        assert_tree_rectangles_match_fixture(expected, actual, &path);
     }
 }
 
