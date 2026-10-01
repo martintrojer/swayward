@@ -166,6 +166,49 @@ fn runtime_assign_supports_workspace_numbers() {
         .any(|(_, _, workspace)| workspace.sway_name().as_deref() == Some("7: target")));
 }
 
+/// Oracle: assign_number_matches_by_digit_prefix. Sway resolves an
+/// `assign ... number` target by its leading digits only
+/// (_workspace_by_number, sway/tree/workspace.c:493-502), so with "3: web"
+/// present, `number 3: mail` lands on "3: web" and creates nothing.
+#[test]
+fn runtime_assign_number_matches_an_existing_workspace_by_its_digits() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    assert!(crate::command::execute(f.niri_state(), "workspace 3: web")[0].success);
+    map_test_window(&mut f, client, "fixture-1");
+    assert!(crate::command::execute(f.niri_state(), "workspace 1")[0].success);
+    let outcome = crate::command::execute(
+        f.niri_state(),
+        r#"assign [app_id="^assigned$"] number 3: mail"#,
+    );
+    assert!(outcome[0].success, "{outcome:?}");
+    map_test_window(&mut f, client, "assigned");
+
+    let swayward = f.swayward();
+    let names = swayward
+        .layout
+        .workspaces()
+        .filter_map(|(_, _, workspace)| workspace.sway_name())
+        .collect::<Vec<_>>();
+    assert!(!names.iter().any(|name| name == "3: mail"), "{names:?}");
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &swayward.marks_by_window,
+        &swayward.marks_by_container,
+    ))
+    .unwrap();
+    let holder = tree["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|output| output["nodes"].as_array().unwrap())
+        .find(|workspace| find_json_node_with_app_id(workspace, "assigned").is_some())
+        .unwrap();
+    assert_eq!(holder["name"], "3: web");
+}
+
 #[test]
 fn runtime_assign_skips_a_missing_output_and_uses_the_next_match() {
     let mut f = Fixture::new();

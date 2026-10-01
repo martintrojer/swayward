@@ -807,12 +807,6 @@ pub(crate) fn sway_workspace_num(name: &str) -> i32 {
     parse_workspace_num(name).unwrap_or(-1)
 }
 
-fn workspace_number_matches(workspace_name: &str, number: &str) -> bool {
-    workspace_name
-        .strip_prefix(number)
-        .is_some_and(|suffix| !suffix.starts_with(|character: char| character.is_ascii_digit()))
-}
-
 fn workspace_matches_target<W: LayoutElement>(
     workspace: &Workspace<W>,
     target: &crate::command::WorkspaceTarget,
@@ -1966,7 +1960,7 @@ impl<W: LayoutElement> Layout<W> {
             .filter(|(_, _, workspace)| {
                 workspace
                     .sway_name()
-                    .is_some_and(|name| workspace_number_matches(&name, number))
+                    .is_some_and(|name| workspace_name_matches_number(&name, number))
             })
             .map(|(_, index, workspace)| (index, workspace))
             .collect::<Vec<_>>();
