@@ -791,6 +791,45 @@ impl<W: LayoutElement> FloatingLayout<W> {
         self.add_tile_at(0, tile, activate);
     }
 
+    /// Apply a split command to the active floating container. Sway wraps a
+    /// standalone floating view in a new split container (`container_split`,
+    /// sway/tree/container.c:1565-1620), so a lone leaf is promoted into a
+    /// resident floating tree with its geometry kept.
+    pub fn split_active(&mut self, layout: super::tiling_tree::Layout) {
+        self.interactive_resize = None;
+        let Some(active) = self.active_window_id.clone() else {
+            return;
+        };
+        if let Some((idx, _)) = self.tree_entry_for_window(&active) {
+            if let Some(entry) = self.tree_entries.get_mut(idx) {
+                entry.tree.split_focused(layout);
+            }
+            return;
+        }
+        let Some(index) = self.idx_of(&active) else {
+            return;
+        };
+        let FloatingEntry { tile, data } = self.entries.remove(index);
+        let rect = Rectangle::new(data.logical_pos, data.size);
+        let mut tree = TilingTree::new(
+            self.view_size,
+            rect,
+            false,
+            self.scale,
+            self.clock.clone(),
+            self.options.clone(),
+        );
+        tree.add_tile(tile, super::tiling_tree::InsertTarget::Focused);
+        tree.split_focused(layout);
+        let Some(root) = tree.parent_of_window(&active) else {
+            return;
+        };
+        let Some((subtree, _)) = tree.detach_subtree(root) else {
+            return;
+        };
+        self.add_tree(subtree, rect);
+    }
+
     pub fn add_tree(
         &mut self,
         subtree: DetachedSubtree<W>,

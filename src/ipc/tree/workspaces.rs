@@ -242,6 +242,12 @@ fn floating_part(context: &WorkspaceNodeContext<'_>, state: &WorkspaceState) -> 
     let mut floating_nodes = workspace
         .ipc_floating_trees()
         .filter_map(|(_, tree, sticky)| {
+            // `container_replace` hands a scratchpad view's membership to the
+            // container that `container_split` wraps it in
+            // (sway/tree/container.c:1565-1620), so a group holding a
+            // scratchpad window is itself the scratchpad container.
+            let in_scratchpad =
+                tree.any_window(&|window| context.compositor_layout.is_scratchpad_window(window));
             let mut node = describe_tiling(
                 tree,
                 &|window| workspace.windows().find(|mapped| mapped.window == *window),
@@ -251,7 +257,7 @@ fn floating_part(context: &WorkspaceNodeContext<'_>, state: &WorkspaceState) -> 
             )?;
             node.node_type = NodeType::FloatingCon;
             node.floating = Some("user_on".into());
-            node.scratchpad_state = Some("none".into());
+            node.scratchpad_state = Some(if in_scratchpad { "fresh" } else { "none" }.into());
             node.sticky = sticky;
             // A floating group's own tree keeps its internal focus while another layer is
             // active; sway reports a container focused only when it holds the seat focus.

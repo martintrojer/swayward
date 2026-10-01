@@ -4764,6 +4764,22 @@ fn adding_a_floating_window_next_to_a_floating_container_does_not_panic() {
 }
 
 #[test]
+fn splitting_a_floating_window_cancels_interactive_resize() {
+    let mut floating = TestWindowParams::new(3);
+    floating.is_floating = true;
+    check_ops([
+        Op::AddWindow { params: floating },
+        Op::AddOutput(1),
+        Op::InteractiveResizeBegin {
+            window: 3,
+            edges: ResizeEdge::RIGHT,
+        },
+        Op::SplitFocused(tiling_tree::Layout::SplitH),
+        Op::MoveWindowToWorkspaceDown(false),
+    ]);
+}
+
+#[test]
 fn interactive_resize_on_a_floating_container_does_not_panic() {
     check_ops([
         Op::AddOutput(1),

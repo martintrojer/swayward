@@ -266,6 +266,13 @@ impl<I> IpcNode<I> {
         }
     }
 
+    pub fn any_window(&self, f: &impl Fn(&I) -> bool) -> bool {
+        match self {
+            IpcNode::Leaf { window, .. } => f(window),
+            IpcNode::Split { children, .. } => children.iter().any(|child| child.any_window(f)),
+        }
+    }
+
     pub fn nodes(&self) -> Vec<(NodeId, IpcNodeKind)> {
         fn collect<I>(node: &IpcNode<I>, nodes: &mut Vec<(NodeId, IpcNodeKind)>) {
             match node {

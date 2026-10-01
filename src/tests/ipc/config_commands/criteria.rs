@@ -607,3 +607,38 @@ fn moving_a_focused_split_to_scratchpad_preserves_the_subtree() {
         crate::layout::tiling_tree::IpcNode::Split { children, .. } if children.len() == 3
     ));
 }
+
+// random seeds 21 step 9 and 127 step 4 (sway-1.12-random): a split command on
+// a focused floating view wraps it in a floating split container
+// (`container_split`, sway/tree/container.c:1565-1620).
+#[test]
+fn split_wraps_a_focused_floating_leaf() {
+    let mut fixture = Fixture::new();
+    fixture.add_output(1, (1920, 1080));
+    let client = fixture.add_client();
+    let window = fixture.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    fixture.roundtrip(client);
+    let window = fixture.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    fixture.double_roundtrip(client);
+    assert!(crate::command::execute(fixture.niri_state(), "floating enable")[0].success);
+
+    assert!(crate::command::execute(fixture.niri_state(), "split v")[0].success);
+
+    let workspace = fixture.swayward().layout.active_workspace().unwrap();
+    let (_, tree, _) = workspace.ipc_floating_trees().next().unwrap();
+    assert!(
+        matches!(
+            tree,
+            crate::layout::tiling_tree::IpcNode::Split {
+                layout: crate::layout::tiling_tree::Layout::SplitV,
+                ref children,
+                ..
+            } if matches!(children.as_slice(), [crate::layout::tiling_tree::IpcNode::Leaf { .. }])
+        ),
+        "{tree:?}"
+    );
+}

@@ -468,7 +468,9 @@ impl<W: LayoutElement> Workspace<W> {
     }
 
     pub fn split_focused(&mut self, layout: crate::layout::tiling_tree::Layout) {
-        if !self.floating_is_active.get() {
+        if self.floating_is_active.get() {
+            self.floating.split_active(layout);
+        } else {
             self.tiling.split_focused(layout);
         }
     }
