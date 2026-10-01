@@ -111,15 +111,18 @@ pub struct Client {
 pub struct State {
     pub qh: QueueHandle<State>,
 
+    // Registry and core Wayland protocols.
     pub globals: Vec<Global>,
     pub outputs: HashMap<WlOutput, String>,
-
     pub compositor: Option<WlCompositor>,
     pub subcompositor: Option<WlSubcompositor>,
     pub subsurfaces: Vec<(WlSurface, WlSubsurface)>,
     pub seat: Option<WlSeat>,
     pub keyboard: Option<WlKeyboard>,
     pub keyboard_enter_serial: Option<u32>,
+    pub shm: Option<WlShm>,
+
+    // xdg-shell and related protocols.
     pub xdg_wm_base: Option<XdgWmBase>,
     pub xdg_wm_base_version: Option<u32>,
     pub xdg_activation: Option<XdgActivationV1>,
@@ -127,6 +130,8 @@ pub struct State {
     pub xdg_toplevel_tag_manager: Option<XdgToplevelTagManagerV1>,
     pub keyboard_shortcuts_inhibit_manager: Option<ZwpKeyboardShortcutsInhibitManagerV1>,
     pub shortcut_inhibitor_events: Vec<bool>,
+
+    // Layer shell, foreign toplevel, workspaces, and session lock.
     pub layer_shell: Option<ZwlrLayerShellV1>,
     pub foreign_toplevel_manager: Option<ZwlrForeignToplevelManagerV1>,
     pub foreign_toplevels: Vec<ForeignToplevel>,
@@ -141,15 +146,17 @@ pub struct State {
     pub output_heads: Vec<OutputHead>,
     pub output_manager_serials: Vec<u32>,
     pub output_configuration_results: Vec<OutputConfigurationResult>,
+
+    // Buffers, capture, synthetic input, and test-only integration protocols.
     pub spbm: Option<WpSinglePixelBufferManagerV1>,
     pub viewporter: Option<WpViewporter>,
-    pub shm: Option<WlShm>,
     pub screencopy: Option<ZwlrScreencopyManagerV1>,
     pub gamma_control_manager: Option<ZwlrGammaControlManagerV1>,
     pub gamma_controls: Vec<GammaControl>,
     pub virtual_pointer_manager: Option<ZwlrVirtualPointerManagerV1>,
     pub mutter_x11_interop: Option<MutterX11Interop>,
 
+    // Live protocol objects collected by dispatch handlers.
     pub windows: Vec<Window>,
     pub popups: Vec<Popup>,
     pub layers: Vec<LayerSurface>,
