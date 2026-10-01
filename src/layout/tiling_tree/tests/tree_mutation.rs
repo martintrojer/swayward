@@ -333,6 +333,7 @@ fn split_on_a_nonempty_workspace_wraps_children_and_focuses_the_wrapper() {
         layout,
         children,
         percents,
+        ..
     } = &t.nodes[&t.root].value
     else {
         panic!("root must be a split");
@@ -349,6 +350,7 @@ fn split_on_a_nonempty_workspace_wraps_children_and_focuses_the_wrapper() {
             layout: Layout::SplitH,
             children,
             percents,
+            ..
         } if children == &[first, second] && percents == &[0.5, 0.5]
     ));
     assert_eq!(t.nodes[&first].parent, Some(*wrapper));

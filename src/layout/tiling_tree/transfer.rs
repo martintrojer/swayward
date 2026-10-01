@@ -128,12 +128,14 @@ impl<W: LayoutElement> TilingTree<W> {
             layout,
             children,
             percents,
+            meta,
         } = std::mem::replace(
             &mut self.nodes.get_mut(&id)?.value,
             TreeNode::Split {
                 layout: Layout::SplitH,
                 children: Vec::new(),
                 percents: Vec::new(),
+                meta: SplitMeta::default(),
             },
         )
         else {
@@ -153,10 +155,8 @@ impl<W: LayoutElement> TilingTree<W> {
             layout,
             children,
             percents,
-            previous_layout: self.previous_split_layouts.remove(&id),
-            title_format: self.title_formats.remove(&id),
+            meta,
             pending_mode: self.pending_modes.remove(&id),
-            sticky: self.sticky_splits.remove(&id),
         })
     }
 
@@ -271,31 +271,29 @@ impl<W: LayoutElement> TilingTree<W> {
             layout,
             children,
             percents: detached_percents,
-            previous_layout,
-            title_format,
+            meta: detached_meta,
             pending_mode,
-            sticky,
         } = split;
         if old_id != self.root {
             remapped.push((old_id, self.root));
         }
         let Some(TreeNode::Split {
             layout: root_layout,
+            meta,
             ..
         }) = self.nodes.get_mut(&self.root).map(|node| &mut node.value)
         else {
             unreachable!();
         };
         *root_layout = layout;
-        if let Some(layout) = previous_layout {
-            self.previous_split_layouts.insert(self.root, layout);
+        // The root keeps any metadata the detached split does not set.
+        if detached_meta.previous_layout.is_some() {
+            meta.previous_layout = detached_meta.previous_layout;
         }
-        if let Some(format) = title_format {
-            self.title_formats.insert(self.root, format);
+        if detached_meta.title_format.is_some() {
+            meta.title_format = detached_meta.title_format;
         }
-        if sticky {
-            self.sticky_splits.insert(self.root);
-        }
+        meta.sticky |= detached_meta.sticky;
         if let Some(mode) = pending_mode {
             self.pending_modes.insert(self.root, mode);
         }
@@ -351,10 +349,7 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub(super) fn take_detached_node(&mut self, id: NodeId) -> Option<DetachedNode<W>> {
-        let previous_layout = self.previous_split_layouts.get(&id).copied();
-        let title_format = self.title_formats.get(&id).cloned();
         let pending_mode = self.pending_modes.get(&id).copied();
-        let sticky = self.sticky_splits.contains(&id);
         let mapped_under_fullscreen = self.mapped_under_fullscreen.contains(&id);
         let node = self.remove_node(id)?;
         match node.value {
@@ -362,6 +357,7 @@ impl<W: LayoutElement> TilingTree<W> {
                 layout,
                 children,
                 percents,
+                meta,
             } => Some(DetachedNode::Split {
                 old_id: id,
                 layout,
@@ -370,10 +366,8 @@ impl<W: LayoutElement> TilingTree<W> {
                     .map(|child| self.take_detached_node(child))
                     .collect::<Option<Vec<_>>>()?,
                 percents,
-                previous_layout,
-                title_format,
+                meta,
                 pending_mode,
-                sticky,
             }),
             TreeNode::Leaf { tile } => Some(DetachedNode::Leaf {
                 old_id: id,
@@ -396,20 +390,16 @@ impl<W: LayoutElement> TilingTree<W> {
                 layout,
                 children,
                 percents,
-                previous_layout,
-                title_format,
+                meta,
                 pending_mode,
-                sticky,
             } => self.insert_detached_split(
                 DetachedSplit {
                     old_id,
                     layout,
                     children,
                     percents,
-                    previous_layout,
-                    title_format,
+                    meta,
                     pending_mode,
-                    sticky,
                 },
                 parent,
                 remapped,
@@ -453,10 +443,8 @@ impl<W: LayoutElement> TilingTree<W> {
             layout,
             children,
             percents,
-            previous_layout,
-            title_format,
+            meta,
             pending_mode,
-            sticky,
         } = split;
         let id = self.insert_with_id(
             old_id,
@@ -466,6 +454,7 @@ impl<W: LayoutElement> TilingTree<W> {
                     layout,
                     children: Vec::new(),
                     percents,
+                    meta,
                 },
             },
         );
@@ -485,15 +474,6 @@ impl<W: LayoutElement> TilingTree<W> {
             unreachable!();
         };
         *slot = children;
-        if let Some(layout) = previous_layout {
-            self.previous_split_layouts.insert(id, layout);
-        }
-        if let Some(format) = title_format {
-            self.title_formats.insert(id, format);
-        }
-        if sticky {
-            self.sticky_splits.insert(id);
-        }
         if let Some(mode) = pending_mode {
             self.pending_modes.insert(id, mode);
         }

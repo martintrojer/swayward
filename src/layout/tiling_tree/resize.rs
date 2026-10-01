@@ -188,6 +188,7 @@ impl<W: LayoutElement> TilingTree<W> {
                     layout: Layout::SplitV,
                     children,
                     percents,
+                    ..
                 },
             ..
         }) = self.nodes.get_mut(&parent)
@@ -564,6 +565,7 @@ impl<W: LayoutElement> TilingTree<W> {
                 layout: parent_layout,
                 children,
                 percents,
+                ..
             } = &node.value
             else {
                 return None;

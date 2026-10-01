@@ -12,6 +12,7 @@ fn directional_move_squashes_the_whole_tree() {
             layout: Layout::SplitH,
             children: vec![first, second],
             percents: vec![0.5, 0.5],
+            meta: SplitMeta::default(),
         },
     });
     let container = t.alloc(Node {
@@ -20,6 +21,7 @@ fn directional_move_squashes_the_whole_tree() {
             layout: Layout::SplitV,
             children: vec![child],
             percents: vec![1.],
+            meta: SplitMeta::default(),
         },
     });
     t.nodes.get_mut(&first).unwrap().parent = Some(child);
@@ -30,6 +32,7 @@ fn directional_move_squashes_the_whole_tree() {
         layout: Layout::SplitH,
         children: vec![container, third],
         percents: vec![0.5, 0.5],
+        meta: SplitMeta::default(),
     };
 
     assert!(t.move_direction(third, Direction::Left));
@@ -117,6 +120,7 @@ fn directional_move_squashes_after_reordering_siblings() {
             layout: Layout::SplitH,
             children: vec![first, second],
             percents: vec![0.5, 0.5],
+            meta: SplitMeta::default(),
         },
     });
     let container = t.alloc(Node {
@@ -125,6 +129,7 @@ fn directional_move_squashes_after_reordering_siblings() {
             layout: Layout::SplitV,
             children: vec![child],
             percents: vec![1.],
+            meta: SplitMeta::default(),
         },
     });
     t.nodes.get_mut(&first).unwrap().parent = Some(child);
@@ -136,6 +141,7 @@ fn directional_move_squashes_after_reordering_siblings() {
         layout: Layout::SplitH,
         children: vec![container, third, fourth],
         percents: vec![0.5, 0.25, 0.25],
+        meta: SplitMeta::default(),
     };
 
     assert!(t.move_direction(fourth, Direction::Left));
@@ -392,6 +398,7 @@ fn swapping_the_root_is_refused_instead_of_panicking() {
                 layout: Layout::SplitH,
                 children: Vec::new(),
                 percents: Vec::new(),
+                meta: SplitMeta::default(),
             },
         },
     );

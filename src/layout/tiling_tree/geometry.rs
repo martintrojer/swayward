@@ -28,7 +28,6 @@ pub(crate) struct Geometry<I> {
 
 struct AssignContext<'a, W: LayoutElement> {
     nodes: &'a HashMap<NodeId, Node<W>>,
-    title_formats: &'a HashMap<NodeId, String>,
     gaps: f64,
     titlebar_height: f64,
     fullscreen: &'a HashSet<NodeId>,
@@ -54,7 +53,6 @@ struct Assignment {
 /// Everything one tree geometry pass reads, borrowed from the tree and its layout options.
 pub(crate) struct GeometryInput<'a, W: LayoutElement> {
     pub nodes: &'a HashMap<NodeId, Node<W>>,
-    pub title_formats: &'a HashMap<NodeId, String>,
     pub root: NodeId,
     pub view_size: Size<f64, Logical>,
     pub parent_area: Rectangle<f64, Logical>,
@@ -77,7 +75,6 @@ pub(crate) fn compute<W: LayoutElement>(input: GeometryInput<'_, W>) -> Geometry
     let workspace_area = workspace_area(&input, gaps);
     let mut context = AssignContext {
         nodes: input.nodes,
-        title_formats: input.title_formats,
         gaps,
         titlebar_height: input.titlebar_height,
         fullscreen: &HashSet::new(),
@@ -627,7 +624,6 @@ fn assign_strip<W: LayoutElement>(
     result: &mut Geometry<W::Id>,
 ) {
     let nodes = context.nodes;
-    let title_formats = context.title_formats;
     let titlebar_height = context.titlebar_height;
     let fullscreen = context.fullscreen;
 
@@ -643,7 +639,7 @@ fn assign_strip<W: LayoutElement>(
     content.loc.y += total_height;
     content.size.h = (content.size.h - total_height).max(0.);
     for (index, child) in children.iter().enumerate() {
-        if let Some(entry) = first_window(nodes, title_formats, *child) {
+        if let Some(entry) = first_window(nodes, *child) {
             emit_strip_titlebar(
                 context,
                 layout,
@@ -766,6 +762,7 @@ fn assign<W: LayoutElement>(
             layout,
             children,
             percents,
+            ..
         } => match layout {
             Layout::SplitH | Layout::SplitV => assign_linear_split(
                 context,
@@ -834,21 +831,23 @@ fn split_gap(requested: f64, extent: f64, children: usize, minimum_child_extent:
 
 fn first_window<W: LayoutElement>(
     nodes: &HashMap<NodeId, Node<W>>,
-    title_formats: &HashMap<NodeId, String>,
     id: NodeId,
 ) -> Option<(NodeId, W::Id, String)> {
     match &nodes.get(&id)?.value {
         TreeNode::Leaf { tile } => Some((id, tile.window().id().clone(), tile.window().title())),
         TreeNode::Split {
-            layout, children, ..
+            layout,
+            children,
+            meta,
+            ..
         } => {
-            let (leaf, target, _) = first_window(nodes, title_formats, *children.first()?)?;
+            let (leaf, target, _) = first_window(nodes, *children.first()?)?;
             Some((
                 leaf,
                 target,
                 format_representation(
-                    title_formats.get(&id).map(String::as_str),
-                    &tree_representation(nodes, title_formats, *layout, children),
+                    meta.title_format.as_deref(),
+                    &tree_representation(nodes, *layout, children),
                 ),
             ))
         }
@@ -859,7 +858,6 @@ fn first_window<W: LayoutElement>(
 /// sway/tree/container.c:702-748).
 fn tree_representation<W: LayoutElement>(
     nodes: &HashMap<NodeId, Node<W>>,
-    title_formats: &HashMap<NodeId, String>,
     layout: Layout,
     children: &[NodeId],
 ) -> String {
@@ -874,10 +872,13 @@ fn tree_representation<W: LayoutElement>(
         .filter_map(|child| match &nodes.get(child)?.value {
             TreeNode::Leaf { tile } => Some(tile.window().title()),
             TreeNode::Split {
-                layout, children, ..
+                layout,
+                children,
+                meta,
+                ..
             } => Some(format_representation(
-                title_formats.get(child).map(String::as_str),
-                &tree_representation(nodes, title_formats, *layout, children),
+                meta.title_format.as_deref(),
+                &tree_representation(nodes, *layout, children),
             )),
         })
         .collect::<Vec<_>>()

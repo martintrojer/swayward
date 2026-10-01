@@ -247,19 +247,11 @@ impl<W: LayoutElement> TilingTree<W> {
 
     pub(super) fn remove_node(&mut self, id: NodeId) -> Option<Node<W>> {
         let node = self.nodes.remove(&id)?;
-        self.previous_split_layouts.remove(&id);
-        self.title_formats.remove(&id);
-        self.sticky_splits.remove(&id);
-        self.pending_modes.remove(&id);
-        self.mapped_under_fullscreen.remove(&id);
-        self.moved_under_fullscreen.remove(&id);
-        self.fullscreen_layout_wrappers.remove(&id);
-        self.pre_layout_ipc_rects.remove(&id);
-        self.tab_indicators.remove(&id);
-        self.tab_active.remove(&id);
+        for (_, table) in side_tables!(self, &mut) {
+            table.forget(id);
+        }
+        // tab_active also names nodes in its values: a container's shown child.
         self.tab_active.retain(|_, active| *active != id);
-        self.focus_history.retain(|candidate| *candidate != id);
-        self.ipc_stale_nodes.remove(&id);
         Some(node)
     }
 
@@ -459,6 +451,7 @@ impl<W: LayoutElement> TilingTree<W> {
                     vec![id, sibling]
                 },
                 percents: vec![0.5, 0.5],
+                meta: SplitMeta::default(),
             },
         });
         if let Some(Node {
@@ -600,7 +593,7 @@ impl<W: LayoutElement> TilingTree<W> {
 
     pub(super) fn wrap_root_for_direction(&mut self, id: NodeId, direction: Direction) {
         let layout = direction.axis();
-        let old_value = std::mem::replace(
+        let mut old_value = std::mem::replace(
             &mut self
                 .nodes
                 .get_mut(&self.root)
@@ -610,8 +603,15 @@ impl<W: LayoutElement> TilingTree<W> {
                 layout,
                 children: Vec::new(),
                 percents: Vec::new(),
+                meta: SplitMeta::default(),
             },
         );
+        // The root's metadata belongs to the workspace and stays with it; the container that
+        // takes over the root's children starts fresh.
+        let root_meta = match &mut old_value {
+            TreeNode::Split { meta, .. } => std::mem::take(meta),
+            TreeNode::Leaf { .. } => SplitMeta::default(),
+        };
         let old = self.alloc(Node {
             parent: Some(self.root),
             value: old_value,
@@ -650,6 +650,7 @@ impl<W: LayoutElement> TilingTree<W> {
             layout,
             children,
             percents,
+            meta: root_meta,
         };
     }
 

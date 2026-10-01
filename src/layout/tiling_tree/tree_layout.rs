@@ -107,14 +107,17 @@ impl<W: LayoutElement> TilingTree<W> {
         self.interactive_resize = None;
         self.fullscreen_tile_slot = false;
         if let Some(Node {
-            value: TreeNode::Split {
-                layout: current, ..
-            },
+            value:
+                TreeNode::Split {
+                    layout: current,
+                    meta,
+                    ..
+                },
             ..
         }) = self.nodes.get_mut(&id)
         {
             if matches!(*current, Layout::SplitH | Layout::SplitV) && *current != layout {
-                self.previous_split_layouts.insert(id, *current);
+                meta.previous_layout = Some(*current);
             }
             *current = layout;
             self.compact_tree();
@@ -313,10 +316,14 @@ impl<W: LayoutElement> TilingTree<W> {
         true
     }
 
+    pub(super) fn previous_layout(&self, id: NodeId) -> Option<Layout> {
+        self.split_meta(id).and_then(|meta| meta.previous_layout)
+    }
+
     pub fn restore_focused_split_layout(&mut self) -> Option<Vec<(NodeId, NodeId)>> {
         let (target, remapped) = self.focused_layout_target();
         let target = target?;
-        self.previous_split_layouts.contains_key(&target).then(|| {
+        self.previous_layout(target).is_some().then(|| {
             self.restore_node_layout(target);
             remapped
         })
@@ -330,7 +337,7 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub fn restore_node_layout(&mut self, target: NodeId) -> bool {
-        let Some(layout) = self.previous_split_layouts.get(&target).copied() else {
+        let Some(layout) = self.previous_layout(target) else {
             return self.nodes.contains_key(&target);
         };
         self.set_layout_for_command(target, layout);
@@ -355,11 +362,7 @@ impl<W: LayoutElement> TilingTree<W> {
                 layout: Layout::SplitV,
                 ..
             }) => Layout::SplitH,
-            _ => self
-                .previous_split_layouts
-                .get(&target)
-                .copied()
-                .unwrap_or(Layout::SplitH),
+            _ => self.previous_layout(target).unwrap_or(Layout::SplitH),
         };
         self.set_layout_for_command(target, layout);
     }
@@ -412,6 +415,7 @@ impl<W: LayoutElement> TilingTree<W> {
                 layout,
                 children: vec![id],
                 percents: vec![1.],
+                meta: SplitMeta::default(),
             },
         });
         if let Some(TreeNode::Split {
@@ -449,6 +453,7 @@ impl<W: LayoutElement> TilingTree<W> {
             layout: root_layout,
             children,
             percents,
+            ..
         }) = self.nodes.get_mut(&self.root).map(|node| &mut node.value)
         else {
             return self.root;
@@ -462,12 +467,14 @@ impl<W: LayoutElement> TilingTree<W> {
                 layout,
                 children: children.clone(),
                 percents,
+                meta: SplitMeta {
+                    previous_layout: matches!(root_layout, Layout::SplitH | Layout::SplitV)
+                        .then_some(root_layout),
+                    ..SplitMeta::default()
+                },
             },
         });
         self.ipc_stale_nodes.insert(wrapper);
-        if matches!(root_layout, Layout::SplitH | Layout::SplitV) {
-            self.previous_split_layouts.insert(wrapper, root_layout);
-        }
         for child in children {
             if let Some(node) = self.nodes.get_mut(&child) {
                 node.parent = Some(wrapper);
@@ -504,14 +511,17 @@ impl<W: LayoutElement> TilingTree<W> {
         self.interactive_resize = None;
         self.fullscreen_tile_slot = false;
         if let Some(Node {
-            value: TreeNode::Split {
-                layout: current, ..
-            },
+            value:
+                TreeNode::Split {
+                    layout: current,
+                    meta,
+                    ..
+                },
             ..
         }) = self.nodes.get_mut(&id)
         {
             if matches!(*current, Layout::SplitH | Layout::SplitV) && *current != layout {
-                self.previous_split_layouts.insert(id, *current);
+                meta.previous_layout = Some(*current);
             }
             *current = layout;
             self.request_window_sizes();

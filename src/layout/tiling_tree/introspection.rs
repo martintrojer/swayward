@@ -72,31 +72,37 @@ impl<W: LayoutElement> TilingTree<W> {
         self.tile(id).map(Tile::window)
     }
 
+    pub(super) fn split_meta(&self, id: NodeId) -> Option<&SplitMeta> {
+        match &self.nodes.get(&id)?.value {
+            TreeNode::Split { meta, .. } => Some(meta),
+            TreeNode::Leaf { .. } => None,
+        }
+    }
+
+    pub(super) fn split_meta_mut(&mut self, id: NodeId) -> Option<&mut SplitMeta> {
+        match &mut self.nodes.get_mut(&id)?.value {
+            TreeNode::Split { meta, .. } => Some(meta),
+            TreeNode::Leaf { .. } => None,
+        }
+    }
+
     pub fn set_title_format(&mut self, id: NodeId, format: String) -> bool {
-        if !self.is_split(id) {
+        let Some(meta) = self.split_meta_mut(id) else {
             return false;
-        }
-        if format == "%title" {
-            self.title_formats.remove(&id);
-        } else {
-            self.title_formats.insert(id, format);
-        }
+        };
+        meta.title_format = (format != "%title").then_some(format);
         true
     }
 
     pub fn is_split_sticky(&self, id: NodeId) -> bool {
-        self.sticky_splits.contains(&id)
+        self.split_meta(id).is_some_and(|meta| meta.sticky)
     }
 
     pub fn set_split_sticky(&mut self, id: NodeId, sticky: bool) -> bool {
-        if !self.is_split(id) {
+        let Some(meta) = self.split_meta_mut(id) else {
             return false;
-        }
-        if sticky {
-            self.sticky_splits.insert(id);
-        } else {
-            self.sticky_splits.remove(&id);
-        }
+        };
+        meta.sticky = sticky;
         true
     }
 
@@ -251,6 +257,7 @@ impl<'a, W: LayoutElement> IpcSnapshot<'a, W> {
                 layout,
                 children,
                 percents,
+                ..
             } => self.split(id, *layout, children, percents, percent),
             TreeNode::Leaf { tile } => self.leaf(id, tile, percent, inside_pending_wrapper),
         })
@@ -271,7 +278,9 @@ impl<'a, W: LayoutElement> IpcSnapshot<'a, W> {
         IpcNode::Split {
             id,
             layout,
-            title: tree.title_formats.get(&id).cloned(),
+            title: tree
+                .split_meta(id)
+                .and_then(|meta| meta.title_format.clone()),
             percent: pending_wrapper.then_some(0.).or(percent),
             rect: if pending_wrapper {
                 Rectangle::default()
@@ -287,7 +296,7 @@ impl<'a, W: LayoutElement> IpcSnapshot<'a, W> {
             focus: self.focus_order(children),
             focused: tree.focus == Some(id),
             fullscreen_mode: tree.fullscreen_mode(id).map_or(0, |mode| mode as i32),
-            sticky: tree.sticky_splits.contains(&id),
+            sticky: tree.is_split_sticky(id),
             children: children
                 .iter()
                 .zip(child_percents)

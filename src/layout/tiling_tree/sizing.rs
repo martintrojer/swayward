@@ -72,7 +72,6 @@ impl<W: LayoutElement> TilingTree<W> {
         let visible_leaves = self.visible_leaves();
         geometry::compute(geometry::GeometryInput {
             nodes: &self.nodes,
-            title_formats: &self.title_formats,
             root: self.root,
             view_size: self.view_size,
             parent_area: self.parent_area,

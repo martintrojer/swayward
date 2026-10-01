@@ -53,6 +53,7 @@ fn directional_focus_defers_the_innermost_wrap_while_walking_ancestors() {
                 layout: Layout::SplitH,
                 children: vec![first, focused],
                 percents: vec![0.5, 0.5],
+                meta: SplitMeta::default(),
             },
         });
         tree.nodes.get_mut(&first).unwrap().parent = Some(inner);
@@ -66,6 +67,7 @@ fn directional_focus_defers_the_innermost_wrap_while_walking_ancestors() {
                 vec![outer, inner]
             },
             percents: vec![0.5, 0.5],
+            meta: SplitMeta::default(),
         };
         tree.set_focus(focused);
         (tree, first, focused, outer)
@@ -271,6 +273,7 @@ fn layout_toggle_targets_the_parent_and_flattens_one_singleton_ancestor() {
             layout: Layout::SplitV,
             children: vec![first, second],
             percents: vec![0.5, 0.5],
+            meta: SplitMeta::default(),
         },
     });
     let parent = t.alloc(Node {
@@ -279,6 +282,7 @@ fn layout_toggle_targets_the_parent_and_flattens_one_singleton_ancestor() {
             layout: Layout::Stacked,
             children: vec![focused],
             percents: vec![1.],
+            meta: SplitMeta::default(),
         },
     });
     let grandparent = t.alloc(Node {
@@ -287,6 +291,7 @@ fn layout_toggle_targets_the_parent_and_flattens_one_singleton_ancestor() {
             layout: Layout::SplitV,
             children: vec![parent],
             percents: vec![1.],
+            meta: SplitMeta::default(),
         },
     });
     t.nodes.get_mut(&first).unwrap().parent = Some(focused);
@@ -297,9 +302,10 @@ fn layout_toggle_targets_the_parent_and_flattens_one_singleton_ancestor() {
         layout: Layout::SplitV,
         children: vec![grandparent],
         percents: vec![1.],
+        meta: SplitMeta::default(),
     };
     t.set_focus(focused);
-    t.title_formats.insert(focused, "child format".into());
+    t.set_title_format(focused, "child format".into());
     t.pending_modes.insert(
         parent,
         PendingMode {
@@ -330,7 +336,10 @@ fn layout_toggle_targets_the_parent_and_flattens_one_singleton_ancestor() {
         }
     ));
     assert_eq!(t.fullscreen_mode(focused), Some(FullscreenMode::Workspace));
-    assert_eq!(t.title_formats.get(&focused).unwrap(), "child format");
+    assert_eq!(
+        t.split_meta(focused).unwrap().title_format.as_deref(),
+        Some("child format")
+    );
 }
 
 #[test]
@@ -371,6 +380,7 @@ fn collapse_squashes_redundant_perpendicular_singleton_pairs() {
                 layout: child_layout,
                 children: vec![first, second],
                 percents: vec![0.5, 0.5],
+                meta: SplitMeta::default(),
             },
         });
         let container = t.alloc(Node {
@@ -379,6 +389,7 @@ fn collapse_squashes_redundant_perpendicular_singleton_pairs() {
                 layout: container_layout,
                 children: vec![child],
                 percents: vec![1.],
+                meta: SplitMeta::default(),
             },
         });
         t.nodes.get_mut(&first).unwrap().parent = Some(child);
@@ -388,6 +399,7 @@ fn collapse_squashes_redundant_perpendicular_singleton_pairs() {
             layout: grandparent_layout,
             children: vec![container],
             percents: vec![1.],
+            meta: SplitMeta::default(),
         };
 
         t.compact_tree();
@@ -478,6 +490,7 @@ fn split_descendant_of_stacked_container_has_no_inner_gap() {
             layout: Layout::SplitH,
             children: vec![first, second],
             percents: vec![0.5, 0.5],
+            meta: SplitMeta::default(),
         },
     });
     t.nodes.get_mut(&first).unwrap().parent = Some(split);
@@ -486,6 +499,7 @@ fn split_descendant_of_stacked_container_has_no_inner_gap() {
         layout: Layout::Stacked,
         children: vec![split],
         percents: vec![1.],
+        meta: SplitMeta::default(),
     };
 
     assert_eq!(t.geometry(first).unwrap().size.w, 240.);
@@ -503,6 +517,7 @@ fn deeply_nested_split_descendant_of_stacked_container_has_no_inner_gap() {
             layout: Layout::SplitH,
             children: vec![first, second],
             percents: vec![0.5, 0.5],
+            meta: SplitMeta::default(),
         },
     });
     let middle = t.alloc(Node {
@@ -511,6 +526,7 @@ fn deeply_nested_split_descendant_of_stacked_container_has_no_inner_gap() {
             layout: Layout::SplitV,
             children: vec![split],
             percents: vec![1.],
+            meta: SplitMeta::default(),
         },
     });
     t.nodes.get_mut(&first).unwrap().parent = Some(split);
@@ -520,6 +536,7 @@ fn deeply_nested_split_descendant_of_stacked_container_has_no_inner_gap() {
         layout: Layout::Stacked,
         children: vec![middle],
         percents: vec![1.],
+        meta: SplitMeta::default(),
     };
 
     assert_eq!(t.geometry(first).unwrap().size.w, 240.);
@@ -544,6 +561,7 @@ fn inner_gaps_shrink_and_floor_on_both_split_axes() {
         layout: Layout::SplitV,
         children: vec![first, second],
         percents: vec![0.5, 0.5],
+        meta: SplitMeta::default(),
     };
     let geometry = vertical.compute_geometry();
     assert_eq!(geometry.ipc_nodes[&first].size.h, 52.5);

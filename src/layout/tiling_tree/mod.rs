@@ -25,7 +25,7 @@ pub(crate) use depth::MAX_TREE_DEPTH;
 pub(crate) use depth::TOO_DEEP;
 use geometry::apply_struts;
 use node::Node;
-pub use node::{NodeId, TreeNode};
+pub use node::{NodeId, SplitMeta, TreeNode};
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::utils::{Logical, Point, Rectangle, Scale, Serial, Size};
 use swayward_config::utils::MergeWith as _;
@@ -90,10 +90,8 @@ struct DetachedSplit<W: LayoutElement> {
     layout: Layout,
     children: Vec<DetachedNode<W>>,
     percents: Vec<f64>,
-    previous_layout: Option<Layout>,
-    title_format: Option<String>,
+    meta: SplitMeta,
     pending_mode: Option<PendingMode>,
-    sticky: bool,
 }
 
 #[derive(Debug)]
@@ -103,10 +101,8 @@ enum DetachedNode<W: LayoutElement> {
         layout: Layout,
         children: Vec<DetachedNode<W>>,
         percents: Vec<f64>,
-        previous_layout: Option<Layout>,
-        title_format: Option<String>,
+        meta: SplitMeta,
         pending_mode: Option<PendingMode>,
-        sticky: bool,
     },
     Leaf {
         old_id: NodeId,
@@ -124,19 +120,15 @@ impl<W: LayoutElement> DetachedNode<W> {
                 layout,
                 children,
                 percents,
-                previous_layout,
-                title_format,
+                meta,
                 pending_mode,
-                sticky,
             } => Ok(DetachedSplit {
                 old_id,
                 layout,
                 children,
                 percents,
-                previous_layout,
-                title_format,
+                meta,
                 pending_mode,
-                sticky,
             }),
             leaf @ Self::Leaf { .. } => Err(leaf),
         }
@@ -373,6 +365,59 @@ pub(super) enum DecorationLayer {
 
 static NODE_ID_COUNTER: IdCounter = IdCounter::new();
 
+/// A collection keyed by node id that must forget a node when it leaves the arena.
+trait SideTable {
+    fn ids(&self) -> Box<dyn Iterator<Item = NodeId> + '_>;
+    fn forget(&mut self, id: NodeId);
+}
+
+impl<V> SideTable for HashMap<NodeId, V> {
+    fn ids(&self) -> Box<dyn Iterator<Item = NodeId> + '_> {
+        Box::new(self.keys().copied())
+    }
+    fn forget(&mut self, id: NodeId) {
+        self.remove(&id);
+    }
+}
+
+impl SideTable for HashSet<NodeId> {
+    fn ids(&self) -> Box<dyn Iterator<Item = NodeId> + '_> {
+        Box::new(self.iter().copied())
+    }
+    fn forget(&mut self, id: NodeId) {
+        self.remove(&id);
+    }
+}
+
+impl SideTable for Vec<NodeId> {
+    fn ids(&self) -> Box<dyn Iterator<Item = NodeId> + '_> {
+        Box::new(self.iter().copied())
+    }
+    fn forget(&mut self, id: NodeId) {
+        self.retain(|candidate| *candidate != id);
+    }
+}
+
+/// Every NodeId-keyed side table of a TilingTree, named for invariant messages. remove_node
+/// forgets a node in each, and check_side_state checks each for stale ids, so a table added
+/// here gets both. Call as `side_tables!(tree, &)` or `side_tables!(tree, &mut)`.
+macro_rules! side_tables {
+    ($tree:expr, $($ref:tt)+) => {
+        [
+            ("focus_history", $($ref)+ $tree.focus_history as $($ref)+ dyn SideTable),
+            ("ipc_stale_nodes", $($ref)+ $tree.ipc_stale_nodes),
+            ("pending_modes", $($ref)+ $tree.pending_modes),
+            ("mapped_under_fullscreen", $($ref)+ $tree.mapped_under_fullscreen),
+            ("moved_under_fullscreen", $($ref)+ $tree.moved_under_fullscreen),
+            ("fullscreen_layout_wrappers", $($ref)+ $tree.fullscreen_layout_wrappers),
+            ("pre_layout_ipc_rects", $($ref)+ $tree.pre_layout_ipc_rects),
+            ("tab_indicators", $($ref)+ $tree.tab_indicators),
+            ("tab_active", $($ref)+ $tree.tab_active),
+        ]
+    };
+}
+use side_tables;
+
 #[derive(Debug)]
 pub struct TilingTree<W: LayoutElement> {
     nodes: HashMap<NodeId, Node<W>>,
@@ -382,9 +427,6 @@ pub struct TilingTree<W: LayoutElement> {
     has_had_tile: bool,
     empty_representation_layout: Option<Layout>,
     focus_history: Vec<NodeId>,
-    previous_split_layouts: HashMap<NodeId, Layout>,
-    title_formats: HashMap<NodeId, String>,
-    sticky_splits: HashSet<NodeId>,
     pending_modes: HashMap<NodeId, PendingMode>,
     mapped_under_fullscreen: HashSet<NodeId>,
     /// Leaves moved into this tree while it was fullscreen. Like mapped ones

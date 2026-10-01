@@ -50,6 +50,7 @@ impl<W: LayoutElement> TilingTree<W> {
                     layout: root_layout,
                     children: Vec::new(),
                     percents: Vec::new(),
+                    meta: SplitMeta::default(),
                 },
             },
         )]);
@@ -61,9 +62,6 @@ impl<W: LayoutElement> TilingTree<W> {
             has_had_tile: false,
             empty_representation_layout: None,
             focus_history: Vec::new(),
-            previous_split_layouts: HashMap::new(),
-            title_formats: HashMap::new(),
-            sticky_splits: HashSet::new(),
             pending_modes: HashMap::new(),
             mapped_under_fullscreen: HashSet::new(),
             moved_under_fullscreen: HashMap::new(),

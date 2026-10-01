@@ -143,9 +143,7 @@ fn attaching_split_to_empty_tree_preserves_root_state() {
         source.add_tile(tile(2, source.view_size()), InsertTarget::Focused);
         source.set_layout(source.root, Layout::SplitV);
         source.set_layout(source.root, layout);
-        source
-            .previous_split_layouts
-            .insert(source.root, Layout::SplitH);
+        source.split_meta_mut(source.root).unwrap().previous_layout = Some(Layout::SplitH);
         source.set_title_format(source.root, "root format".into());
         source.set_node_fullscreen(source.root, Some(FullscreenMode::Workspace));
         let old_root = source.root;
@@ -167,14 +165,13 @@ fn attaching_split_to_empty_tree_preserves_root_state() {
             } if actual == layout
         ));
         assert_eq!(
-            destination.previous_split_layouts.get(&destination.root),
-            Some(&Layout::SplitH)
+            destination.previous_layout(destination.root),
+            Some(Layout::SplitH)
         );
         assert_eq!(
             destination
-                .title_formats
-                .get(&destination.root)
-                .map(String::as_str),
+                .split_meta(destination.root)
+                .and_then(|meta| meta.title_format.as_deref()),
             Some("root format")
         );
         assert_eq!(
@@ -396,6 +393,7 @@ fn move_subtree_to_ancestor_appends_after_existing_children() {
             layout: Layout::SplitH,
             children: vec![b],
             percents: vec![1.],
+            meta: SplitMeta::default(),
         },
     });
     t.nodes.get_mut(&b).unwrap().parent = Some(parent);
@@ -403,6 +401,7 @@ fn move_subtree_to_ancestor_appends_after_existing_children() {
         layout: Layout::SplitH,
         children: vec![a, parent, c],
         percents: vec![1. / 3.; 3],
+        meta: SplitMeta::default(),
     };
     assert!(t.move_subtree_to_node(b, t.root));
 

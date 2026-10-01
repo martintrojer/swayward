@@ -260,7 +260,7 @@ fn empty_tree_has_no_focus() {
 
 #[test]
 fn invariant_rejects_stale_and_duplicate_node_side_state() {
-    for collection in 0..5 {
+    for collection in 0..3 {
         let mut t = tree((1920., 1080.), 0.);
         // The node counter is process-global and proptests allocate from it concurrently, so a
         // small literal id can belong to this tree. The counter never reaches u64::MAX.
@@ -268,12 +268,9 @@ fn invariant_rejects_stale_and_duplicate_node_side_state() {
         match collection {
             0 => t.focus_history.push(stale),
             1 => {
-                t.previous_split_layouts.insert(stale, Layout::SplitV);
+                t.ipc_stale_nodes.insert(stale);
             }
             2 => {
-                t.title_formats.insert(stale, "custom".into());
-            }
-            3 | 4 => {
                 t.pending_modes.insert(
                     stale,
                     PendingMode {
@@ -319,8 +316,6 @@ fn invariant_rejects_non_positive_percentages() {
 fn removing_a_node_clears_every_node_side_collection() {
     let mut t = tree((1920., 1080.), 0.);
     let leaf = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
-    t.previous_split_layouts.insert(leaf, Layout::SplitH);
-    t.title_formats.insert(leaf, "custom".into());
     t.pending_modes.insert(
         leaf,
         PendingMode {
@@ -334,7 +329,7 @@ fn removing_a_node_clears_every_node_side_collection() {
 
     t.remove_tile_node(leaf);
 
-    assert!(!t.title_formats.contains_key(&leaf));
+    assert!(!t.pending_modes.contains_key(&leaf));
     assert!(!t.tab_active.contains_key(&leaf));
     assert!(!t.tab_indicators.contains_key(&leaf));
     t.check_invariants();
@@ -357,6 +352,7 @@ fn a_sub_pixel_last_child_reports_a_non_negative_percent() {
             layout: Layout::SplitV,
             children: leaves.clone(),
             percents: vec![0.25, 0.4997758843775979, 0.25, 0.00022411562240215455],
+            meta: SplitMeta::default(),
         },
     });
     for leaf in &leaves {
@@ -366,6 +362,7 @@ fn a_sub_pixel_last_child_reports_a_non_negative_percent() {
         layout: Layout::Tabbed,
         children: vec![split],
         percents: vec![1.],
+        meta: SplitMeta::default(),
     };
     t.request_window_sizes();
 

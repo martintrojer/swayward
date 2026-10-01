@@ -46,51 +46,14 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     fn check_side_state(&self) {
-        // Every NodeId-keyed side collection must join this check and be cleared in remove().
-        for (collection, id) in self
-            .focus_history
-            .iter()
-            .map(|id| ("focus_history", id))
-            .chain(
-                self.ipc_stale_nodes
-                    .iter()
-                    .map(|id| ("ipc_stale_nodes", id)),
-            )
-            .chain(
-                self.previous_split_layouts
-                    .keys()
-                    .map(|id| ("previous_split_layouts", id)),
-            )
-            .chain(self.title_formats.keys().map(|id| ("title_formats", id)))
-            .chain(self.sticky_splits.iter().map(|id| ("sticky_splits", id)))
-            .chain(self.pending_modes.keys().map(|id| ("pending_modes", id)))
-            .chain(
-                self.mapped_under_fullscreen
-                    .iter()
-                    .map(|id| ("mapped_under_fullscreen", id)),
-            )
-            .chain(
-                self.moved_under_fullscreen
-                    .keys()
-                    .map(|id| ("moved_under_fullscreen", id)),
-            )
-            .chain(
-                self.fullscreen_layout_wrappers
-                    .iter()
-                    .map(|id| ("fullscreen_layout_wrappers", id)),
-            )
-            .chain(
-                self.pre_layout_ipc_rects
-                    .keys()
-                    .map(|id| ("pre_layout_ipc_rects", id)),
-            )
-            .chain(self.tab_indicators.keys().map(|id| ("tab_indicators", id)))
-            .chain(self.tab_active.keys().map(|id| ("tab_active", id)))
-        {
-            assert!(
-                self.nodes.contains_key(id),
-                "{collection} contains stale node {id:?}"
-            );
+        // The tables come from side_tables!, which remove_node also forgets from.
+        for (collection, table) in side_tables!(self, &) {
+            for id in table.ids() {
+                assert!(
+                    self.nodes.contains_key(&id),
+                    "{collection} contains stale node {id:?}"
+                );
+            }
         }
         assert!(self.tab_active.iter().all(|(parent, child)| {
             matches!(
