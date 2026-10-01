@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/tiling_tree/mod.rs", "src/layout/tiling_tree/tests.rs", "src/tests/ipc/workspace_commands.rs"]
+what = "preserve a detached split root's layout, previous layout, title format, fullscreen state, ID remapping, and representation state when attaching it to an empty tiling tree."
+why = "A destination workspace has its own permanent root ID, so attaching a whole source tree must transfer the source root's state onto that root rather than discarding it while adopting only its children. Sway updates the destination workspace representation after attaching the moved container (`sway/tree/container.c:1519-1523`)."
+

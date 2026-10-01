@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["contrib/coverage-report", "contrib/tap-count", "tests/i3/coverage.toml", "tests/i3/README.md"]
+what = "require every coverage row to record its captured TAP plan, distinguish no-plan aborts from planned runs, and record harness `1..0 # SKIP` outcomes as cited file-level skips instead of pretending their static source assertions ran."
+why = ""
+

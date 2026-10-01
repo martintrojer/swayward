@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/tiling_tree/tree_layout.rs", "src/tests/ipc/tree_commands.rs"]
+what = "preserve a focused nested split when `split` changes its pending child insertion axis instead of retargeting or compacting away the selected container."
+why = "Sway's `cmd_split` changes the selected container's pending layout, so the next child remains below that container (`sway/commands/split.c`); swayward previously changed the singleton parent and flattened the branch into the workspace."
+

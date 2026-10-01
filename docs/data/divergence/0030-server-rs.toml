@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/ipc/server.rs", "src/ipc/wire.rs"]
+what = "replace niri's line-delimited request dispatch with tested sway binary framing, honest unsupported-message replies, sway's nonblocking power-of-two event write buffer ceiling, cancel-safe partial header reads on subscribed sockets, and sway's safe `SWAYSOCK` adoption and stale-socket lifecycle."
+why = ""
+

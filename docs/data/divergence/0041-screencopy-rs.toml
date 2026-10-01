@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/protocols/screencopy.rs", "src/handlers/mod.rs"]
+what = "reject capture requests for removed outputs before advertising a frame buffer, matching sway/wlroots' disabled-output failure path and preventing stale output resources from reaching rendering."
+why = ""
+

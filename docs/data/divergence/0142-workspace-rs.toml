@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/workspace.rs"]
+what = "retire niri's horizontal viewport offset and its gesture state; the i3 tree always occupies the workspace view."
+why = ""
+

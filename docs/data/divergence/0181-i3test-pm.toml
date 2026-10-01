@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["tests/i3/lib/i3test.pm", "tests/i3/coverage.toml", "tests/i3/README.md"]
+what = "reject unsupported X11 `window_type` arguments instead of silently mapping ordinary xdg-toplevels; remeasure the dock regressions whose green liveness checks depended on that silent substitution."
+why = ""
+

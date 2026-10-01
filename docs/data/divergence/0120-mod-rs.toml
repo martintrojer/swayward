@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/command/mod.rs", "src/layout/mod.rs"]
+what = "move criteria-matched windows to workspaces without changing focus, move the workspace containing a criteria-matched window or container to an output resolved from that workspace, and ignore hidden scratchpad matches that have no workspace, matching sway's overridden-node command context."
+why = ""
+

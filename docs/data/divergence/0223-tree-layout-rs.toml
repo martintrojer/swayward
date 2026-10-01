@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/tiling_tree/tree_layout.rs", "src/tests/ipc/tree_commands.rs"]
+what = "wrap the workspace's children when tabbed or stacking layout is applied to a focused split whose command target is the workspace root."
+why = "Sway changes the workspace layout in place only when the workspace itself is focused; a focused child split at the root gains a nested layout container instead (`sway/commands/layout.c`; `sway/tree/container.c`)."
+

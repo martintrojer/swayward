@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/mod.rs", "src/layout/monitor.rs", "src/layout/workspace.rs", "src/layout/tiling_tree/mod.rs", "src/layout/tiling_tree/introspection.rs"]
+what = "hit-test the nested container under a tiling drag pointer, insert beside it according to sway's nearest-edge rule, and exchange containers when the drag ends in its centre."
+why = ""
+

@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/swayward.rs", "src/swayward/config_reload.rs", "src/input/mod.rs", "src/input/actions.rs", "src/input/pointer.rs", "src/input/tablet.rs", "src/input/touch.rs", "src/handlers/mod.rs", "src/handlers/xdg_shell/requests.rs", "src/dbus/freedesktop_a11y.rs", "src/tests/ipc/bindings/input_devices.rs"]
+what = "treat the seat keyboard as optional on every live path: read modifiers through `State::modifier_state()` (no modifiers without a keyboard), and skip key input, virtual-keyboard events, layout switches, popup keyboard grabs, xkb and repeat reloads, and a11y key monitoring when the seat has none."
+why = "Startup continues without a keyboard when neither the configured nor the default keymap compiles, so the first pointer button, key or config reload afterwards unwrapped a missing keyboard and panicked the live session."
+

@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/tiling_tree/introspection.rs", "src/layout/tiling_tree/invariants.rs", "src/layout/tiling_tree/mod.rs", "src/layout/tiling_tree/mutation.rs", "src/layout/tiling_tree/state.rs", "src/layout/tiling_tree/tree_layout.rs", "src/layout/workspace.rs", "src/tests/ipc/tree_commands/layout.rs"]
+what = "preserve the prior IPC focus rank of tiled branches that layout commands wrap in newly-created containers."
+why = "Sway creates a seat-focus entry for every container and leaves newly-created wrapper containers at the tail unless they are explicitly focused (`seat_node_from_node`, sway/input/seat.c:329-351; `container_split`, sway/tree/container.c:1565-1620); deriving branch recency only from descendant window timestamps incorrectly promotes a wrapper above older siblings."
+

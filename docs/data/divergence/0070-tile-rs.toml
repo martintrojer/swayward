@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/tile.rs", "src/layout/floating.rs", "src/layout/focus_ring.rs", "src/layout/shadow.rs", "src/layout/tiling_tree/focus.rs", "src/layout/tiling_tree/geometry.rs", "src/layout/tiling_tree/introspection.rs", "src/layout/tiling_tree/mod.rs", "src/layout/tiling_tree/rendering.rs"]
+what = "make each sway decorated box the primary layout rectangle:\n- derive content by insetting all four sides, place titlebars in the top slot, start side borders below them, and assign outer corners between titlebar and border while keeping nested corners square;\n- let split children draw titlebars below a parent tab or stack strip, mask the resolved box radius separately for client clipping, and render the focused tiled container above sibling shadows."
+why = ""
+

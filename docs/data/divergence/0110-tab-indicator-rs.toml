@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/tab_indicator.rs", "src/layout/tiling_tree/invariants.rs", "src/layout/tiling_tree/mod.rs", "src/layout/tiling_tree/rendering.rs"]
+what = "validate and clear tab indicator node caches with the rest of the tree's NodeId side state, constrain popup targets to their nested leaf allocation instead of an inherited full-workspace column, and expose generated indicator geometry to tests."
+why = ""
+

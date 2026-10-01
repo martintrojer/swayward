@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["tests/i3/lib/i3test.pm", "tests/i3/README.md"]
+what = "report a newly floated window's client geometry for the i3 natural-size test after reporting its tiled container rectangle before the transition."
+why = "The unchanged test asks X11 for client geometry in both states. The Wayland adapter substitutes GET_TREE geometry; sway restores the xdg-shell natural size when first floating (`sway/desktop/xdg_shell.c:481-482`; `sway/tree/container.c:847-862`), while the outer floating rect includes server decorations."
+

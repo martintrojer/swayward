@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/tiling_tree/geometry.rs"]
+what = "suppress inner gaps for split descendants anywhere below stacked or tabbed containers, and clamp horizontal and vertical gaps to sway's minimum child extents."
+why = ""
+

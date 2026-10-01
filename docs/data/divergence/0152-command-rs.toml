@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["swayward-ipc/src/command.rs", "src/command/", "src/window/mapped/", "src/layout/tiling_tree/", "src/ipc/tree.rs", "src/handlers/mod.rs", "src/handlers/xdg_shell/", "src/swayward.rs"]
+what = "store per-window and split-container sway `title_format`, expand view placeholders and recursive `%title` representations for GET_TREE and titlebar rendering, retain Wayland security-context metadata, and refresh formatted titles when client or tree metadata changes."
+why = ""
+

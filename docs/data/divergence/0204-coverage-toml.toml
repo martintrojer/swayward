@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["tests/i3/coverage.toml", "tests/i3/README.md", "README.md"]
+what = "reclassify the two coverage rows the sway calibration differential proved wrong: `206-fullscreen-scratchpad.t` reaches `1..8` with 8 passes and no longer needs an i3 floating-wrapper skip, and `148-regress-floatingmovews.t` becomes an open defect."
+why = "Because its residual assertion is sway behaviour that swayward does not yet have."
+

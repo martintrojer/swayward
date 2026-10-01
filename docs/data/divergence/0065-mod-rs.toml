@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/mod.rs", "src/layout/monitor.rs", "src/layout/workspace.rs"]
+what = "give workspaces stable global sway names/numbers, sparse creation, switching, movement, ordered output assignment with fallback, rename sorting, map-time assignment creation, and sway-compatible inactive-workspace cleanup while retaining monitor animations."
+why = ""
+

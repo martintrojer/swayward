@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/mod.rs"]
+what = "when an output disappears, destroy its empty workspaces and evacuate sticky-only contents into the fallback output's active workspace while preserving floating placement across working areas."
+why = ""
+

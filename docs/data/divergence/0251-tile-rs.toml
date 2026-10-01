@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/tile.rs", "src/layout/mod.rs", "src/window/mapped/"]
+what = "clip a tiled toplevel's pointer input to its window geometry in all cases, not only when the surface is oversized, while leaving its popups unclipped through a new `LayoutElement::is_in_popup_input_region`."
+why = "Sway clips every tiled view to its content box, input included (`sway/sway/tree/view.c:1032-1062`). A client drawing its own decorations keeps an input margin outside its geometry for resizing; unclipped, it took the pointer from the gap and the neighbour, showing the client's resize cursor and swallowing gap-resize and focus clicks there."
+

@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["swayward-config/src/layer_rule.rs", "swayward-config/tests/wiki-parses.rs", "swayward-visual-tests/Cargo.toml", "swayward-visual-tests/src/cases/gradient_angle.rs", "swayward-visual-tests/src/cases/gradient_area.rs", "swayward-visual-tests/src/cases/gradient_oklab.rs", "swayward-visual-tests/src/cases/gradient_oklab_alpha.rs", "swayward-visual-tests/src/cases/gradient_oklch_alpha.rs", "swayward-visual-tests/src/cases/gradient_oklch_decreasing.rs", "swayward-visual-tests/src/cases/gradient_oklch_increasing.rs", "swayward-visual-tests/src/cases/gradient_oklch_longer.rs", "swayward-visual-tests/src/cases/gradient_oklch_shorter.rs", "swayward-visual-tests/src/cases/gradient_srgb.rs", "swayward-visual-tests/src/cases/gradient_srgb_alpha.rs", "swayward-visual-tests/src/cases/gradient_srgblinear.rs", "swayward-visual-tests/src/cases/gradient_srgblinear_alpha.rs", "swayward-visual-tests/src/cases/tile.rs", "swayward-visual-tests/src/cases/window.rs", "swayward-visual-tests/src/smithay_view.rs"]
+what = "move with the niri-config and niri-visual-tests crate renames; the only edits are the crate and type renames and the import reordering rustfmt applies to them."
+why = "The crates are published under swayward's names. Listed so check-divergence's rename pass sees that these moves carry no behaviour change."
+

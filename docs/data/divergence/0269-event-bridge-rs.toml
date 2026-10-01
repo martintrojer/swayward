@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/ipc/server/event_bridge.rs", "src/tests/ipc/events/window.rs"]
+what = "preserve explicit user provenance in floating window events while retaining the ordinary tree's automatic tiled state."
+why = "Sway's `floating` command emits the event after the requested transition (`sway/commands/floating.c`; `sway/sway/ipc-server.c`), so disabling reports `user_off`; reusing swayward's settled GET_TREE node instead reported `auto_off`."
+

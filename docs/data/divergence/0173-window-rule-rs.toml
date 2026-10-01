@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["swayward-config/src/window_rule.rs", "src/window/mod.rs", "src/layout/tile.rs", "src/ipc/tree.rs"]
+what = "reject operation-only `toggle` window-rule borders, resolve malformed internal border rules through the command path, and keep GET_TREE total instead of panicking on invalid persistent state."
+why = ""
+

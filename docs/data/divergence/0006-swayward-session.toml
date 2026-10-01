@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["resources/swayward-session"]
+what = "clear the sway-compatible `SWAYSOCK` and `I3SOCK` variables from systemd and dinit when a compositor session ends, instead of the retired niri-derived socket variable."
+why = ""
+

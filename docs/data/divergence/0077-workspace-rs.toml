@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/workspace.rs"]
+what = "keep configured-workspace metadata independent from later sway identity changes; runtime destruction does not consult that metadata, matching sway's three destruction guards."
+why = ""
+

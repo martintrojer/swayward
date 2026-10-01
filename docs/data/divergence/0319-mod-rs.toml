@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/mod.rs", "src/layout/monitor.rs", "src/layout/tiling_tree/focus.rs", "src/layout/tiling_tree/movement.rs", "src/layout/tiling_tree/mutation.rs", "src/layout/tiling_tree/transfer.rs", "src/layout/tiling_tree/tree_layout.rs", "src/layout/workspace.rs"]
+what = "record each focused node's ancestors in the tiling focus history, and refocus the most recent entry under the old parent (container or window) after moving a container to another workspace or the scratchpad."
+why = "Sway's seat focus stack holds every ancestor of a focused view (`seat_set_workspace_focus`, sway/input/seat.c:1178-1190), and a move refocuses `seat_get_focus_inactive(old_parent)` (sway/commands/move.c:598-608), which is a split whenever that split was entered through one of its windows. Reaping an emptied container raises the most recent view under its parent (sway/input/seat.c:273-323). A window-only history always descended to a leaf. Oracle random seeds 124, 202, 217, 356, 430."
+

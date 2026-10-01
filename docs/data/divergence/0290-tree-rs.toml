@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/ipc/tree.rs", "src/layout/mod.rs", "src/layout/monitor.rs", "src/layout/tiling_tree/mod.rs", "src/layout/workspace.rs", "src/tests/ipc/mod.rs", "src/tests/ipc/property.rs"]
+what = "exercise random sway command, window-map, and window-unmap sequences through the real headless compositor fixture; keep targeted commands for scratchpad windows safe and preserve floating focus when sticky windows follow workspace switches."
+why = "Sway commands can target hidden scratchpad containers, which are not attached to a monitor, and a workspace containing only sticky floating windows must retain a live focused container as it follows the active workspace."
+

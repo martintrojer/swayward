@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/ipc/server.rs"]
+what = "omit unavailable keyboard-layout fields and events when the seat has no keyboard or its XKB state cannot be read, rather than panicking during the regular IPC refresh path."
+why = ""
+

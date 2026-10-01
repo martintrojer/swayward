@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/ipc/tree.rs"]
+what = "expose each mapped window's real urgency in GET_TREE, matching sway's common node schema and allowing xdg-activation urgency to be observed over IPC."
+why = ""
+

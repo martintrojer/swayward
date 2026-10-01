@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/tiling_tree/mod.rs", "src/layout/tiling_tree/resize.rs", "src/layout/tiling_tree/tests.rs"]
+what = "derive every tiled resize from the exact allocated parent and child extents and distribute axis changes across all siblings, so pixel and percentage commands agree across entry points and match sway."
+why = ""
+

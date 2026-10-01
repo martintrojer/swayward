@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/utils/xwayland/satellite.rs"]
+what = "log a missing optional xwayland-satellite executable at info while retaining warnings for spawn, wait, and capability failures."
+why = ""
+

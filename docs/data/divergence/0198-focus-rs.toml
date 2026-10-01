@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/command/focus.rs", "src/tests/ipc.rs"]
+what = "allow workspace-fullscreen focus to cross outputs uniformly in every direction while retaining sway's global-fullscreen barrier."
+why = ""
+

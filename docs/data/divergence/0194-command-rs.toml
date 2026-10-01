@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["swayward-ipc/src/command.rs", "src/command/mod.rs", "src/input/mod.rs", "src/swayward.rs"]
+what = "accept runtime `bindsym`, `unbindsym`, `bindcode`, and `unbindcode` by mutating the live default or active-mode binding vectors and refreshing derived modifier caches; provide a runtime-only mode-keyed sway command overlay for `bindswitch` and `unbindswitch` while keeping the narrower KDL spawn-only switch table unchanged; keep gesture binding commands fail-loud."
+why = "Because no sway command-dispatch model exists."
+

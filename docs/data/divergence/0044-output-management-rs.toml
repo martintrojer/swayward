@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/protocols/output_management.rs"]
+what = "accept all-disabled output configurations like sway, key synthesized runtime output config by connector, cancel only still-ongoing configurations after an atomic state update, and test retained head and mode handles after their targets disappear."
+why = ""
+

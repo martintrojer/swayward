@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/swayward.rs"]
+what = "make the one-second session-lock surface deadline test-injectable under cfg(test), retaining the production duration unchanged."
+why = "Session-lock tests need to trigger the watchdog deterministically without waiting 1.25 real seconds or using short sleep-then-absence assertions that flake under load."
+

@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/command/mod.rs", "src/tests/ipc/config_commands.rs"]
+what = "reject `mark` while a workspace root is focused instead of storing a mark on swayward's permanent tiling root."
+why = "Sway workspace nodes are never containers, regardless of how many tiling children they have, so `cmd_mark` returns `Only containers can have marks` when the workspace itself is focused (`sway/commands/mark.c`)."
+

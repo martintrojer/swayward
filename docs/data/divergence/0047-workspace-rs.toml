@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/workspace.rs", "src/layout/tiling_tree/mod.rs", "src/layout/tiling_tree/geometry.rs"]
+what = "derive `smart_no_gaps` border suppression from the already-resolved workspace area so positive and negative outer gaps match sway's `current_gaps` behavior."
+why = ""
+

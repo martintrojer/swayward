@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["resources/default-config.kdl", "swayward-config/src/lib.rs"]
+what = "ship active `gestures { hot-corners { off; } }` and `recent-windows { off; }` stanzas, with the remaining options commented out, so the default config neither opens the overview from a screen corner nor binds Alt/Mod+Tab and Alt/Mod+grave to the recent-windows switcher."
+why = "Sway has no hot corners and no Alt-Tab switcher. niri enables both by default, so a sway user loses the top-left corner to the overview and has Mod+Tab taken. Putting the stanzas in the file keeps both features one line away from being turned on."
+

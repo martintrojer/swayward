@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/command/mod.rs", "src/command/scratchpad.rs", "src/tests/ipc/events.rs"]
+what = "emit recursive root move events when a resident floating group enters or leaves the scratchpad, preceded by the focused leaf event when shown."
+why = "Sway moves the floating container root through the scratchpad and emits events for the actual affected nodes (`sway/tree/root.c:150-154`; `sway/sway/ipc-server.c`). Leaf iteration does not expose swayward's detached or resident floating roots, so the generic event diff emitted nothing."
+

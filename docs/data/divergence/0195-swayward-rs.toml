@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/swayward.rs", "src/handlers/xdg_shell/", "src/window/mapped/", "src/command/mod.rs"]
+what = "advertise Smithay's xdg_toplevel_tag_v1 global, retain its per-surface tag, and rerun matching runtime criteria when clients update tags, matching sway's native Wayland tag selector."
+why = ""
+

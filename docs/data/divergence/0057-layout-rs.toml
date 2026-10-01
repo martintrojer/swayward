@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["swayward-config/src/layout.rs", "src/layout/tiling_tree/mod.rs", "contrib/sway-to-kdl"]
+what = "support sway's horizontal, vertical, and output-shape-derived auto default orientations when each workspace tree is created."
+why = ""
+

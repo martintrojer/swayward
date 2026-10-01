@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/window/mapped/", "src/handlers/mod.rs", "src/command/mod.rs"]
+what = "store sway's three-state shortcut-inhibitor policy separately from the protocol object's active lifecycle; disable both rejects future requests and deactivates the current inhibitor, while enable changes future policy only."
+why = ""
+

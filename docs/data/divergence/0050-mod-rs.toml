@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/mod.rs", "src/layout/workspace.rs", "src/layout/tile.rs", "src/layout/floating.rs", "src/window/mapped/"]
+what = "expose focused-tree layout mutation and direct container focus for sway runtime commands, including sway's parent targeting, workspace-level layer history, one-level singleton flatten, focus rank and parent preservation across floating transitions, proportional center remapping from the saved source area when scratchpad windows cross outputs, global focus-timestamp ordering after cross-output moves, and fullscreen state for floating-origin command checks."
+why = ""
+

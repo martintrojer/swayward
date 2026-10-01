@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/tiling_tree/tests.rs"]
+what = "run 16 generated tiling-tree invariant cases in the default fast test gate while retaining the environment-controlled full search for slow CI; checked-in proptest regression seeds continue to replay before generated cases."
+why = ""
+

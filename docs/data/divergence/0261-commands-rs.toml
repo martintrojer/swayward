@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/floating_tree/commands.rs", "src/tests/ipc/property.rs"]
+what = "apply floating decoration ownership before caching a tile's geometry when a tiled window becomes floating."
+why = "Sway gives every top-level floating container its own titlebar (`sway/tree/arrange.c`); delaying that transition until rendering left swayward's cached floating size stale after a runtime default-border change."
+

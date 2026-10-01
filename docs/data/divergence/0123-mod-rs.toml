@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/command/mod.rs"]
+what = "do not retarget `floating` from a structurally focused split to its keyboard-focus descendant; the selected split is the floating root."
+why = ""
+

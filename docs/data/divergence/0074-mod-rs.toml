@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/mod.rs", "src/layout/monitor.rs"]
+what = "permit only the source workspace of an in-progress interactive move to be transiently empty and unaddressable until the detached window is attached, while retaining sway's destruction invariant outside that transaction."
+why = ""
+

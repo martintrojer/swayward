@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = [".github/FUNDING.yml"]
+what = "remove inherited niri sponsorship attribution."
+why = "Because swayward is not soliciting sponsorship."
+

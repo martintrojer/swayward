@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["swayward-config/src/binds.rs", "src/ui/hotkey_overlay.rs", "docs/KNOWN_DEVIATIONS.md"]
+what = "document the inherited ISO-level interpretation of Mod3 and Mod5, and show Num and Caps Lock in bind labels instead of hiding parsed lock modifiers."
+why = ""
+

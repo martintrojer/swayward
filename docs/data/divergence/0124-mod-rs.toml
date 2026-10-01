@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/command/mod.rs", "src/ipc/tree.rs", "src/layout/mod.rs", "src/layout/monitor.rs", "src/layout/workspace.rs", "src/layout/tiling_tree/mod.rs"]
+what = "transfer focused container subtrees and workspace-root floating children between workspaces without flattening their structure, losing internal focus history, or dropping floating/fullscreen state; criteria-targeted directional moves cross output boundaries while retaining focus."
+why = ""
+

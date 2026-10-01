@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["swayward-config/src/utils.rs"]
+what = "reject non-finite and negative percentage strings before they reach configuration consumers."
+why = "Rust accepts `NaN` and infinity as floating-point values, but comparisons involving them can silently bypass configured thresholds; a negative percentage is outside the documented non-negative amount domain."
+

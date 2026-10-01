@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["swayward-ipc/src/command.rs", "src/command/mod.rs", "src/layout/mod.rs", "src/layout/workspace.rs", "src/layout/tile.rs", "src/layout/tiling_tree/mod.rs", "src/layout/tiling_tree/geometry.rs", "src/ipc/tree.rs"]
+what = "parse and apply per-window sway border styles and widths, snapshot each new window's effective default border so later default-border commands affect only future windows like sway, derive untouched tiled and floating GET_TREE widths from the rendered border configuration, and expose the effective state through GET_TREE."
+why = ""
+

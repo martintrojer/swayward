@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/workspace.rs", "src/layout/tiling_tree/movement.rs", "src/layout/tests.rs"]
+what = "keep `focus parent` on the floating layer when a workspace has no tiling nodes, and reject directional movement of the root's sole branch instead of detaching it into an empty non-root split; exercise sway tree layout, split, parent/child focus, and directional move operations in the layout-level invariant generator."
+why = ""
+

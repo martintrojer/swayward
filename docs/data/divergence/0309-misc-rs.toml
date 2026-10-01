@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["swayward-config/src/misc.rs", "swayward-config/src/recent_windows.rs", "swayward-config/src/tests/decode.rs"]
+what = "reject zero overview zoom and recent-window preview scale during configuration decoding."
+why = "Both values size visible compositor UI and must be positive; zero previously produced a silently clamped overview or degenerate invisible previews."
+

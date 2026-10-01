@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["tests/i3/coverage.toml", "tests/i3/README.md"]
+what = "stop crediting `141-resize.t` assertion 83's comparison of two absent floating-wrapper child rectangles; sway omits i3's wrapper and exposes the floating leaf directly."
+why = ""
+

@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["swayward-ipc/src/command.rs", "swayward-config/src/lib.rs", "swayward-config/src/binds.rs", "src/swayward.rs", "src/input/mod.rs", "src/command/mod.rs", "src/ipc/server.rs"]
+what = "support named binding modes, mode commands and events, GET_BINDING_MODES, and sway's full `layout toggle` grammar; create runtime modes through nested `set` or key and switch bind/unbind commands, resolve nested binds against the named mode without switching to it, retain `--pango_markup` event metadata, and keep unsupported gesture binds fail-loud."
+why = ""
+

@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/ipc/server.rs"]
+what = "answer GET_CONFIG with `{\"success\": false}`."
+why = "Because sway's contract requires the verbatim sway config text, which a KDL source cannot provide; see the invariant in AGENTS.md."
+

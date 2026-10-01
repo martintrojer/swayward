@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["contrib/sway-to-kdl"]
+what = "describe `mouse_warping` translation as a KDL format limitation rather than incorrectly claiming that runtime commands discard sway's output/container distinction."
+why = ""
+

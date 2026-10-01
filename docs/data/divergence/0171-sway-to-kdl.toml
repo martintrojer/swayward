@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["contrib/sway-to-kdl", "swayward-config/src/window_rule.rs", "src/window/mod.rs", "src/layout/mod.rs", "src/layout/monitor.rs", "src/layout/tile.rs", "src/handlers/xdg_shell/", "src/handlers/compositor.rs"]
+what = "translate sway window rules:\n- map default border directives to initial tiled and floating border rules without changing shipped visual defaults;\n- preserve combined app-id, title, and current tiling-state criteria, distinct workspace-name, workspace-number, and output targets, regex escapes, and mouse-region bind options on either side of the key;\n- translate floating, layout, focus, `nop`, `no_focus`, activation, mouse-warping, and workspace-placement actions;\n- fail loudly on X11-only criteria, i3-only provenance criteria, visibility-dependent activation, and unsupported actions."
+why = ""
+

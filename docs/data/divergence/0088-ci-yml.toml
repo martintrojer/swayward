@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = [".github/workflows/ci.yml"]
+what = "retain only checks that protect supported swayward builds and stop publishing inherited niri documentation."
+why = ""
+

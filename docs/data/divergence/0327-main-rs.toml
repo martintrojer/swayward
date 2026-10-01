@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["swayward-visual-tests/src/main.rs", "swayward-visual-tests/src/cases/mod.rs", "swayward-visual-tests/src/cases/layout.rs", "swayward-visual-tests/src/test_window.rs"]
+what = "move with the niri-visual-tests crate rename and add tiling-tree, tabbed-title, asymmetric-strut and hotkey-overlay cases; layout cases build from a full Config through `with_config` rather than hand-built niri Options, and the test window carries a title and window rules."
+why = "The visual tests must render swayward's i3 tree and titlebars; niri's scrolling-column cases no longer describe the layout."
+

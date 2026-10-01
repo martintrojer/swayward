@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/input/keyboard_bindings.rs", "src/input/tests.rs", "src/tests/ipc/bindings/input_devices.rs"]
+what = "name wheel-binding symbols as sway's raw keysym names 0x00000300..0x00000303 and list Lock and Mod2 in binding event_state_mask, in sway's modifier order."
+why = "Sway names BTN_LEFT..+8 buttonN and passes its SWAY_SCROLL_* (KEY_MAX+1..4) codes to xkb_keysym_get_name (sway/sway/ipc-server.c:434-439); get_modifier_names emits Shift, Lock, Control, Mod1, Mod2, Mod3, Mod4, Mod5 (sway/sway/input/keyboard.c:26-38). Oracle events scenarios binding_mouse_buttons and binding_mouse_wheel."
+

@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/mod.rs", "src/swayward.rs"]
+what = "resolve directional output moves from the moved window's geometry and wrap to the farthest opposite output, matching wlroots geometry semantics."
+why = ""
+

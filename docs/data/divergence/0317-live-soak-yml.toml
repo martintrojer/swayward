@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = [".github/workflows/live-soak.yml", "AGENTS.md"]
+what = "run the live IPC soak nightly and on manual dispatch against release builds with one and two headless outputs, retain failure logs, and reject compositor errors and panics."
+why = "The live soak found event-loop and Wayland-client failures that unit tests and layout proptests missed, but its runtime is too long for the per-push gate."
+

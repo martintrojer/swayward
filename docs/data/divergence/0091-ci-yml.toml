@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = [".github/workflows/ci.yml"]
+what = "pin clippy and deny warnings so lint drift is reviewed with toolchain updates instead of silently reaching main or breaking an unrelated push."
+why = ""
+

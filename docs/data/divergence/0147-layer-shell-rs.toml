@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/handlers/layer_shell.rs"]
+what = "arrange layer surfaces in sway's overlay, top, bottom, background order before Smithay's exclusive and non-exclusive passes, so mixed-layer exclusive zones produce sway-compatible usable areas."
+why = ""
+

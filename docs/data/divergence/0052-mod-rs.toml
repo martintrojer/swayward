@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/mod.rs", "src/layout/workspace.rs", "src/layout/tile.rs", "src/window/mapped/", "src/swayward.rs"]
+what = "expose focused-tree layout mutation and direct container focus for sway runtime commands, including sway's parent targeting, workspace-level layer history, one-level singleton flatten, focus rank and parent preservation across floating transitions, immediate global focus-timestamp ordering across outputs and tiled/floating layers, and fullscreen state for floating-origin command checks."
+why = ""
+

@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/ipc/server.rs"]
+what = "log each emitted IPC event and each received IPC request at `trace` instead of `debug`."
+why = "The default filter is `swayward=debug`, inherited from niri. A sway-shaped event stream and bars that poll GET_TREE make these two lines about 90% of `session.log`, which buries the debug output worth reading. `RUST_LOG=swayward::ipc::server=trace` brings them back."
+

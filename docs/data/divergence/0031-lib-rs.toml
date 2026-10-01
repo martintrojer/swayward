@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["swayward-config/src/lib.rs", "src/ipc/server.rs", "src/swayward.rs"]
+what = "retain the raw top-level KDL source and return it through sway's single-field GET_CONFIG schema; included files remain excluded."
+why = ""
+

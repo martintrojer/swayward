@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["docs/KNOWN_DEVIATIONS.md"]
+what = "document why resizable X11 utility windows cannot preserve their initial size when xwayland-satellite presents them as ordinary xdg toplevels."
+why = "xwayland-satellite 0.8.2 does not forward the utility type, and its ordinary toplevel accepts swayward's first tiled configure before a later floating command; sway's in-process Xwayland path retains the X11 create size."
+

@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/tests/i3_conformance.rs", "tests/i3/coverage.toml"]
+what = "configure the `257-keypress-group1-fallback.t` fixture with the `us,ru` keymap requested by its external `setxkbmap` setup, so its group-2 binding checks run against a real second XKB group rather than the adapter's no-op executable alone."
+why = ""
+

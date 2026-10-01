@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["swayward-ipc/Cargo.toml", "swayward-ipc/src/socket.rs"]
+what = "move with the niri-ipc crate rename; depend on pcre2 for sway's criteria regexes, document `Socket` as the legacy `$SWAYWARD_SOCKET` client beside `sway_socket::SwaySocket`, import legacy event types from `legacy`, and return a request serialization failure as an I/O error instead of unwrapping."
+why = "Sway matches criteria with PCRE2 (sway/sway/criteria.c:49-53), so its regex dialect and error messages need the same engine. The IPC crate parses untrusted input and must not panic (AGENTS.md)."
+

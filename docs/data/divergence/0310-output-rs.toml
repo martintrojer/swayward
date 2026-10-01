@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["swayward-config/src/output.rs", "swayward-config/src/tests/decode.rs"]
+what = "reject non-finite and non-positive modeline pixel clocks during configuration decoding."
+why = "A modeline requires a positive finite clock to derive a DRM mode and refresh rate; accepting zero or negative clocks defers a clear configuration error into output setup and can lose sign during integer conversion."
+

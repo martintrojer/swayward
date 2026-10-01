@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/input/backend_ext.rs", "src/tests/ipc/wire.rs"]
+what = "serialize GET_INPUTS libinput objects with every field sway's describe_libinput_device emits (tap, tap_button_map, tap_drag, tap_drag_lock, click_method, clickfinger_button_map, dwt, dwtp, calibration_matrix), with sway's guards and value names, from raw libinput enum values."
+why = "Touchpads answered with sway's field names but without about ten of sway's fields (sway/sway/ipc-json.c:900-1137). Raw values let unknown enum values print 'unknown' as sway does instead of panicking in the input crate's typed getters. No pinned sway touchpad capture yet: oracle row pending hardware capture."
+

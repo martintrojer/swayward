@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/ipc/tree.rs", "src/tests/ipc/workspace_commands.rs"]
+what = "report sway's retained default border width for tiled containers whose border style is none."
+why = "Sway's `border none` disables drawing without replacing `current_border_width`, so GET_TREE reports `border: none` and `current_border_width: 2` (`sway/commands/border.c:44-51`; `sway/ipc-json.c:543-555`)."
+

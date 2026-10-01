@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/mod.rs", "src/layout/monitor.rs", "src/ui/mru.rs", "swayward-config/src/animations.rs"]
+what = "keep niri's workspace overview and MRU switcher as additive features:\n- retain `OverviewOpenCloseAnim` and `RecentWindowsCloseAnim`, and retire the dead `HorizontalViewMovementAnim` with the scrolling engine;\n- require `ToggleOverview` or a four-finger swipe for the overview and `MruAdvance` for the switcher;\n- keep both out of sway-visible state, GET_TREE, GET_WORKSPACES, workspace identity, and ordering;\n- correct the foundation spec because an overview is layout-agnostic rather than scroll-specific."
+why = ""
+

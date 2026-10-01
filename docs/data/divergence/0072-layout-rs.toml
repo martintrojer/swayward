@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["swayward-config/src/layout.rs", "src/layout/tile.rs", "src/layout/floating.rs", "src/layout/focus_ring.rs", "src/layout/tiling_tree/mod.rs", "src/layout/tiling_tree/geometry.rs", "src/layout/tiling_tree/introspection.rs", "src/layout/tiling_tree/rendering.rs", "src/ipc/tree.rs", "contrib/sway-to-kdl"]
+what = "represent sway's independent edge and smart border modes, suppress only the selected tiled-window edges in rendering and client geometry, preserve floating borders, and expose matching window rectangles through GET_TREE."
+why = ""
+

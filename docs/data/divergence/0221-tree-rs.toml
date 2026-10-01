@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/ipc/tree.rs", "src/layout/tiling_tree/mod.rs", "src/layout/workspace.rs", "src/tests/ipc/tree_commands.rs"]
+what = "retain whether a workspace tiling tree has contained a window and serialize an emptied root as its layout letter followed by empty brackets, including workspaces containing only floating or scratchpad windows."
+why = "Sway initializes a workspace representation only after inserting a tiling container, then retains the empty representation when that container leaves, so an emptied default vertical root reports `V[]` while a never-populated workspace remains null (`sway/tree/container.c`; `sway/ipc-json.c:523-524`)."
+

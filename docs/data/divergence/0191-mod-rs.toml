@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/tiling_tree/mod.rs", "src/layout/tiling_tree/movement.rs", "src/layout/tiling_tree/tests.rs", "src/tests/ipc.rs"]
+what = "allocate tiling node IDs from one process-wide counter so GET_TREE container IDs and `con_id` selectors remain unique across workspaces, matching sway's global node identity; preserve focus inside a structurally focused subtree after directional movement."
+why = ""
+

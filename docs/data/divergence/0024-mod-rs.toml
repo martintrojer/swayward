@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/handlers/mod.rs"]
+what = "use sway's global focus-on-window-activation policy as the fallback beneath per-window activation rules."
+why = ""
+

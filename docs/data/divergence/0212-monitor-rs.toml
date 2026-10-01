@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/monitor.rs", "src/layout/tiling_tree/mod.rs", "src/layout/workspace.rs", "src/tests/ipc/tree_commands.rs"]
+what = "reset an empty tiling tree's insertion and reported layouts only when recreating its workspace lifecycle state."
+why = "Sway retains the current layout while the active workspace is empty, but destroys an empty inactive workspace and creates a fresh default-layout tree if its name is selected again (`sway/tree/workspace.c:212-225,274-332`; `sway/commands/move.c:301-354`)."
+

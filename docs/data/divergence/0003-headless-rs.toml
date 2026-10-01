@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/backend/headless.rs", "src/swayward.rs", "src/tests/mod.rs", "src/tests/session_lock.rs", "src/tests/ipc.rs"]
+what = "retry transiently skipped session-lock redraws instead of abandoning the confirmation, and cover lock-surface timing, output removal/re-add, and concurrent IPC event load with the real headless protocol client."
+why = ""
+

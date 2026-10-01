@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/input/mod.rs", "src/layout/monitor.rs"]
+what = "retire niri's vertical three-finger workspace-switch swipe. Sway has no built-in workspace gesture (`sway/input/seatop_default.c` contains no swipe handling near workspace transitions), and that gesture is the sole justification for niri's trailing placeholder workspace, which blocks sway's workspace lifecycle. Gesture *forwarding* is unaffected: pinch and hold events still reach clients as they do under sway, and the four-finger overview swipe is kept. `bindgesture` remains refused by the translator, unchanged."
+why = ""
+

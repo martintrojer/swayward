@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/input/mod.rs", "src/input/move_grab.rs", "src/tests/ipc.rs"]
+what = "gate modifier-held and titlebar tiled-window moves with sway's `tiling_drag` setting and delay titlebar moves until pointer travel strictly exceeds `tiling_drag_threshold`, while retaining the inherited eight-pixel recognition threshold for other move gestures."
+why = ""
+

@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/tiling_tree/movement.rs", "src/layout/tiling_tree/tests.rs"]
+what = "preserve focus history when a move-to-mark target is already the moved node's preceding sibling."
+why = "Sway leaves an already positioned container attached, so replaying move-to-mark does not reorder its focus stack (`sway/commands/move.c`)."
+

@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/swayward.rs", "src/tests/fixture.rs", "src/tests/ipc/property.rs"]
+what = "tear down the test seat keyboard before its Wayland display so repeated real-compositor fixtures release the keymap memfd, and continue without a keyboard if both configured and default keymaps fail."
+why = "The Wayland backend retains protocol keyboard resources until display teardown, creating a cycle through the seat's keyboard handle in the in-process fixture; live startup must also log keymap exhaustion instead of panicking."
+

@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["docs/wiki/", "docs/mkdocs.yaml"]
+what = "retire scroll-layout documentation and rebrand retained niri subsystem guides for swayward."
+why = ""
+

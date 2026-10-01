@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/protocols/virtual_pointer.rs"]
+what = "default an omitted optional virtual-pointer axis source to wheel without warning, retain a source sent before its axis within the pending frame like wlroots, and ignore zero absolute extents instead of generating non-finite coordinates."
+why = ""
+

@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/ipc/server.rs"]
+what = "include the Wayland socket name in IPC socket paths so parallel headless tests do not collide, accept sway `binding` and `input` subscriptions with their complete event schemas, and serve live sway-shaped GET_INPUTS and GET_SEATS replies."
+why = ""
+

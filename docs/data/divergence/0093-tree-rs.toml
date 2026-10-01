@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["swayward-ipc/src/tree.rs", ".github/workflows/ci.yml"]
+what = "derive the advertised optional JSON schema for sway tree types and compile that feature in CI."
+why = ""
+

@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/ipc/tree.rs", "src/layout/mod.rs", "src/tests/ipc/workspace_commands/scratchpad.rs"]
+what = "retain and report a window's sticky state while it is hidden on the synthetic scratchpad workspace."
+why = "Sway stores sticky state on the container independently of scratchpad visibility (`cmd_sticky`, sway/commands/sticky.c:15-44); moving a shown sticky window back to scratchpad must not serialize it as non-sticky."
+

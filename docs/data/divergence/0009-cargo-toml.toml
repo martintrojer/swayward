@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["Cargo.toml"]
+what = "remove unused cargo-generate-rpm and cargo-deb metadata so the maintained package definitions are the only dependency and asset sources."
+why = ""
+

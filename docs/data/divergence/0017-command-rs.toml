@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["swayward-ipc/src/command.rs", "src/command/mod.rs", "src/layout/mod.rs"]
+what = "validate sway's five client colour commands but reject well-formed forms until the titlebar renderer supports every sway-visible field; keep test-only layout option access to prove rejected commands do not mutate rendering state."
+why = ""
+

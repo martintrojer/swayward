@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["swayward-config/src/workspace.rs"]
+what = "move with the niri-config crate rename, add `sway-output-assignment` for sway's ordered workspace output fallbacks beside niri's pre-creating `open-on-output`, and stop treating `empty-workspace-above-first` as a reserved workspace name."
+why = "Sway's `workspace <name> output <outputs...>` assigns without creating the workspace (sway/sway/commands/workspace.c:130-160 records `wsc->outputs` only), and swayward retired `empty-workspace-above-first` with the scrolling strip."
+

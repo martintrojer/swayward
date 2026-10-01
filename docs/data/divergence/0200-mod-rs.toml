@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/command/mod.rs"]
+what = "keep criteria resolution at execution time, make unscoped mark/unmark handling compiler-visible and total, and reject malformed switch-binding keys without relying on parser-only invariants."
+why = ""
+

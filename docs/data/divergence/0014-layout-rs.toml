@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["swayward-config/src/layout.rs", "src/layout/titlebar.rs", "src/layout/tiling_tree/geometry.rs", "src/layout/tiling_tree/mod.rs", "src/layout/tiling_tree/rendering.rs", "src/layout/tiling_tree/tests.rs", "resources/default-config.kdl"]
+what = "optionally close a focused tabbed window's outline by drawing its top border below the inactive tab titles; sway leaves that span empty, so this swayward addition defaults on but can be disabled without changing geometry."
+why = ""
+

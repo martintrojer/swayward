@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/mod.rs", "src/layout/floating.rs", "src/layout/titlebar.rs", "src/layout/workspace.rs", "src/layout/tiling_tree/geometry.rs", "src/layout/tiling_tree/introspection.rs", "src/window/mapped/"]
+what = "render sway titlebar marks and alignment and recompute workspace outer gaps for sway smart-gaps modes."
+why = ""
+

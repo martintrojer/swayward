@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/ipc/server.rs", "swayward-ipc/src/legacy.rs", "swayward-ipc/src/state.rs"]
+what = "carry workspace tree nodes through urgency and output-move state changes so subscribers receive sway's `workspace::urgent` and `workspace::move` payloads instead of synthetic reloads, including when the workspace snapshot changes in the same refresh."
+why = ""
+

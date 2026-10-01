@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/ipc/tree.rs"]
+what = "serialize the active workspace window as focused after a floating window enters fullscreen and moves into the tiling tree."
+why = "Sway preserves raw seat focus while fullscreening a floating container (`sway/tree/container.c:1187-1210`), so the resulting floating IPC node remains focused even though swayward's internal floating/tiling focus selector changes during the move."
+

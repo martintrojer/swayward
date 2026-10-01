@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/command/movement.rs", "src/layout/floating_tree.rs", "src/layout/mod.rs", "src/layout/workspace.rs", "src/layout/tests.rs"]
+what = "store sticky state on an individual floating-group child, route swaps through the resident tree, preserve resident-tree fullscreen visibility, and transfer a floating group as one root."
+why = "Sway treats descendants of a floating group as tiling containers for sticky, swap, and fullscreen commands while moving the floating root transfers the whole group (`floating_group_child_sticky`, `floating_group_child_swap`, `floating_group_child_fullscreen`, and `moving_a_floating_group_to_new_workspace_emits_empty_init` in sway-ipc-oracle 418bad7)."
+

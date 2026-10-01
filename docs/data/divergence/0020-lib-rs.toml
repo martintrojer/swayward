@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["swayward-ipc/src/lib.rs", "swayward-ipc/src/legacy.rs", "swayward-ipc/src/command.rs"]
+what = "retain inherited config vocabulary in `legacy` beside the sway schema until milestone 4 moves binds to sway command strings, carry internal window-move events for sway IPC translation, parse sway's floating/tiling focus modes and floating command through sway's full boolean vocabulary, and parse directional move distances and move-position forms."
+why = ""
+

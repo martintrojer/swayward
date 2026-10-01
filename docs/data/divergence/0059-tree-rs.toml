@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/ipc/tree.rs", "src/layout/floating.rs", "src/layout/mod.rs", "src/layout/tile.rs", "src/window/mapped/"]
+what = "retain mapped xdg-shell natural geometry, report it through GET_TREE, restore and constrain it when a window first floats, and expose a pending one-shot resize through IPC, matching sway's natural floating resize."
+why = ""
+

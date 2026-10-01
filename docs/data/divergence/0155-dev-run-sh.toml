@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["contrib/dev-run.sh", "contrib/test-dev-run.sh", "docs/BUILDING.md"]
+what = "isolate nested development runs from the operator's user config by copying the repository default into the private run directory unless `--config` is explicit."
+why = ""
+

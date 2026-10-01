@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["flake.nix"]
+what = "build and install the sway IPC client and config translator alongside the compositor so the Nix package matches other distribution packages."
+why = ""
+

@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/workspace.rs", "src/layout/tiling_tree/resize.rs"]
+what = "propagate failed tiled edge resizes to sway command replies instead of reporting a successful no-op."
+why = ""
+

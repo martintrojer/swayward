@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["swayward-config/src/binds.rs", "src/input/backend_ext.rs", "src/input/mod.rs"]
+what = "add sway command-string binds with parse-now and execute-later behavior:\n- support exclusive press and release edges, cancel owned release bindings when another press ends their chord, and use mode-local lookup;\n- match input-device and XKB-group wildcards with sway's precedence, prefer translated keysyms, match Num and Caps exactly with lock-insensitive fallback, and match bindcodes against the pre-transition modifier snapshot;\n- derive sway's normalized `vendor:product:name` identifier from Smithay USB IDs and device names, use zero IDs for non-libinput backends, and retain typed actions for unsupported features."
+why = ""
+

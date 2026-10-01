@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["*"]
+what = "run `cargo fmt --all` after the rename changed identifier sort order; no behavioural change."
+why = ""
+

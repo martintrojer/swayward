@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/input/mod.rs", "src/layout/mod.rs", "src/layout/tests.rs"]
+what = "reject compositor-initiated fullscreen drags and focus the destination output when the first drag motion crosses outputs, matching sway's move-seatop entry guards and cross-output drag focus."
+why = ""
+

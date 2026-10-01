@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/mod.rs", "src/layout/tiling_tree/focus.rs", "src/layout/tiling_tree/fullscreen.rs"]
+what = "keep redundant unfullscreen requests from clearing another node's fullscreen state, stop directional focus at a fullscreen leaf, and select a criteria-targeted global-fullscreen window's workspace, matching sway's fullscreen focus barriers."
+why = ""
+

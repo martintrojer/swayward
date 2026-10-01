@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/floating_tree.rs", "src/layout/workspace.rs", "src/layout/tests.rs"]
+what = "distinguish resident floating-tree children from floating roots when commands choose floating or tiled semantics, while routing child border changes into the resident tree."
+why = "Sway's `container_is_floating` is true only for a workspace floating-list root, not its descendants (`sway/tree/container.c:1041-1049`). Treating every resident child as floating made absolute move succeed and chose floating resize units, while the floating-only border path could not find the child."
+

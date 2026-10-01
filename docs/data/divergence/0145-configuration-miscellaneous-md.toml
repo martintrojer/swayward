@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["docs/wiki/Configuration:-Miscellaneous.md"]
+what = "illustrate the inherited `hotkey-overlay` section with a capture of the overlay, and record that its cairo-drawn card takes no part in window rules, so `blur` and `geometry-corner-radius` do not reach it."
+why = ""
+

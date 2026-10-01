@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/ipc/tree.rs", "src/tests/ipc/workspace_output.rs"]
+what = "merge tiled and floating workspace children into one focus array ordered by their windows' focus timestamps."
+why = "Sway builds every IPC node's focus array from the seat's single MRU node stack, so mapping a tiled window after focusing a floating window places the new tiled child before that floating child (`sway/ipc-json.c:784-834`)."
+

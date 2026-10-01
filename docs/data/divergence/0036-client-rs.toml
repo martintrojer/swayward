@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/ipc/client.rs"]
+what = "remove niri's client."
+why = "Because swaymsg is swayward's supported IPC client."
+

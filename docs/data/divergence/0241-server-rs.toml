@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/ipc/server.rs", "src/tests/ipc/events.rs"]
+what = "accept sway's `barconfig_update` event family in subscriptions, including an all-family subscription used with SEND_TICK as an event-stream barrier."
+why = "Sway accepts all nine event names even when no bar configuration exists (`sway/sway/ipc-server.c`, IPC_SUBSCRIBE), so rejecting the unimplemented event family also rejected otherwise supported families in the same request."
+

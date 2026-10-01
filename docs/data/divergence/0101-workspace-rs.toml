@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/workspace.rs"]
+what = "replace the scrolling tiling field and render element with TilingTree while preserving FloatingSpace."
+why = ""
+

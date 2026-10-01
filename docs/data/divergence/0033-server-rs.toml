@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/ipc/server.rs"]
+what = "decode the request frame before parsing its type, so a request code outside `MessageType` gets sway's reply instead of a disconnect: `{\"success\": false}` for IPC_SYNC (`sway/sway/ipc-server.c:919-924`) and a structured not-implemented body otherwise (`ipc-server.c:927-929`)."
+why = ""
+

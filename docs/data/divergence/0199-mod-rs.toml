@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/command/mod.rs", "src/utils/watcher.rs", "src/tests/ipc.rs"]
+what = "validate the watched config synchronously for runtime `reload` so its command reply reports parse failures before asynchronous application."
+why = ""
+

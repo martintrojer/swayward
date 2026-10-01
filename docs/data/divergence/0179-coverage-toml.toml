@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["tests/i3/coverage.toml", "tests/i3/README.md"]
+what = "stop crediting vacuous setup checks in `102-dock.t`, `222-regress-dock-resize.t`, and `268-ipc-config.t`: classify them with citations."
+why = "Because the adapter never establishes the X11 dock or separate-compositor premises they are meant to guard."
+

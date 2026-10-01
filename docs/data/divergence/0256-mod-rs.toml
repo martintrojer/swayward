@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/command/mod.rs", "src/tests/ipc/config_commands.rs", "src/tests/ipc/floating_commands.rs", "src/tests/ipc/tree_commands.rs", "src/tests/ipc/workspace_output.rs"]
+what = "include `parse_error = false` in every failed runtime command reply, reserving true for parser failures."
+why = "Sway serializes `parse_error` whenever a command result has an error (`sway/commands.c:509-523`); swayward's generic failure constructor omitted the field."
+

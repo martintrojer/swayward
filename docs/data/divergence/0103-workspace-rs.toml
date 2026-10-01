@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/workspace.rs", "src/layout/tests.rs", "swayward-config/src/layout.rs", "resources/default-config.kdl"]
+what = "replace the scrolling tiling field and render element with TilingTree while preserving FloatingSpace, and reject retired scrolling-layout configuration instead of retaining dead fields."
+why = ""
+

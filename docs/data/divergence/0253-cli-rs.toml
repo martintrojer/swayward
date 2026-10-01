@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/cli.rs", "src/ipc/server.rs", "src/utils/mod.rs", "src/tests/ipc/misc_commands.rs"]
+what = "report the public swayward version and git description through the command line and GET_VERSION instead of exposing Cargo's niri merge-base package version; use numeric IPC version 1.0.0."
+why = "Swayward and niri have separate release identities. Major 1 identifies the sway protocol family without claiming support for features from a later sway minor release; i3ipc only deserializes the fields, swaymsg displays human_readable, and Waybar does not request GET_VERSION."
+

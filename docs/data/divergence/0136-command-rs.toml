@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["swayward-ipc/src/command.rs"]
+what = "map sway's zero-argument `splith`, `splitv`, and `splitt` aliases to the existing split commands, parse `focus next|prev sibling` without conflating its no-descent semantics with bare next/prev, parse runtime `exit`, exact manual `urgent` state changes, and top-level per-view shortcut-inhibitor policy, preserve `exec --no-startup-id` through dispatch, expose headless `create_output`, and keep unsupported urgency-request policy, mutable opacity, user idle-inhibit policy, tearing, and per-view render deadlines fail-loud."
+why = ""
+

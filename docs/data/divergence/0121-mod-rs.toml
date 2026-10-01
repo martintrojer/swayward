@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/command/mod.rs"]
+what = "keep directional moves inside a workspace-fullscreen ancestor instead of falling through to cross-output movement, matching sway's fullscreen move barrier."
+why = ""
+

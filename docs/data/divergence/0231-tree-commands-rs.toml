@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/tests/ipc/tree_commands.rs"]
+what = "verify configured workspace layout through sway's existing tree layout fields and reject an i3-only workspace_layout alias."
+why = "Sway serializes workspace nodes with the common `layout` field and does not define i3's separate `workspace_layout` member (`sway/ipc-json.c:502-540`)."
+

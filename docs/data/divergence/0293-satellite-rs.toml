@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/utils/xwayland/satellite.rs"]
+what = "log xwayland-satellite's SIGTERM exit at debug level while retaining warnings for crashes and nonzero exits."
+why = "Normal compositor shutdown terminates the on-demand X11 helper with SIGTERM, so warning about that expected lifecycle event makes a clean live-session teardown look like a helper crash."
+

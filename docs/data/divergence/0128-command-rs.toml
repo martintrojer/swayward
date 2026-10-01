@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["swayward-ipc/src/command.rs", "src/command/mod.rs", "src/layout/mod.rs", "src/layout/monitor.rs", "src/layout/tile.rs", "src/layout/workspace.rs", "src/ipc/tree.rs"]
+what = "implement sway sticky commands and move sticky floating windows with workspace focus on their output."
+why = ""
+

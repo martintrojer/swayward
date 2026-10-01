@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["contrib/live-ipc-soak", "docs/BUILDING.md"]
+what = "provide a repeatable, fixed-seed live IPC soak for nested floating-container mutations, command parsing, and wire framing on one or two headless outputs."
+why = "The randomized layout property test cannot exercise the compositor event loop, live Wayland clients, or IPC framing; the standalone probe runs through the capped nested launcher and leaves the failing seed, step, and command for reduction."
+

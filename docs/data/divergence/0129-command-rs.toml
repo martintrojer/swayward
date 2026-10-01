@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["swayward-ipc/src/command.rs", "src/command/movement.rs"]
+what = "reject `swap container with id` explicitly."
+why = "Because xwayland-satellite does not expose sway's X11 window IDs; retain `con_id` and mark swaps."
+

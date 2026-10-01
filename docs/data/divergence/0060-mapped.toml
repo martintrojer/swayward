@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/window/mapped/", "src/swayward.rs", "src/handlers/compositor.rs", "src/handlers/xdg_shell/", "swayward-config/src/lib.rs", "contrib/sway-to-kdl"]
+what = "timestamp urgency, clear it on focus immediately or after sway's cross-workspace timeout, cancel pending timers when windows unmap, and translate `force_display_urgency_hint` without discarding behavior."
+why = ""
+

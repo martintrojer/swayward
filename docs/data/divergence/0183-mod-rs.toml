@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/mod.rs"]
+what = "report fullscreen mode only for the fullscreen node and its descendants, matching sway's per-container state instead of attributing one workspace member's fullscreen mode to every window on that workspace."
+why = ""
+

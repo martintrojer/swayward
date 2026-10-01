@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/handlers/compositor.rs", "src/ipc/tree.rs", "src/layout/tiling_tree/tests.rs"]
+what = "satisfy current Clippy form lints without changing compositor behaviour; retain the flat workspace serializer signature under a targeted argument-count allowance."
+why = ""
+

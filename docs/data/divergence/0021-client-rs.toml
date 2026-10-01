@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/ipc/client.rs", "src/ipc/server.rs"]
+what = "import colliding inherited IPC types from `legacy` while the new sway schema keeps the bare names."
+why = ""
+

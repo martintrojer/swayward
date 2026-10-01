@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/mod.rs", "src/layout/workspace.rs"]
+what = "fall back to normal placement for children of hidden scratchpad windows and center dialogs from stable parent geometry."
+why = ""
+

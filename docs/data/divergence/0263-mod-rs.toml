@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/command/mod.rs", "src/tests/ipc/config_commands.rs"]
+what = "return sway's `Only views can have borders` parse error for every border command on an empty workspace, including malformed border syntax."
+why = "Sway checks for a focused container before dispatching to the border command parser (`sway/sway/commands.c`; `sway/sway/commands/border.c`), while swayward parsed first and exposed the syntax error instead."
+

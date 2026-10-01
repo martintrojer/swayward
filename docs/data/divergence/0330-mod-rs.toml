@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/mod.rs"]
+what = "add Layout::workspace_containing_node and Layout::scratchpad_tree_nodes so container marks resolve by node id, including the containers of hidden scratchpad groups."
+why = "Sway keeps a hidden scratchpad container's marks and still matches it by criteria: root_for_each_container walks hidden scratchpad containers (`sway/sway/tree/root.c:250-257`), and GET_MARKS lists their marks (`sway/sway/ipc-server.c:604-610`)."
+

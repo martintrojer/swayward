@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/command/mod.rs", "src/layout/tiling_tree/mod.rs", "src/tests/ipc/events.rs"]
+what = "include resident floating-tree leaves in command criteria matching without changing window event iteration."
+why = "Sway evaluates criteria against every view, including views nested below a floating split (`sway/criteria.c`; `sway/commands/focus.c`). Swayward's general window iterator omits resident-tree leaves to preserve event semantics, so criteria need to read those leaves from the recursive IPC tree separately."
+

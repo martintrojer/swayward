@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/swayward.rs"]
+what = "propagate Wayland listening-socket creation and event-loop registration errors instead of panicking during compositor startup."
+why = "A long XDG_RUNTIME_DIR makes the Wayland Unix-socket path exceed SUN_LEN; this is a user-environment error that must produce a clear non-zero startup failure, not panic on unwrap."
+

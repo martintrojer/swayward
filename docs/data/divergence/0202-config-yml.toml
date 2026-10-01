@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = [".github/ISSUE_TEMPLATE/config.yml", "CONTRIBUTING.md"]
+what = "drop the two GitHub Discussions contact links and the prose that routes users there. Discussions is disabled on this repository, so both URLs returned 404; issues are the only channel until a maintainer enables it."
+why = ""
+

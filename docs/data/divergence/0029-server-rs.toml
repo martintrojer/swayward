@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/ipc/server.rs", "src/swayward.rs"]
+what = "reject GET_CONFIG rather than returning KDL in sway's sway-config response schema."
+why = ""
+

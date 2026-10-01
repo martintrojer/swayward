@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["contrib/sway-to-kdl", "swayward-config/src/input.rs", "src/ui/hotkey_overlay.rs"]
+what = "translate sway settings to typed KDL:\n- map workspace output preferences, variables with longest-name-first single-pass expansion, and global inner gaps with an optional `px` suffix and negative clamp;\n- map `workspace_auto_back_and_forth`, `popup_during_fullscreen`, exact `focus_follows_mouse yes|no`, keyboard `xkb_numlock`, `floating_modifier` normal and none, and edge and smart-border modes;\n- refuse inexact outer-gap-to-strut conversion, inverse floating buttons, `focus_follows_mouse always`, and `hide_edge_borders --i3`."
+why = ""
+

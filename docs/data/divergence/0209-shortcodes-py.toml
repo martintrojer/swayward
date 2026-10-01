@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["docs/hooks/shortcodes.py", "docs/pyproject.toml", "docs/uv.lock", "docs/wiki/Application-Issues.md", "docs/wiki/Configuration:-Gestures.md", "docs/wiki/Configuration:-Include.md", "docs/wiki/Configuration:-Named-Workspaces.md", "docs/wiki/Configuration:-Switch-Events.md", "docs/wiki/Development:-Animation-Timing.md", "docs/wiki/Development:-Design-Principles.md", "docs/wiki/Development:-Redraw-Loop.md", "docs/wiki/FAQ.md", "docs/wiki/Fullscreen-and-Maximize.md", "docs/wiki/Gestures.md", "docs/wiki/Layer‐Shell-Components.md", "docs/wiki/Nvidia.md", "docs/wiki/README.md", "docs/wiki/Security-Model.md", "docs/wiki/Tabs.md", "docs/wiki/Window-Effects.md", "docs/wiki/Workspaces.md", "docs/wiki/_assets/icons/logo.svg"]
+what = "rewrite inherited documentation and its build support for swayward."
+why = "Remove niri-specific guidance and describe swayward's sway-compatible tree model."
+

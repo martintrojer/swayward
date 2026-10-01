@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/ipc/server.rs", "src/tests/ipc/events.rs", "tests/i3/lib/i3test.pm", "tests/i3/README.md"]
+what = "reconstruct sway's pre-layout `window::new` and metadata-time `window::title` events when a mapped window first appears in the event-state diff, while filtering sway's extra title transition from i3's unchanged two-event map assertion."
+why = "Sway emits `new` before arranging, applying borders or receiving the title, then emits `title` when metadata arrives (`sway/sway/tree/view.c:902,1138`). Swayward first observes the window after layout settles, so emitting only that snapshot lost one event and gave the other the wrong payload."
+

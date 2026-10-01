@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/input/mod.rs", "src/input/backend_ext.rs", "src/ipc/server.rs", "src/swayward.rs"]
+what = "retain backend-neutral input descriptors and the seat name for sway GET_INPUTS, GET_SEATS, and input-event serialization; expose sway's pointer scroll factor plus live USB IDs and supported libinput properties for physical devices."
+why = ""
+

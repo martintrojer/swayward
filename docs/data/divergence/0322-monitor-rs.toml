@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/monitor.rs", "src/layout/tiling_tree/fullscreen.rs", "src/layout/tiling_tree/introspection.rs", "src/layout/tiling_tree/mod.rs", "src/layout/tiling_tree/sizing.rs", "src/layout/tiling_tree/state.rs", "src/layout/tiling_tree/transfer.rs", "src/layout/workspace.rs"]
+what = "leave a fullscreen view that arrives by `move container to workspace` out of its new parent's split geometry and IPC percents until its fullscreen state changes."
+why = "Sway zeroes the moved container's width fraction (`container_move_to_workspace`, sway/commands/move.c:220-229) and, while the workspace is fullscreen, arranges only the fullscreen container (`arrange_workspace`, sway/tree/arrange.c:310-316), so the destination's existing children keep their boxes. Random seeds 50, 87, 299 and 420 cover the window and subtree paths."
+

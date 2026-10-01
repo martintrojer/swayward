@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["swayward-ipc/src/command.rs", "swayward-ipc/src/legacy.rs", "src/backend/mod.rs", "src/backend/tty.rs", "src/command/mod.rs", "src/ipc/server.rs", "src/ipc/tree.rs", "src/swayward.rs", "src/tests/client.rs", "src/tests/ipc.rs"]
+what = "implement sway's named and connected-output wildcard `output power on|off|toggle` command and deprecated `dpms` alias, report the state through GET_OUTPUTS, emit output events, reset runtime power on reload, suppress rendering while powered off without blocking session-lock confirmation, retain power across replug and idle wake, and clear or redraw DRM outputs on state changes."
+why = ""
+

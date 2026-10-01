@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["resources/default-config.kdl", "swayward-config/src/lib.rs"]
+what = "replace scroll-layout and column-oriented default binds with sway's tree-oriented defaults, and disable niri's redundant column tab indicator in favor of sway-style title strips; inherited typed actions and explicit indicator opt-in remain available."
+why = ""
+

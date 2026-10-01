@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/swayward.rs", "src/handlers/mod.rs"]
+what = "expose gamma control to the headless test backend with a fixed fake ramp size and no-op hardware application, so real protocol tests cover fd validation, exclusivity, destruction, and output removal without pretending to verify DRM persistence."
+why = ""
+

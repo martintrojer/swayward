@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/swayward.rs", "src/tests/ipc/wire.rs"]
+what = "skip keyboard-focus updates when the seat has no keyboard, and soak input IPC across repeated keyboard and pointer hotplug cycles."
+why = "A keyboard may disappear between compositor refreshes; live-session focus refresh must not panic while GET_INPUTS, GET_SEATS, and input commands continue returning structured replies."
+

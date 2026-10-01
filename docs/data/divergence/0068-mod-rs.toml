@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/mod.rs"]
+what = "let the i3 conformance restart approximation replace empty transient startup workspace identities while retaining configured persistent workspaces."
+why = ""
+

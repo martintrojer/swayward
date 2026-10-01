@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["docs/BUILDING.md"]
+what = "install the Fedora development packages required by every member of the Cargo workspace and by the vendored i3 Perl tests."
+why = ""
+

@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/mod.rs"]
+what = "export `tiling_tree` and apply cargo-fmt import reordering so the new i3 tree module is compiled and tested."
+why = ""
+

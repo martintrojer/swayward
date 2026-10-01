@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/mod.rs", "src/layout/workspace.rs"]
+what = "document the active nested-tree workspace model and output-removal destruction and evacuation rules instead of niri's removed scrolling-strip lifecycle."
+why = ""
+

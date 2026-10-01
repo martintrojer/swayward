@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/ipc/server.rs"]
+what = "keep serving queries and commands on a subscribed connection."
+why = "Because sway's `IPC_SUBSCRIBE` only sets `subscribed_events` and leaves the client in the ordinary command path (`sway/sway/ipc-server.c:730-784`), refresh the cached query state from the compositor before each stateful reply so a long-lived connection does not answer from its connect-time snapshot (sway serialises at request time, `ipc-server.c:815-823`), keep event diffing on a separate last-emitted tree so those query refreshes cannot hide intervening changes, and skip frame-time tree diffing until an event subscriber exists."
+

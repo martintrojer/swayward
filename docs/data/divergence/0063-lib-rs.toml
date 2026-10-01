@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["swayward-config/src/lib.rs", "swayward-config/src/misc.rs", "src/handlers/compositor.rs"]
+what = "add sway's `popup_during_fullscreen` policy and apply it to native xdg-toplevel parent relationships at map time; `leave_fullscreen` exits through the layout fullscreen API."
+why = ""
+

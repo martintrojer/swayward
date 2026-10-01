@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/tests/i3_conformance.rs", "tests/i3/coverage.toml", "tests/i3/README.md"]
+what = "stop treating `176-workspace-baf.t` as fully green when its restart command is rejected; classify the post-restart assertion as unproven."
+why = "Because sway has no runtime restart and the in-process fixture cannot preserve clients across compositor replacement."
+

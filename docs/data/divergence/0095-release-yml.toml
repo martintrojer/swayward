@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = [".github/workflows/release.yml"]
+what = "gate a release on the published wiki matching the repository."
+why = "Because the wiki described a command family as complete after it had been made partial and only a human audit caught it."
+

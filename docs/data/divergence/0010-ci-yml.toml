@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = [".github/workflows/ci.yml"]
+what = "run shellcheck, launcher tests, and the full i3 coverage-data validator so script and manifest regressions block pull requests."
+why = ""
+

@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/command/mod.rs", "src/tests/ipc.rs"]
+what = "route the runtime `exit` command through the shared shutdown path so subscribers receive sway's `shutdown::exit` event before the event loop stops; reject `mark` when no container is focused instead of removing the same mark globally."
+why = ""
+

@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = [".github/workflows/ci.yml"]
+what = "build the Fedora job on the 43/44 matrix release.yml ships RPMs for, instead of end-of-life Fedora 42."
+why = ""
+

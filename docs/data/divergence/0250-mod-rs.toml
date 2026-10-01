@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/input/mod.rs", "src/layout/workspace.rs"]
+what = "make the modifier resize drag pick the corner of the quadrant under the pointer, split at the half, resize a tiled window on both axes at once, and drop niri's double-click full-width and reset-height gestures from that path."
+why = "Sway's floating_modifier resize always starts from a corner chosen by halves (`sway/sway/input/seatop_default.c:413-435,477-487`) and moves the horizontal and vertical boundaries independently (`sway/sway/input/seatop_resize_tiling.c:52-127`). niri chose edges by thirds and resized one axis, and its double-click gestures would fire on every corner once every press is a corner. Sway has neither gesture."
+

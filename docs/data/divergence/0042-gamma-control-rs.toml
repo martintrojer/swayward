@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/protocols/gamma_control.rs"]
+what = "make client gamma-ramp fds nonblocking and read from offset zero, matching wlroots and preventing a valid pipe fd from blocking the compositor event loop or an inherited file offset from rejecting exact data."
+why = ""
+

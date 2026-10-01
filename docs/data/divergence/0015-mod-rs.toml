@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/mod.rs"]
+what = "preserve the moved window as the destination workspace's inactive focus after sway move-to-workspace commands, without switching the visible workspace."
+why = ""
+

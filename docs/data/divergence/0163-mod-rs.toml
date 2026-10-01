@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/mod.rs", "src/layout/monitor.rs", "src/layout/workspace.rs"]
+what = "stop appending and preserving niri's client-visible trailing placeholder workspace; sway creates workspaces on demand and destroys empty inactive ones. Keep drag creation as transient preview state that materializes a real workspace only on drop."
+why = ""
+

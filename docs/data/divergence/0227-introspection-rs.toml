@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/tiling_tree/introspection.rs", "src/layout/tiling_tree/tests.rs"]
+what = "report titlebar decoration rectangles for leaves in inactive nested tabbed or stacked branches even though those titlebars are not rendered."
+why = "Sway's GET_TREE serializes the pending decoration geometry independently of whether a tabbed or stacked ancestor currently makes the view visible (`sway/ipc-json.c:635-652`; `sway/tree/view.c:1180-1193`)."
+

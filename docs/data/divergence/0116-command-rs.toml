@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["swayward-ipc/src/command.rs", "swayward-ipc/src/criteria.rs", "src/command/mod.rs", "src/handlers/compositor.rs", "src/handlers/xdg_shell/", "src/swayward.rs"]
+what = "retain runtime `assign` and `no_focus` criteria in the active config, apply them only while future native Wayland windows map, and discard them on successful reload; reject X11-only fields rather than widening them to `app_id`."
+why = ""
+

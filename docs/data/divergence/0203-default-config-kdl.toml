@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["resources/default-config.kdl"]
+what = "enable `prefer-no-csd` so clients that ignore\nxdg-decoration receive the tiled hint and remove their rounded corners; xdg\ndecoration negotiation is unconditional and independent of this setting."
+why = ""
+

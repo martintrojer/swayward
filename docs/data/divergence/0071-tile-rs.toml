@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/tile.rs", "src/layout/floating.rs", "src/layout/tiling_tree/geometry.rs", "src/layout/tiling_tree/mod.rs", "src/layout/tiling_tree/rendering.rs", "src/layout/tiling_tree/tests.rs"]
+what = "render a border only for the active child of each tabbed or stacked container, matching sway while retaining every child's title in the parent strip."
+why = ""
+

@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/swayward.rs", "src/handlers/xdg_shell/", "src/window/mapped/", "src/utils/mod.rs"]
+what = "always advertise xdg-decoration, force server-side decoration for tiled windows, predict open-floating rules, xdg parents, and fixed sizes before map so initially floating windows honour the client's requested mode, and reserve `border csd` for clients that requested CSD, matching sway while retaining `prefer-no-csd` only for the xdg tiled hint."
+why = ""
+

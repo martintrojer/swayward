@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/tiling_tree/resize.rs", "src/layout/tiling_tree/tests.rs"]
+what = "cancel a pointer resize when an external resize changes its sibling percentages, preventing the next pointer motion from restoring stale dimensions or tripping a debug assertion."
+why = ""
+

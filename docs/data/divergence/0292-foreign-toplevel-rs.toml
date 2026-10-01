@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/protocols/foreign_toplevel.rs"]
+what = "retain the last advertised foreign-toplevel title and app ID while an xdg-toplevel role is being destroyed instead of treating transient absent role metadata as a live update."
+why = "Wayland foreign-toplevel protocols have no event for clearing a title or app ID. Client teardown can clear xdg role metadata before the surface leaves the mapped-window list, so reporting that expected lifecycle state as an ERROR violates swayward's live-session logging invariant."
+

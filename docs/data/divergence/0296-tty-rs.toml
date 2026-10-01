@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/backend/tty.rs", "src/main.rs", "src/swayward.rs"]
+what = "reapply only an explicit output `focus-at-startup` choice when a backend creates its first outputs after compositor state initialization."
+why = "Headless and initially inactive TTY backends create outputs after the normal startup-focus pass. Reapplying swayward's implicit first-sorted-output fallback would override the backend's live focus when no output requested startup focus; only the explicit configured choice was missed."
+

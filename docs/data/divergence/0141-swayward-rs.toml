@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/swayward.rs", "src/command/mod.rs"]
+what = "apply runtime `output * ...` settings by fanning out to outputs that are currently connected instead of storing sway's wildcard config for future outputs; preserve transient output settings across a config reload when the file's output block is unchanged, while sway discards all runtime output settings on every reload."
+why = ""
+

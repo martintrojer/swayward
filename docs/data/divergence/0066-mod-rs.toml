@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/mod.rs"]
+what = "resolve relative focus and move-to-workspace targets with sway's global numbered and wrapping per-output workspace ordering."
+why = ""
+

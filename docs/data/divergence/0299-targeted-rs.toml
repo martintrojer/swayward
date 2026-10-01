@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/command/targeted.rs", "src/layout/mod.rs", "src/tests/ipc/workspace_commands/move_swap.rs"]
+what = "insert a container moved right or down across an output boundary before the destination's focused container."
+why = "Sway inserts right and down directional moves at the leading edge of a parallel destination workspace (`sway/commands/move.c:168-193`); generic workspace transfers insert after the focused container and reverse repeated moves. Oracle scenario `i3-derived/91f850a4f83f99d2` from `517-regress-move-direction-ipc.t:38` covers the ordering."
+

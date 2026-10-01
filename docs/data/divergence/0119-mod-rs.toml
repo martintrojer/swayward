@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/mod.rs"]
+what = "disable the target workspace and global fullscreen states through `Workspace::set_fullscreen` before showing a scratchpad window, matching sway's scratchpad transition order."
+why = ""
+

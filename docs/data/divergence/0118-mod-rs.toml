@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/command/mod.rs"]
+what = "apply criteria-targeted scratchpad move, show, and focus commands to the matched window, including revealing hidden scratchpad targets and clearing obstructing fullscreen state, matching sway's overridden-node command context."
+why = ""
+

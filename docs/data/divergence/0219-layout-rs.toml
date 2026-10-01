@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["swayward-config/src/layout.rs", "resources/default-config.kdl", "docs/wiki/Configuration:-Layout.md", "docs/wiki/Tree-School:-Windows-and-Focus.md", "src/tests/floating.rs", "src/tests/fullscreen.rs", "src/tests/ipc/focus_and_move.rs", "src/tests/window_opening.rs"]
+what = "default inner and outer window gaps to zero and update inherited configuration and tutorial documentation."
+why = "Match sway's zero gap defaults (`sway/config.c:288-291`); users can still opt into the former 16 px spacing."
+

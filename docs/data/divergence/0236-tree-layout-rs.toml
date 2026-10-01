@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/tiling_tree/tree_layout.rs", "src/layout/tiling_tree/tests.rs"]
+what = "make bare layout toggle use the same split-axis toggle as layout toggle split, initialize an empty workspace representation only when a layout command changes its layout, and transfer fullscreen state from a leaf to the split wrapper created around it."
+why = "Sway routes both toggle forms through toggle_split_layout, only calls workspace_update_representation inside the new_layout != old_layout branch, and container_split transfers the replaced container's fullscreen state to its replacement (`sway/commands/layout.c:24-60,164-193`; `sway/tree/container.c:1514-1563`)."
+

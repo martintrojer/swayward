@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["tests/i3/lib/i3test.pm", "src/tests/i3_conformance.rs", "tests/i3/coverage.toml", "tests/i3/README.md"]
+what = "remove adapter branches that converted named, numbered, and subtest assertions into TAP skips before comparing values; unsupported operations now fail or remain unreached, and coverage records fresh real TAP outcomes."
+why = ""
+

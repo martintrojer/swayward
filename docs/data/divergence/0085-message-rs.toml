@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["swayward-ipc/src/message.rs"]
+what = "omit absent optional command-result fields to match sway's RUN_COMMAND reply schema."
+why = ""
+

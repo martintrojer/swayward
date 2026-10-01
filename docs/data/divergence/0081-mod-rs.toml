@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/input/mod.rs", "src/layout/mod.rs", "src/layout/workspace.rs", "src/layout/tiling_tree/focus.rs", "src/ipc/server.rs"]
+what = "route wheel-selected tab descendants through global window activation so cross-output focus follows sway, and keep internal active-window bookkeeping out of sway workspace event subscriptions."
+why = ""
+

@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["swayward-config/src/binds.rs", "src/input/mod.rs", "src/ui/hotkey_overlay.rs"]
+what = "accept numeric bindcode triggers so translated sway bindcode directives remain functional."
+why = ""
+

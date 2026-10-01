@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/input/mod.rs"]
+what = "make every overview arrow key switch workspaces directly."
+why = "Because niri's window-first and column focus actions are mostly invisible in swayward's tree layout."
+

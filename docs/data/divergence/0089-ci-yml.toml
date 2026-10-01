@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = [".github/workflows/ci.yml"]
+what = "upload proptest regression seeds when randomized CI fails."
+why = "Because a randomized failure otherwise leaves its generated seed only on the ephemeral runner, forcing maintainers to reconstruct the case from logs."
+

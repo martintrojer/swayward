@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["Cargo.toml", "Cargo.lock", "src/handlers/mod.rs", "src/input/backend_ext.rs"]
+what = "update Smithay to its virtual-keyboard input-event API and route `zwp_virtual_keyboard_v1` through the normal compositor input path so bindings, modes, release handling, and idle activity see synthetic keys."
+why = ""
+

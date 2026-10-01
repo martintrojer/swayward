@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/floating.rs", "src/layout/workspace.rs"]
+what = "retire niri's Mutter-derived floating position clamp:\n- store a floating window wherever it is put because sway's `container_floating_move_to` has no bounds check (`sway/sway/tree/container.c:1127-1159`) and its drag seatop passes raw cursor coordinates (`sway/sway/input/seatop_move_floating.c:40`);\n- correct only `move position pointer` into the output box (`sway/sway/commands/move.c:757-771`), while dialog and scratchpad helpers still centre and clamp like `container_floating_resize_and_center` (`sway/sway/tree/container.c:864-908`);\n- validate finite percentages for both live and stored position changes."
+why = ""
+

@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["contrib/sway-to-kdl", "swayward-config/src/layout.rs", "src/command/focus.rs", "src/layout/tiling_tree/focus.rs"]
+what = "translate all four sway focus-wrapping modes, preserve forced inner-container wrapping, suppress local wrap candidates for `no`, and block adjacent-output traversal for `workspace` unless the workspace node is focused; unknown modes remain fail-loud instead of inheriting sway's accidental `no` fallback."
+why = ""
+

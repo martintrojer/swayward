@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/command/mod.rs", "src/command/window.rs", "src/layout/mod.rs", "src/layout/workspace.rs", "src/layout/tiling_tree/resize.rs", "src/tests/ipc.rs"]
+what = "reject border changes on structurally focused split containers and resize those containers as one branch rather than silently mutating the keyboard-focused leaf."
+why = ""
+

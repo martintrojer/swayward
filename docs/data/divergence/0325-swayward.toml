@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["resources/dinit/swayward", "resources/swayward-shutdown.target", "swayward.spec.rpkg"]
+what = "rename the dinit, systemd and RPM packaging files with the binary; the spec describes the i3-tree compositor, ships the sway-to-kdl script with its python3 dependency, suggests sway for swaymsg, and recommends foot."
+why = "The packaged binary, session and IPC sockets are swayward's, and a session teardown must clear the sockets sway clients read."
+

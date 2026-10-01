@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = [".github/workflows/release.yml"]
+what = "remove niri's release process until swayward has release artifacts and a versioning policy."
+why = ""
+

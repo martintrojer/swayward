@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/tiling_tree/resize.rs"]
+what = "walk past tabbed and stacked ancestors when resolving width and height adjustment parents, matching sway's strict horizontal/vertical resize-parent search."
+why = ""
+

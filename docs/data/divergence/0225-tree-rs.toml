@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/ipc/tree.rs", "src/tests/ipc/tree_commands.rs"]
+what = "report each workspace rect from its effective working area, including configured outer and edge gaps."
+why = "Sway applies workspace gaps before serializing the workspace box (`sway/tree/workspace.c`; `sway/tree/arrange.c`)."
+

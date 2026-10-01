@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/monitor.rs", "src/layout/mod.rs"]
+what = "transfer focused tree tiles rather than concrete scrolling columns between workspaces and outputs."
+why = ""
+

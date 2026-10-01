@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/command/mod.rs"]
+what = "keep native xdg-shell views' X11 `id` criterion unset instead of aliasing their sway container ID."
+why = ""
+

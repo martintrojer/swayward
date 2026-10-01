@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/utils/spawning.rs"]
+what = "let runtime `exec --no-startup-id` omit only `DESKTOP_STARTUP_ID` while retaining the XDG activation token, matching sway's launcher environment."
+why = ""
+

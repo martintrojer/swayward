@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["resources/default-config.kdl"]
+what = "the shipped titlebar ring matches the window\nborder below it: `border-thickness 4` and, per focus state, the border colour\n(`#ffc87f` focused, `#505050` inactive, `#9b0000` urgent). Sway's defaults are a\n1px blue ring beside a 2px blue border (`sway/config.c:261,314-327`); paired\nwith niri's orange border that read as a missing top edge on every window with\na header. `vertical-padding` rises from 4 to 8 because sway caps the ring at\nthe vertical padding (`sway/commands/titlebar_border_thickness.c:16`). Only the\ndefaults change; every value remains user-configurable, and the titlebar is\n8px taller than sway's by default as a result."
+why = ""
+

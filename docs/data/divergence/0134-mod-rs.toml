@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/command/mod.rs", "src/command/layout.rs", "src/layout/mod.rs", "src/layout/workspace.rs", "src/layout/tiling_tree/tree_layout.rs"]
+what = "route criteria-prefixed split commands to every matched leaf or container without changing focus, including sway's parent-axis toggle semantics; reject criteria-prefixed `exit` and `reload` before changing lifecycle state rather than repeating their global handlers once per match as sway does."
+why = ""
+

@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/handlers/xdg_shell/"]
+what = "restrict client-requested interactive move and resize to floating windows, and reject fullscreen moves, matching sway's xdg-shell guards."
+why = ""
+

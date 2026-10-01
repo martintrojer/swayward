@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/mod.rs", "src/layout/workspace.rs", "src/tests/ipc/workspace_commands.rs"]
+what = "keep hidden floating subtrees visible to Wayland lifecycle lookup, and accept root-ID remapping and missing transient geometry while toggling container trees between floating and tiling."
+why = "Sway's scratchpad keeps container trees in the compositor tree while hidden; swayward stores them separately, so lifecycle lookup and floating transitions must still account for those resident trees (`sway/tree/root.c`; `sway/tree/container.c`)."
+

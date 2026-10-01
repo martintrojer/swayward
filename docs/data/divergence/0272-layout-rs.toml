@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/command/layout.rs", "src/layout/floating_tree.rs", "src/layout/workspace.rs", "src/tests/i3_conformance/allowlist.rs", "src/tests/ipc/tree_commands/layout.rs"]
+what = "apply layout set, default, and toggle commands to the focused child inside a resident floating group while continuing to reject the floating root itself."
+why = "Sway rejects `layout` only when the focused container is itself floating; a child of a floating group is not a floating root, so sway operates on its parent (`sway/commands/layout.c:128-139`; `sway/tree/container.c:1041-1049`)."
+

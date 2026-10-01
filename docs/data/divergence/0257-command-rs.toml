@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["swayward-ipc/src/command.rs"]
+what = "report sway's exact invalid-border grammar, which allows an optional width only after `pixel`."
+why = "Sway's `cmd_border` error is `Expected 'border <none|normal|pixel|csd|toggle>' or 'border pixel <px>'` (`sway/commands/border.c:59-90`)."
+

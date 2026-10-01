@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/command/mod.rs", "src/tests/ipc/bindings.rs", "tests/i3/lib/i3test.pm", "tests/i3/README.md"]
+what = "emit both `window::mark` snapshots when replacing a view's or split container's marks, while filtering sway's extra view pre-clear event from i3's unchanged one-event assertion."
+why = "Sway's default mark command calls `container_clear_marks`, which emits even for an already empty list, before `container_add_mark` emits again with the new mark (`sway/sway/tree/container.c:1657-1679`)."
+

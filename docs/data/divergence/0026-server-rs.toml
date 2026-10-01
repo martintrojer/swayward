@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/ipc/server.rs", "src/swayward.rs"]
+what = "omit the ambient-`SWAYSOCK` IPC constructor from test builds so tests can only bind explicit private socket paths."
+why = ""
+

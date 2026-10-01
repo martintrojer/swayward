@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/ipc/server.rs", "src/swayward.rs", "swayward-ipc/src/legacy.rs"]
+what = "emit sway-shaped subscription payloads for waybar-compatible event streams, preserve the IPC focus baseline while session lock temporarily owns keyboard focus so unlock does not manufacture a window-focus event, and log each emitted event type at debug level:\n- include workspace, window, binding-mode, tick, output, and shutdown events, including the initial `first:true` tick, `output::unspecified` after output changes, and `shutdown::exit` before event-loop stop;\n- order workspace init, focus, rename, empty, reload, close, move, floating, fullscreen, title, mark, new, and urgency events;\n- emit sway's captured workspace reload payload after a successful reload even when workspace state is unchanged."
+why = ""
+

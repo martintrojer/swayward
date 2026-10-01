@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["docs/wiki/Sway-School.md", "docs/wiki/Tree-School:*.md", "docs/wiki/Tree-Command-Reference.md"]
+what = "replace the monolithic text-only tree tutorial with the Cult of the Tree landing page, five walkable induction classes, a separate command reference, and paired compositor screenshots/tree diagrams generated from the shipped default config."
+why = ""
+

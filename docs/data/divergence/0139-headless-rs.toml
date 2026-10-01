@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/backend/headless.rs", "src/command/mod.rs"]
+what = "expose the existing headless output-add path to sway's runtime `create_output` command, using sway's 1920×1080 size and monotonically increasing names; reject tty and single-window winit with sway's unsupported-backend message rather than leaking its multi-backend assertion."
+why = ""
+

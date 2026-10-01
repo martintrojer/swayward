@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/protocols/ext_workspace.rs", "src/layout/workspace.rs", "src/ipc/tree.rs"]
+what = "expose the same sway-visible workspace set and display-name derivation through GET_WORKSPACES, GET_TREE, and ext-workspace; preserve leave-before-enter ordering on assignment, and ignore assignments to removed output groups."
+why = ""
+

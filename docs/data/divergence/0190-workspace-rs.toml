@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/workspace.rs", "src/layout/tiling_tree/mod.rs"]
+what = "remove the dead default-width argument from new tiled-window sizing and document why tree allocations ignore that scrolling-layout preset."
+why = ""
+

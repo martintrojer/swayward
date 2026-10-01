@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/mod.rs", "src/tests/ipc/focus_and_move.rs"]
+what = "select global next and previous workspaces using forward or reverse output and workspace traversal to break equal-number ties."
+why = "Sway scans the root output list and each output's workspace list in command direction, so equal numeric prefixes retain stable per-output order (`sway/tree/workspace.c:548-677`)."
+

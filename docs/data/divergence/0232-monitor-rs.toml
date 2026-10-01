@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/monitor.rs", "src/ipc/tree.rs"]
+what = "track sway's stable output workspace order separately from the layout's spatial workspace vector and use it for IPC child traversal."
+why = "Sway appends workspaces to an output-owned list and stable-sorts that list, while swayward's inherited vector also drives active indices, animation, and workspace placement (`sway/tree/output.c:333-340,387-405`; `sway/tree/workspace.c:177-260`)."
+

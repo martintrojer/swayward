@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/mod.rs", "src/handlers/mod.rs", "src/protocols/foreign_toplevel.rs"]
+what = "store sway scratchpad windows, and map foreign-toplevel minimize requests to hide/show them. Sway has no minimize handler (sway/sway/tree/view.c:881-893), so the minimize mapping is a sway-visible divergence pending a decision. Activating a scratchpad-hidden toplevel reveals it, as sway's activate handler does (view.c:741-743)."
+why = ""
+

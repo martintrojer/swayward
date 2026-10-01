@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/mod.rs", "src/layout/workspace.rs", "src/layout/tiling_tree/mod.rs", "src/layout/tiling_tree/geometry.rs"]
+what = "model workspace and global fullscreen on nested tree containers so focus, movement, rendering, and IPC follow sway's fullscreen ancestry rules."
+why = ""
+

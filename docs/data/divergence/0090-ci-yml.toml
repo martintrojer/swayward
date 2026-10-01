@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = [".github/workflows/ci.yml"]
+what = "install the Perl modules required by the vendored i3 conformance runner."
+why = ""
+

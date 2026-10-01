@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = [".github/workflows/release.yml"]
+what = "derive Debian, RPM, and Arch prerelease versions through the checked package-version translator so every package sorts before its final release."
+why = ""
+

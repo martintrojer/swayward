@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/swayward.rs", "src/layout/mod.rs", "src/layout/workspace.rs", "src/layout/tiling_tree/mod.rs"]
+what = "resolve pointer hits on tabbed and stacked titlebars to the represented branch's focused descendant before applying focus-follows-mouse."
+why = ""
+

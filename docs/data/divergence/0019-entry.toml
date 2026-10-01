@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["*"]
+what = "mechanical niri→swayward rename, with no behavioural change. See the rename commit."
+why = ""
+

@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/mod.rs", "src/layout/workspace.rs", "src/layout/tiling_tree/fullscreen.rs", "src/tests/ipc/workspace_commands.rs"]
+what = "apply unscoped fullscreen only to the focused floating window when the floating layer is active, and retain structural focus when fullscreening an already focused tiling container."
+why = "Sway fullscreen targets the seat's raw focused node; applying it to both the active floating window and stale tiling focus left two fullscreen nodes, while descending a directly focused split changed GET_TREE focus metadata (`sway/commands/fullscreen.c`; `sway/tree/container.c`)."
+

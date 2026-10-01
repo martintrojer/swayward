@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/mod.rs", "src/window/mapped/", "src/layout/titlebar.rs"]
+what = "expose window titles to the tree renderer for sway-style server-side titlebars and round each rendered titlebar from its absolute physical endpoints so tab strips stay aligned with their window allocation."
+why = ""
+

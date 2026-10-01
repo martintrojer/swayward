@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/mod.rs", "src/layout/workspace.rs", "src/layout/tiling_tree/mod.rs", "src/layout/tiling_tree/resize.rs"]
+what = "expose stable focused-node identity and targeted container layout mutation for sway command contexts, implement sibling-only next/prev focus without descending into the selected container, wrap workspace-level insertions in sway's configured stacking or tabbed default layout, and make `resize set` use outer allocations from the geometry map to resolve sizes against the nearest matching-axis ancestor while distributing its delta across all siblings like sway."
+why = ""
+

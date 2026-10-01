@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/tests/snapshots/"]
+what = "rename niri's insta snapshots with the crate (niri__tests__* to swayward__tests__*) and re-record their configure sizes and bounds for swayward's zero default gaps and i3 tree placement."
+why = "insta names snapshots after the crate, and the recorded sizes are niri's scrolling-column geometry with 16px gaps, which swayward's tiling tree does not produce."
+

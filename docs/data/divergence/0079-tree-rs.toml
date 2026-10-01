@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/ipc/tree.rs"]
+what = "derive GET_WORKSPACES from the same workspace nodes as GET_TREE before clearing tiled children, preserving sway's focus order, floating nodes, marks, representation, and usable-area rectangle; serialize view names from raw client titles, keep split names null, build workspace representations from app IDs, retain output workspace focus order and area percentage, and populate sway's scratch workspace constants and focus list."
+why = ""
+

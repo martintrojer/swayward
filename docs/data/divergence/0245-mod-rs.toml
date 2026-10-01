@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/command/mod.rs", "src/ipc/server.rs", "src/tests/ipc/events.rs"]
+what = "buffer workspace-related IPC events for each command, normalize their mutation-time order and snapshots before flushing, and keep the settled-tree diff as the event source for unmigrated paths."
+why = "Sway emits workspace events from tree mutation sites, so a settled diff alone loses workspace focus snapshots and reverses move, empty, urgency, sticky, and output-removal events."
+

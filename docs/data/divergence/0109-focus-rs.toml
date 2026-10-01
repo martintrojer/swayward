@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/tiling_tree/focus.rs"]
+what = "keep the focused descendant as the active keyboard window while a split container itself is focused, matching sway's focus-inactive view behavior."
+why = ""
+

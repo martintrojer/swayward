@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/tests/client_protocol_fuzz.rs", "src/tests/fixture.rs"]
+what = "exercise session-lock client death while outputs are repeatedly added and removed, using an explicit fixture operation for abrupt Wayland disconnects."
+why = "A dead session-lock client must leave the compositor securely locked; output hotplug must not turn that fail-secure state into an unlocked session."
+

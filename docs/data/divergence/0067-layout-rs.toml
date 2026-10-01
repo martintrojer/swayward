@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["swayward-config/src/layout.rs", "src/layout/mod.rs", "src/layout/monitor.rs", "src/layout/workspace.rs", "src/layout/tiling_tree/geometry.rs", "swayward-ipc/src/command.rs", "src/command/mod.rs", "contrib/sway-to-kdl"]
+what = "represent sway outer gaps as per-side workspace-box insets shared by tiled and floating placement, including runtime and per-workspace overrides, negative outer-plus-inner sums, proportional minimum-size clamping, and workspace-owned gap values that survive config reload; do not map them to tiling-only struts."
+why = ""
+

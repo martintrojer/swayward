@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/tiling_tree/mod.rs", "src/layout/tiling_tree/tests.rs"]
+what = "cancel an active interactive resize before consume/expel reparents nodes, matching every other structural mutation and preventing the stored resize boundary from naming nodes that are no longer siblings."
+why = ""
+

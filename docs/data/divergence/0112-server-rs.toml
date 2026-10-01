@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/ipc/server.rs", "src/ipc/tree.rs"]
+what = "serve sway GET_TREE, GET_WORKSPACES, and GET_OUTPUTS from live compositor state instead of niri IPC requests:\n- include focused empty workspaces, workspace focus membership, sway-compatible workspace numbers, and constant workspace fullscreen mode;\n- report exact nested-container, output-offset floating, parent-relative decoration and floating-percentage, border-derived window, and titlebar decoration rectangles;\n- preserve back-to-front floating-child order and sway 1.12 output feature, HDR, transform, subpixel, and view-tag fields;\n- clear a destroyed foreign-toplevel handle in close events to match sway's pre-destruction payload."
+why = ""
+

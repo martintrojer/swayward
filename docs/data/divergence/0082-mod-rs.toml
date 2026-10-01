@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/tests/mod.rs"]
+what = "run vendored i3 Perl assertions against the existing headless compositor and real sway IPC socket."
+why = ""
+

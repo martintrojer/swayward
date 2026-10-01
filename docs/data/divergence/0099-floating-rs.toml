@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/floating.rs", "src/layout/mod.rs", "src/layout/workspace.rs"]
+what = "route sway directional resize commands to a specific floating or tiled edge and wrap directional focus among floating window centers while retaining niri's configure-driven floating resize model."
+why = ""
+

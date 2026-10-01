@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/ipc/server.rs", "src/tests/ipc/config_commands.rs"]
+what = "track a window's formatted title in IPC event state and emit one `window::title` event when the `title_format` command changes only compositor-rendered title text."
+why = "Sway emits `window::title` when `title_format` recomputes the container title (`sway/sway/commands/title_format.c:25-28`; `sway/sway/tree/view.c:1117-1138`). Swayward's event state tracked only the client's raw title, so the command produced no event."
+

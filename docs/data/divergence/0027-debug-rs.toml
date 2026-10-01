@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["swayward-config/src/debug.rs"]
+what = "deactivate unfocused windows by default to match sway's focus transitions; users may still disable this through the inherited debug option."
+why = ""
+

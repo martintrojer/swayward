@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = [".gitignore", "src/ipc/mod.rs"]
+what = "update inherited repository wiring for the swayward fork."
+why = "Keep ignored artifacts and the IPC module graph aligned with the renamed and replaced components."

@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/window/mod.rs", "src/tests/window_opening.rs", "src/tests/ipc/tree_commands.rs", "docs/KNOWN_DEVIATIONS.md"]
+what = "match sway's default floating predicate for xdg parents and windows fixed on either axis, and document that xwayland-satellite forwards the corresponding X11 transient and size hints."
+why = "Sway requires both minimum dimensions to be nonzero and either axis to have equal minimum and maximum (`sway/desktop/xdg_shell.c:228-235`). The inherited niri predicate checked only fixed height, missing fixed-width windows and floating zero-width fixed-height windows that sway tiles."
+

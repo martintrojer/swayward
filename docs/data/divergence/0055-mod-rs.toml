@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/tiling_tree/mod.rs", "src/layout/tiling_tree/invariants.rs"]
+what = "route map-time fullscreen state through the single-fullscreen transition and assert its uniqueness, matching sway's replacement of the workspace fullscreen container."
+why = ""
+

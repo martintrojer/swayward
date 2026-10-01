@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["contrib/sway-to-kdl"]
+what = "report `bindgesture`, `unbindgesture`, `bindswitch`, and `unbindswitch` with specific unsupported-semantics diagnostics instead of mapping them to narrower built-in gestures or spawn-only switch events; retain `client.background` and `client.placeholder` as source-located comments explaining that sway itself accepts and ignores them."
+why = ""
+

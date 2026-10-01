@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/tiling_tree/geometry.rs", "src/ipc/tree.rs"]
+what = "tab and stack strips in a\nhidden branch are no longer drawn, and a window on an inactive tab reports\n`visible: false` at every depth. Sway arranges only the active child of a\ntabbed or stacked container and sends the rest to `disable_container`\n(`sway/desktop/transaction.c:316-321`), and `view_is_visible` checks the active\ntiling child at every tabbed or stacked ancestor (`sway/tree/view.c:1180-1193`).\nPreviously every strip in the tree was drawn, so with the outer tab of a\nthree-level stack focused the two hidden inner strips covered the top of its\nwindow."
+why = ""
+

@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/handlers/compositor.rs", "src/swayward.rs", "src/command/mod.rs"]
+what = "apply for_window commands when a toplevel maps, including translated mark, kill, and scratchpad actions without retaining a target after an earlier action removes it; route marks through the global uniqueness machinery; re-evaluate newly matching runtime for_window criteria after a view's marks change, once per criterion and mapped lifetime like sway; clear that history on unmap or successful config reload; and remove marks when a window unmaps."
+why = ""
+

@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["swayward-ipc/src/command.rs", "src/command/mod.rs", "src/tests/ipc.rs", "tests/sway/compatibility.toml"]
+what = "implement sway's live-only `input *|type:keyboard|<identifier> xkb_switch_layout next|prev|N`, update GET_INPUTS, emit `input::xkb_layout`, and record the parser census while leaving all persistent runtime input settings fail-loud."
+why = ""
+

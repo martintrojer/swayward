@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/tiling_tree/focus.rs", "src/layout/tiling_tree/introspection.rs", "src/layout/tiling_tree/rendering.rs", "src/layout/tiling_tree/tests.rs"]
+what = "exclude hidden tab descendants from pointer and drop hits and resolve nested tab scrolling by walking to the nearest strip, removing HashMap-order-dependent targeting."
+why = ""
+

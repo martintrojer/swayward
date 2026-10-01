@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/mod.rs", "src/layout/tests.rs"]
+what = "exclude a moving tile's temporary animation offset when computing the stable output-relative box used to unconstrain its popups."
+why = "Sway unconstrains popups from the output box relative to the container's pending content geometry (`sway/desktop/xdg_shell.c:44-65`); a visual movement animation must not shift that constraint box."
+

@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/floating.rs", "src/layout/mod.rs", "src/layout/tile.rs", "src/layout/workspace.rs", "src/window/mapped/", "src/swayward.rs", "swayward-config/src/layout.rs", "contrib/sway-to-kdl"]
+what = "expose focused-tree layout mutation and direct container focus for sway runtime commands:\n- preserve sway's parent targeting, workspace-level layer history, one-level singleton flatten, and focus rank and parent across floating transitions;\n- retain fullscreen state for floating-origin command checks, clear fullscreen when required, and activate decorations outside a client's Wayland input region;\n- apply configurable global floating size constraints and client-chosen initial size, use a clamped and centered default for tiled windows entering the scratchpad, and fail an edge resize that is fully clamped;\n- remap scratchpad centres proportionally across outputs and maintain immediate global focus-timestamp ordering across outputs and tiled and floating layers."
+why = ""
+

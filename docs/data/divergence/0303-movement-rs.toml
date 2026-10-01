@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/command/movement.rs", "src/command/targeted.rs", "src/tests/ipc/misc_commands/protocol.rs"]
+what = "move a focused or criteria-targeted floating-group root to an absolute position while retaining rejection for a focused child inside that group."
+why = "Sway applies `move position` to a focused floating group root, but rejects the same command after `focus child`; the two focus scopes must not be collapsed (`floating_group_child_move_position` in sway-ipc-oracle 418bad7)."
+

@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = [".github/dependabot.yml"]
+what = "ignore minor and major updates of pango, pangocairo, cairo-rs, glib, gio, ordered-float and tracy-client."
+why = "Because those releases need a Rust newer than the niri-matched MSRV or do not build, so Dependabot would open PRs that cannot land."
+

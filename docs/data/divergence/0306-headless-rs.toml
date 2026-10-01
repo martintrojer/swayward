@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/backend/headless.rs", "src/swayward.rs", "src/swayward/outputs.rs", "src/tests/i3_conformance/coverage.rs"]
+what = "preserve sway's reverse headless startup announcement order when automatically placing otherwise identical virtual outputs."
+why = "Sway receives wlroots' pre-created headless outputs in reverse order and places HEADLESS-N first; sorting swayward's virtual outputs by serial reversed their geometry after they had been created in sway's announcement order, making multi-output GET_TREE rectangles disagree with sway."
+

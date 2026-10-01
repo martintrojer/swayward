@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["swayward-ipc/src/command.rs", "src/command/mod.rs"]
+what = "parse and execute sway's container and workspace move-to-output forms by output name or direction."
+why = ""
+

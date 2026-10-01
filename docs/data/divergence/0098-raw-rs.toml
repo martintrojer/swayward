@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/protocols/raw.rs", "src/tests/client.rs", "src/tests/foreign_toplevel.rs", "src/tests/layer_shell.rs", "src/tests/xdg_shell.rs"]
+what = "extend the real Wayland client harness to cover stale foreign-toplevel, layer-output, popup-parent, and inert Mutter X11 interop handles."
+why = ""
+

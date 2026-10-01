@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["swayward-config/src/appearance.rs", "swayward-config/src/lib.rs", "swayward-ipc/src/command.rs", "src/command/mod.rs", "src/layout/titlebar.rs", "src/tests/ipc.rs", "contrib/sway-to-kdl", "contrib/capture-decoration-matrix", "contrib/build-decoration-matrix-page", "resources/default-config.kdl"]
+what = "draw sway's inset titlebar border ring using each titlebar's decorated-box corner ownership, expose its color and thickness in KDL, enforce sway's mutual padding/thickness bounds at runtime, and assert the configured ring in the decoration matrix.\n- accept only `client.focused_tab_title` because the other client color classes also change unmodelled window-border colors."
+why = ""
+

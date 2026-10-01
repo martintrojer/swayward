@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/input/mod.rs", "src/input/spatial_movement_grab.rs", "src/input/touch_overview_grab.rs", "src/layout/mod.rs", "src/layout/monitor.rs", "src/layout/tests.rs", "swayward-config/src/layout.rs"]
+what = "retire niri's built-in vertical workspace-switch swipe and `empty-workspace-above-first`; keep command-driven workspace-switch animation, the additive four-finger overview, client pinch and hold forwarding, and drag-and-drop edge scrolling."
+why = ""
+

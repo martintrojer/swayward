@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/main.rs"]
+what = "select the existing headless backend and create 1280×720 outputs when `WLR_HEADLESS_OUTPUTS` is set, matching wlroots and enabling live multi-output trials without extending sway IPC."
+why = ""
+

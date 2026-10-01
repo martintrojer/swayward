@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/ipc/server.rs"]
+what = "reconstruct a sticky floating group's source-workspace snapshot at the workspace-switch event boundary while omitting the group from the destination snapshot until sway moves it."
+why = "Sway emits the workspace focus transition before its post-focus sticky-container transfer (`sway/input/seat.c:1195-1215`). Swayward batches the whole command and otherwise serializes only the settled destination, reversing which workspace contains the group in the focus event."
+

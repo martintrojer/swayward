@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["swayward-ipc/src/command.rs", "src/command/mod.rs", "src/layout/mod.rs", "src/layout/workspace.rs", "src/layout/tiling_tree/resize.rs"]
+what = "parse and execute sway's full `resize set` grammar, preserve nonpositive dimensions as unchanged, target the nearest matching-axis tiled ancestor for pixel and percentage sizes, reject floating and resize changes to hidden scratchpad windows like sway, guard typed by-id actions from reaching workspace-only mutation paths, and execute sway floating position commands in workspace or global coordinates."
+why = ""
+

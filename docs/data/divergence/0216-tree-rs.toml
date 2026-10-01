@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/ipc/tree.rs"]
+what = "preserve arranged percentages within a fullscreen branch while assigning the full workspace percentage only to the branch root."
+why = "Sway serializes every container percentage from its own pending box and its immediate parent's box, so nested descendants retain numeric percentages under fullscreen (`sway/ipc-json.c:746-755`)."
+

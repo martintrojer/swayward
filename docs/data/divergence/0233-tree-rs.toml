@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/ipc/tree.rs", "src/tests/ipc/tree_commands.rs", "src/tests/ipc/workspace_commands.rs"]
+what = "serialize hidden scratchpad containers in insertion order while retaining newest-first focus order."
+why = "Sway appends containers to the scratchpad list and prepends each one to the seat focus stack (`sway/tree/root.c`, `sway/input/seat.c`), so GET_TREE reports oldest-first children and newest-first focus."
+

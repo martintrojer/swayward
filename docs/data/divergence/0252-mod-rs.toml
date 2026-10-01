@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/input/mod.rs", "src/tests/ipc/bindings.rs"]
+what = "match a raw keysym with the unconsumed modifier state even when XKB resolves it to the same modified keysym."
+why = "Shift is consumed for BackSpace even though its symbol remains BackSpace, so `Shift+BackSpace` bindings otherwise never fire."
+

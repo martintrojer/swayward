@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/swayward/config_reload.rs", "src/tests/ipc/config_commands/reload.rs"]
+what = "reset the binding mode on reload without a mode event, and emit one output::unspecified after every successful reload."
+why = "Sway's reload emits workspace::reload and bar updates only, never mode (sway/sway/commands/reload.c:34-45; commands/mode.c:78), then re-applies output configs and emits output::unspecified (sway/sway/config.c:540; desktop/output.c:377-399). Oracle events scenario reload_from_resize_mode."
+

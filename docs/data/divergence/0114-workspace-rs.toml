@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/workspace.rs"]
+what = "expose a read-only TilingTree snapshot for sway GET_TREE serialization."
+why = ""
+

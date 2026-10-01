@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/ipc/tree.rs", "src/tests/ipc/tree_commands.rs"]
+what = "serialize `floating = auto_off` and `scratchpad_state = none` on internal split containers."
+why = "Sway's shared container serializer emits these fields for every container, including non-leaf splits (`sway/ipc-json.c:710-744`)."
+

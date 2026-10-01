@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/tests/client/core.rs", "src/tests/client/wayland_dispatch.rs", "src/tests/client_protocol_fuzz.rs", "src/tests/mod.rs"]
+what = "exercise randomized valid and deliberately invalid xdg-shell, layer-shell, popup, subsurface, and IPC client lifecycle operations against the in-process compositor."
+why = "The command and layout property tests do not cross Wayland protocol handler boundaries; this generator checks layout invariants after valid operations and requires invalid operations to disconnect with the protocol-defined interface and error code."
+

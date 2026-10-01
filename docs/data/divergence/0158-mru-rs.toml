@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/ui/mru.rs"]
+what = "retain inherited typed focus actions as MRU navigation aliases for existing user configs; shipped sway-command binds do not generate these aliases."
+why = ""
+

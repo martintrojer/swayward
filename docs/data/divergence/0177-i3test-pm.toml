@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["tests/i3/lib/i3test.pm", "tests/i3/coverage.toml", "tests/i3/README.md"]
+what = "stop rewriting `100-fullscreen.t` GET_TREE replies to fabricate i3's output content node; measure and classify the unchanged test against sway's direct-workspace output tree."
+why = ""
+

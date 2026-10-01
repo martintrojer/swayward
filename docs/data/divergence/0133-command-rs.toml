@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["swayward-ipc/src/command.rs", "src/command.rs", "src/command/layout.rs", "src/layout/mod.rs", "src/layout/workspace.rs", "src/layout/tiling_tree/mod.rs", "src/layout/tiling_tree/tree_layout.rs"]
+what = "move windows and container subtrees to marked destinations using sway's sibling-versus-child insertion rules while preserving subtree focus and marks; enforce global mark uniqueness across window and split-container storage; remap marks when a layout command flattens a singleton container; swap tiling nodes selected by `con_id` or mark within or across workspaces while preserving focus order, geometry shares, marks, and fullscreen state at the occupied positions."
+why = ""
+

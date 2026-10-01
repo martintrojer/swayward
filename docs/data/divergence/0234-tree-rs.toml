@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["src/ipc/tree.rs"]
+what = "document why output-node serialization can require a matching flat output entry."
+why = "Both entries are derived in the same call from the same immutable layout monitor, so the lookup is an internal serialization invariant rather than independently mutable compositor state."
+

@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["docs/wiki/Configuration:-Input.md", "docs/wiki/Configuration:-Layout.md", "docs/wiki/Configuration:-Window-Rules.md"]
+what = "document swayward's KDL nodes for tree defaults, titlebars, outer gaps, floating sizes, fullscreen pop-ups, floating pointer modifiers, numbered workspace placement, sway borders, and map-time sway commands."
+why = ""
+

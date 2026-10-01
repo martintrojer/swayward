@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["resources/default-config.kdl"]
+what = "mention every user-facing config node accepted by the parser, mostly in disabled examples, so the shipped config exposes available features without changing defaults."
+why = ""
+

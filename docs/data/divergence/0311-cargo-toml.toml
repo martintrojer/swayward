@@ -1,0 +1,6 @@
+[[edit]]
+migrated = false
+paths = ["swayward-config/Cargo.toml", "swayward-config/src/tests/loader.rs", "swayward-config/tests/translator.rs"]
+what = "create config-test fixtures in uniquely named RAII temporary directories under Cargo's target temporary directory."
+why = "Process-ID-based names collide across repeated values and interrupted runs, while explicit cleanup leaks files on assertion or subprocess failure; isolated TempDir owners avoid both failure modes and keep scratch data out of the system temporary directory."
+

@@ -1,0 +1,6 @@
+[[edit]]
+migrated = true
+paths = ["src/layout/mod.rs"]
+what = "include hidden scratchpad windows in mutable global window traversal so criteria-targeted state changes reach every window exposed by immutable traversal."
+why = ""
+
