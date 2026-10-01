@@ -228,9 +228,19 @@ fn output_workspaces_and_move_replacements_use_next_free_numbers() {
 fn rename_ignores_an_empty_inactive_source_sway_would_have_destroyed() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));
-    for command in ["workspace 5", "open", "workspace 6", "open", "workspace 6"] {
-        let _ = crate::command::execute(f.niri_state(), command);
-    }
+    let client = f.add_client();
+
+    let outcome = crate::command::execute(f.niri_state(), "workspace 5");
+    assert!(outcome[0].success, "{outcome:?}");
+    let surface = windows::map_window(&mut f, client, windows::WindowSpec::default());
+    let window = f.client(client).window(&surface);
+    window.attach_null();
+    window.commit();
+    f.double_roundtrip(client);
+
+    let outcome = crate::command::execute(f.niri_state(), "workspace 6");
+    assert!(outcome[0].success, "{outcome:?}");
+    windows::map_window(&mut f, client, windows::WindowSpec::default());
 
     let outcome = crate::command::execute(f.niri_state(), "rename workspace 5 to 5: foo");
     assert!(!outcome[0].success, "{outcome:?}");

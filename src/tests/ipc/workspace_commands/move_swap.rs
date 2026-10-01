@@ -709,27 +709,22 @@ fn floating_toggle_after_moving_scratchpad_window_between_workspaces_does_not_pa
     f.add_output(1, (1920, 1080));
     let client = f.add_client();
     for _ in 0..5 {
-        let window = f.client(client).create_window();
-        window.commit();
-        let surface = window.surface.clone();
-        f.roundtrip(client);
-        let window = f.client(client).window(&surface);
-        window.attach_new_buffer();
-        window.ack_last_and_commit();
-        f.double_roundtrip(client);
+        windows::map_window(&mut f, client, windows::WindowSpec::default());
     }
 
-    for command in [
-        "focus parent",
-        "move scratchpad",
-        "scratchpad show",
-        "move container to workspace 2",
-        "floating toggle",
-        "move container to workspace 2",
-        "workspace 2",
-        "floating toggle",
+    for (command, expected_success) in [
+        ("focus parent", true),
+        ("move scratchpad", true),
+        ("scratchpad show", true),
+        ("move container to workspace 2", true),
+        ("floating toggle", false),
+        ("move container to workspace 2", false),
+        ("workspace 2", true),
+        ("floating toggle", true),
     ] {
-        let _ = crate::command::execute(f.niri_state(), command);
+        let outcome = crate::command::execute(f.niri_state(), command);
+        assert_eq!(outcome[0].success, expected_success, "{command}: {outcome:?}");
+        f.swayward().layout.verify_invariants();
     }
 }
 
