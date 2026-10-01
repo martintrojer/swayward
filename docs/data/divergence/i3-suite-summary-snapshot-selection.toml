@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = [".github/workflows/ci.yml"]
+what = "test that i3-suite-summary selects and discloses its swayward snapshot instead of silently using a hard-coded historical label."
+why = "The summary's oracle HEAD can advance independently from the measured swayward snapshot, so generated documentation must identify the actual snapshot label and compositor commit."

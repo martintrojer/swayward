@@ -152,6 +152,7 @@ jobs:
       - run: python3 contrib/test-check-divergence.py
       - run: python3 contrib/test-tap-count.py
       - run: python3 contrib/test-targeted-oracle.py
+      - run: python3 contrib/test-i3-suite-summary.py
       - run: ./contrib/check-divergence
       - run: ./contrib/fetch-oracle
       - run: ./contrib/command-census --check
