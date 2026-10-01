@@ -298,7 +298,12 @@ impl State {
         let device_type = if device.has_capability(DeviceCapability::Keyboard) {
             "keyboard"
         } else if device.has_capability(DeviceCapability::Pointer) {
-            "pointer"
+            // `input_device_get_type`, sway/sway/input/input-manager.c:110-117.
+            if device.is_touchpad() {
+                "touchpad"
+            } else {
+                "pointer"
+            }
         } else if device.has_capability(DeviceCapability::Touch) {
             "touch"
         } else if device.has_capability(DeviceCapability::TabletTool) {
@@ -323,7 +328,7 @@ impl State {
             vendor,
             product,
             device_type,
-            scroll_factor: (device_type == "pointer").then_some(1.),
+            scroll_factor: matches!(device_type, "pointer" | "touchpad").then_some(1.),
             libinput,
         };
         self.swayward

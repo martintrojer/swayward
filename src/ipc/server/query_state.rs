@@ -126,13 +126,18 @@ pub(super) fn describe_input(
     device: &crate::input::IpcInputDevice,
 ) -> serde_json::Value {
     let mut value = serde_json::to_value(device).unwrap_or_default();
-    if device.device_type == "pointer" {
+    if matches!(device.device_type, "pointer" | "touchpad") {
         if let Some(object) = value.as_object_mut() {
             let config = swayward.config.borrow();
-            let factor = config
-                .input
-                .mouse
-                .scroll_factor
+            // Each device reports its own config's factor
+            // (`sway/sway/ipc-json.c:1189-1197`); swayward keeps one for
+            // touchpads and one for other pointers.
+            let factor = if device.device_type == "touchpad" {
+                config.input.touchpad.scroll_factor
+            } else {
+                config.input.mouse.scroll_factor
+            };
+            let factor = factor
                 .and_then(|factor| {
                     let (horizontal, vertical) = factor.h_v_factors();
                     (horizontal == vertical).then_some(horizontal)
@@ -195,7 +200,7 @@ fn seat_capabilities(devices: &[serde_json::Value]) -> u32 {
     devices.iter().fold(0, |capabilities, device| {
         capabilities
             | match device["type"].as_str() {
-                Some("pointer" | "tablet_tool") => 1,
+                Some("pointer" | "touchpad" | "tablet_tool") => 1,
                 Some("keyboard") => 2,
                 Some("touch") => 4,
                 _ => 0,

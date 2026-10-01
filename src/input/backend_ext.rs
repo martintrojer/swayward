@@ -39,6 +39,13 @@ pub trait NiriInputDevice: input::Device {
         None
     }
 
+    /// Whether sway types this pointer as a touchpad: a libinput device that
+    /// supports tap-to-click (`device_is_touchpad`,
+    /// `sway/sway/input/input-manager.c:93-104`).
+    fn is_touchpad(&self) -> bool {
+        false
+    }
+
     // FIXME: this should maybe be per-event, not per-device,
     // but it's not clear that this matters in practice?
     // it might be more obvious once we implement it for libinput
@@ -48,6 +55,10 @@ pub trait NiriInputDevice: input::Device {
 impl NiriInputDevice for libinput::Device {
     fn sway_libinput(&self) -> Option<serde_json::Value> {
         Some(describe_libinput_device(&RawLibinputDevice(self)))
+    }
+
+    fn is_touchpad(&self) -> bool {
+        RawLibinputDevice(self).tap_finger_count() > 0
     }
 
     fn output(&self, _state: &State) -> Option<Output> {

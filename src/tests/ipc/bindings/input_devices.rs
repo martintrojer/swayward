@@ -6,6 +6,7 @@ struct TestDevice {
     name: &'static str,
     keyboard: bool,
     libinput: bool,
+    touchpad: bool,
 }
 
 impl TestDevice {
@@ -14,6 +15,7 @@ impl TestDevice {
             name,
             keyboard: true,
             libinput: false,
+            touchpad: false,
         }
     }
 
@@ -22,6 +24,7 @@ impl TestDevice {
             name,
             keyboard: false,
             libinput: false,
+            touchpad: false,
         }
     }
 
@@ -30,11 +33,27 @@ impl TestDevice {
             name,
             keyboard: false,
             libinput: true,
+            touchpad: false,
+        }
+    }
+
+    /// A libinput pointer that supports tap-to-click, which sway types as a
+    /// touchpad.
+    fn touchpad(name: &'static str) -> Self {
+        Self {
+            name,
+            keyboard: false,
+            libinput: true,
+            touchpad: true,
         }
     }
 }
 
 impl crate::input::backend_ext::NiriInputDevice for TestDevice {
+    fn is_touchpad(&self) -> bool {
+        self.touchpad
+    }
+
     fn sway_libinput(&self) -> Option<Value> {
         self.libinput.then(|| {
             serde_json::json!({
@@ -750,4 +769,50 @@ fn mouse_binding_events_name_buttons_and_wheel_like_sway() {
         pointer_axis(&mut fixture, horizontal, vertical);
         assert_eq!(next_binding(&mut fixture), sway(command, symbol));
     }
+}
+
+/// Sway types a tap-capable libinput pointer as "touchpad"
+/// (`input_device_get_type`, sway/sway/input/input-manager.c:93-117) and
+/// reports each device's own configured scroll factor
+/// (sway/sway/ipc-json.c:1189-1197). Both kinds give the seat the pointer
+/// capability (sway/sway/input/seat.c:613-615).
+#[test]
+fn get_inputs_types_touchpads_and_reports_their_own_scroll_factor() {
+    let config = swayward_config::Config::parse_mem(
+        r#"input {
+            mouse { scroll-factor 2.0; }
+            touchpad { scroll-factor 0.5; }
+        }"#,
+    )
+    .unwrap();
+    let (mut fixture, socket) = ipc_fixture_with_config(config);
+    for device in [
+        TestDevice::libinput_pointer("test mouse"),
+        TestDevice::touchpad("test touchpad"),
+    ] {
+        fixture.niri_state().process_input_event::<TestInput>(
+            smithay::backend::input::InputEvent::DeviceAdded { device },
+        );
+    }
+
+    let mut query = UnixStream::connect(&socket).unwrap();
+    let inputs = query_ipc(&mut fixture, &mut query, MessageType::GetInputs);
+    let by_name = |name: &str| {
+        inputs
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|input| input["name"] == name)
+            .unwrap_or_else(|| panic!("{name} missing from {inputs}"))
+            .clone()
+    };
+    let mouse = by_name("test mouse");
+    let touchpad = by_name("test touchpad");
+    assert_eq!(mouse["type"], "pointer");
+    assert_eq!(mouse["scroll_factor"], 2.0);
+    assert_eq!(touchpad["type"], "touchpad");
+    assert_eq!(touchpad["scroll_factor"], 0.5);
+
+    let seats = query_ipc(&mut fixture, &mut query, MessageType::GetSeats);
+    assert_eq!(seats[0]["capabilities"].as_u64().unwrap() & 1, 1);
 }

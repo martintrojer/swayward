@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/input/mod.rs", "src/input/backend_ext.rs"]
+what = "type a tap-capable libinput pointer as \"touchpad\" in GET_INPUTS and input events, and report the touchpad scroll factor for it."
+why = "Sway's input_device_get_type returns \"touchpad\" for a libinput pointer with a nonzero tap finger count (sway/sway/input/input-manager.c:93-117), and each device reports its own configured scroll_factor (sway/sway/ipc-json.c:1189-1197)."
