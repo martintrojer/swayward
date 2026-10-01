@@ -126,7 +126,7 @@ fn every_message_type_replies_and_leaves_the_connection_usable() {
     // asserted but not enumerated, so nothing proved it for the numbers a
     // buggy or future client actually sends.
     //
-    // Sway's own range is 0..=12 plus 100 and 101 (sway/include/ipc.h). 11 is
+    // Sway's own range is 0..=12 plus 100 and 101 (sway/include/ipc.h:8-24). 11 is
     // IPC_SYNC, which sway declines with {"success": false} rather than
     // closing the socket (sway/sway/ipc-server.c:919-925).
     let (mut fixture, socket) = ipc_fixture();

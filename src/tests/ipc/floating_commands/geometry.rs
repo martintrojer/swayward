@@ -270,7 +270,7 @@ fn move_absolute_position_is_verbatim_under_a_bar_and_gaps() {
     // Sway applies the workspace origin only on the relative form
     // (`sway/sway/commands/move.c:913-916`) and then calls
     // container_floating_move_to, which performs no bounds check
-    // (`sway/sway/tree/container.c:1127-1159`).
+    // (`sway/sway/tree/container.c:1113-1145`).
     //
     // swayward routed the coordinate through floating_pos, whose setter adds
     // working_area.loc back (`src/layout/floating.rs:120-129`), so a request

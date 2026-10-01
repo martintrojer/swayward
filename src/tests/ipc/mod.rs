@@ -1,5 +1,9 @@
 //! IPC conformance tests. The empirical coverage boundary and known gaps are
 //! recorded in `docs/IPC_ORACLE_COVERAGE.md`.
+//!
+//! Sway `file:line` citations here are against the sway revision pinned in
+//! sway-ipc-oracle's `pins.toml` (1.12, 88869399), the build the oracle
+//! measures, not sway master.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Read as _, Write as _};

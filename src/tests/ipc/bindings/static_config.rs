@@ -250,7 +250,7 @@ fn marks_round_trip_through_commands_get_marks_and_tree() {
 }
 
 /// Sway's GET_MARKS walks the container tree and appends each container's
-/// marks in the order it meets them (`sway/tree/root.c:246-260`,
+/// marks in the order it meets them (`sway/tree/root.c:243-262`,
 /// `sway/ipc-server.c:604-610,825-834`). It never sorts, and it visits every
 /// container, not only the ones holding a view.
 ///

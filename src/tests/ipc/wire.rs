@@ -370,7 +370,7 @@ fn unknown_request_types_get_a_structured_reply_and_keep_the_connection() {
     let (mut fixture, socket) = ipc_fixture();
     let mut stream = UnixStream::connect(socket).unwrap();
 
-    // IPC_SYNC, sway/include/ipc.h:20.
+    // IPC_SYNC, sway/include/ipc.h:19.
     stream
         .write_all(&swayward_ipc::wire::encode_raw(11, ""))
         .unwrap();

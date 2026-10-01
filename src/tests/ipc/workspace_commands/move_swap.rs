@@ -652,10 +652,10 @@ fn fullscreen_parent_after_child_map(
     )
 }
 
-// sway/tree/container.c:990-994 removes the container from the scratchpad
+// sway/tree/container.c:977-980 removes the container from the scratchpad
 // before returning it to tiling. root_scratchpad_remove_container emits
 // `move` (sway/tree/root.c:150-154) and container_set_floating then emits
-// `floating` (sway/tree/container.c:1029).
+// `floating` (sway/tree/container.c:1015).
 #[test]
 fn unfloating_a_scratchpad_window_emits_move_then_floating() {
     let (mut f, socket) = ipc_fixture();

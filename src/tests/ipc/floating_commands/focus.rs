@@ -559,7 +559,7 @@ fn move_output_accepts_direction_name_and_workspace_forms() {
     assert!(crate::command::execute(f.niri_state(), "move workspace output right")[0].success);
 }
 
-// sway/tree/container.c:990-994: returning a container to tiling removes it
+// sway/tree/container.c:977-980: returning a container to tiling removes it
 // from the scratchpad, so a later `scratchpad show` finds nothing to toggle.
 #[test]
 fn unfloating_a_shown_scratchpad_window_removes_it_from_the_scratchpad() {

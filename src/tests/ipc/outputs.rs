@@ -368,7 +368,7 @@ fn drain_workspace_window_events(
 }
 
 /// Sway's session-lock implementation changes seat focus but does not call
-/// `ipc_event_workspace` or `ipc_event_window` (`sway/desktop/session_lock.c`).
+/// `ipc_event_workspace` or `ipc_event_window` (`sway/sway/lock.c`).
 /// Output power and idle wake likewise have no workspace/window event. A real
 /// connector replug moves the affected workspace; restoring the focused
 /// workspace also empties the fallback output, so sway creates its replacement

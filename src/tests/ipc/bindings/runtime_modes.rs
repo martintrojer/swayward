@@ -104,7 +104,7 @@ fn runtime_bindsym_release_fires_only_on_key_release() {
 }
 
 /// Sway replaces an equal binding rather than appending a competing one
-/// (`binding_upsert`, sway/sway/commands/bind.c:260-278).
+/// (`binding_upsert`, sway/sway/commands/bind.c:266-278).
 #[test]
 fn runtime_bindsym_duplicate_overwrites_the_old_command() {
     let mut fixture = Fixture::new();
@@ -137,7 +137,7 @@ fn runtime_bindsym_duplicate_overwrites_the_old_command() {
 }
 
 /// `unbind*` reports failure when no binding has the same key and flags
-/// (`sway/sway/commands/bind.c:302-320`) and leaves the table alone.
+/// (`sway/sway/commands/bind.c:304-321`) and leaves the table alone.
 #[test]
 fn runtime_unbindsym_missing_binding_fails_without_mutation() {
     let mut fixture = Fixture::new();
@@ -154,7 +154,7 @@ fn runtime_unbindsym_missing_binding_fails_without_mutation() {
 }
 
 /// Sway rejects an unknown keysym before looking for an existing binding
-/// (`sway/sway/commands/bind.c:138-144`).
+/// (`sway/sway/commands/bind.c:194-202`).
 #[test]
 fn runtime_unbindsym_unknown_keysym_is_a_parse_error() {
     let mut fixture = Fixture::new();
@@ -169,7 +169,7 @@ fn runtime_unbindsym_unknown_keysym_is_a_parse_error() {
 }
 
 /// Top-level runtime binds target sway's current mode, not always the default
-/// (`sway/sway/commands/bind.c:291-298`).
+/// (`sway/sway/commands/bind.c:476-482`).
 #[test]
 fn runtime_bindsym_mutates_the_active_binding_mode() {
     let config = swayward_config::Config::parse_mem(

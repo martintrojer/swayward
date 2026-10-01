@@ -24,7 +24,7 @@ fn layout_settings_apply_at_runtime_like_sway() {
             l.focus_wrapping == FocusWrapping::Force
         }),
         // Deprecated in sway, kept as a boolean alias selecting between
-        // force and yes (`sway/sway/commands/force_focus_wrapping.c`).
+        // force and yes (`sway/sway/commands/force_focus_wrapping.c:20-24`).
         ("force_focus_wrapping no", &|l| {
             l.focus_wrapping == FocusWrapping::Yes
         }),
@@ -176,7 +176,7 @@ fn layout_settings_apply_at_runtime_like_sway() {
 
     // sway parses these with strtol and requires a literal x between two
     // integers, rejecting a trailing suffix because it checks the remainder
-    // (`sway/sway/commands/floating_minmax_size.c`).
+    // (`sway/sway/commands/floating_minmax_size.c:23-36`).
     assert!(crate::command::execute(f.niri_state(), "floating_minimum_size 100 x 50")[0].success);
     assert_eq!(layout(&mut f).floating_minimum_size.width, 100);
     assert_eq!(layout(&mut f).floating_minimum_size.height, 50);
@@ -202,7 +202,7 @@ fn layout_settings_apply_at_runtime_like_sway() {
         assert_eq!(outcome[0].error.as_deref(), Some(expected));
     }
 
-    // `sway/sway/commands/font.c` strips a leading pango: prefix and joins the
+    // `sway/sway/commands/font.c:13-22` strips a leading pango: prefix and joins the
     // remaining words, so the family and size survive as one string.
     assert!(crate::command::execute(f.niri_state(), "font pango:monospace 11")[0].success);
     assert_eq!(layout(&mut f).titlebar.font, "monospace 11");
