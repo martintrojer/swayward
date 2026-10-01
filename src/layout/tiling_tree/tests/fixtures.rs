@@ -67,8 +67,14 @@ pub(super) fn tree(size: (f64, f64), gaps: f64) -> TilingTree<TestWindow> {
 }
 
 pub(super) fn tile(id: usize, size: Size<f64, Logical>) -> Tile<TestWindow> {
+    tile_from(TestWindow::new(id), size)
+}
+
+/// A tile with default options and its own clock around `window`, for tests that keep a handle
+/// on the window or give it rules.
+pub(super) fn tile_from(window: TestWindow, size: Size<f64, Logical>) -> Tile<TestWindow> {
     Tile::new(
-        TestWindow::new(id),
+        window,
         size,
         1.,
         Clock::with_time(Duration::ZERO),

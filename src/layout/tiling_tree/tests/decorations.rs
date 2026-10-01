@@ -1,5 +1,13 @@
 use super::*;
 
+/// A corner radius with four distinct corners, so a test can tell which corner went where.
+const TEST_RADIUS: swayward_config::CornerRadius = swayward_config::CornerRadius {
+    top_left: 11.,
+    top_right: 12.,
+    bottom_right: 13.,
+    bottom_left: 14.,
+};
+
 #[test]
 fn shipped_config_uses_only_sway_titlebars_for_tabs() {
     let config = swayward_config::Config::load_default();
@@ -51,13 +59,7 @@ fn shipped_config_uses_only_sway_titlebars_for_tabs() {
 fn border_toggle_enters_csd_when_xdg_decoration_is_present() {
     let window = TestWindow::new(1);
     window.0.has_xdg_decoration.set(true);
-    let mut tile = Tile::new(
-        window.clone(),
-        Size::from((100., 200.)),
-        1.,
-        Clock::with_time(Duration::ZERO),
-        Rc::new(Options::default()),
-    );
+    let mut tile = tile_from(window.clone(), Size::from((100., 200.)));
 
     tile.set_sway_border(BorderStyle::None, None, true).unwrap();
     tile.set_sway_border(BorderStyle::Toggle, None, true)
@@ -257,12 +259,7 @@ fn uncovered_top_border_setting_does_not_change_geometry() {
 
 #[test]
 fn normal_titlebar_keeps_the_decorated_box_radius() {
-    let configured = swayward_config::CornerRadius {
-        top_left: 11.,
-        top_right: 12.,
-        bottom_right: 13.,
-        bottom_left: 14.,
-    };
+    let configured = TEST_RADIUS;
     let mut t = tree((1200., 800.), 0.);
     let window = TestWindow::with_rules(
         1,
@@ -303,12 +300,7 @@ fn normal_titlebar_keeps_the_decorated_box_radius() {
 
 #[test]
 fn border_owns_the_decorated_box_radius() {
-    let configured = swayward_config::CornerRadius {
-        top_left: 11.,
-        top_right: 12.,
-        bottom_right: 13.,
-        bottom_left: 14.,
-    };
+    let configured = TEST_RADIUS;
     let mut t = tree((1200., 800.), 0.);
     let window = TestWindow::with_rules(
         1,
@@ -345,12 +337,7 @@ fn border_owns_the_decorated_box_radius() {
 
 #[test]
 fn decorations_use_the_tile_resolved_radius() {
-    let configured = swayward_config::CornerRadius {
-        top_left: 11.,
-        top_right: 12.,
-        bottom_right: 13.,
-        bottom_left: 14.,
-    };
+    let configured = TEST_RADIUS;
     let make_tile = |t: &TilingTree<TestWindow>, id, radius, style| {
         let window = TestWindow::with_rules(
             id,
@@ -432,12 +419,7 @@ fn decorations_use_the_tile_resolved_radius() {
 
 #[test]
 fn titleless_borders_keep_the_window_top_corners() {
-    let configured = swayward_config::CornerRadius {
-        top_left: 11.,
-        top_right: 12.,
-        bottom_right: 13.,
-        bottom_left: 14.,
-    };
+    let configured = TEST_RADIUS;
     for style in [BorderStyle::Pixel, BorderStyle::None] {
         let mut t = tree((1200., 800.), 0.);
         let window = TestWindow::with_rules(
@@ -498,12 +480,7 @@ fn titleless_borders_keep_the_window_top_corners() {
 
 #[test]
 fn tab_strips_leave_only_the_box_bottom_corners_on_the_child_border() {
-    let configured = swayward_config::CornerRadius {
-        top_left: 11.,
-        top_right: 12.,
-        bottom_right: 13.,
-        bottom_left: 14.,
-    };
+    let configured = TEST_RADIUS;
     for layout in [Layout::Tabbed, Layout::Stacked] {
         let mut t = tree((1200., 800.), 0.);
         let window = TestWindow::with_rules(
@@ -550,12 +527,7 @@ fn tab_strips_leave_only_the_box_bottom_corners_on_the_child_border() {
 fn tab_strips_leave_only_outer_bottom_corners_on_split_children() {
     // A split below a tab strip is one decorated box. Its child borders can
     // own only the box's outer bottom corners; every interior corner is square.
-    let configured = swayward_config::CornerRadius {
-        top_left: 11.,
-        top_right: 12.,
-        bottom_right: 13.,
-        bottom_left: 14.,
-    };
+    let configured = TEST_RADIUS;
     let square = swayward_config::CornerRadius::default();
     let rules = || ResolvedWindowRules {
         geometry_corner_radius: Some(configured),

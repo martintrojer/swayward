@@ -383,16 +383,7 @@ fn removing_a_tile_resizes_survivors_in_one_transaction() {
     let mut t = tree((1000., 800.), 0.);
     let first = TestWindow::new(1);
     let first_state = first.clone();
-    t.add_tile(
-        Tile::new(
-            first,
-            t.view_size(),
-            1.,
-            Clock::with_time(Duration::ZERO),
-            Rc::new(Options::default()),
-        ),
-        InsertTarget::Focused,
-    );
+    t.add_tile(tile_from(first, t.view_size()), InsertTarget::Focused);
     t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
     first_state.0.received_transaction.set(false);
 
@@ -418,19 +409,19 @@ fn focused_leaf_renders_in_front_of_its_siblings() {
     let a = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
     let b = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
     let c = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
-    for focused in [a, b, c] {
+    for (focused, window) in [(a, 1), (b, 2), (c, 3)] {
         t.set_focus(focused);
-        let order: Vec<_> = t
-            .leaf_render_order(t.focus)
-            .filter(|(_, node)| matches!(node, TreeNode::Leaf { .. }))
-            .map(|(id, _)| id)
+        t.update_render_elements(true, crate::layout::RenderLayer::Normal);
+        let owners: Vec<_> = rendered_order(&t)
+            .into_iter()
+            .filter_map(|(_, owner)| owner)
             .collect();
-        assert_eq!(
-            order.first(),
-            Some(&focused),
-            "focused leaf must render first"
+        let last_focused = owners.iter().rposition(|owner| *owner == window).unwrap();
+        let first_other = owners.iter().position(|owner| *owner != window).unwrap();
+        assert!(
+            last_focused < first_other,
+            "window {window}'s elements must all precede its siblings': {owners:?}"
         );
-        assert_eq!(order.len(), 3, "every leaf is rendered exactly once");
     }
 }
 
@@ -441,17 +432,26 @@ fn uncovered_top_border_is_collected_before_titlebars() {
     // titlebar ring, so collecting it after titlebars let every inactive ring
     // paint over it. The line then only appeared beside the focused tab, and no
     // other test noticed.
-    let layers = TilingTree::<TestWindow>::DECORATION_LAYERS;
-    let position = |layer| layers.iter().position(|l| *l == layer).unwrap();
+    let mut t = tree((1200., 800.), 0.);
+    t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.set_layout(t.root, Layout::Tabbed);
+    t.update_render_elements(true, crate::layout::RenderLayer::Normal);
+
+    let kinds: Vec<_> = rendered_order(&t)
+        .into_iter()
+        .map(|(kind, _)| kind)
+        .filter(|kind| *kind != "tab_indicator")
+        .collect();
+    let position = |kind| kinds.iter().position(|k| *k == kind).unwrap();
+    let last = |kind| kinds.iter().rposition(|k| *k == kind).unwrap();
     assert!(
-        position(DecorationLayer::UncoveredTopBorders) < position(DecorationLayer::Titlebars),
-        "the uncovered top border must be drawn above titlebars"
+        last("uncovered_top_border") < position("titlebar"),
+        "the uncovered top border must be drawn above titlebars: {kinds:?}"
     );
-    assert!(position(DecorationLayer::Titlebars) < position(DecorationLayer::Tiles));
-    assert_eq!(
-        layers.len(),
-        3,
-        "every decoration layer is collected exactly once"
+    assert!(
+        last("titlebar") < position("tile"),
+        "titlebars must be drawn above tiles: {kinds:?}"
     );
 }
 
@@ -548,4 +548,60 @@ fn overlapping_tab_indicators_hit_the_innermost_container() {
         let (window, _) = t.window_under(pos).expect("indicator hit");
         assert_eq!(window.id(), &2);
     }
+}
+
+/// Renders `t` with a surfaceless GL renderer and returns, front to back, the kind of each
+/// pushed element and, for tile elements, the window that pushed it.
+fn rendered_order(t: &TilingTree<TestWindow>) -> Vec<(&'static str, Option<usize>)> {
+    use smithay::backend::egl::native::EGLSurfacelessDisplay;
+    use smithay::backend::egl::{EGLContext, EGLDisplay};
+    use smithay::backend::renderer::element::Element;
+
+    let mut renderer = unsafe {
+        let display = EGLDisplay::new(EGLSurfacelessDisplay).expect("EGL display");
+        let context = EGLContext::new(&display).expect("EGL context");
+        GlesRenderer::new(context).expect("renderer")
+    };
+    crate::render_helpers::resources::init(&mut renderer);
+    crate::render_helpers::shaders::init(&mut renderer);
+
+    let geometries = t.compute_geometry();
+    // The test window's border and focus ring hug its surface at the leaf's top-left corner,
+    // overhanging it by at most the 4 px border; nudge an element's corner inward past that and
+    // take the leaf whose box holds it.
+    let owner = |rect: Rectangle<f64, Logical>| {
+        let corner = rect.loc + Point::from((8., 8.));
+        geometries
+            .leaf_boxes
+            .iter()
+            .filter(|(id, _)| t.visible_leaves().contains(id))
+            .find(|(_, leaf)| leaf.contains(corner))
+            .map(|(id, _)| *t.tile(*id).unwrap().window().id())
+    };
+    let mut order = Vec::new();
+    t.render(
+        crate::render_helpers::RenderCtx {
+            renderer: &mut renderer,
+            target: crate::render_helpers::RenderTarget::Output,
+            xray: None,
+        },
+        crate::render_helpers::xray::XrayPos::new(Point::default(), 1.),
+        true,
+        crate::layout::RenderLayer::Normal,
+        &mut |element| {
+            let kind = match &element {
+                TilingTreeRenderElement::Tile(_) => "tile",
+                TilingTreeRenderElement::ClosingWindow(_) => "closing",
+                TilingTreeRenderElement::TabIndicator(_) => "tab_indicator",
+                TilingTreeRenderElement::Titlebar(_) => "titlebar",
+                TilingTreeRenderElement::UncoveredTopBorder(_) => "uncovered_top_border",
+            };
+            let rect = element.geometry(Scale::from(1.)).to_f64().to_logical(1.);
+            let leaf = matches!(element, TilingTreeRenderElement::Tile(_))
+                .then(|| owner(rect))
+                .flatten();
+            order.push((kind, leaf));
+        },
+    );
+    order
 }

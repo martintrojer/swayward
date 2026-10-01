@@ -163,25 +163,13 @@ fn mapping_fullscreen_window_replaces_existing_fullscreen() {
     let first_window = TestWindow::new(1);
     first_window.0.requested_mode.set(SizingMode::Fullscreen);
     let first = t.add_tile(
-        Tile::new(
-            first_window,
-            t.view_size(),
-            1.,
-            Clock::with_time(Duration::ZERO),
-            Rc::new(Options::default()),
-        ),
+        tile_from(first_window, t.view_size()),
         InsertTarget::Focused,
     );
     let second_window = TestWindow::new(2);
     second_window.0.requested_mode.set(SizingMode::Fullscreen);
     let second = t.add_tile(
-        Tile::new(
-            second_window,
-            t.view_size(),
-            1.,
-            Clock::with_time(Duration::ZERO),
-            Rc::new(Options::default()),
-        ),
+        tile_from(second_window, t.view_size()),
         InsertTarget::Focused,
     );
 
@@ -275,13 +263,7 @@ fn fullscreen_and_maximize_survive_tree_mutations() {
     let first_window = TestWindow::new(1);
     let first_state = first_window.clone();
     let first = t.add_tile(
-        Tile::new(
-            first_window,
-            t.view_size(),
-            1.,
-            Clock::with_time(Duration::ZERO),
-            Rc::new(Options::default()),
-        ),
+        tile_from(first_window, t.view_size()),
         InsertTarget::Focused,
     );
     let second = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);

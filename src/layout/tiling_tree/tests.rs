@@ -22,10 +22,12 @@ mod fixtures;
 mod focus_movement;
 mod fullscreen;
 mod geometry;
+mod invariants;
 mod movement;
 mod properties;
 mod rendering;
 mod resize;
+mod tile;
 mod transfer;
 mod tree_mutation;
 

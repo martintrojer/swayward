@@ -397,16 +397,7 @@ fn refresh_dispatches_pending_configures() {
     let mut t = tree((800., 600.), 0.);
     let window = TestWindow::new(1);
     let state = window.clone();
-    t.add_tile(
-        Tile::new(
-            window,
-            t.view_size(),
-            1.,
-            Clock::with_time(Duration::ZERO),
-            Rc::new(Options::default()),
-        ),
-        InsertTarget::Focused,
-    );
+    t.add_tile(tile_from(window, t.view_size()), InsertTarget::Focused);
 
     t.refresh(true, true);
     assert_eq!(state.0.configure_count.get(), 1);

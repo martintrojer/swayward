@@ -19,47 +19,6 @@ fn popup_target_uses_its_nested_leaf_allocation() {
 }
 
 #[test]
-fn tile_resolves_toggle_rule_before_storing_border_state() {
-    let rules = ResolvedWindowRules {
-        sway_border: Some(BorderStyle::Toggle),
-        ..Default::default()
-    };
-    let tile = Tile::new(
-        TestWindow::with_rules(1, rules),
-        Size::from((500., 500.)),
-        1.,
-        Clock::with_time(Duration::ZERO),
-        Rc::new(Options::default()),
-    );
-
-    assert_eq!(tile.sway_border(), (BorderStyle::None, 0));
-}
-
-#[test]
-fn tile_activation_region_contains_only_server_decorations() {
-    let mut options = Options::default();
-    options.layout.border.off = false;
-    let tile = Tile::new(
-        TestWindow::new(1),
-        Size::from((500., 500.)),
-        1.,
-        Clock::with_time(Duration::ZERO),
-        Rc::new(options),
-    );
-    let border = tile.effective_border_width().unwrap();
-    let window = tile.window_loc();
-    assert!(matches!(
-        tile.hit((window.x - border / 2., window.y + 10.).into()),
-        Some(HitType::Activate {
-            is_tab_indicator: false
-        })
-    ));
-    assert!(matches!(
-        tile.hit((window.x + 10., window.y + 10.).into()),
-        Some(HitType::Input { .. })
-    ));
-}
-#[test]
 fn working_area_starts_at_physical_pixel() {
     let struts = swayward_config::Struts {
         left: swayward_config::FloatOrInt(0.5),
@@ -197,24 +156,12 @@ fn structural_moves_preserve_unfocused_window_order() {
 
     let third = t.node_for_window(&3).unwrap();
     assert!(t.move_node_direction(third, Direction::Up));
-    assert_eq!(
-        t.focus_history
-            .iter()
-            .filter_map(|node| t.tile(*node).map(|tile| *tile.window().id()))
-            .collect::<Vec<_>>(),
-        [1, 2, 3, 4]
-    );
+    assert_eq!(t.window_focus_history(), [1, 2, 3, 4]);
 
     let fourth = t.node_for_window(&4).unwrap();
     let second = t.node_for_window(&2).unwrap();
     assert!(t.move_subtree_to_node(fourth, second));
-    assert_eq!(
-        t.focus_history
-            .iter()
-            .filter_map(|node| t.tile(*node).map(|tile| *tile.window().id()))
-            .collect::<Vec<_>>(),
-        [1, 4, 2, 3]
-    );
+    assert_eq!(t.window_focus_history(), [1, 4, 2, 3]);
 }
 
 #[test]
@@ -223,26 +170,14 @@ fn restoring_a_removed_windows_focus_rank_preserves_close_order() {
     for id in 1..=5 {
         t.add_tile(tile(id, t.view_size()), InsertTarget::Focused);
     }
-    assert_eq!(
-        t.focus_history
-            .iter()
-            .filter_map(|node| t.tile(*node).map(|tile| *tile.window().id()))
-            .collect::<Vec<_>>(),
-        [5, 4, 3, 2, 1]
-    );
+    assert_eq!(t.window_focus_history(), [5, 4, 3, 2, 1]);
 
     let rank = t.focus_rank_for_window(&4).unwrap();
     let removed = t.remove_tile(&4, Transaction::new()).unwrap();
     t.add_tile_with_activation(removed, InsertTarget::Focused, false);
     t.restore_focus_rank(&4, rank);
 
-    assert_eq!(
-        t.focus_history
-            .iter()
-            .filter_map(|node| t.tile(*node).map(|tile| *tile.window().id()))
-            .collect::<Vec<_>>(),
-        [5, 4, 3, 2, 1]
-    );
+    assert_eq!(t.window_focus_history(), [5, 4, 3, 2, 1]);
     for expected in [4, 3, 2, 1] {
         let focused = t.active_window().unwrap().id().to_owned();
         t.remove_tile(&focused, Transaction::new()).unwrap();
@@ -255,83 +190,6 @@ fn empty_tree_has_no_focus() {
     let t = tree((1920., 1080.), 0.);
     assert!(t.is_empty());
     assert_eq!(t.focus(), None);
-    t.check_invariants();
-}
-
-#[test]
-fn invariant_rejects_stale_and_duplicate_node_side_state() {
-    for collection in 0..3 {
-        let mut t = tree((1920., 1080.), 0.);
-        // The node counter is process-global and proptests allocate from it concurrently, so a
-        // small literal id can belong to this tree. The counter never reaches u64::MAX.
-        let stale = NodeId(u64::MAX);
-        match collection {
-            0 => t.focus_history.push(stale),
-            1 => {
-                t.ipc_stale_nodes.insert(stale);
-            }
-            2 => {
-                t.pending_modes.insert(
-                    stale,
-                    PendingMode {
-                        fullscreen: Some(FullscreenMode::Workspace),
-                        maximized: false,
-                    },
-                );
-            }
-            _ => unreachable!(),
-        }
-        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            t.check_invariants();
-        }))
-        .is_err());
-    }
-
-    let mut t = tree((1920., 1080.), 0.);
-    let leaf = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
-    t.focus_history.push(leaf);
-    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        t.check_invariants();
-    }))
-    .is_err());
-}
-
-#[test]
-fn invariant_rejects_non_positive_percentages() {
-    let mut t = tree((1920., 1080.), 0.);
-    t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
-    t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
-    let TreeNode::Split { percents, .. } = &mut t.nodes.get_mut(&t.root).unwrap().value else {
-        unreachable!();
-    };
-    *percents = vec![1.5, -0.5];
-
-    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        t.check_invariants();
-    }))
-    .is_err());
-}
-
-#[test]
-fn removing_a_node_clears_every_node_side_collection() {
-    let mut t = tree((1920., 1080.), 0.);
-    let leaf = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
-    t.pending_modes.insert(
-        leaf,
-        PendingMode {
-            fullscreen: Some(FullscreenMode::Workspace),
-            maximized: false,
-        },
-    );
-    t.tab_active.insert(leaf, leaf);
-    t.tab_indicators
-        .insert(leaf, TabIndicator::new(t.options.layout.tab_indicator));
-
-    t.remove_tile_node(leaf);
-
-    assert!(!t.pending_modes.contains_key(&leaf));
-    assert!(!t.tab_active.contains_key(&leaf));
-    assert!(!t.tab_indicators.contains_key(&leaf));
     t.check_invariants();
 }
 
