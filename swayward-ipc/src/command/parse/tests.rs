@@ -644,3 +644,25 @@ mod quoted_command_name_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod atoi_tests {
+    use super::super::settings::atoi;
+
+    #[test]
+    fn atoi_reads_a_leading_signed_integer_like_c() {
+        for (input, expected) in [
+            ("7", 7),
+            ("7px", 7),
+            ("  -3", -3),
+            ("+4", 4),
+            ("abc", 0),
+            ("", 0),
+            ("-", 0),
+            ("99999999999", i32::MAX),
+            ("-99999999999", i32::MIN),
+        ] {
+            assert_eq!(atoi(input), expected, "{input:?}");
+        }
+    }
+}

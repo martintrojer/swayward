@@ -316,13 +316,27 @@ fn layout_settings_apply_at_runtime_like_sway() {
         SwayBorderStyle::None,
         "new_float is the deprecated spelling of default_floating_border"
     );
-    for bad in ["default_border csd", "default_border pixel wide"] {
+    // Oracle: state/settings_default_border_parse. Sway matches the style
+    // with strcmp and reads the width with atoi
+    // (`sway/sway/commands/default_border.c:12-24`), so a capitalised style
+    // fails and a width without digits is 0.
+    for bad in ["default_border csd", "default_border PIXEL"] {
         let outcome = crate::command::execute(f.niri_state(), bad);
         assert!(!outcome[0].success, "{bad} should have failed");
+        assert_eq!(outcome[0].parse_error, Some(true), "{bad}");
         assert_eq!(
             outcome[0].error.as_deref(),
             Some("Expected 'default_border <none|normal|pixel>' or 'default_border <normal|pixel> <px>'")
         );
+    }
+    let outcome = crate::command::execute(f.niri_state(), "default_floating_border Normal");
+    assert_eq!(
+        outcome[0].error.as_deref(),
+        Some("Expected 'default_floating_border <none|normal|pixel>' or 'default_floating_border <normal|pixel> <px>'")
+    );
+    for (command, width) in [("default_border pixel wide", 0), ("default_border pixel 7px", 7)] {
+        assert!(crate::command::execute(f.niri_state(), command)[0].success, "{command}");
+        assert_eq!(layout(&mut f).default_border.width, Some(width), "{command}");
     }
 
     // popup_during_fullscreen shares its accepted values and error string

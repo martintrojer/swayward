@@ -286,12 +286,15 @@ fn invalid_setting_values_match_sway() {
     );
     assert_eq!(outcome.parse_error, Some(false));
 
+    // Sway stores atoi("-1") and then aborts in wlr_scene_rect_set_size when
+    // the next window maps, so a negative width has no sway behaviour to
+    // copy; swayward clamps it to 0 instead of wrapping it to 65535.
     assert_eq!(
         command("default_floating_border pixel -1"),
         Command::SetLayoutOption(swayward_ipc::command::LayoutOption::DefaultBorder {
             floating: true,
             style: "pixel".into(),
-            width: Some(u16::MAX),
+            width: Some(0),
         })
     );
     for (input, expected) in [

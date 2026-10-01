@@ -103,6 +103,26 @@ pub(super) fn parse_gaps_kind(kind: &str) -> Option<(bool, [bool; 4])> {
     })
 }
 
+/// C's `atoi`: optional leading whitespace and sign, then as many decimal
+/// digits as follow; anything else ends the number, and no digits give 0.
+/// Out-of-range values saturate, where C's behaviour is undefined.
+pub(super) fn atoi(raw: &str) -> i32 {
+    let raw = raw.trim_start_matches(|c: char| c.is_ascii_whitespace());
+    let (negative, digits) = match (raw.strip_prefix('-'), raw.strip_prefix('+')) {
+        (Some(digits), _) => (true, digits),
+        (None, Some(digits)) => (false, digits),
+        (None, None) => (false, raw),
+    };
+    let magnitude = digits
+        .bytes()
+        .take_while(u8::is_ascii_digit)
+        .fold(0i64, |value, digit| {
+            (value * 10 + i64::from(digit - b'0')).min(i64::from(i32::MAX) + 1)
+        });
+    let value = if negative { -magnitude } else { magnitude };
+    value.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
+}
+
 /// Sway parses with `strtol` and accepts a bare number or a `px` suffix,
 /// rejecting any other trailing text (`sway/sway/commands/gaps.c:55-58`).
 pub(super) fn parse_gaps_amount(raw: &str) -> Option<i32> {
@@ -345,21 +365,24 @@ pub(super) fn parse(name: &str, rest: &[&str]) -> Result<Command, String> {
             let usage = format!(
                 "Expected '{canonical} <none|normal|pixel>' or '{canonical} <normal|pixel> <px>'"
             );
+            // Sway accepts at least one argument and reads the width only when
+            // there are exactly two (`EXPECTED_AT_LEAST, 1`, `argc == 2`). The
+            // style is matched with strcmp, so case matters.
             let (style, width) = match rest {
-                [style] => (style, None),
-                [style, width] => {
-                    let width = width
-                        .parse::<i64>()
-                        .map(|width| width as u16)
-                        .map_err(|_| usage.clone())?;
-                    (style, Some(width))
-                }
-                _ => return Err(usage),
+                [style, width] => (*style, Some(*width)),
+                [style, ..] => (*style, None),
+                [] => return Err(usage),
             };
-            let style = style.to_ascii_lowercase();
-            if !matches!(style.as_str(), "none" | "normal" | "pixel") {
+            if !matches!(style, "none" | "normal" | "pixel") {
                 return Err(usage);
             }
+            let style = style.to_owned();
+            // Sway reads the width with atoi, so trailing text is ignored and
+            // a width without leading digits is 0. A negative width is stored
+            // as is and aborts sway when the next window maps
+            // (wlr_scene_rect_set_size asserts width >= 0), so there is no
+            // sway behaviour to copy: swayward clamps it to 0.
+            let width = width.map(|width| atoi(width).clamp(0, i32::from(u16::MAX)) as u16);
             Ok(Command::SetLayoutOption(LayoutOption::DefaultBorder {
                 floating: matches!(name, "default_floating_border" | "new_float"),
                 style,
