@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/mod.rs", "src/layout/monitor.rs", "src/layout/workspace.rs"]
+what = "add a Move add-window target used when a window moves to another workspace or output; the tiling tree inserts it into the destination's focused split, or beside the focused view."
+why = "sway moves a container to the workspace's focus-inactive tiling container (`container_move_to_container`, sway/commands/move.c:241-262 and 516-517), so a window moved onto a workspace whose focused container is a split joins that split. niri's Auto target inserted it beside the focused split."

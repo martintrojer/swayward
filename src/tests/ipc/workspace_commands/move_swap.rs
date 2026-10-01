@@ -967,3 +967,50 @@ fn moving_a_window_under_fullscreen_keeps_its_border() {
         .unwrap();
     assert_eq!(workspace["focus"][0], fullscreen["id"]);
 }
+
+// random seed 253 step 13 (sway-1.12-random): the destination workspace's
+// focus-inactive container is a tabbed split, so sway adds the moved window
+// as its child (`container_move_to_container`,
+// sway/commands/move.c:241-262), not beside it at workspace level.
+#[test]
+fn moving_a_window_onto_a_focused_split_joins_that_split() {
+    let (mut f, socket) = ipc_fixture();
+    f.add_output(1, (1280, 720));
+    let client = f.add_client();
+    let mut stream = UnixStream::connect(socket).unwrap();
+    let map = |f: &mut Fixture, app_id: &str| {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    };
+    map(&mut f, "first");
+    map(&mut f, "second");
+    for command in ["layout tabbed", "focus parent", "workspace other"] {
+        let outcome = query_ipc_with_payload(&mut f, &mut stream, MessageType::RunCommand, command);
+        assert_eq!(outcome[0]["success"], true, "{command}: {outcome}");
+    }
+    map(&mut f, "third");
+    let outcome = query_ipc_with_payload(
+        &mut f,
+        &mut stream,
+        MessageType::RunCommand,
+        "move container to workspace 1",
+    );
+    assert_eq!(outcome[0]["success"], true, "{outcome}");
+    let tree = query_ipc(&mut f, &mut stream, MessageType::GetTree);
+    let workspaces = tree["nodes"][1]["nodes"].as_array().unwrap();
+    let target = workspaces
+        .iter()
+        .find(|workspace| workspace["name"] == "1")
+        .unwrap();
+    assert_eq!(
+        target["representation"], "H[T[first second third]]",
+        "{target}"
+    );
+}

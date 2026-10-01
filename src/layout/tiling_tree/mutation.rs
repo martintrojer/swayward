@@ -193,6 +193,12 @@ impl<W: LayoutElement> TilingTree<W> {
         let target = match target {
             InsertTarget::Focused => self.focus,
             InsertTarget::Node(id) => Some(id),
+            InsertTarget::MoveDestination => {
+                if let Some(focus) = self.focus.filter(|focus| self.is_split(*focus)) {
+                    return (focus, None);
+                }
+                self.focus
+            }
         };
         let parent = target
             .and_then(|id| self.nodes.get(&id)?.parent)

@@ -62,6 +62,10 @@ pub enum Layout {
 pub enum InsertTarget {
     Focused,
     Node(NodeId),
+    /// Where sway puts a container moved onto this workspace: inside the
+    /// focused container, or beside it when it is a view
+    /// (`container_move_to_container`, sway/commands/move.c:241-262).
+    MoveDestination,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

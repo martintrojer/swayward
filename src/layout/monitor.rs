@@ -175,6 +175,8 @@ pub enum MonitorAddWindowTarget<'a, W: LayoutElement> {
     },
     /// Next to this existing window.
     NextTo(&'a W::Id),
+    /// Moved onto this workspace from another one.
+    Move(WorkspaceId),
 }
 
 impl<'a, W: LayoutElement> Copy for MonitorAddWindowTarget<'a, W> {}
@@ -679,6 +681,10 @@ impl<W: LayoutElement> Monitor<W> {
                 };
                 (idx, target)
             }
+            MonitorAddWindowTarget::Move(id) => {
+                let idx = self.idx_of_ws(id).unwrap();
+                (idx, WorkspaceAddWindowTarget::Move)
+            }
             MonitorAddWindowTarget::NextTo(win_id) => {
                 let idx = self
                     .workspaces
@@ -1127,10 +1133,7 @@ impl<W: LayoutElement> Monitor<W> {
 
         self.add_tile(
             removed.tile,
-            MonitorAddWindowTarget::Workspace {
-                id: new_id,
-                column_idx: None,
-            },
+            MonitorAddWindowTarget::Move(new_id),
             if activate {
                 ActivateWindow::Yes
             } else {

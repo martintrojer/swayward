@@ -3958,10 +3958,7 @@ impl<W: LayoutElement> Layout<W> {
             let mon = &mut monitors[new_idx];
             mon.add_tile(
                 removed.tile,
-                MonitorAddWindowTarget::Workspace {
-                    id: ws_id,
-                    column_idx: None,
-                },
+                MonitorAddWindowTarget::Move(ws_id),
                 activate,
                 WorkspaceActivation::Allow,
                 removed.is_floating,

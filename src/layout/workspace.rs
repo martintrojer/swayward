@@ -204,6 +204,8 @@ pub enum WorkspaceAddWindowTarget<'a, W: LayoutElement> {
     NewColumnAt(usize),
     /// Next to this existing window.
     NextTo(&'a W::Id),
+    /// Moved here from another workspace.
+    Move,
 }
 
 pub struct AddTileOptions {
@@ -773,7 +775,12 @@ impl<W: LayoutElement> Workspace<W> {
         tile.restore_to_floating = is_floating;
 
         match target {
-            WorkspaceAddWindowTarget::Auto => {
+            WorkspaceAddWindowTarget::Auto | WorkspaceAddWindowTarget::Move => {
+                let insert = if matches!(target, WorkspaceAddWindowTarget::Move) {
+                    InsertTarget::MoveDestination
+                } else {
+                    InsertTarget::Focused
+                };
                 // Don't steal focus from an active fullscreen window.
                 let activate = activate.map_smart(|| !self.is_active_pending_fullscreen());
 
@@ -786,8 +793,7 @@ impl<W: LayoutElement> Workspace<W> {
                         self.floating_is_active = FloatingActive::Yes;
                     }
                 } else {
-                    self.tiling
-                        .add_tile_with_activation(tile, InsertTarget::Focused, activate);
+                    self.tiling.add_tile_with_activation(tile, insert, activate);
 
                     if activate {
                         self.floating_is_active = FloatingActive::No;
