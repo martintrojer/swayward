@@ -70,14 +70,14 @@ fn mark_event_matches_captured_sway_schema() {
     fixture.niri_state().ipc_refresh_layout();
     let ((event_type, payload), remainder) =
         read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, Vec::new());
-    assert_eq!(event_type, (1 << 31) | 3);
+    assert_eq!(event_type, EVENT_WINDOW);
     let cleared = serde_json::from_str::<Value>(&payload).unwrap();
     assert_eq!(cleared["change"], "mark");
     assert_eq!(cleared["container"]["marks"], serde_json::json!([]));
 
     let ((event_type, payload), remainder) =
         read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder);
-    assert_eq!(event_type, (1 << 31) | 3);
+    assert_eq!(event_type, EVENT_WINDOW);
     let expected: Value = serde_json::from_str(&sway_fixture!("events/window.mark.json")).unwrap();
     let marked = serde_json::from_str(&payload).unwrap();
     assert_event_shape(&expected, &marked, "$window");
@@ -167,7 +167,7 @@ fn close_event_matches_captured_sway_schema_before_removal() {
     window.commit();
     fixture.double_roundtrip(client);
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
-    assert_eq!(event_type, (1 << 31) | 3);
+    assert_eq!(event_type, EVENT_WINDOW);
     let expected: Value = serde_json::from_str(&sway_fixture!("events/window.close.json")).unwrap();
     assert_event_shape(
         &expected,

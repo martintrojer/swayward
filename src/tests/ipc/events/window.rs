@@ -39,7 +39,7 @@ fn floating_a_group_emits_one_recursive_floating_event() {
 
     let ((event_type, payload), remainder) =
         read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, Vec::new());
-    assert_eq!(event_type, (1 << 31) | 3);
+    assert_eq!(event_type, EVENT_WINDOW);
     let event = serde_json::from_str::<Value>(&payload).unwrap();
     assert_eq!(event["change"], "floating");
     assert_eq!(event["container"]["type"], "floating_con");
@@ -68,7 +68,7 @@ fn floating_events_report_user_requested_state() {
         assert!(crate::command::execute(fixture.niri_state(), command)[0].success);
         fixture.niri_state().ipc_refresh_layout();
         let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
-        assert_eq!(event_type, (1 << 31) | 3);
+        assert_eq!(event_type, EVENT_WINDOW);
         let event: Value = serde_json::from_str(&payload).unwrap();
         assert_eq!(event["change"], "floating");
         assert_eq!(event["container"]["floating"], expected);
@@ -100,7 +100,7 @@ fn fullscreening_a_floating_group_emits_one_recursive_fullscreen_event() {
 
     let ((event_type, payload), remainder) =
         read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, Vec::new());
-    assert_eq!(event_type, (1 << 31) | 3);
+    assert_eq!(event_type, EVENT_WINDOW);
     let event = serde_json::from_str::<Value>(&payload).unwrap();
     assert_eq!(event["change"], "fullscreen_mode");
     assert_eq!(event["container"]["type"], "floating_con");
@@ -127,7 +127,7 @@ fn moving_a_floating_group_to_scratchpad_emits_one_recursive_move_event() {
 
     let ((event_type, payload), remainder) =
         read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, Vec::new());
-    assert_eq!(event_type, (1 << 31) | 3);
+    assert_eq!(event_type, EVENT_WINDOW);
     let event = serde_json::from_str::<Value>(&payload).unwrap();
     assert_eq!(event["change"], "move");
     assert_eq!(event["container"]["type"], "floating_con");
@@ -139,14 +139,14 @@ fn moving_a_floating_group_to_scratchpad_emits_one_recursive_move_event() {
     fixture.niri_state().ipc_refresh_layout();
     let ((event_type, payload), remainder) =
         read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, Vec::new());
-    assert_eq!(event_type, (1 << 31) | 3);
+    assert_eq!(event_type, EVENT_WINDOW);
     let event = serde_json::from_str::<Value>(&payload).unwrap();
     assert_eq!(event["change"], "focus");
     assert_eq!(event["container"]["type"], "con");
     assert!(event["container"]["focused"].as_bool().unwrap());
     let ((event_type, payload), remainder) =
         read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder);
-    assert_eq!(event_type, (1 << 31) | 3);
+    assert_eq!(event_type, EVENT_WINDOW);
     let event = serde_json::from_str::<Value>(&payload).unwrap();
     assert_eq!(event["change"], "move");
     assert_eq!(event["container"]["type"], "floating_con");
@@ -221,7 +221,7 @@ fn focusing_a_resident_floating_group_leaf_emits_focus() {
 
     let ((event_type, payload), remainder) =
         read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, Vec::new());
-    assert_eq!(event_type, (1 << 31) | 3);
+    assert_eq!(event_type, EVENT_WINDOW);
     let event = serde_json::from_str::<Value>(&payload).unwrap();
     assert_eq!(event["change"], "focus");
     assert_eq!(event["container"]["id"], crate::ipc::tree::window_id(target));
@@ -259,7 +259,7 @@ fn moving_a_floating_group_to_new_workspace_emits_empty_init() {
 
     let ((event_type, payload), _) =
         read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, Vec::new());
-    assert_eq!(event_type, 1 << 31);
+    assert_eq!(event_type, EVENT_WORKSPACE);
     let event = serde_json::from_str::<Value>(&payload).unwrap();
     assert_eq!(event["change"], "init");
     assert!(event["current"]["nodes"].as_array().unwrap().is_empty());
@@ -324,7 +324,7 @@ fn mapping_a_focused_window_emits_new_title_then_focus() {
             let ((event_type, payload), next) =
                 read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder.clone());
             remainder = next;
-            assert_eq!(event_type, (1 << 31) | 3);
+            assert_eq!(event_type, EVENT_WINDOW);
             serde_json::from_str::<Value>(&payload).unwrap()
         })
         .collect::<Vec<_>>();
@@ -390,7 +390,7 @@ fn map_events_keep_a_new_tab_hidden_until_its_focus_event() {
         let ((event_type, payload), next) =
             read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder);
         remainder = next;
-        assert_eq!(event_type, (1 << 31) | 3);
+        assert_eq!(event_type, EVENT_WINDOW);
         events.push(serde_json::from_str::<Value>(&payload).unwrap());
     }
     assert_eq!(
@@ -439,7 +439,7 @@ fn get_tree_between_unmap_and_refresh_does_not_hide_window_close() {
     fixture.niri_state().ipc_refresh_layout();
 
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
-    assert_eq!(event_type, (1 << 31) | 3);
+    assert_eq!(event_type, EVENT_WINDOW);
     let event: Value = serde_json::from_str(&payload).unwrap();
     assert_eq!(event["change"], "close");
     assert_eq!(event["container"]["app_id"], "close-after-query");
@@ -469,7 +469,7 @@ fn mapping_an_unfocused_window_emits_only_new() {
 
     let ((event_type, payload), remainder) =
         read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, Vec::new());
-    assert_eq!(event_type, (1 << 31) | 3);
+    assert_eq!(event_type, EVENT_WINDOW);
     assert_eq!(
         serde_json::from_str::<Value>(&payload).unwrap()["change"],
         "new"
@@ -515,7 +515,7 @@ fn a_subscribed_connection_still_answers_queries_and_keeps_its_events() {
     fixture.niri_state().ipc_refresh_layout();
     let ((event_type, payload), remainder) =
         read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, Vec::new());
-    assert_eq!(event_type, (1 << 31) | 3);
+    assert_eq!(event_type, EVENT_WINDOW);
     assert_eq!(
         serde_json::from_str::<Value>(&payload).unwrap()["change"],
         "new"
@@ -535,7 +535,7 @@ fn a_subscribed_connection_still_answers_queries_and_keeps_its_events() {
         }
         pending = next;
         // Window events may be queued ahead of the reply; nothing else may be.
-        assert_eq!(message_type, (1 << 31) | 3, "unexpected message on the fd");
+        assert_eq!(message_type, EVENT_WINDOW, "unexpected message on the fd");
     };
     let tree: Value = serde_json::from_str(&payload).unwrap();
     assert!(
@@ -577,7 +577,7 @@ fn workspace_window_and_mode_events_match_sway_shapes() {
         .unwrap()
         .send_event(swayward_ipc::legacy::Event::WorkspaceReloaded);
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
-    assert_eq!(event_type, 1 << 31);
+    assert_eq!(event_type, EVENT_WORKSPACE);
     let expected: Value =
         serde_json::from_str(&sway_fixture!("events/workspace.reload.json")).unwrap();
     assert_event_shape(
@@ -612,7 +612,7 @@ fn workspace_window_and_mode_events_match_sway_shapes() {
         },
     );
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
-    assert_eq!(event_type, (1 << 31) | 3);
+    assert_eq!(event_type, EVENT_WINDOW);
     let expected: Value = serde_json::from_str(&sway_fixture!("events/window.focus.json")).unwrap();
     assert_event_shape(
         &expected,
@@ -627,7 +627,7 @@ fn workspace_window_and_mode_events_match_sway_shapes() {
         },
     );
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
-    assert_eq!(event_type, (1 << 31) | 2);
+    assert_eq!(event_type, EVENT_MODE);
     let expected: Value = serde_json::from_str(&sway_fixture!("events/mode.default.json")).unwrap();
     assert_event_shape(&expected, &serde_json::from_str(&payload).unwrap(), "$mode");
 }

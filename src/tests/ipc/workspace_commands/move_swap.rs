@@ -691,7 +691,7 @@ fn unfloating_a_scratchpad_window_emits_move_then_floating() {
         let ((event_type, payload), rest) =
             read_ipc_reply_with_remainder(&mut f, &mut subscriber, remainder);
         remainder = rest;
-        assert_eq!(event_type, (1 << 31) | 3);
+        assert_eq!(event_type, EVENT_WINDOW);
         events.push(serde_json::from_str::<Value>(&payload).unwrap());
     }
     for event in &events {

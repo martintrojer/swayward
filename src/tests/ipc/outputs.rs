@@ -78,7 +78,7 @@ fn output_runtime_commands_apply_named_state_and_wildcard_fanout() {
     assert!(crate::command::execute(fixture.niri_state(), command)[0].success);
     fixture.niri_state().refresh_ipc_outputs();
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
-    assert_eq!(event_type, (1 << 31) | 1);
+    assert_eq!(event_type, EVENT_OUTPUT);
     assert_eq!(
         serde_json::from_str::<Value>(&payload).unwrap(),
         serde_json::json!({"change": "unspecified"})
@@ -291,7 +291,7 @@ fn output_power_commands_update_get_outputs_state() {
         crate::command::execute(fixture.niri_state(), "output headless-1 power off")[0].success
     );
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
-    assert_eq!(event_type, (1 << 31) | 1);
+    assert_eq!(event_type, EVENT_OUTPUT);
     assert_eq!(
         serde_json::from_str::<Value>(&payload).unwrap(),
         serde_json::json!({"change": "unspecified"})
@@ -352,24 +352,16 @@ fn drain_workspace_window_events(
     subscriber: &mut UnixStream,
     mut remainder: Vec<u8>,
 ) -> (Vec<Value>, Vec<u8>) {
-    fixture
-        .swayward()
-        .ipc_server
-        .as_ref()
-        .unwrap()
-        .send_event(swayward_ipc::legacy::Event::Tick {
-            payload: "barrier".into(),
-            first: false,
-        });
+    send_tick_barrier(fixture);
     let mut events = Vec::new();
     loop {
         let ((event_type, payload), next) =
             read_ipc_reply_with_remainder(fixture, subscriber, remainder);
         remainder = next;
-        if event_type == (1 << 31) | 7 {
+        if event_type == EVENT_TICK {
             break;
         }
-        assert!(event_type == 1 << 31 || event_type == (1 << 31) | 3);
+        assert!(event_type == EVENT_WORKSPACE || event_type == EVENT_WINDOW);
         events.push(serde_json::from_str(&payload).unwrap());
     }
     (events, remainder)
@@ -668,7 +660,7 @@ fn disabling_an_output_that_repositions_another_emits_one_output_event() {
     }
     assert_eq!(
         events,
-        [((1 << 31) | 1, r#"{"change":"unspecified"}"#.to_owned())]
+        [(EVENT_OUTPUT, r#"{"change":"unspecified"}"#.to_owned())]
     );
 }
 

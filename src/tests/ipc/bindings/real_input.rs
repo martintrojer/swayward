@@ -128,7 +128,7 @@ fn another_key_cancels_a_held_release_binding_without_an_ipc_event() {
     let mut commands = Vec::new();
     loop {
         let (message_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
-        assert_eq!(message_type, (1 << 31) | 5);
+        assert_eq!(message_type, EVENT_BINDING);
         let command = serde_json::from_str::<Value>(&payload).unwrap()["binding"]["command"]
             .as_str()
             .unwrap()
@@ -312,13 +312,13 @@ fn binding_modes_switch_binds_emit_events_and_list_over_ipc() {
 
     assert!(crate::command::execute(fixture.niri_state(), "mode resize")[0].success);
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
-    assert_eq!(event_type, (1 << 31) | 2);
+    assert_eq!(event_type, EVENT_MODE);
     let expected: Value = serde_json::from_str(&sway_fixture!("events/mode.resize.json")).unwrap();
     assert_event_shape(&expected, &serde_json::from_str(&payload).unwrap(), "$mode");
 
     type_key_chords(&mut fixture, &[&[133, 10]]);
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
-    assert_eq!(event_type, (1 << 31) | 5);
+    assert_eq!(event_type, EVENT_BINDING);
     let expected: Value = serde_json::from_str(&sway_fixture!("events/binding.run.json")).unwrap();
     assert_event_shape(
         &expected,
@@ -339,7 +339,7 @@ fn binding_modes_switch_binds_emit_events_and_list_over_ipc() {
 
     assert!(crate::command::execute(fixture.niri_state(), "mode default")[0].success);
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
-    assert_eq!(event_type, (1 << 31) | 2);
+    assert_eq!(event_type, EVENT_MODE);
     let expected: Value = serde_json::from_str(&sway_fixture!("events/mode.default.json")).unwrap();
     assert_event_shape(&expected, &serde_json::from_str(&payload).unwrap(), "$mode");
 
@@ -432,7 +432,7 @@ fn runtime_mode_definition_with_set_creates_a_switchable_pango_mode() {
     assert!(outcome[0].success, "{outcome:?}");
     assert_eq!(fixture.swayward().binding_mode, "created");
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
-    assert_eq!(event_type, (1 << 31) | 2);
+    assert_eq!(event_type, EVENT_MODE);
     assert_eq!(
         serde_json::from_str::<Value>(&payload).unwrap(),
         serde_json::json!({"change":"created","pango_markup":true})

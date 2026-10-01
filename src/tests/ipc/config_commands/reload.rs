@@ -22,7 +22,7 @@ fn reload_rereads_config_and_emits_the_sway_workspace_event() {
 
     assert!(crate::command::execute(fixture.niri_state(), "reload")[0].success);
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
-    assert_eq!(event_type, 1 << 31);
+    assert_eq!(event_type, EVENT_WORKSPACE);
     let expected: Value =
         serde_json::from_str(&sway_fixture!("events/workspace.reload.json")).unwrap();
     assert_eq!(serde_json::from_str::<Value>(&payload).unwrap(), expected);
@@ -204,7 +204,7 @@ fn title_format_updates_get_tree_and_titlebar_after_client_title_change() {
     assert!(outcome[0].success);
     fixture.niri_state().ipc_refresh_layout();
     let (event_type, event) = read_ipc_reply(&mut fixture, &mut subscriber);
-    assert_eq!(event_type, (1 << 31) | 3);
+    assert_eq!(event_type, EVENT_WINDOW);
     let event: Value = serde_json::from_str(&event).unwrap();
     assert_eq!(event["change"], "title");
     assert_eq!(event["container"]["name"], "before");
@@ -375,7 +375,7 @@ fn reload_from_a_non_default_mode_resets_it_without_a_mode_event() {
     // The watcher applies the reload on the event loop, whose refresh then
     // emits the output event; both can arrive in one read.
     let mut remainder = Vec::new();
-    for (expected_type, expected_change) in [(1 << 31, "reload"), ((1 << 31) | 1, "unspecified")] {
+    for (expected_type, expected_change) in [(EVENT_WORKSPACE, "reload"), (EVENT_OUTPUT, "unspecified")] {
         let ((event_type, payload), rest) =
             read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder);
         remainder = rest;

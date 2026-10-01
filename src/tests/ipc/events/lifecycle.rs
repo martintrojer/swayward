@@ -18,7 +18,7 @@ fn output_subscription_emits_exact_event() {
     fixture.replace_outputs(vec![((0, 0), (1280, 720))]);
     let ((event_type, payload), remainder) =
         read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder);
-    assert_eq!(event_type, (1 << 31) | 1);
+    assert_eq!(event_type, EVENT_OUTPUT);
     assert_eq!(
         serde_json::from_str::<Value>(&payload).unwrap(),
         serde_json::json!({"change": "unspecified"})
@@ -44,18 +44,10 @@ fn output_event_is_not_sent_to_a_tick_only_subscriber() {
         read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder);
 
     fixture.replace_outputs(vec![((0, 0), (1280, 720))]);
-    fixture
-        .swayward()
-        .ipc_server
-        .as_ref()
-        .unwrap()
-        .send_event(swayward_ipc::legacy::Event::Tick {
-            payload: "barrier".into(),
-            first: false,
-        });
+    send_tick_barrier(&mut fixture);
     let ((event_type, payload), remainder) =
         read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder);
-    assert_eq!(event_type, (1 << 31) | 7);
+    assert_eq!(event_type, EVENT_TICK);
     assert_eq!(
         serde_json::from_str::<Value>(&payload).unwrap(),
         serde_json::json!({"first": false, "payload": "barrier"})
@@ -83,7 +75,7 @@ fn shutdown_subscription_emits_exact_exit_event() {
     assert!(fixture.swayward().shutdown_requested);
     let ((event_type, payload), remainder) =
         read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder);
-    assert_eq!(event_type, (1 << 31) | 6);
+    assert_eq!(event_type, EVENT_SHUTDOWN);
     assert_eq!(
         serde_json::from_str::<Value>(&payload).unwrap(),
         serde_json::json!({"change": "exit"})
@@ -134,7 +126,7 @@ fn tick_subscription_emits_initial_event_before_real_ticks() {
     assert_eq!(payload, r#"{"success": true}"#);
     let ((event_type, payload), remainder) =
         read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder);
-    assert_eq!(event_type, (1 << 31) | 7);
+    assert_eq!(event_type, EVENT_TICK);
     assert_eq!(
         serde_json::from_str::<Value>(&payload).unwrap(),
         serde_json::json!({"first": true, "payload": ""})
@@ -152,7 +144,7 @@ fn tick_subscription_emits_initial_event_before_real_ticks() {
     assert_eq!(payload.len(), 17, "sway writes exactly 17 bytes here");
     let ((event_type, payload), remainder) =
         read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder);
-    assert_eq!(event_type, (1 << 31) | 7);
+    assert_eq!(event_type, EVENT_TICK);
     assert_eq!(
         serde_json::from_str::<Value>(&payload).unwrap(),
         serde_json::json!({"first": false, "payload": "ready"})
@@ -184,7 +176,7 @@ fn subscribing_to_tick_on_an_existing_subscription_emits_first_tick() {
     assert_eq!(reply, r#"{"success": true}"#);
     let ((event_type, payload), _) =
         read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder);
-    assert_eq!(event_type, (1 << 31) | 7);
+    assert_eq!(event_type, EVENT_TICK);
     assert_eq!(
         serde_json::from_str::<Value>(&payload).unwrap(),
         serde_json::json!({"first": true, "payload": ""})
@@ -214,7 +206,7 @@ fn non_tick_subscription_does_not_emit_an_initial_tick() {
         .send_event(swayward_ipc::legacy::Event::WorkspaceReloaded);
     let ((event_type, payload), remainder) =
         read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder);
-    assert_eq!(event_type, 1 << 31);
+    assert_eq!(event_type, EVENT_WORKSPACE);
     assert_eq!(
         serde_json::from_str::<Value>(&payload).unwrap(),
         serde_json::json!({"change": "reload", "old": null, "current": null})
@@ -244,7 +236,7 @@ fn partial_event_stream_header_survives_an_interleaved_event() {
         .unwrap()
         .send_event(swayward_ipc::legacy::Event::WorkspaceReloaded);
     let (event_type, _) = read_ipc_reply(&mut fixture, &mut subscriber);
-    assert_eq!(event_type, 1 << 31);
+    assert_eq!(event_type, EVENT_WORKSPACE);
 
     subscriber.write_all(&request[7..]).unwrap();
     let (reply_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);

@@ -128,7 +128,7 @@ fn closing_last_window_removes_inactive_named_workspace_from_ipc() {
     assert_eq!(names, ["__i3_scratch", "active"]);
 
     let (event_type, payload) = read_ipc_reply(&mut f, &mut subscriber);
-    assert_eq!(event_type, 1 << 31);
+    assert_eq!(event_type, EVENT_WORKSPACE);
     let actual = serde_json::from_str::<Value>(&payload).unwrap();
     let expected =
         serde_json::from_str::<Value>(&sway_fixture!("events/workspace.empty.json")).unwrap();

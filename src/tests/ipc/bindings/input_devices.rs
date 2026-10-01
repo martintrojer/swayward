@@ -712,7 +712,7 @@ fn mouse_binding_events_name_buttons_and_wheel_like_sway() {
             std::mem::take(&mut remainder),
         );
         remainder = rest;
-        assert_eq!(event_type, (1 << 31) | 5, "{payload}");
+        assert_eq!(event_type, EVENT_BINDING, "{payload}");
         serde_json::from_str::<Value>(&payload).unwrap()
     };
     let sway = |command: &str, symbol: &str| {

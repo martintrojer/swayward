@@ -1,3 +1,13 @@
+// Sway's event message types (`sway/include/ipc.h:27-38`).
+const EVENT_WORKSPACE: u32 = 1 << 31;
+const EVENT_OUTPUT: u32 = EVENT_WORKSPACE | 1;
+const EVENT_MODE: u32 = EVENT_WORKSPACE | 2;
+const EVENT_WINDOW: u32 = EVENT_WORKSPACE | 3;
+const EVENT_BINDING: u32 = EVENT_WORKSPACE | 5;
+const EVENT_SHUTDOWN: u32 = EVENT_WORKSPACE | 6;
+const EVENT_TICK: u32 = EVENT_WORKSPACE | 7;
+const EVENT_INPUT: u32 = EVENT_WORKSPACE | 21;
+
 struct ScratchDir(std::path::PathBuf);
 
 impl ScratchDir {
@@ -23,6 +33,20 @@ impl Drop for ScratchDir {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
     }
+}
+
+/// Queue a tick with payload "barrier". Sway delivers events in order, so a
+/// subscriber that reads up to this tick has seen everything sent before it.
+fn send_tick_barrier(fixture: &mut Fixture) {
+    fixture
+        .swayward()
+        .ipc_server
+        .as_ref()
+        .unwrap()
+        .send_event(swayward_ipc::legacy::Event::Tick {
+            payload: "barrier".into(),
+            first: false,
+        });
 }
 
 static NEXT_TEST_SCRATCH: AtomicU64 = AtomicU64::new(0);

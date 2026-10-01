@@ -282,7 +282,7 @@ fn directional_move_emits_one_settled_sway_move_event() {
 
     assert!(crate::command::execute(f.niri_state(), "move left")[0].success);
     let (event_type, payload) = read_ipc_reply(&mut f, &mut subscriber);
-    assert_eq!(event_type, (1 << 31) | 3);
+    assert_eq!(event_type, EVENT_WINDOW);
     let event = serde_json::from_str::<Value>(&payload).unwrap();
     assert_eq!(event["change"], "move");
     assert_eq!(
@@ -353,7 +353,7 @@ fn scratchpad_show_moves_visible_window_to_current_workspace_and_focuses_it() {
         let ((event_type, payload), next) =
             read_ipc_reply_with_remainder(&mut f, &mut subscriber, remainder);
         remainder = next;
-        assert_eq!(event_type, (1 << 31) | 3);
+        assert_eq!(event_type, EVENT_WINDOW);
         events.push(serde_json::from_str::<Value>(&payload).unwrap());
     }
     assert_eq!(events[0]["change"], "focus");

@@ -58,7 +58,7 @@ workspace "2" {}"#,
 
     let ((event_type, payload), _) =
         read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder);
-    assert_eq!(event_type, 1 << 31, "expected a workspace event");
+    assert_eq!(event_type, EVENT_WORKSPACE, "expected a workspace event");
     let event = serde_json::from_str::<Value>(&payload).unwrap();
     assert_eq!(
         event["change"], "focus",
@@ -271,7 +271,7 @@ workspace "2" {}"#,
         try_read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder.clone())
     {
         remainder = rest;
-        assert_eq!(event_type, 1 << 31);
+        assert_eq!(event_type, EVENT_WORKSPACE);
         let event = serde_json::from_str::<Value>(&payload).unwrap();
         changes.push((
             event["change"].as_str().unwrap_or_default().to_owned(),

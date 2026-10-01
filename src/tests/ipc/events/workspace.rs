@@ -26,18 +26,10 @@ fn niri_only_window_events_do_not_leak_onto_sway_subscriptions() {
         .as_ref()
         .unwrap()
         .send_event(swayward_ipc::legacy::Event::WindowLayoutsChanged { changes: vec![] });
-    fixture
-        .swayward()
-        .ipc_server
-        .as_ref()
-        .unwrap()
-        .send_event(swayward_ipc::legacy::Event::Tick {
-            payload: "barrier".into(),
-            first: false,
-        });
+    send_tick_barrier(&mut fixture);
 
     let (event_type, _) = read_ipc_reply(&mut fixture, &mut subscriber);
-    assert_eq!(event_type, (1 << 31) | 7);
+    assert_eq!(event_type, EVENT_TICK);
 }
 
 #[test]
@@ -78,7 +70,7 @@ fn workspace_focus_events_mark_only_the_new_workspace_focused() {
             let ((event_type, payload), next) =
                 read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder);
             remainder = next;
-            assert_eq!(event_type, 1 << 31);
+            assert_eq!(event_type, EVENT_WORKSPACE);
             let event = serde_json::from_str::<Value>(&payload).unwrap();
             if event["change"] == "focus" {
                 assert_eq!(event["current"]["name"], name);
@@ -120,7 +112,7 @@ fn workspace_urgency_event_matches_sway_shape() {
     fixture.niri_state().ipc_refresh_layout();
 
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
-    assert_eq!(event_type, 1 << 31);
+    assert_eq!(event_type, EVENT_WORKSPACE);
     let actual = serde_json::from_str::<Value>(&payload).unwrap();
     let expected =
         serde_json::from_str::<Value>(&sway_fixture!("events/workspace.urgent.json")).unwrap();
@@ -180,7 +172,7 @@ fn workspace_move_event_matches_sway_shape() {
     );
 
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
-    assert_eq!(event_type, 1 << 31);
+    assert_eq!(event_type, EVENT_WORKSPACE);
     let actual = serde_json::from_str::<Value>(&payload).unwrap();
     let expected =
         serde_json::from_str::<Value>(&sway_fixture!("events/workspace.move.json")).unwrap();
@@ -210,7 +202,7 @@ fn workspace_rename_event_matches_sway_shape() {
             .success
     );
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
-    assert_eq!(event_type, 1 << 31);
+    assert_eq!(event_type, EVENT_WORKSPACE);
     let actual = serde_json::from_str::<Value>(&payload).unwrap();
     let expected =
         serde_json::from_str::<Value>(&sway_fixture!("events/workspace.rename.json")).unwrap();

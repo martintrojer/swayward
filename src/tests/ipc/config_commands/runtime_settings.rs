@@ -131,7 +131,7 @@ fn reloaded_gap_defaults_do_not_change_an_existing_workspace() {
 
     assert!(crate::command::execute(fixture.niri_state(), "reload")[0].success);
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
-    assert_eq!(event_type, 1 << 31);
+    assert_eq!(event_type, EVENT_WORKSPACE);
     assert_eq!(
         serde_json::from_str::<Value>(&payload).unwrap(),
         serde_json::from_str::<Value>(&sway_fixture!("events/workspace.reload.json")).unwrap()
