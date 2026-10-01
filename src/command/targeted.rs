@@ -208,42 +208,39 @@ pub(super) fn set_client_colors(
     state.swayward.queue_redraw_all();
 }
 
-pub(super) fn execute_targeted(
+fn run_targeted(
     state: &mut State,
     command: &Command,
     target: CommandTarget,
-) -> CommandOutcome {
+) -> super::HandlerResult {
     match command {
         Command::Mark {
             add,
             toggle,
             identifier,
-        } => mark_target(state, target, identifier, *add, *toggle),
-        Command::Unmark(identifier) => unmark_target(state, target, identifier.as_deref()),
+        } => {
+            mark_target(state, target, identifier, *add, *toggle);
+            Ok(None)
+        }
+        Command::Unmark(identifier) => {
+            unmark_target(state, target, identifier.as_deref());
+            Ok(None)
+        }
         Command::Swap(swap_target) => {
-            let outcome = movement::swap_target(state, target, swap_target);
-            if !outcome.success {
-                return outcome;
-            }
+            super::handled_outcome(movement::swap_target(state, target, swap_target))
         }
-        Command::MoveDirection { direction, pixels } => {
-            let outcome = move_direction(
-                state,
-                target,
-                *direction,
-                *pixels,
-                crate::layout::ActivateWindow::No,
-                false,
-            );
-            if !outcome.success {
-                return outcome;
-            }
-        }
+        Command::MoveDirection { direction, pixels } => super::handled_outcome(move_direction(
+            state,
+            target,
+            *direction,
+            *pixels,
+            crate::layout::ActivateWindow::No,
+            false,
+        )),
         Command::MovePosition(position) => {
-            if let Err(error) = move_position(state, Some(target), position) {
-                return failure(error);
-            }
+            move_position(state, Some(target), position).map_err(failure)?;
             state.swayward.queue_redraw_all();
+            Ok(None)
         }
         Command::MoveToWorkspace {
             target: workspace_target,
@@ -256,229 +253,112 @@ pub(super) fn execute_targeted(
                     .borrow()
                     .input
                     .workspace_auto_back_and_forth;
-            let outcome = move_target_to_workspace(
+            super::handled_outcome(move_target_to_workspace(
                 state,
                 target,
                 workspace_target.clone(),
                 true,
                 auto_back_and_forth,
-            );
-            if !outcome.success {
-                return outcome;
-            }
+            ))
         }
         Command::MoveToMark(mark) => {
-            let outcome = move_target_to_mark(state, target, mark);
-            if !outcome.success {
-                return outcome;
-            }
+            super::handled_outcome(move_target_to_mark(state, target, mark))
         }
-        Command::MoveWorkspaceToOutput(output_target_name) => {
-            let outcome = move_workspace_to_output(state, Some(target), output_target_name);
-            if !outcome.success {
-                return outcome;
-            }
+        Command::MoveWorkspaceToOutput(output) => {
+            super::handled_outcome(move_workspace_to_output(state, Some(target), output))
         }
-        Command::MoveToOutput(output_target_name) => {
-            let CommandTarget::Window(target) = target else {
-                return failure("command requires a window target");
-            };
-            let window = state
-                .swayward
-                .layout
-                .windows()
-                .find_map(|(monitor, mapped)| {
-                    (mapped.id() == target).then(|| {
-                        (
-                            monitor.map(|monitor| monitor.output()),
-                            mapped.window.clone(),
-                        )
-                    })
-                });
-            let Some((reference, window)) = window else {
-                return failure("No matching node.");
-            };
-            let reference_point = state.swayward.layout.window_center(&window);
-            let output = match output_target(state, output_target_name, reference, reference_point)
-            {
-                Ok(output) => output,
-                Err(error) => return failure(error),
-            };
-            state.swayward.layout.move_to_output(
-                Some(&window),
-                &output,
-                None,
-                crate::layout::ActivateWindow::No,
-            );
-            state.swayward.queue_redraw_all();
-        }
-        Command::MoveScratchpad => {
-            if let Err(error) = scratchpad::move_targeted(state, target) {
-                return error;
-            }
-        }
-        Command::ScratchpadShow => {
-            if let Err(error) = scratchpad::show_targeted(state, target) {
-                return error;
-            }
-        }
+        Command::MoveToOutput(output) => movement::to_output_targeted(state, target, output),
+        Command::MoveScratchpad => super::handled(scratchpad::move_targeted(state, target)),
+        Command::ScratchpadShow => super::handled(scratchpad::show_targeted(state, target)),
         Command::Fullscreen { mode, global } => {
-            if let Err(error) = layout::fullscreen_targeted(state, target, *mode, *global) {
-                return error;
-            }
+            super::handled(layout::fullscreen_targeted(state, target, *mode, *global))
         }
         Command::ShortcutsInhibitor(enable) => {
-            if let Err(error) = set_shortcuts_inhibitor(state, target, *enable) {
-                return error;
-            }
+            super::handled(set_shortcuts_inhibitor(state, target, *enable))
         }
-        Command::Sticky(value) => {
-            if let Err(error) = window::sticky(state, target, value) {
-                return error;
-            }
-        }
+        Command::Sticky(value) => super::handled(window::sticky(state, target, value)),
         Command::SetClientColors { class, colors } => {
             set_client_colors(state, *class, *colors);
+            Ok(None)
         }
-        Command::SetLayoutOption(_) => return failure("command cannot be applied to a container"),
-        Command::Opacity(value) | Command::OpacityRelative(value) => {
-            let relative = matches!(command, Command::OpacityRelative(_));
-            if let Err(error) = window::opacity(state, target, *value, relative) {
-                return error;
-            }
+        Command::SetLayoutOption(_) => Err(failure("command cannot be applied to a container")),
+        Command::Opacity(value) => super::handled(window::opacity(state, target, *value, false)),
+        Command::OpacityRelative(value) => {
+            super::handled(window::opacity(state, target, *value, true))
         }
-        Command::TitleFormat(format) => {
-            if let Err(error) = window::title_format(state, target, format) {
-                return error;
-            }
-        }
-        Command::Border(border) => {
-            if let Err(error) = window::border(state, target, border) {
-                return error;
-            }
-        }
-        Command::Floating(mode) => {
-            if let Err(error) = window::floating(state, target, mode) {
-                return error;
-            }
-        }
-        Command::Urgent(value) => {
-            if let Err(error) = window::urgent(state, target, value) {
-                return error;
-            }
-        }
-        Command::Kill => {
-            if let Err(error) = window::kill(state, target) {
-                return error;
-            }
-        }
+        Command::TitleFormat(format) => super::handled(window::title_format(state, target, format)),
+        Command::Border(border) => super::handled(window::border(state, target, border)),
+        Command::Floating(mode) => super::handled(window::floating(state, target, mode)),
+        Command::Urgent(value) => super::handled(window::urgent(state, target, value)),
+        Command::Kill => super::handled(window::kill(state, target)),
         Command::ResizeSet { width, height } => {
-            if let Err(error) = window::resize_set(state, target, *width, *height) {
-                return error;
-            }
+            super::handled(window::resize_set(state, target, *width, *height))
         }
         Command::Resize {
             grow,
             axis,
             first,
             second,
-        } => {
-            if let Err(error) = window::resize(state, target, *grow, *axis, *first, *second) {
-                return error;
-            }
-        }
-        Command::Focus => {
-            if let Err(error) = focus::targeted(state, target) {
-                return error;
-            }
-        }
-        Command::FocusWorkspace => {
-            if let Err(error) = focus::targeted_workspace(state, target) {
-                return error;
-            }
-        }
+        } => super::handled(window::resize(state, target, *grow, *axis, *first, *second)),
+        Command::Focus => super::handled(focus::targeted(state, target)),
+        Command::FocusWorkspace => super::handled(focus::targeted_workspace(state, target)),
         Command::FocusDirection(direction) => {
-            if let Err(error) = focus::targeted_direction(state, target, *direction) {
-                return error;
-            }
+            super::handled(focus::targeted_direction(state, target, *direction))
         }
-        Command::FocusOutput(identifier) => {
-            if let Err(error) = focus::output(state, identifier) {
-                return error;
-            }
-        }
-        Command::Layout(value) => {
-            if let Err(error) = layout::targeted(state, target, *value) {
-                return error;
-            }
-        }
+        Command::FocusOutput(identifier) => super::handled(focus::output(state, identifier)),
+        Command::Layout(value) => super::handled(layout::targeted(state, target, *value)),
         Command::LayoutToggle(toggle) => {
-            if let Err(error) = layout::toggle_targeted(state, target, toggle) {
-                return error;
-            }
+            super::handled(layout::toggle_targeted(state, target, toggle))
         }
-        Command::LayoutDefault => {
-            if let Err(error) = layout::default_targeted(state, target) {
-                return error;
-            }
-        }
-        Command::Split(value) => {
-            if let Err(error) = layout::split_targeted(state, target, *value) {
-                return error;
-            }
-        }
+        Command::LayoutDefault => super::handled(layout::default_targeted(state, target)),
+        Command::Split(value) => super::handled(layout::split_targeted(state, target, *value)),
         Command::RenameWorkspace { old, new_name } => {
-            // Only the `rename workspace to <new>` form reads the matched
-            // container's workspace. The `<old>` and `number <n>` forms resolve
-            // by name regardless of criteria, and sway still runs the handler
-            // once per match, so the second pass finds the old name gone and
-            // fails (`sway/sway/commands/rename.c:35-58`).
-            let resolved = match old {
-                Some(target) => state
-                    .swayward
-                    .layout
-                    .rename_sway_workspace(Some(target.clone()), new_name.clone()),
-                None => match target_workspace(state, target) {
-                    Some(workspace) => state
-                        .swayward
-                        .layout
-                        .rename_sway_workspace_by_id(workspace, new_name.clone()),
-                    // Sway's NULL workspace lands on the same message, because
-                    // `!workspace` is the branch that reports it
-                    // (`sway/sway/commands/rename.c:60-63`).
-                    None => Err("There is no workspace with that name".to_owned()),
-                },
-            };
-            if let Err(error) = resolved {
-                return swayward_ipc::command::parse_error(error);
-            }
-            state.swayward.queue_redraw_all();
+            super::workspace::rename_targeted(state, target, old.as_ref(), new_name)
         }
-        Command::Nop => {}
-        _ => return failure("criteria targets are not implemented for this command yet"),
+        Command::Nop => Ok(None),
+        Command::FocusParent
+        | Command::FocusChild
+        | Command::FocusNext
+        | Command::FocusPrev
+        | Command::FocusNextSibling
+        | Command::FocusPrevSibling
+        | Command::FocusFloating
+        | Command::FocusTiling
+        | Command::FocusModeToggle
+        | Command::Workspace { .. }
+        | Command::AssignWorkspace { .. }
+        | Command::Reload
+        | Command::Exit
+        | Command::CreateOutput
+        | Command::InputSwitchLayout { .. }
+        | Command::Output { .. }
+        | Command::Gaps { .. }
+        | Command::GapsDefaults { .. }
+        | Command::WorkspaceGaps { .. }
+        | Command::Mode { .. }
+        | Command::Set { .. }
+        | Command::Bind { .. }
+        | Command::SwitchBind { .. }
+        | Command::Exec { .. }
+        | Command::Assign { .. }
+        | Command::NoFocus { .. }
+        | Command::ForWindow { .. } => Err(failure(
+            "criteria targets are not implemented for this command yet",
+        )),
     }
-    state.ipc_refresh_layout();
-    success()
 }
 
-/// The workspace a criteria-matched target lives on.
-///
-/// Sway sets `handler_context.workspace` from the matched node before running
-/// the handler, taking a container's `pending.workspace`
-/// (`sway/sway/commands.c:181-202`). A hidden scratchpad container has a NULL
-/// workspace there (`sway/sway/tree/container.c:1458`), so it resolves to
-/// nothing rather than to the focused workspace.
-fn target_workspace(
-    state: &State,
+pub(super) fn execute_targeted(
+    state: &mut State,
+    command: &Command,
     target: CommandTarget,
-) -> Option<crate::layout::workspace::WorkspaceId> {
-    match target {
-        CommandTarget::Container(workspace, _) => Some(workspace),
-        CommandTarget::Window(id) => state.swayward.layout.windows().find_map(|(_, mapped)| {
-            (mapped.id() == id)
-                .then(|| state.swayward.layout.window_workspace_id(&mapped.window))
-                .flatten()
-        }),
+) -> CommandOutcome {
+    match run_targeted(state, command, target) {
+        Ok(_) => {
+            state.ipc_refresh_layout();
+            success()
+        }
+        Err(outcome) => outcome,
     }
 }
 

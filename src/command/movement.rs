@@ -995,6 +995,42 @@ pub(super) fn workspace_to_output_focused(
     super::handled_outcome(move_workspace_to_output(state, None, target))
 }
 
+pub(super) fn to_output_targeted(
+    state: &mut State,
+    target: CommandTarget,
+    output_target_name: &OutputTarget,
+) -> super::HandlerResult {
+    let CommandTarget::Window(target) = target else {
+        return Err(failure("command requires a window target"));
+    };
+    let window = state
+        .swayward
+        .layout
+        .windows()
+        .find_map(|(monitor, mapped)| {
+            (mapped.id() == target).then(|| {
+                (
+                    monitor.map(|monitor| monitor.output()),
+                    mapped.window.clone(),
+                )
+            })
+        });
+    let Some((reference, window)) = window else {
+        return Err(failure("No matching node."));
+    };
+    let reference_point = state.swayward.layout.window_center(&window);
+    let output =
+        output_target(state, output_target_name, reference, reference_point).map_err(failure)?;
+    state.swayward.layout.move_to_output(
+        Some(&window),
+        &output,
+        None,
+        crate::layout::ActivateWindow::No,
+    );
+    state.swayward.queue_redraw_all();
+    Ok(None)
+}
+
 #[cfg(test)]
 mod tests {
     use smithay::utils::{Point, Rectangle, Size};

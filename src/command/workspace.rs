@@ -57,3 +57,53 @@ pub(super) fn rename(
     state.swayward.queue_redraw_all();
     Ok(None)
 }
+
+fn target_workspace(
+    state: &State,
+    target: super::CommandTarget,
+) -> Option<crate::layout::workspace::WorkspaceId> {
+    match target {
+        super::CommandTarget::Container(workspace, _) => Some(workspace),
+        super::CommandTarget::Window(id) => {
+            state.swayward.layout.windows().find_map(|(_, mapped)| {
+                (mapped.id() == id)
+                    .then(|| state.swayward.layout.window_workspace_id(&mapped.window))
+                    .flatten()
+            })
+        }
+    }
+}
+
+pub(super) fn rename_targeted(
+    state: &mut State,
+    target: super::CommandTarget,
+    old: Option<&WorkspaceTarget>,
+    new_name: &str,
+) -> super::HandlerResult {
+    // Only the `rename workspace to <new>` form reads the matched container's
+    // workspace. The `<old>` and `number <n>` forms resolve by name regardless
+    // of criteria, and sway still runs the handler once per match, so the
+    // second pass finds the old name gone and fails
+    // (`sway/sway/commands/rename.c:35-58`).
+    let resolved = match old {
+        Some(target) => state
+            .swayward
+            .layout
+            .rename_sway_workspace(Some(target.clone()), new_name.to_owned()),
+        None => match target_workspace(state, target) {
+            Some(workspace) => state
+                .swayward
+                .layout
+                .rename_sway_workspace_by_id(workspace, new_name.to_owned()),
+            // Sway's NULL workspace lands on the same message, because
+            // `!workspace` is the branch that reports it
+            // (`sway/sway/commands/rename.c:60-63`).
+            None => Err("There is no workspace with that name".to_owned()),
+        },
+    };
+    if let Err(error) = resolved {
+        return Err(swayward_ipc::command::parse_error(error));
+    }
+    state.swayward.queue_redraw_all();
+    Ok(None)
+}
