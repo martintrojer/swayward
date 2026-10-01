@@ -344,27 +344,55 @@ impl<W: LayoutElement> TilingTree<W> {
         else {
             return;
         };
-        if Self::layouts_parallel(root_layout, wanted_layout) {
+        if !Self::layouts_parallel(root_layout, wanted_layout) {
+            self.set_layout(self.root, wanted_layout);
+            // `set_layout` compacts the tree, which squashes a singleton split.
+            // When the moved node was that split, continue with the one window
+            // that survives the compaction.
+            let Some(id) = self
+                .nodes
+                .contains_key(&id)
+                .then_some(id)
+                .or_else(|| self.windows().next().map(|(leaf, _)| leaf))
+            else {
+                return;
+            };
+            let old_parent = self.nodes.get(&id).and_then(|node| node.parent);
+            if let Some(parent) = old_parent.filter(|parent| *parent != self.root) {
+                self.detach_subtree_only(id);
+                self.insert_child_at(self.root, id, 0);
+                self.reap_empty_from(parent);
+                self.finish_directional_move(id);
+            }
             return;
         }
-        self.set_layout(self.root, wanted_layout);
-        // `set_layout` compacts the tree, which squashes a singleton split.
-        // When the moved node was that split, continue with the one window
-        // that survives the compaction.
-        let Some(id) = self
-            .nodes
-            .contains_key(&id)
-            .then_some(id)
-            .or_else(|| self.windows().next().map(|(leaf, _)| leaf))
-        else {
+        // A same-axis command cannot move the only window out of the
+        // workspace, but sway still promotes a window nested two or more
+        // levels deep to workspace level, reaps the emptied wrappers and
+        // squashes the workspace (`container_move_in_direction`,
+        // sway/commands/move.c:394-412). A window whose parent is a singleton
+        // workspace child is treated as already at workspace level and stays
+        // put (sway/commands/move.c:387-393).
+        let Some(leaf) = self.windows().next().map(|(leaf, _)| leaf) else {
             return;
         };
-        let old_parent = self.nodes.get(&id).and_then(|node| node.parent);
-        if let Some(parent) = old_parent.filter(|parent| *parent != self.root) {
-            self.detach_subtree_only(id);
-            self.insert_child_at(self.root, id, 0);
+        let parent = self
+            .nodes
+            .get(&leaf)
+            .and_then(|node| node.parent)
+            .filter(|parent| *parent != self.root)
+            .filter(|parent| {
+                self.nodes
+                    .get(parent)
+                    .and_then(|node| node.parent)
+                    .is_some_and(|grandparent| grandparent != self.root)
+            });
+        if let Some(parent) = parent {
+            self.detach_subtree_only(leaf);
+            self.insert_child_at(self.root, leaf, 0);
             self.reap_empty_from(parent);
-            self.finish_directional_move(id);
+            self.compact_tree();
+            self.finish_directional_move(leaf);
         }
     }
 

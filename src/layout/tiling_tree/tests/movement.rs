@@ -404,3 +404,30 @@ fn swapping_the_root_is_refused_instead_of_panicking() {
     t.nodes.remove(&other);
     t.check_invariants();
 }
+
+// random seed 3 step 9 (sway-1.12-random): a same-axis move of the only
+// window promotes it out of nested wrappers to workspace level.
+#[test]
+fn directional_move_reaps_nested_wrappers_around_the_only_window() {
+    let mut t = tree((1200., 800.), 0.);
+    let window = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let inner = t.wrap_node(window, Layout::SplitH);
+    t.wrap_node(inner, Layout::SplitH);
+    t.set_layout(t.root, Layout::SplitV);
+
+    assert!(!t.move_direction(window, Direction::Down));
+
+    let tree = t.ipc_tree();
+    assert!(
+        matches!(
+            tree,
+            IpcNode::Split {
+                layout: Layout::SplitV,
+                ref children,
+                ..
+            } if matches!(&children[..], [IpcNode::Leaf { id, .. }] if *id == window)
+        ),
+        "{tree:?}"
+    );
+    t.check_invariants();
+}
