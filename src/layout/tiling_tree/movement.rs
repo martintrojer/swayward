@@ -272,7 +272,12 @@ impl<W: LayoutElement> TilingTree<W> {
                         false,
                     );
                 }
-                if parent_id == boundary_root {
+                // Past the moved node itself, the first parallel parent ends
+                // sway's walk even with no sibling that way: the node is
+                // promoted beside that ancestor (sway/commands/move.c:355-380,
+                // 394-412). The node's own parallel parent only stops the walk
+                // at the boundary.
+                if parent_id == boundary_root || branch != id {
                     if branch == id {
                         return false;
                     }
@@ -280,13 +285,13 @@ impl<W: LayoutElement> TilingTree<W> {
                     // counts as workspace level, like i3, and stays put
                     // (sway/commands/move.c:387-393).
                     let id_parent = self.nodes.get(&id).and_then(|node| node.parent);
-                    if boundary_root == self.root
+                    if parent_id == self.root
                         && id_parent == Some(branch)
                         && self.split_len(branch) == Some(1)
                     {
                         return false;
                     }
-                    return self.promote_to_boundary(id, boundary_root, backwards);
+                    return self.promote_to_boundary(id, parent_id, backwards);
                 }
             }
             branch = parent_id;
@@ -298,8 +303,8 @@ impl<W: LayoutElement> TilingTree<W> {
         self.promote_by_wrapping_root(id, direction)
     }
 
-    /// Promotes `id` to the outer end of `boundary_root`, a parallel root it has escaped
-    /// ("Container will be promoted", sway/commands/move.c:394-412).
+    /// Promotes `id` to the outer end of `boundary_root`, the first parallel ancestor it has
+    /// escaped ("Container will be promoted", sway/commands/move.c:394-412).
     fn promote_to_boundary(&mut self, id: NodeId, boundary_root: NodeId, backwards: bool) -> bool {
         let Some(TreeNode::Split { children, .. }) =
             self.nodes.get(&boundary_root).map(|node| &node.value)

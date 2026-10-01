@@ -573,3 +573,65 @@ fn lone_window_move_stops_at_a_parallel_stacked_ancestor() {
     );
     t.check_invariants();
 }
+
+// random seed 168 step 20 (sway-1.12-random): in H[S[T[a b] c]], `move up`
+// on b climbs past its tabbed parent to the stacked container, which is
+// parallel; b has no sibling above the tabbed container, so sway promotes
+// it into the stack before that container instead of reorienting the
+// workspace (sway/commands/move.c:355-380, 394-412).
+#[test]
+fn move_promotes_into_the_first_parallel_ancestor_at_its_edge() {
+    let mut t = tree((1200., 800.), 0.);
+    let a = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let b = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    let c = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+    let tabs = t.alloc(Node {
+        parent: None,
+        value: TreeNode::Split {
+            layout: Layout::Tabbed,
+            children: vec![a, b],
+            percents: vec![0.5, 0.5],
+            meta: SplitMeta::default(),
+        },
+    });
+    let stack = t.alloc(Node {
+        parent: Some(t.root),
+        value: TreeNode::Split {
+            layout: Layout::Stacked,
+            children: vec![tabs, c],
+            percents: vec![0.5, 0.5],
+            meta: SplitMeta::default(),
+        },
+    });
+    t.nodes.get_mut(&tabs).unwrap().parent = Some(stack);
+    t.nodes.get_mut(&a).unwrap().parent = Some(tabs);
+    t.nodes.get_mut(&b).unwrap().parent = Some(tabs);
+    t.nodes.get_mut(&c).unwrap().parent = Some(stack);
+    t.nodes.get_mut(&t.root).unwrap().value = TreeNode::Split {
+        layout: Layout::SplitH,
+        children: vec![stack],
+        percents: vec![1.],
+        meta: SplitMeta::default(),
+    };
+    t.set_focus(b);
+    t.check_invariants();
+
+    assert!(t.move_direction(b, Direction::Up));
+
+    let tree = t.ipc_tree();
+    let ok = matches!(
+        tree,
+        IpcNode::Split { layout: Layout::SplitH, ref children, .. }
+            if matches!(
+                &children[..],
+                [IpcNode::Split { layout: Layout::Stacked, children: stacked, .. }]
+                    if matches!(
+                        &stacked[..],
+                        [IpcNode::Leaf { id: first, .. }, IpcNode::Split { layout: Layout::Tabbed, .. }, IpcNode::Leaf { id: last, .. }]
+                            if *first == b && *last == c
+                    )
+            )
+    );
+    assert!(ok, "{tree:?}");
+    t.check_invariants();
+}
