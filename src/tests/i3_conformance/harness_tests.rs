@@ -1,15 +1,7 @@
-/// The i3 conformance classification: one entry per vendored file with its
-/// assertion counts, reason code, citation and note.
-///
-/// This is the source of truth. The set of fully green files is *derived* from
-/// it rather than listed separately, because a hand-maintained duplicate of a
-/// derivable fact drifts: the old `passing.txt` and the coverage prose
-/// disagreed about the green count more than once, and each had its own
-/// invariant asserting it against the other.
-const COVERAGE: &str = include_str!("../../../tests/i3/coverage.toml");
+use super::*;
 
 #[test]
-fn child_is_reaped_when_the_control_loop_panics() {
+pub(super) fn child_is_reaped_when_the_control_loop_panics() {
     let child = Command::new("sleep").arg("60").spawn().unwrap();
     let pid = child.id();
     let _ = std::panic::catch_unwind(move || {
@@ -23,7 +15,7 @@ fn child_is_reaped_when_the_control_loop_panics() {
 }
 
 #[test]
-fn child_output_is_drained_while_the_child_runs() {
+pub(super) fn child_output_is_drained_while_the_child_runs() {
     let mut child = Command::new("sh")
         .arg("-c")
         .arg("head -c 1048576 /dev/zero >&1; head -c 1048576 /dev/zero >&2")
@@ -46,7 +38,7 @@ fn child_output_is_drained_while_the_child_runs() {
 }
 
 #[test]
-fn harness_xcb_xkb_guard_does_not_depend_on_the_host() {
+pub(super) fn harness_xcb_xkb_guard_does_not_depend_on_the_host() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let output = Command::new("perl")
         .arg(format!("-I{}", root.join("tests/i3/lib").display()))
@@ -65,7 +57,7 @@ fn harness_xcb_xkb_guard_does_not_depend_on_the_host() {
 }
 
 #[test]
-fn harness_does_not_convert_wrong_named_assertions_into_skips() {
+pub(super) fn harness_does_not_convert_wrong_named_assertions_into_skips() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let output = Command::new("perl")
         .arg(format!("-I{}", root.join("tests/i3/lib").display()))
@@ -95,7 +87,7 @@ fn harness_does_not_convert_wrong_named_assertions_into_skips() {
 }
 
 #[test]
-fn harness_skips_only_i3_invalid_criteria_wording() {
+pub(super) fn harness_skips_only_i3_invalid_criteria_wording() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let output = Command::new("perl")
         .arg(format!("-I{}", root.join("tests/i3/lib").display()))
@@ -122,7 +114,7 @@ fn harness_skips_only_i3_invalid_criteria_wording() {
 }
 
 #[test]
-fn conformance_run_reports_every_failed_file() {
+pub(super) fn conformance_run_reports_every_failed_file() {
     let mut visited = Vec::new();
     let failures = collect_test_failures(
         [("first.t", true), ("good.t", true), ("last.t", true)],
@@ -145,7 +137,7 @@ fn conformance_run_reports_every_failed_file() {
 }
 
 #[test]
-fn failure_diagnostics_name_assertions_and_non_tap_panics() {
+pub(super) fn failure_diagnostics_name_assertions_and_non_tap_panics() {
     let payload = std::panic::catch_unwind(|| {
         with_test_context("setup-failure.t", || panic!("setup failed"));
     })
@@ -168,7 +160,7 @@ fn failure_diagnostics_name_assertions_and_non_tap_panics() {
 }
 
 #[test]
-fn rejection_allowlist_is_keyed_by_file_and_exact_command() {
+pub(super) fn rejection_allowlist_is_keyed_by_file_and_exact_command() {
     let stderr = "# swayward rejected `layout default`: error\n\
 # swayward rejected `[con_mark=__does_not_exist] focus`: error\n";
     assert_eq!(
@@ -204,7 +196,7 @@ fn rejection_allowlist_is_keyed_by_file_and_exact_command() {
 }
 
 #[test]
-fn headless_startup_outputs_follow_sways_backend_order() {
+pub(super) fn headless_startup_outputs_follow_sways_backend_order() {
     let mut fixture = Fixture::new();
     let state = fixture.niri_state();
     let swayward = &mut state.swayward;
@@ -226,7 +218,7 @@ fn headless_startup_outputs_follow_sways_backend_order() {
 }
 
 #[test]
-fn fake_outputs_create_real_outputs_with_requested_geometry() {
+pub(super) fn fake_outputs_create_real_outputs_with_requested_geometry() {
     let outputs = fake_outputs("font monospace\nfake-outputs 1024x768+0+0P,800x600+1024+20\n")
         .unwrap()
         .unwrap();
@@ -273,7 +265,7 @@ fn fake_outputs_create_real_outputs_with_requested_geometry() {
 }
 
 #[test]
-fn test_config_reload_requires_loaded_source() {
+pub(super) fn test_config_reload_requires_loaded_source() {
     let mut fixture = Fixture::new();
     assert_eq!(
         reload_loaded_test_config(&mut fixture, "", None).unwrap_err(),
@@ -283,7 +275,7 @@ fn test_config_reload_requires_loaded_source() {
 }
 
 #[test]
-fn i3_config_translation_ignores_only_unsupported_bar_blocks() {
+pub(super) fn i3_config_translation_ignores_only_unsupported_bar_blocks() {
     translate_config("", "font monospace\nbar {\n    output primary\n}\n").unwrap();
     assert!(!only_ignorable_translation_warnings(
         "316-drag-container.t",
@@ -300,7 +292,7 @@ fn i3_config_translation_ignores_only_unsupported_bar_blocks() {
 }
 
 #[test]
-fn i3_config_translation_ignores_provenance_warnings_only_for_271() {
+pub(super) fn i3_config_translation_ignores_provenance_warnings_only_for_271() {
     let warnings = "manual attention: 2 directive(s)\n  config:2: i3-only provenance criterion tiling_from has no sway equivalent: for_window [tiling_from=\"auto\"]\n  config:3: i3-only provenance criterion floating_from has no sway equivalent: for_window [floating_from=\"user\"]\n";
     assert!(only_ignorable_translation_warnings(
         "271-for_window_tilingfloating.t",
@@ -316,7 +308,7 @@ fn i3_config_translation_ignores_provenance_warnings_only_for_271() {
 /// in the test process. The gate leaves that variable unset, so a file that
 /// loads its own config used to get the overrides only when measured alone.
 #[test]
-fn a_file_loaded_config_keeps_its_per_file_overrides() {
+pub(super) fn a_file_loaded_config_keeps_its_per_file_overrides() {
     let mut fixture = Fixture::new();
     fixture.add_output(1, (1280, 800));
     let client = fixture.add_client();
@@ -360,21 +352,21 @@ fn a_file_loaded_config_keeps_its_per_file_overrides() {
 }
 
 #[test]
-fn i3_config_translation_rejects_unhandled_directives() {
+pub(super) fn i3_config_translation_rejects_unhandled_directives() {
     let error = translate_config("", "font monospace\nmystery value\n").unwrap_err();
     assert!(error.contains("manual attention: 1 directive(s)"));
     assert!(error.contains("unhandled: mystery value"));
 }
 
 #[test]
-fn i3_config_translation_never_applies_a_partial_config() {
+pub(super) fn i3_config_translation_never_applies_a_partial_config() {
     let incomplete = translate_config("", "bindsym X\n").unwrap_err();
     assert!(incomplete.contains("manual attention: 1 directive(s)"));
     assert!(incomplete.contains("malformed bindsym: X"));
 }
 
 #[test]
-fn explicit_default_binding_mode_loads() {
+pub(super) fn explicit_default_binding_mode_loads() {
     let config = translate_config("", "mode \"default\" {\n    bindsym X nop\n}\n").unwrap();
     assert_eq!(config.binds.0.len(), 1);
     assert!(!config
@@ -384,7 +376,7 @@ fn explicit_default_binding_mode_loads() {
 }
 
 #[test]
-fn workspace_layout_config_wraps_new_windows() {
+pub(super) fn workspace_layout_config_wraps_new_windows() {
     let config = translate_config("", "workspace_layout tabbed\n").unwrap();
     assert_eq!(
         config.layout.workspace_layout,
@@ -392,163 +384,32 @@ fn workspace_layout_config_wraps_new_windows() {
     );
 }
 
-fn coverage_report() -> &'static Value {
-    static REPORT: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
-    REPORT.get_or_init(|| {
-        let output =
-            Command::new(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("contrib/coverage-report"))
-                .arg("--json")
-                .output()
-                .expect("run contrib/coverage-report --json");
-        assert!(
-            output.status.success(),
-            "coverage-report failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        serde_json::from_slice(&output.stdout).expect("coverage-report emits JSON")
-    })
-}
-
-fn report_file_list(key: &str) -> impl Iterator<Item = &'static str> {
-    coverage_report()[key]
-        .as_array()
-        .unwrap_or_else(|| panic!("coverage-report has no {key} list"))
-        .iter()
-        .map(|value| value.as_str().expect("coverage file name is a string"))
-}
-
-fn passing_tests() -> impl Iterator<Item = &'static str> {
-    report_file_list("green_file_names")
-}
-
-/// The manifest is read by the runner and reviewed by hand, and concurrent
-/// merges have appended entries out of order three times. Sorted and duplicate
-/// free keeps a review diff honest and stops one file being listed twice.
 #[test]
-fn passing_manifest_is_sorted_and_unique() {
-    let files = passing_tests().collect::<Vec<_>>();
-    let mut sorted = files.clone();
-    sorted.sort_unstable();
-    assert_eq!(files, sorted, "the derived green set is not sorted");
-    let mut seen = std::collections::HashSet::new();
-    for file in &files {
-        assert!(
-            seen.insert(file),
-            "the derived green set lists {file} twice"
-        );
-    }
-}
-
-#[test]
-fn i3_scratch_defaults_off_tmpfs_and_removes_its_whole_directory() {
-    let path = {
-        let scratch = I3Scratch::new();
-        let path = scratch.path.clone();
-        assert!(path.starts_with("/var/tmp"));
-        std::fs::write(scratch.path("still-open.sock"), b"socket stand-in").unwrap();
-        path
-    };
-    assert!(!path.exists());
-}
-
-fn coverage_adaptations(test: &str) -> Value {
-    let header = format!(r#"[files."{test}"]"#);
-    let mut in_file = false;
-    for line in COVERAGE.lines().map(str::trim) {
-        if line.starts_with("[files.\"") {
-            in_file = line == header;
-            continue;
-        }
-        if in_file {
-            if let Some(flags) = line
-                .strip_prefix("adapt = [")
-                .and_then(|s| s.strip_suffix(']'))
-            {
-                return Value::Array(
-                    flags
-                        .split(',')
-                        .map(str::trim)
-                        .filter_map(|flag| flag.strip_prefix('"').and_then(|s| s.strip_suffix('"')))
-                        .map(|flag| Value::String(flag.to_owned()))
-                        .collect(),
-                );
-            }
-        }
-    }
-    Value::Array(Vec::new())
-}
-
-fn coverage_skip_adaptations(test: &str) -> Value {
-    let header = format!(r#"[files."{test}"]"#);
-    let mut in_file = false;
-    let mut current_number = None;
-    let mut skips = serde_json::Map::new();
-    for line in COVERAGE.lines().map(str::trim) {
-        if line.starts_with("[files.\"") {
-            in_file = line == header;
-            current_number = None;
-            continue;
-        }
-        if !in_file {
-            continue;
-        }
-        if line == format!(r#"[[files."{test}".skip]]"#) {
-            current_number = None;
-        } else if let Some(number) = line.strip_prefix("n = ") {
-            current_number = number.parse::<usize>().ok();
-        } else if let (Some(number), Some(reason)) = (
-            current_number,
-            line.strip_prefix("reason = \"")
-                .and_then(|s| s.strip_suffix('"')),
-        ) {
-            skips.insert(number.to_string(), Value::String(reason.to_owned()));
-        }
-    }
-    Value::Object(skips)
-}
-
-#[test]
-fn conformance_client_binds_a_modern_xdg_wm_base_version() {
+fn initial_floating_applies_only_to_the_requested_window() {
     let mut fixture = Fixture::new();
     fixture.add_output(1, (1280, 800));
     let client = fixture.add_client();
-    let handle = create_window(&mut fixture, client, &json!({}));
-    let id = map_window(&mut fixture, client, handle, None, false);
-    assert!(window_states(&mut fixture, client, id).is_some());
-    assert!(fixture.client(client).state.xdg_wm_base_version >= Some(2));
+
+    let floating = create_window(&mut fixture, client, &json!({ "initial_floating": true }));
+    map_window(&mut fixture, client, floating, None, true);
+    assert!(fixture.swayward().layout.focus().unwrap().is_floating());
+
+    let tiled = create_window(&mut fixture, client, &json!({}));
+    map_window(&mut fixture, client, tiled, None, false);
+    assert!(!fixture.swayward().layout.focus().unwrap().is_floating());
 }
 
 #[test]
-fn every_harness_adaptation_has_a_sway_citation() {
-    let mut file = None;
-    let mut adaptations = Vec::new();
-    let mut citation = None;
-    let check = |file: Option<&str>, adaptations: &[&str], citation: Option<&str>| {
-        if !adaptations.is_empty() {
-            assert!(
-                citation.is_some_and(|citation| !citation.is_empty()),
-                "{file:?} adaptations {adaptations:?} have no source citation"
-            );
-        }
-    };
-    for line in COVERAGE.lines().map(str::trim) {
-        if let Some(rest) = line.strip_prefix("[files.\"") {
-            check(file, &adaptations, citation);
-            file = rest.split_once("\"]").map(|(file, _)| file);
-            adaptations.clear();
-            citation = None;
-        } else if let Some(flags) = line
-            .strip_prefix("adapt = [")
-            .and_then(|s| s.strip_suffix(']'))
-        {
-            adaptations = flags
-                .split(',')
-                .map(str::trim)
-                .filter_map(|flag| flag.strip_prefix('"').and_then(|s| s.strip_suffix('"')))
-                .collect();
-        } else if let Some((_, value)) = line.split_once("citation = \"") {
-            citation = value.split_once('"').map(|(citation, _)| citation);
-        }
-    }
-    check(file, &adaptations, citation);
+fn settling_configures_does_not_ack_an_already_acked_configure() {
+    let mut config =
+        prepare_test_config("", "font monospace\nno_focus [app_id=\"^notme$\"]\n").unwrap();
+    config.debug.deactivate_unfocused_windows = true;
+    let mut fixture = Fixture::with_config(config);
+    fixture.add_output(1, (1280, 800));
+    let client = fixture.add_client();
+    let first = create_window(&mut fixture, client, &json!({}));
+    map_window(&mut fixture, client, first, None, false);
+    let second = create_window(&mut fixture, client, &json!({ "app_id": "notme" }));
+    map_window(&mut fixture, client, second, None, false);
+    settle_configures(&mut fixture, client);
 }

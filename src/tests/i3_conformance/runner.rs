@@ -1,4 +1,6 @@
-fn tap_failure_summary(stdout: &str, stderr: &str) -> String {
+use super::*;
+
+pub(super) fn tap_failure_summary(stdout: &str, stderr: &str) -> String {
     stdout
         .lines()
         .filter(|line| line.starts_with("not ok "))
@@ -11,14 +13,14 @@ fn tap_failure_summary(stdout: &str, stderr: &str) -> String {
         .join("\n")
 }
 
-fn tap_skips(stdout: &str) -> Vec<&str> {
+pub(super) fn tap_skips(stdout: &str) -> Vec<&str> {
     stdout
         .lines()
         .filter(|line| line.starts_with("ok ") && line.contains("# skip"))
         .collect()
 }
 
-fn panic_message(payload: &(dyn Any + Send)) -> &str {
+pub(super) fn panic_message(payload: &(dyn Any + Send)) -> &str {
     payload
         .downcast_ref::<String>()
         .map(String::as_str)
@@ -26,7 +28,7 @@ fn panic_message(payload: &(dyn Any + Send)) -> &str {
         .unwrap_or("non-string panic payload")
 }
 
-fn with_test_context(test: &str, run: impl FnOnce()) {
+pub(super) fn with_test_context(test: &str, run: impl FnOnce()) {
     if let Err(payload) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(run)) {
         panic!(
             "i3 test {test} panicked: {}",
@@ -35,7 +37,7 @@ fn with_test_context(test: &str, run: impl FnOnce()) {
     }
 }
 
-fn run_i3_test_with_context(test: &str, is_green: bool) {
+pub(super) fn run_i3_test_with_context(test: &str, is_green: bool) {
     with_test_context(test, || {
         let run = run_i3_file(test);
         if let Err(verdict) = verdict(test, is_green, &run) {
@@ -44,7 +46,7 @@ fn run_i3_test_with_context(test: &str, is_green: bool) {
     });
 }
 
-fn collect_test_failures<'a>(
+pub(super) fn collect_test_failures<'a>(
     tests: impl IntoIterator<Item = (&'a str, bool)>,
     mut run: impl FnMut(&str, bool),
 ) -> Vec<(String, String)> {
@@ -58,18 +60,18 @@ fn collect_test_failures<'a>(
         .collect()
 }
 
-struct ChildGuard(Option<Child>);
+pub(super) struct ChildGuard(Option<Child>);
 
 impl ChildGuard {
-    fn new(child: Child) -> Self {
+    pub(super) fn new(child: Child) -> Self {
         Self(Some(child))
     }
 
-    fn child_mut(&mut self) -> &mut Child {
+    pub(super) fn child_mut(&mut self) -> &mut Child {
         self.0.as_mut().unwrap()
     }
 
-    fn disarm(&mut self) {
+    pub(super) fn disarm(&mut self) {
         self.0.take();
     }
 }
@@ -83,13 +85,13 @@ impl Drop for ChildGuard {
     }
 }
 
-struct ChildOutput {
-    stdout: thread::JoinHandle<Vec<u8>>,
-    stderr: thread::JoinHandle<Vec<u8>>,
+pub(super) struct ChildOutput {
+    pub(super) stdout: thread::JoinHandle<Vec<u8>>,
+    pub(super) stderr: thread::JoinHandle<Vec<u8>>,
 }
 
 impl ChildOutput {
-    fn new(child: &mut Child) -> Self {
+    pub(super) fn new(child: &mut Child) -> Self {
         let mut stdout = child.stdout.take().unwrap();
         let mut stderr = child.stderr.take().unwrap();
         Self {
@@ -106,20 +108,20 @@ impl ChildOutput {
         }
     }
 
-    fn finish(self) -> (Vec<u8>, Vec<u8>) {
+    pub(super) fn finish(self) -> (Vec<u8>, Vec<u8>) {
         (self.stdout.join().unwrap(), self.stderr.join().unwrap())
     }
 }
 
 /// What one unchanged i3 file produced.
-struct I3Run {
-    success: bool,
-    stdout: String,
-    stderr: String,
+pub(super) struct I3Run {
+    pub(super) success: bool,
+    pub(super) stdout: String,
+    pub(super) stderr: String,
 }
 
 #[derive(Debug, PartialEq)]
-enum Verdict {
+pub(super) enum Verdict {
     TapFailed,
     AdapterFailed,
     RejectionsChanged {
@@ -145,7 +147,7 @@ impl Verdict {
     }
 }
 
-fn verdict(test: &str, is_green: bool, run: &I3Run) -> Result<(), Verdict> {
+pub(super) fn verdict(test: &str, is_green: bool, run: &I3Run) -> Result<(), Verdict> {
     if !run.success {
         return Err(Verdict::TapFailed);
     }
@@ -175,7 +177,7 @@ fn verdict(test: &str, is_green: bool, run: &I3Run) -> Result<(), Verdict> {
 /// Run one unchanged i3 file to completion and return its output without
 /// judging it. Panics only when the file times out or the harness itself
 /// fails.
-fn run_i3_file(test: &str) -> I3Run {
+pub(super) fn run_i3_file(test: &str) -> I3Run {
     let mut config = swayward_config::Config::default();
     apply_harness_policy(&mut config, None, test);
     let mut fixture = Fixture::with_config(config);
@@ -276,10 +278,42 @@ fn run_i3_file(test: &str) -> I3Run {
 }
 
 #[test]
-fn i3_child_polling_yields_cpu_between_checks() {
+pub(super) fn i3_child_polling_yields_cpu_between_checks() {
     let started = Instant::now();
     for _ in 0..10 {
         pause_i3_poll();
     }
     assert!(started.elapsed() >= Duration::from_millis(5));
+}
+
+#[test]
+fn i3_conformance_runner() {
+    // `SWAYWARD_I3_TEST` selects a single file, including one with known
+    // failures, so conformance findings stay executable without turning the
+    // default gate red.
+    if let Ok(selected) = std::env::var("SWAYWARD_I3_TEST") {
+        run_i3_test_with_context(&selected, false);
+        return;
+    }
+
+    let tests = passing_tests().collect::<Vec<_>>();
+    assert!(
+        !tests.is_empty(),
+        "no fully green files derive from tests/i3/coverage.toml"
+    );
+    let failures = collect_test_failures(
+        tests.iter().map(|test| (*test, true)),
+        run_i3_test_with_context,
+    );
+    assert!(
+        failures.is_empty(),
+        "{} of {} green i3 files failed:\n{}",
+        failures.len(),
+        tests.len(),
+        failures
+            .iter()
+            .map(|(test, message)| format!("{test}: {message}"))
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    );
 }

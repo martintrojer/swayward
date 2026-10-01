@@ -1,9 +1,11 @@
-struct I3Scratch {
-    path: PathBuf,
+use super::*;
+
+pub(super) struct I3Scratch {
+    pub(super) path: PathBuf,
 }
 
 impl I3Scratch {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         let root = std::env::var_os("SWAYWARD_TEST_TMPDIR")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("/var/tmp"));
@@ -16,7 +18,7 @@ impl I3Scratch {
         Self { path }
     }
 
-    fn path(&self, name: &str) -> PathBuf {
+    pub(super) fn path(&self, name: &str) -> PathBuf {
         self.path.join(name)
     }
 
@@ -35,9 +37,9 @@ impl Drop for I3Scratch {
     }
 }
 
-fn client_surface(
+pub(super) fn client_surface(
     fixture: &mut Fixture,
-    client: super::client::ClientId,
+    client: super::super::client::ClientId,
     surface_id: u32,
 ) -> Option<wayland_client::protocol::wl_surface::WlSurface> {
     fixture
@@ -49,21 +51,25 @@ fn client_surface(
         .map(|window| window.surface.clone())
 }
 
-fn surface_id_for_window(fixture: &mut Fixture, id: i64) -> Option<u32> {
+pub(super) fn surface_id_for_window(fixture: &mut Fixture, id: i64) -> Option<u32> {
     fixture.swayward().layout.windows().find_map(|(_, mapped)| {
         (crate::ipc::tree::window_id(mapped.id()) == id)
             .then(|| mapped.toplevel().wl_surface().id().protocol_id())
     })
 }
 
-fn requested_size(request: &Value) -> Option<(u16, u16)> {
+pub(super) fn requested_size(request: &Value) -> Option<(u16, u16)> {
     Some((
         request["requested_width"].as_u64()?.try_into().ok()?,
         request["requested_height"].as_u64()?.try_into().ok()?,
     ))
 }
 
-fn create_window(fixture: &mut Fixture, client: super::client::ClientId, request: &Value) -> u32 {
+pub(super) fn create_window(
+    fixture: &mut Fixture,
+    client: super::super::client::ClientId,
+    request: &Value,
+) -> u32 {
     let fullscreen_output = request["fullscreen_output"]
         .as_str()
         .map(|name| fixture.client(client).output(name));
@@ -83,9 +89,9 @@ fn create_window(fixture: &mut Fixture, client: super::client::ClientId, request
     window.surface.id().protocol_id()
 }
 
-fn map_window(
+pub(super) fn map_window(
     fixture: &mut Fixture,
-    client: super::client::ClientId,
+    client: super::super::client::ClientId,
     surface_id: u32,
     requested_size: Option<(u16, u16)>,
     initial_floating: bool,
@@ -128,9 +134,9 @@ fn map_window(
         .unwrap()
 }
 
-fn remove_window_for_surface(
+pub(super) fn remove_window_for_surface(
     fixture: &mut Fixture,
-    client: super::client::ClientId,
+    client: super::super::client::ClientId,
     surface_id: u32,
 ) -> bool {
     let surface = fixture
@@ -154,7 +160,7 @@ fn remove_window_for_surface(
     true
 }
 
-fn settle_configures(fixture: &mut Fixture, client: super::client::ClientId) {
+pub(super) fn settle_configures(fixture: &mut Fixture, client: super::super::client::ClientId) {
     fixture.double_roundtrip(client);
     let windows = &mut fixture.client(client).state.windows;
     for window in windows {
@@ -175,7 +181,7 @@ fn settle_configures(fixture: &mut Fixture, client: super::client::ClientId) {
     fixture.double_roundtrip(client);
 }
 
-fn reap_closed_windows(fixture: &mut Fixture, client: super::client::ClientId) {
+pub(super) fn reap_closed_windows(fixture: &mut Fixture, client: super::super::client::ClientId) {
     fixture.double_roundtrip(client);
     let closed = fixture
         .client(client)
@@ -190,7 +196,7 @@ fn reap_closed_windows(fixture: &mut Fixture, client: super::client::ClientId) {
     }
 }
 
-fn remove_all_windows(fixture: &mut Fixture, client: super::client::ClientId) {
+pub(super) fn remove_all_windows(fixture: &mut Fixture, client: super::super::client::ClientId) {
     let surfaces = fixture
         .client(client)
         .state
@@ -203,7 +209,11 @@ fn remove_all_windows(fixture: &mut Fixture, client: super::client::ClientId) {
     }
 }
 
-fn activate_window(fixture: &mut Fixture, client: super::client::ClientId, id: i64) -> bool {
+pub(super) fn activate_window(
+    fixture: &mut Fixture,
+    client: super::super::client::ClientId,
+    id: i64,
+) -> bool {
     let surface_id = surface_id_for_window(fixture, id);
     let Some(surface_id) = surface_id else {
         return false;
@@ -217,9 +227,9 @@ fn activate_window(fixture: &mut Fixture, client: super::client::ClientId, id: i
     true
 }
 
-fn window_states(
+pub(super) fn window_states(
     fixture: &mut Fixture,
-    client: super::client::ClientId,
+    client: super::super::client::ClientId,
     id: i64,
 ) -> Option<Vec<&'static str>> {
     settle_configures(fixture, client);
@@ -254,14 +264,18 @@ fn window_states(
     )
 }
 
-fn close_window(fixture: &mut Fixture, client: super::client::ClientId, id: i64) -> bool {
+pub(super) fn close_window(
+    fixture: &mut Fixture,
+    client: super::super::client::ClientId,
+    id: i64,
+) -> bool {
     let surface_id = surface_id_for_window(fixture, id);
     surface_id.is_some_and(|surface_id| remove_window_for_surface(fixture, client, surface_id))
 }
 
 type FakeOutput = ((i32, i32), (u16, u16));
 
-fn fake_outputs(config: &str) -> Result<Option<Vec<FakeOutput>>, String> {
+pub(super) fn fake_outputs(config: &str) -> Result<Option<Vec<FakeOutput>>, String> {
     let Some(spec) = config.lines().find_map(|line| {
         line.trim()
             .strip_prefix("fake-outputs ")
@@ -304,7 +318,7 @@ fn fake_outputs(config: &str) -> Result<Option<Vec<FakeOutput>>, String> {
         .map(Some)
 }
 
-fn only_ignorable_translation_warnings(test: &str, stderr: &str) -> bool {
+pub(super) fn only_ignorable_translation_warnings(test: &str, stderr: &str) -> bool {
     let mut lines = stderr.lines();
     let Some(count) = lines
         .next()
@@ -324,7 +338,7 @@ fn only_ignorable_translation_warnings(test: &str, stderr: &str) -> bool {
         })
 }
 
-fn translate_config_file(
+pub(super) fn translate_config_file(
     test: &str,
     config: &str,
     scratch: &I3Scratch,
@@ -371,12 +385,15 @@ fn translate_config_file(
     Ok((path, config))
 }
 
-fn translate_config(test: &str, config: &str) -> Result<swayward_config::Config, String> {
+pub(super) fn translate_config(
+    test: &str,
+    config: &str,
+) -> Result<swayward_config::Config, String> {
     let scratch = I3Scratch::new();
     translate_config_file(test, config, &scratch).map(|(_, config)| config)
 }
 
-fn configure_client_state_oracle(config: &mut swayward_config::Config, test: &str) {
+pub(super) fn configure_client_state_oracle(config: &mut swayward_config::Config, test: &str) {
     match test {
         "257-keypress-group1-fallback.t" => {
             config.input.keyboard.xkb.layout = "us,ru".to_owned();
@@ -392,7 +409,11 @@ fn configure_client_state_oracle(config: &mut swayward_config::Config, test: &st
 /// `SWAYWARD_I3_TEST`: that variable is set only when one file is selected,
 /// so reading it here made the gate and a single-file measurement load
 /// different configs for the same file.
-fn apply_harness_policy(config: &mut swayward_config::Config, source: Option<&str>, test: &str) {
+pub(super) fn apply_harness_policy(
+    config: &mut swayward_config::Config,
+    source: Option<&str>,
+    test: &str,
+) {
     let source = source.unwrap_or_default();
     if !source.lines().any(|line| {
         line.trim_start()
@@ -420,13 +441,16 @@ fn apply_harness_policy(config: &mut swayward_config::Config, source: Option<&st
     }
 }
 
-fn prepare_test_config(test: &str, source: &str) -> Result<swayward_config::Config, String> {
+pub(super) fn prepare_test_config(
+    test: &str,
+    source: &str,
+) -> Result<swayward_config::Config, String> {
     let mut config = translate_config(test, source)?;
     apply_harness_policy(&mut config, Some(source), test);
     Ok(config)
 }
 
-pub(super) fn reload_test_config(
+pub(in crate::tests) fn reload_test_config(
     fixture: &mut Fixture,
     test: &str,
     source: &str,
@@ -437,7 +461,7 @@ pub(super) fn reload_test_config(
     Ok(())
 }
 
-fn reload_loaded_test_config(
+pub(super) fn reload_loaded_test_config(
     fixture: &mut Fixture,
     test: &str,
     source: Option<&str>,
@@ -446,7 +470,7 @@ fn reload_loaded_test_config(
     reload_test_config(fixture, test, source)
 }
 
-fn reset_config(fixture: &mut Fixture, test: &str) -> Value {
+pub(super) fn reset_config(fixture: &mut Fixture, test: &str) -> Value {
     // i3test's `launch_with_config('-default')` requests the harness baseline,
     // not swayward's user-facing KDL defaults.
     let mut config = swayward_config::Config::default();
@@ -457,15 +481,19 @@ fn reset_config(fixture: &mut Fixture, test: &str) -> Value {
 }
 
 /// Per-file state of one conformance run, owned by `run_i3_test`.
-struct Session<'a> {
-    test: &'a str,
-    client: super::client::ClientId,
-    loaded_config_source: Option<String>,
-    scratch: &'a I3Scratch,
-    initially_floating: HashSet<u32>,
+pub(super) struct Session<'a> {
+    pub(super) test: &'a str,
+    pub(super) client: super::super::client::ClientId,
+    pub(super) loaded_config_source: Option<String>,
+    pub(super) scratch: &'a I3Scratch,
+    pub(super) initially_floating: HashSet<u32>,
 }
 
-fn load_config_source(fixture: &mut Fixture, session: &mut Session, source: &str) -> Value {
+pub(super) fn load_config_source(
+    fixture: &mut Fixture,
+    session: &mut Session,
+    source: &str,
+) -> Value {
     let (outputs, path, mut config) = match (
         fake_outputs(source),
         translate_config_file(session.test, source, session.scratch),
@@ -497,13 +525,13 @@ fn load_config_source(fixture: &mut Fixture, session: &mut Session, source: &str
 }
 
 #[derive(serde::Deserialize)]
-struct WindowRequest {
-    app_id: Option<String>,
-    name: Option<String>,
-    fullscreen_output: Option<String>,
-    requested_width: Option<u16>,
-    requested_height: Option<u16>,
-    initial_floating: Option<bool>,
+pub(super) struct WindowRequest {
+    pub(super) app_id: Option<String>,
+    pub(super) name: Option<String>,
+    pub(super) fullscreen_output: Option<String>,
+    pub(super) requested_width: Option<u16>,
+    pub(super) requested_height: Option<u16>,
+    pub(super) initial_floating: Option<bool>,
 }
 
 impl WindowRequest {
@@ -514,7 +542,7 @@ impl WindowRequest {
 
 #[derive(serde::Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
-enum Control {
+pub(super) enum Control {
     ConfigDefault,
     Config {
         config: String,
@@ -586,7 +614,7 @@ enum Control {
     RequestStop,
 }
 
-fn handle_control(fixture: &mut Fixture, session: &mut Session, stream: UnixStream) {
+pub(super) fn handle_control(fixture: &mut Fixture, session: &mut Session, stream: UnixStream) {
     let mut request = String::new();
     let reply = match BufReader::new(stream.try_clone().unwrap()).read_line(&mut request) {
         Ok(_) => match serde_json::from_str::<Control>(&request) {
@@ -602,7 +630,11 @@ fn handle_control(fixture: &mut Fixture, session: &mut Session, stream: UnixStre
     writeln!(&stream, "{reply}").unwrap();
 }
 
-fn dispatch_control(fixture: &mut Fixture, session: &mut Session, control: Control) -> Value {
+pub(super) fn dispatch_control(
+    fixture: &mut Fixture,
+    session: &mut Session,
+    control: Control,
+) -> Value {
     match control {
         Control::ConfigDefault => reset_config(fixture, session.test),
         Control::Config { config } => load_config_source(fixture, session, &config),
@@ -666,7 +698,7 @@ fn dispatch_control(fixture: &mut Fixture, session: &mut Session, control: Contr
     }
 }
 
-fn create_control_window(
+pub(super) fn create_control_window(
     fixture: &mut Fixture,
     session: &mut Session,
     request: WindowRequest,
@@ -695,11 +727,11 @@ fn create_control_window(
     ) })
 }
 
-fn window_control(
+pub(super) fn window_control(
     fixture: &mut Fixture,
-    client: super::client::ClientId,
+    client: super::super::client::ClientId,
     handle: u32,
-    action: impl FnOnce(&super::client::Window),
+    action: impl FnOnce(&super::super::client::Window),
 ) -> Value {
     let Some(surface) = client_surface(fixture, client, handle) else {
         return json!({ "success": false, "error": format!("unknown surface handle {handle}") });
@@ -709,9 +741,9 @@ fn window_control(
     json!({ "success": true })
 }
 
-fn set_parent_control(
+pub(super) fn set_parent_control(
     fixture: &mut Fixture,
-    client: super::client::ClientId,
+    client: super::super::client::ClientId,
     handle: u32,
     parent_handle: u32,
 ) -> Value {
@@ -728,20 +760,20 @@ fn set_parent_control(
     json!({ "success": true })
 }
 
-fn dispatch_input_control(
+pub(super) fn dispatch_input_control(
     fixture: &mut Fixture,
-    client: super::client::ClientId,
+    client: super::super::client::ClientId,
     control: Control,
 ) -> Value {
     match control {
         Control::PointerButton { button, pressed } => {
-            super::ipc::pointer_button(fixture, button, pressed)
+            super::super::ipc::pointer_button(fixture, button, pressed)
         }
         Control::PointerAxis {
             horizontal_v120,
             vertical_v120,
-        } => super::ipc::pointer_axis(fixture, horizontal_v120, vertical_v120),
-        Control::KeyEvent { key, pressed } => super::ipc::key_event(fixture, key, pressed),
+        } => super::super::ipc::pointer_axis(fixture, horizontal_v120, vertical_v120),
+        Control::KeyEvent { key, pressed } => super::super::ipc::key_event(fixture, key, pressed),
         Control::SetXkbGroup { group } => {
             let Some(keyboard) = fixture.swayward().seat.get_keyboard() else {
                 return json!({ "success": false, "error": "no keyboard" });
@@ -752,14 +784,14 @@ fn dispatch_input_control(
         }
         Control::TypeKeyChords { chords } => {
             let chords = chords.iter().map(Vec::as_slice).collect::<Vec<_>>();
-            super::ipc::type_key_chords(fixture, &chords);
+            super::super::ipc::type_key_chords(fixture, &chords);
         }
         Control::WarpPointer { x, y } => {
             settle_configures(fixture, client);
             fixture.swayward().clock.set_complete_instantly(true);
             fixture.swayward().layout.advance_animations();
             fixture.swayward().clock.set_complete_instantly(false);
-            super::ipc::pointer_motion_absolute(fixture, x, y);
+            super::super::ipc::pointer_motion_absolute(fixture, x, y);
             let location = (x, y).into();
             let under = fixture.swayward().contents_under(location);
             fixture.swayward().handle_focus_follows_mouse(&under);

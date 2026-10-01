@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/tests/i3_conformance.rs"]
+what = "replace one include!-assembled i3 conformance namespace with real responsibility-named modules for the adapter, allowlist, manifest, runner, documentation checks, and harness tests."
+why = "The prior fragments hid the runner entry point in coverage validation and adapter tests in coverage files; real modules restore formatter, navigation, and explicit visibility boundaries without changing behavior."

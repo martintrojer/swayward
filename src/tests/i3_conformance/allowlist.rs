@@ -1,47 +1,13 @@
-// Runner for unmodified layout tests from i3's Perl testsuite.
-
-use std::any::Any;
-use std::collections::HashSet;
-use std::io::{BufRead as _, BufReader, Read as _, Write as _};
-use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::thread;
-use std::time::{Duration, Instant};
-
-use serde_json::{json, Value};
-use smithay::reexports::wayland_protocols::xdg::shell::client::xdg_toplevel;
-use wayland_client::Proxy as _;
-use wayland_server::Resource as _;
-
-use super::Fixture;
-
-static NEXT_SOCKET: AtomicU64 = AtomicU64::new(0);
-
-fn pause_i3_poll() {
-    thread::sleep(Duration::from_millis(1));
-}
-
-fn oracle_i3_dir() -> PathBuf {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".cache/sway-ipc-oracle/i3");
-    assert!(
-        path.join("t").is_dir(),
-        "i3 oracle is missing; run ./contrib/fetch-oracle"
-    );
-    path
-}
-
-struct AllowedRejection {
-    test: &'static str,
-    command: &'static str,
-    reason: &'static str,
+pub(super) struct AllowedRejection {
+    pub(super) test: &'static str,
+    pub(super) command: &'static str,
+    pub(super) reason: &'static str,
     /// Allow this command to be rejected any number of times.
     ///
     /// Only for a file whose own input is randomised, where the count is not
     /// reproducible. Every other entry stays exact, so an unexpected rejection
     /// or a changed count still fails.
-    repeatable: bool,
+    pub(super) repeatable: bool,
 }
 
 impl AllowedRejection {
@@ -69,7 +35,7 @@ impl AllowedRejection {
 
 // Every rejection from a passing conformance file must be reviewed here. Keying by both file and
 // exact command prevents a new rejected setup command from hiding behind an unrelated exception.
-const ALLOWED_REJECTIONS: &[AllowedRejection] = &[
+pub(super) const ALLOWED_REJECTIONS: &[AllowedRejection] = &[
     AllowedRejection {
         test: "113-urgent.t",
         command: "layout stacked",
@@ -444,7 +410,7 @@ const ALLOWED_REJECTIONS: &[AllowedRejection] = &[
     },
 ];
 
-fn rejected_commands(stderr: &str) -> impl Iterator<Item = &str> {
+pub(super) fn rejected_commands(stderr: &str) -> impl Iterator<Item = &str> {
     stderr.lines().filter_map(|line| {
         line.trim_start()
             .strip_prefix("# swayward rejected `")
@@ -453,14 +419,14 @@ fn rejected_commands(stderr: &str) -> impl Iterator<Item = &str> {
     })
 }
 
-fn allowed_rejections(test: &str) -> Vec<&'static AllowedRejection> {
+pub(super) fn allowed_rejections(test: &str) -> Vec<&'static AllowedRejection> {
     ALLOWED_REJECTIONS
         .iter()
         .filter(|allowed| allowed.test == test)
         .collect()
 }
 
-fn expected_rejections(test: &str) -> Vec<&'static AllowedRejection> {
+pub(super) fn expected_rejections(test: &str) -> Vec<&'static AllowedRejection> {
     allowed_rejections(test)
         .into_iter()
         .flat_map(|allowed| {
@@ -494,7 +460,7 @@ fn expected_rejections(test: &str) -> Vec<&'static AllowedRejection> {
         .collect()
 }
 
-fn rejections_match(test: &str, rejected: &[&str]) -> bool {
+pub(super) fn rejections_match(test: &str, rejected: &[&str]) -> bool {
     let expected = expected_rejections(test);
     // Collapse runs of a repeatable command, whose count is not reproducible
     // because the file randomises its own input. Everything else is compared
