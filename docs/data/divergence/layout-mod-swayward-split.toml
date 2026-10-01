@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/mod.rs"]
+what = "move swayward-authored `Layout` methods and helpers out of the inherited file into swayward-owned child modules, unchanged: sway workspace naming and output-assignment rules (`workspace_naming.rs`)."
+why = "Leaves niri's own code in mod.rs so upstream merges touch less swayward code. Child modules see the parent's private fields, so the moves need no visibility changes on `Layout`."
