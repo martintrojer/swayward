@@ -642,3 +642,40 @@ fn split_wraps_a_focused_floating_leaf() {
         "{tree:?}"
     );
 }
+
+/// Every layout option is a sway global handler, and sway runs a handler once
+/// per criteria match whether or not it reads the matched container
+/// (`sway/sway/commands.c:305-326`). So the settings that do not look at a
+/// container change the session value under criteria, rather than failing
+/// with a container-shaped error.
+#[test]
+fn criteria_scoped_layout_options_apply_like_sway() {
+    let mut fixture = Fixture::new();
+    fixture.add_output(1, (1920, 1080));
+    let client = fixture.add_client();
+    map_test_window(&mut fixture, client, "matched");
+
+    for command in [
+        "hide_edge_borders both",
+        "default_border pixel 3",
+        "default_floating_border none",
+        "focus_follows_mouse no",
+        "mouse_warping none",
+        "font monospace 13",
+        "titlebar_padding 7 3",
+        "titlebar_border_thickness 2",
+        "floating_modifier none",
+    ] {
+        let outcome = crate::command::execute(
+            fixture.niri_state(),
+            &format!(r#"[app_id="matched"] {command}"#),
+        );
+        assert!(outcome[0].success, "{command}: {outcome:?}");
+    }
+    let config = fixture.swayward().config.borrow();
+    assert_eq!(
+        config.layout.hide_edge_borders,
+        swayward_config::layout::HideEdgeBorders::Both
+    );
+    assert_eq!(config.layout.titlebar.font, "monospace 13");
+}

@@ -307,7 +307,6 @@ fn run_targeted(
             set_client_colors(state, *class, *colors);
             Ok(None)
         }
-        Command::SetLayoutOption(_) => Err(failure("command cannot be applied to a container")),
         Command::Opacity(value) => super::handled(window::opacity(state, target, *value, false)),
         Command::OpacityRelative(value) => {
             super::handled(window::opacity(state, target, *value, true))
@@ -342,6 +341,10 @@ fn run_targeted(
             super::workspace::rename_targeted(state, target, old.as_ref(), new_name)
         }
         Command::Nop => Ok(None),
+        // A global handler: the matched container is irrelevant.
+        Command::SetLayoutOption(option) => {
+            Err(super::settings::execute_global_setting(state, option))
+        }
         Command::FocusParent
         | Command::FocusChild
         | Command::FocusNext

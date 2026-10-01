@@ -184,35 +184,6 @@ pub enum LayoutOption {
     },
 }
 
-impl LayoutOption {
-    /// Whether a criteria-scoped form still changes the session-wide
-    /// setting, once per match, rather than being refused.
-    ///
-    /// Sway runs a handler once per criteria match whether or not it looks at
-    /// the matched container (`sway/sway/commands.c:288-330`), so these
-    /// global handlers simply repeat.
-    pub fn is_global(&self) -> bool {
-        matches!(
-            self,
-            Self::FloatingMinimumSize(..)
-                | Self::FloatingMaximumSize(..)
-                | Self::FocusWrapping(..)
-                | Self::ForceFocusWrapping(..)
-                | Self::PopupDuringFullscreen(..)
-                | Self::SmartBorders(..)
-                | Self::HideEdgeBordersSmart(..)
-                | Self::SmartGaps(..)
-                | Self::ShowMarks(..)
-                | Self::TitleAlignment(..)
-                | Self::TilingDrag(..)
-                | Self::TilingDragThreshold(..)
-                | Self::ForceDisplayUrgencyHint(..)
-                | Self::FocusOnWindowActivation(..)
-                | Self::WorkspaceAutoBackAndForth(..)
-        )
-    }
-}
-
 /// A `focus_wrapping` argument. `Toggle` depends on the current value, so it
 /// is resolved when the setting is applied
 /// (`sway/sway/commands/focus_wrapping.c:12-21`).

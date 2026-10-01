@@ -265,10 +265,11 @@ fn execute_one(
             };
             return failure(format!("criteria are not supported for {name}"));
         }
+        // Every layout option is a sway global handler, and sway runs a
+        // handler once per criteria match whether or not it reads the matched
+        // container (`sway/sway/commands.c:305-326`).
         if let Command::SetLayoutOption(option) = &parsed.command {
-            if option.is_global() {
-                return for_each_match(targets, |_| execute_global_setting(state, option));
-            }
+            return for_each_match(targets, |_| execute_global_setting(state, option));
         }
         if let Command::Unmark(identifier) = &parsed.command {
             for target in targets {
