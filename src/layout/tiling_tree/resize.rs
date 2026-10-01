@@ -237,7 +237,7 @@ impl<W: LayoutElement> TilingTree<W> {
         }
         // A corner resizes both axes, each against its own sibling boundary,
         // as sway's seatop_begin_resize_tiling does
-        // (`sway/sway/input/seatop_resize_tiling.c:106-127`). An axis with no
+        // (`sway/input/seatop_resize_tiling.c:106-127`). An axis with no
         // boundary in that direction is skipped, not fatal.
         let axes: Vec<_> = [
             (true, edges.intersection(ResizeEdge::LEFT_RIGHT)),
@@ -475,6 +475,9 @@ impl<W: LayoutElement> TilingTree<W> {
         self.resize_node_dimension(id, width, change);
     }
 
+    /// Grows or shrinks `target` by taking the change evenly from all its siblings, refusing
+    /// if any would drop below sway's sane minimum (`container_resize_tiled`,
+    /// sway/commands/resize.c:66-175).
     fn resize_across_siblings(&mut self, parent: NodeId, target: NodeId, delta: f64) -> bool {
         if !delta.is_finite() {
             return false;
@@ -523,7 +526,7 @@ impl<W: LayoutElement> TilingTree<W> {
 
     /// Whether `edge` of `window` borders a sibling rather than the
     /// workspace, following sway's `edge_is_external`
-    /// (`sway/sway/input/seatop_default.c:39-74`): some ancestor with exactly
+    /// (`sway/input/seatop_default.c:39-74`): some ancestor with exactly
     /// the parallel split layout has a sibling on that side. A combined edge
     /// matches no layout in sway, so corners are always external.
     pub fn is_internal_edge(&self, window: &W::Id, edge: ResizeEdge) -> bool {
@@ -582,7 +585,7 @@ impl<W: LayoutElement> TilingTree<W> {
             };
             // Only a split of exactly the resized orientation has a boundary
             // to move: tabs and stacks share one box, so their siblings are
-            // not neighbours (`sway/sway/commands/resize.c:45-64`).
+            // not neighbours (`sway/commands/resize.c:45-64`).
             if *parent_layout == layout {
                 let index = children.iter().position(|child| *child == branch)?;
                 let neighbor_index = if toward_before {

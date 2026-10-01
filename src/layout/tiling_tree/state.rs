@@ -290,9 +290,9 @@ impl<W: LayoutElement> TilingTree<W> {
 
     /// Return a new tiled view's initial size.
     ///
-    /// Tree leaves consume the complete allocated width. Applying niri's default column width
-    /// before insertion would make the first leaf too narrow until it acknowledges another
-    /// configure. The inherited height preset remains supported independently.
+    /// Sway configures a new tiled view to its future allocation, the slot it will occupy once
+    /// arranged (`view_autoconfigure`, sway/tree/view.c:349-465), so the first configure is
+    /// already the final size. A height preset from a window rule still applies.
     pub fn new_window_size(
         &self,
         height: Option<PresetSize>,

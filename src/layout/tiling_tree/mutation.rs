@@ -799,6 +799,9 @@ impl<W: LayoutElement> TilingTree<W> {
         self.is_squashable(id, *child).then_some(*child)
     }
 
+    /// A split holding a single split child of the perpendicular orientation, whose own parent
+    /// runs parallel to that child, is redundant and squashed (`container_is_squashable`,
+    /// sway/tree/container.c:1670-1677).
     pub(super) fn is_squashable(&self, id: NodeId, child: NodeId) -> bool {
         let Some(parent) = self.nodes.get(&id).and_then(|node| node.parent) else {
             return false;
@@ -833,6 +836,8 @@ impl<W: LayoutElement> TilingTree<W> {
             && Self::layouts_parallel(*parent_layout, *child_layout)
     }
 
+    /// Tabbed lays out like SplitH and stacked like SplitV for sway's parallelism tests
+    /// (`is_parallel`, sway/tree/container.c:1656-1668).
     pub(super) fn layouts_parallel(first: Layout, second: Layout) -> bool {
         matches!(
             (first, second),

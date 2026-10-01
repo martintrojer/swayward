@@ -316,7 +316,7 @@ struct InteractiveResize<I> {
     window: I,
     target: NodeId,
     /// One sibling boundary per resized axis, like sway's separate `h_con`
-    /// and `v_con` (`sway/sway/input/seatop_resize_tiling.c:12-27`).
+    /// and `v_con` (`sway/input/seatop_resize_tiling.c:12-27`).
     axes: Vec<ResizeAxis>,
     data: InteractiveResizeData,
 }

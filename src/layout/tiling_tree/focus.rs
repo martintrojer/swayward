@@ -361,6 +361,9 @@ impl<W: LayoutElement> TilingTree<W> {
         next.is_some()
     }
 
+    /// The container `focus <direction>` lands on: the neighbour in the nearest ancestor along
+    /// that axis, or with wrapping the far end of that ancestor
+    /// (`node_get_in_direction_tiling`, sway/commands/focus.c:138-224).
     fn directional_focus_target(&self, dir: Direction, allow_wrap: bool) -> Option<NodeId> {
         let mut current = self.focus?;
         let barrier = self.fullscreen_node();

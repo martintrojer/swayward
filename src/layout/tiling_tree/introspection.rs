@@ -39,6 +39,12 @@ impl<W: LayoutElement> TilingTree<W> {
             .collect()
     }
 
+    /// Where a tiled drag drops: the closest edge of the hovered view within
+    /// 0.3 * min(w, h) of it, else a swap (sway/input/seatop_move_tiling.c:271-308). Sway's two
+    /// earlier passes are not implemented: a drop on a titlebar groups the views as tabs
+    /// (L203-218) and a drop within 30 px of an ancestor's perpendicular edge inserts beside
+    /// that ancestor (L220-268). Task review2-tiling-drop-target-missing-sway-passes tracks
+    /// them; it is blocked on an oracle harness that can drive real pointer motion.
     pub fn tiled_drop_target(&self, pos: Point<f64, Logical>) -> Option<(NodeId, ResizeEdge)> {
         let geometries = self.compute_geometry();
         let visible = self.visible_leaves();

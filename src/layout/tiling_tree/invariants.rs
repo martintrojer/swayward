@@ -9,7 +9,7 @@ impl<W: LayoutElement> TilingTree<W> {
     /// pair. Sway tolerates one: `cmd_layout` flattens a singleton ancestor and
     /// applies the layout, but never calls `workspace_squash`
     /// (`sway/commands/layout.c` has zero references to it, while
-    /// `sway/commands/move.c` calls it at lines 137, 150 and 412). So a
+    /// `sway/commands/move.c` calls it at lines 137, 150 and 412 in sway 1.12). So a
     /// squashable pair legitimately survives `layout toggle split` until the
     /// next move. Compaction is therefore driven from the mutation paths in
     /// `compact_tree`, not enforced as a global invariant.
