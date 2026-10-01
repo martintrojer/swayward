@@ -119,9 +119,9 @@ pub enum XkbLayoutTarget {
 
 /// A session-wide layout setting changed at runtime.
 ///
-/// Each variant names a sway directive that swayward also accepts in KDL. The
-/// string is validated by the config crate's own `FromStr`, so IPC and the
-/// config file accept exactly the same values.
+/// Each variant names a sway directive that swayward also accepts in KDL.
+/// String-valued variants are checked when the setting is applied, against
+/// the config crate's `FromStr` or a hand-written match in the executor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LayoutOption {
     FocusWrapping(FocusWrappingArg),

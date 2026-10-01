@@ -548,6 +548,9 @@ pub(super) fn urgent_focused(state: &mut State, value: &str) -> super::HandlerRe
     super::handled(urgent(state, target, value))
 }
 
+/// `kill` with no criteria. With the workspace itself focused it closes every
+/// view on it; otherwise it closes the focused container and its children
+/// (`cmd_kill`, sway/sway/commands/kill.c:15-30).
 pub(super) fn kill_focused(state: &mut State) -> super::HandlerResult {
     let workspace_windows = state
         .swayward

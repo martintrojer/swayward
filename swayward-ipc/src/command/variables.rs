@@ -1,3 +1,18 @@
+/// Expand sway variables in a command line, as sway does before dispatch.
+///
+/// Mirrors `do_var_replacement` (`sway/sway/config.c:890-940`):
+///
+/// - `\$` is not expanded: sway skips past the `$`, and the backslash survives into the argument,
+///   where quote stripping removes it.
+/// - `$$` collapses to a single `$`.
+/// - the first variable whose name prefixes the text wins. `variables` must be sorted longest name
+///   first, which is how sway keeps `config->symbols` (`sway/sway/commands/set.c:13-15`), so
+///   `$mod2` is not shadowed by `$mod`.
+/// - an unknown `$name` is left verbatim (`sway/sway/config.c:935-937`).
+///
+/// Substitution is textual and single-pass: a value containing `$` is not
+/// re-expanded, because sway resumes scanning after the inserted value
+/// (`sway/sway/config.c:931`).
 pub fn expand_variables(input: &str, variables: &[(String, String)]) -> String {
     let mut out = String::with_capacity(input.len());
     let bytes = input.as_bytes();
@@ -42,6 +57,7 @@ pub fn expand_variables(input: &str, variables: &[(String, String)]) -> String {
     out
 }
 
+/// Insert or replace a variable and keep sway's longest-name-first order.
 pub fn set_variable(variables: &mut Vec<(String, String)>, name: String, value: String) {
     match variables.iter_mut().find(|(existing, _)| *existing == name) {
         Some(slot) => slot.1 = value,

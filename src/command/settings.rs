@@ -21,8 +21,9 @@ pub(crate) fn global_setting_executions() -> usize {
 }
 
 pub(super) fn execute_global_setting(state: &mut State, option: &LayoutOption) -> CommandOutcome {
-    // Sway invokes the handler once per criteria match (`sway/commands.c:288-330`).
-    // Reading toggle state here preserves that repeat-per-match behavior.
+    // Sway invokes the handler once per criteria match
+    // (`sway/sway/commands.c:305-326`), so a toggle read here flips once per
+    // match. Count the calls so tests can check that.
     #[cfg(test)]
     GLOBAL_SETTING_EXECUTIONS.set(GLOBAL_SETTING_EXECUTIONS.get() + 1);
 

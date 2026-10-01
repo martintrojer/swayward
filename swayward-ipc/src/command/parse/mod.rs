@@ -21,21 +21,7 @@ use rules::*;
 use settings::*;
 use workspace::*;
 
-/// Expand sway variables in a command line, as sway does before dispatch.
-///
-/// Mirrors `do_var_replacement` (`sway/sway/config.c:890-940`):
-///
-/// - `\$` is escaped and left alone, minus nothing: sway skips the `$` and the backslash survives
-///   into the argument, where quote stripping removes it.
-/// - `$$` collapses to a single `$`.
-/// - the first variable whose name prefixes the text wins. `variables` must be sorted longest name
-///   first, which is how sway keeps `config->symbols` (`sway/sway/commands/set.c:13-15`), so
-///   `$mod2` is not shadowed by `$mod`.
-/// - an unknown `$name` is left verbatim (`sway/sway/config.c:935-937`).
-///
-/// Substitution is textual and single-pass: a value containing `$` is not
-/// re-expanded, because sway resumes scanning after the inserted value
-/// (`sway/sway/config.c:931`).
+/// Parse a command list with no variables defined.
 pub fn parse(input: &str) -> Vec<Result<ParsedCommand, CommandOutcome>> {
     parse_with_variables(input, &[], true)
 }
@@ -101,9 +87,9 @@ pub fn parse_with_variables(
             // (`sway/sway/commands.c:264-277`).
             Err(format!("Unknown/invalid command '{name}'").into())
         } else if variables.is_empty() {
-            // Preserve the exact old path for commands such as `exec` and
-            // `for_window`, whose parsers intentionally consume their raw
-            // tails rather than a reconstructed argv.
+            // With no variables, parse the raw text: `exec`, `for_window` and
+            // similar parsers consume their unexpanded tail, which a
+            // reconstructed argv would requote.
             parse_args(&words(text), text)
         } else {
             parse_one_with_variables(text, &variables)
@@ -183,7 +169,6 @@ fn carry_set(command: &Command, variables: &mut Vec<(String, String)>) {
 /// Expand all command arguments except the name being defined by `set`.
 /// Sway starts at argv[1] normally and argv[2] for `set`
 /// (`sway/sway/commands.c:283-285`).
-/// Insert or replace a variable and preserve sway's longest-name-first order.
 fn parse_one_with_variables(
     input: &str,
     variables: &[(String, String)],

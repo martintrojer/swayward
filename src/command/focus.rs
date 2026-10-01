@@ -143,6 +143,9 @@ pub(super) fn targeted(state: &mut State, target: CommandTarget) -> Result<(), C
                         "focus",
                         crate::ipc::tree::window_id(target),
                         |container| {
+                            // The percent flip is copied from the pinned sway capture behind
+                            // 913b6df7/9547bb21; no sway source line explains it yet. See task
+                            // ipc-focus-event-percent-flip before changing it.
                             if let Some(percent) = container["percent"].as_f64() {
                                 container["percent"] = (1. - percent).into();
                             }

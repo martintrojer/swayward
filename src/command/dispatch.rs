@@ -86,6 +86,8 @@ fn for_each_match<T>(
 fn run_focused(state: &mut State, command: Command) -> super::HandlerResult {
     match command {
         Command::Swap(target) => movement::swap_focused(state, target),
+        // A bare `focus` without criteria has no container to focus
+        // (sway/sway/commands/focus.c:381-383).
         Command::Focus => Err(failure("No container to focus was specified.")),
         Command::FocusWorkspace => Err(failure("No container to focus was specified.")),
         Command::FocusDirection(direction) => Ok(focus::direction(state, direction)),
