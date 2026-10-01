@@ -29,18 +29,6 @@ fn run_command_returns_one_outcome_per_command_and_keeps_connection_alive() {
     );
 }
 
-fn json_type(value: &Value) -> &'static str {
-    match value {
-        Value::Null => "null",
-        Value::Bool(_) => "bool",
-        Value::Number(number) if number.is_f64() => "float",
-        Value::Number(_) => "integer",
-        Value::String(_) => "string",
-        Value::Array(_) => "array",
-        Value::Object(_) => "object",
-    }
-}
-
 #[test]
 fn mark_event_matches_captured_sway_schema() {
     let (mut fixture, socket) = ipc_fixture();
