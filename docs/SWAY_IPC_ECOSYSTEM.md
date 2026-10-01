@@ -26,7 +26,7 @@ Swayward has no `bar {}` configuration. Its no-bar behavior matches sway:
 
 - `GET_BAR_CONFIG` with an empty payload returns `[]`.
 - `GET_BAR_CONFIG` with an ID returns `{ "success": false, "error": "No bar with that ID" }`, including sway's byte formatting.
-- `SUBSCRIBE` rejects `barconfig_update` and `bar_state_update` with `{ "success": false }`.
+- `SUBSCRIBE` accepts `barconfig_update` and `bar_state_update`, but never emits them because swayward manages no bar.
 
 `get_bar_config_distinguishes_no_bars_from_an_unknown_id` and `get_bar_config_unknown_id_is_byte_identical_to_sway` test the first two results. Full swaybar configuration and Waybar's `ipc: true` mode remain out of scope; ordinary Waybar Sway modules do not require `GET_BAR_CONFIG`.
 

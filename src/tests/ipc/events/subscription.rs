@@ -74,7 +74,7 @@ fn subscribing_to_all_sway_event_families_succeeds() {
     subscriber
         .write_all(&swayward_ipc::wire::encode(
             MessageType::Subscribe,
-            r#"["workspace","output","mode","window","barconfig_update","binding","shutdown","tick","input"]"#,
+            r#"["workspace","output","mode","window","barconfig_update","bar_state_update","binding","shutdown","tick","input"]"#,
         ))
         .unwrap();
 
@@ -309,4 +309,19 @@ fn input_event_queue_overflow_disconnects_a_non_reading_subscriber() {
             Err(error) => panic!("error reading subscriber: {error}"),
         }
     }
+}
+
+#[test]
+fn swaybar_subscription_list_is_accepted() {
+    let (mut fixture, socket) = ipc_fixture();
+    let mut subscriber = UnixStream::connect(socket).unwrap();
+    subscriber
+        .write_all(&swayward_ipc::wire::encode(
+            MessageType::Subscribe,
+            r#"["barconfig_update","bar_state_update","mode","workspace"]"#,
+        ))
+        .unwrap();
+    let (kind, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
+    assert_eq!(kind, MessageType::Subscribe as u32);
+    assert_eq!(payload, r#"{"success": true}"#);
 }

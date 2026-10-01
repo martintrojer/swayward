@@ -69,9 +69,10 @@ The partial requests are:
 
 - `RUN_COMMAND` covers most, not all, of sway's runtime command language. The
   next section gives the practical boundary.
-- `SUBSCRIBE` accepts 8 of sway's 10 event families. It refuses
-  `barconfig_update` and `bar_state_update` because swayward has no managed
-  `bar {}` and therefore no corresponding event to send. See
+- `SUBSCRIBE` accepts 8 of sway's 10 event families as live streams. It also
+  accepts `barconfig_update` and `bar_state_update`, but never emits them
+  because swayward manages no `bar {}`. Accepting them lets swaybar subscribe
+  to workspace and mode events in the same request. See
   [Bars](KNOWN_DEVIATIONS.md#bars).
 - `GET_OUTPUTS` returns sway 1.12's complete field set and live geometry,
   identity, mode, scale, transform, subpixel layout, current workspace, and
@@ -162,7 +163,7 @@ and the other user-visible differences.
 
 ## Events
 
-Subscriptions cover 8 of sway's 10 event families:
+Subscriptions accept all 10 of sway's event family names:
 
 - workspace, window, mode, and binding events;
 - initial and requested tick events;
@@ -171,9 +172,9 @@ Subscriptions cover 8 of sway's 10 event families:
 
 The event payloads use sway's names and object shapes. The oracle contains the
 captured schemas; focused headless tests exercise live ordering and selected
-values. `barconfig_update` and `bar_state_update` are refused at subscription
-time because swayward does not manage a bar. A refused subscription is clearer
-than one that stays silent forever.
+values. `barconfig_update` and `bar_state_update` are accepted but never emitted
+because swayward does not manage a bar. This keeps swaybar's combined
+subscription from rejecting the workspace and mode families too.
 
 ## Clients exercised so far
 

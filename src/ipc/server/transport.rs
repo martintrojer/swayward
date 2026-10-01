@@ -265,6 +265,7 @@ pub(super) fn parse_subscriptions(payload: &[u8]) -> Option<Vec<String>> {
                     | "shutdown"
                     | "window"
                     | "barconfig_update"
+                    | "bar_state_update"
                     | "binding"
                     | "tick"
                     | "input"

@@ -150,7 +150,7 @@ families = ["input"]
 
 [[events]]
 row = "Bar configuration and state"
-status = "Deliberate deviation"
+status = "Accepted; never emitted because swayward manages no bar"
 families = ["barconfig_update", "bar_state_update"]
 
 [[command]]
