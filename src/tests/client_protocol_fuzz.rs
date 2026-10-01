@@ -103,6 +103,16 @@ fn op() -> impl Strategy<Value = Op> {
     ]
 }
 
+fn with_last_window(
+    fixture: &mut Fixture,
+    client: super::client::ClientId,
+    action: impl FnOnce(&super::client::Window),
+) {
+    if let Some(window) = fixture.client(client).state.windows.last() {
+        action(window);
+    }
+}
+
 fn check_ops(ops: Vec<Op>) {
     let mut fixture = Fixture::new();
     fixture.swayward().clock.set_complete_instantly(true);
@@ -117,62 +127,53 @@ fn check_ops(ops: Vec<Op>) {
                 fixture.client(client).create_window();
             }
             Op::SetTitle(value) => {
-                if let Some(window) = fixture.client(client).state.windows.last() {
+                with_last_window(&mut fixture, client, |window| {
                     window.set_title(&format!("title-{value}"));
-                }
+                });
             }
             Op::SetAppId(value) => {
-                if let Some(window) = fixture.client(client).state.windows.last() {
+                with_last_window(&mut fixture, client, |window| {
                     window.xdg_toplevel.set_app_id(format!("app-{value}"));
-                }
+                });
             }
             Op::SetMinSize(width, height) => {
-                if let Some(window) = fixture.client(client).state.windows.last() {
+                with_last_window(&mut fixture, client, |window| {
                     window.set_min_size(i32::from(width), i32::from(height));
-                }
+                });
             }
             Op::SetMaxSize(width, height) => {
-                if let Some(window) = fixture.client(client).state.windows.last() {
+                with_last_window(&mut fixture, client, |window| {
                     window.set_max_size(i32::from(width), i32::from(height));
-                }
+                });
             }
             Op::SetParent(parent) => {
                 let state = &fixture.client(client).state;
                 if state.windows.len() > 1 {
                     let parent = usize::from(parent) % (state.windows.len() - 1);
-                    let toplevel = state.windows[parent].xdg_toplevel.clone();
-                    state.windows.last().unwrap().set_parent(Some(&toplevel));
+                    if let (Some(parent), Some(window)) =
+                        (state.windows.get(parent), state.windows.last())
+                    {
+                        window.set_parent(Some(&parent.xdg_toplevel));
+                    }
                 }
             }
             Op::ClearParent => {
-                if let Some(window) = fixture.client(client).state.windows.last() {
-                    window.set_parent(None);
-                }
+                with_last_window(&mut fixture, client, |window| window.set_parent(None));
             }
             Op::SetFullscreen => {
-                if let Some(window) = fixture.client(client).state.windows.last() {
-                    window.set_fullscreen(None);
-                }
+                with_last_window(&mut fixture, client, |window| window.set_fullscreen(None));
             }
             Op::UnsetFullscreen => {
-                if let Some(window) = fixture.client(client).state.windows.last() {
-                    window.unset_fullscreen();
-                }
+                with_last_window(&mut fixture, client, |window| window.unset_fullscreen());
             }
             Op::SetMaximized => {
-                if let Some(window) = fixture.client(client).state.windows.last() {
-                    window.set_maximized();
-                }
+                with_last_window(&mut fixture, client, |window| window.set_maximized());
             }
             Op::UnsetMaximized => {
-                if let Some(window) = fixture.client(client).state.windows.last() {
-                    window.unset_maximized();
-                }
+                with_last_window(&mut fixture, client, |window| window.unset_maximized());
             }
             Op::InitialCommit => {
-                if let Some(window) = fixture.client(client).state.windows.last() {
-                    window.commit();
-                }
+                with_last_window(&mut fixture, client, |window| window.commit());
             }
             Op::AckAndMap => {
                 if let Some(window) = fixture.client(client).state.windows.last_mut() {
@@ -187,10 +188,10 @@ fn check_ops(ops: Vec<Op>) {
                 }
             }
             Op::Unmap => {
-                if let Some(window) = fixture.client(client).state.windows.last() {
+                with_last_window(&mut fixture, client, |window| {
                     window.attach_null();
                     window.commit();
-                }
+                });
             }
             Op::DestroyRole => {
                 if let Some(window) = fixture.client(client).state.windows.pop() {
@@ -329,22 +330,18 @@ fn check_ops(ops: Vec<Op>) {
                 if fixture.client(client).state.windows.is_empty() {
                     fixture.client(client).create_window();
                 }
-                let window = fixture.client(client).state.windows.last_mut().unwrap();
-                window.ack_configure(u32::MAX);
-                window.commit();
+                if let Some(window) = fixture.client(client).state.windows.last_mut() {
+                    window.ack_configure(u32::MAX);
+                    window.commit();
+                }
             }
             Op::InvalidDestroySurfaceFirst => {
                 if fixture.client(client).state.windows.is_empty() {
                     fixture.client(client).create_window();
                 }
-                fixture
-                    .client(client)
-                    .state
-                    .windows
-                    .last()
-                    .unwrap()
-                    .xdg_surface
-                    .destroy();
+                if let Some(window) = fixture.client(client).state.windows.last() {
+                    window.xdg_surface.destroy();
+                }
             }
             Op::Command(command) => {
                 let _ = crate::command::execute(fixture.niri_state(), command);
@@ -434,7 +431,7 @@ fn check_dead_lock_client_keeps_session_secure(output_ops: Vec<bool>) {
 proptest! {
     #![proptest_config(ProptestConfig {
         cases: if std::env::var_os("RUN_SLOW_TESTS").is_none() {
-            0
+            16
         } else {
             ProptestConfig::default().cases
         },
@@ -443,7 +440,7 @@ proptest! {
     })]
 
     #[test]
-    fn random_wayland_client_lifecycles_preserve_compositor_invariants(
+    fn random_wayland_client_lifecycles_never_panic_or_break_tree_invariants(
         ops in prop::collection::vec(op(), 1..80),
     ) {
         check_ops(ops);
