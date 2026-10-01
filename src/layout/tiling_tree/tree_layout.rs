@@ -445,6 +445,17 @@ impl<W: LayoutElement> TilingTree<W> {
     /// Moves the root's children into a new container, or returns the root
     /// unchanged when that would exceed
     /// [`MAX_TREE_DEPTH`](super::depth::MAX_TREE_DEPTH).
+    /// Wrap the workspace's tiling children in one new container that keeps
+    /// the workspace layout (`workspace_wrap_children`,
+    /// sway/tree/workspace.c:898-910).
+    pub fn wrap_workspace_children(&mut self) {
+        let layout = self.representation_layout();
+        if self.split_len(self.root).is_some_and(|len| len > 0) {
+            self.wrap_root_children(layout);
+            self.request_window_sizes();
+        }
+    }
+
     fn wrap_root_children(&mut self, layout: Layout) -> NodeId {
         if !self.can_wrap_root_children() {
             return self.root;

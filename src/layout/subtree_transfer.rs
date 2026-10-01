@@ -234,6 +234,16 @@ impl<W: LayoutElement> Layout<W> {
         }
         .ok_or_else(|| "target workspace does not exist".to_owned())?;
         if source_workspace == target_workspace {
+            // Sway wraps a focused workspace's tiling children before it
+            // resolves the destination (`workspace_wrap_children` in
+            // `cmd_move_container`, sway/commands/move.c:430-436), so the wrapper
+            // survives even when the destination is the same workspace.
+            if let Some(workspace) = self
+                .workspace_mut(source_workspace)
+                .filter(|workspace| workspace.tiling().is_root(node))
+            {
+                workspace.tiling_mut().wrap_workspace_children();
+            }
             return Ok((target_workspace, Vec::new()));
         }
         if empty_root {
