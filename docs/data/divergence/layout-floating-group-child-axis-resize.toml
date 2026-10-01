@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/floating_tree/commands.rs", "src/layout/mod.rs"]
+what = "route `resize grow|shrink width|height` on a floating group child to its resident tree, and classify the child as non-floating for unit selection."
+why = "sway resizes a group child like a tiled child (container_is_floating is root-only); swayward treated it as a floating window, picked px, then failed to find it in the single-window list and answered \"Cannot resize any further\"."

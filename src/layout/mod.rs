@@ -3482,6 +3482,13 @@ impl<W: LayoutElement> Layout<W> {
         })
     }
 
+    /// Whether `window` sits inside a floating group rather than being a
+    /// floating root itself.
+    pub fn is_floating_group_child(&self, window: &W::Id) -> bool {
+        self.workspaces()
+            .any(|(_, _, ws)| ws.floating_tree_root_for_window(window).is_some())
+    }
+
     /// The floating group root `node` names on `workspace_id`, if it is one.
     pub fn floating_tree_root(
         &self,

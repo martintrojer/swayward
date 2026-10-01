@@ -668,6 +668,51 @@ fn resize_of_a_floating_group_root_resizes_the_group() {
     );
 }
 
+/// Oracle: floating_group_child_resize. A group child is not floating, so
+/// `resize grow width 10 ppt` resizes it inside the group in ppt, like a
+/// tiled child (`container_is_floating`, sway/commands/resize.c:523).
+#[test]
+fn ppt_resize_of_a_floating_group_child_resizes_inside_the_group() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    for app_id in ["group-first", "group-second"] {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+    for command in [
+        "focus parent",
+        "floating enable",
+        "focus child",
+        "resize grow width 10 ppt",
+    ] {
+        let outcome = crate::command::execute(f.niri_state(), command);
+        assert!(outcome[0].success, "{command}: {outcome:?}");
+    }
+    f.niri_state().ipc_refresh_layout();
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &swayward.marks_by_window,
+        &swayward.marks_by_container,
+    ))
+    .unwrap();
+    let width = |app_id| {
+        find_json_node_with_app_id(&tree, app_id).unwrap()["rect"]["width"]
+            .as_i64()
+            .unwrap()
+    };
+    assert!(width("group-second") > width("group-first"));
+}
+
 #[test]
 fn directional_resize_of_a_floating_group_child_resizes_inside_the_group() {
     // A floating group's child is not itself floating, so sway resizes it like

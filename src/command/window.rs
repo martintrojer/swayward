@@ -384,7 +384,11 @@ impl ResolvedResizeTarget {
                     return Err(failure("No matching node."));
                 };
                 let window = mapped.window.clone();
-                let floating = mapped.is_floating();
+                // A floating group's child is a tiled child of the group, as
+                // `container_is_floating` is true only for the root
+                // (sway/commands/resize.c:523).
+                let floating =
+                    mapped.is_floating() && !state.swayward.layout.is_floating_group_child(&window);
                 if state.swayward.layout.is_scratchpad_hidden(&window) {
                     return Err(failure("Cannot resize a hidden scratchpad container"));
                 }

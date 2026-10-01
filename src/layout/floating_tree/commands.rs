@@ -426,6 +426,15 @@ impl<W: LayoutElement> FloatingLayout<W> {
         let Some(id) = id.or(self.active_window_id.as_ref()) else {
             return false;
         };
+        // A floating group's child is not itself floating, so sway resizes
+        // it inside the group like a tiled child (`container_is_floating`,
+        // sway/commands/resize.c:523-550).
+        if let Some((idx, _)) = self.tree_entry_for_window(id) {
+            let id = id.clone();
+            return self.tree_entries[idx]
+                .tree
+                .set_window_width(Some(&id), change);
+        }
         let Some(idx) = self.idx_of(id) else {
             return false;
         };
@@ -578,6 +587,15 @@ impl<W: LayoutElement> FloatingLayout<W> {
         let Some(id) = id.or(self.active_window_id.as_ref()) else {
             return false;
         };
+        // A floating group's child is not itself floating, so sway resizes
+        // it inside the group like a tiled child (`container_is_floating`,
+        // sway/commands/resize.c:523-550).
+        if let Some((idx, _)) = self.tree_entry_for_window(id) {
+            let id = id.clone();
+            return self.tree_entries[idx]
+                .tree
+                .set_window_height(Some(&id), change);
+        }
         let Some(idx) = self.idx_of(id) else {
             return false;
         };
