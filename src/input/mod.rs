@@ -56,7 +56,7 @@ use crate::swayward::{CastTarget, PointerVisibility, State};
 use crate::ui::mru::{WindowMru, WindowMruUi};
 use crate::ui::screenshot_ui::ScreenshotUi;
 use crate::utils::spawning::{spawn, spawn_sh};
-use crate::utils::{center, CastSessionId, ResizeEdge};
+use crate::utils::{center, ResizeEdge};
 
 pub mod backend_ext;
 pub mod click_grab;

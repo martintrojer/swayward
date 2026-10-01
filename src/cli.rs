@@ -3,7 +3,6 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use clap_complete::Shell;
-use swayward_ipc::{Action, OutputAction};
 
 use crate::utils::version;
 
@@ -55,13 +54,11 @@ mod tests {
 
 #[derive(Subcommand)]
 pub enum Sub {
-    /// Communicate with the running swayward instance.
+    /// The legacy msg client was removed; use swaymsg.
+    #[command(hide = true)]
     Msg {
-        #[command(subcommand)]
-        msg: Msg,
-        /// Format output as JSON.
-        #[arg(short, long)]
-        json: bool,
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<OsString>,
     },
     /// Validate the config file.
     Validate {
@@ -76,58 +73,6 @@ pub enum Sub {
     Panic,
     /// Generate shell completions.
     Completions { shell: CompletionShell },
-}
-
-#[derive(Subcommand)]
-pub enum Msg {
-    /// List connected outputs.
-    Outputs,
-    /// List workspaces.
-    Workspaces,
-    /// List open windows.
-    Windows,
-    /// List open layer-shell surfaces.
-    Layers,
-    /// Get the configured keyboard layouts.
-    KeyboardLayouts,
-    /// Print information about the focused output.
-    FocusedOutput,
-    /// Print information about the focused window.
-    FocusedWindow,
-    /// Pick a window with the mouse and print information about it.
-    PickWindow,
-    /// Pick a color from the screen with the mouse.
-    PickColor,
-    /// Perform an action.
-    Action {
-        #[command(subcommand)]
-        action: Action,
-    },
-    /// Change output configuration temporarily.
-    ///
-    /// The configuration is changed temporarily and not saved into the config file. If the output
-    /// configuration subsequently changes in the config file, these temporary changes will be
-    /// forgotten.
-    Output {
-        /// Output name.
-        ///
-        /// Run `swayward msg outputs` to see the output names.
-        #[arg()]
-        output: String,
-        /// Configuration to apply.
-        #[command(subcommand)]
-        action: OutputAction,
-    },
-    /// Start continuously receiving events from the compositor.
-    EventStream,
-    /// Print the version of the running swayward instance.
-    Version,
-    /// Request an error from the running swayward instance.
-    RequestError,
-    /// Print the overview state.
-    OverviewState,
-    /// List screencasts.
-    Casts,
 }
 
 #[derive(Clone, Debug, clap::ValueEnum)]

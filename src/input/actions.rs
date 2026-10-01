@@ -206,30 +206,6 @@ impl State {
                     });
                 }
             }
-            Action::ScreenshotWindowById {
-                id,
-                write_to_disk,
-                show_pointer,
-                path,
-            } => {
-                let mut windows = self.swayward.layout.windows();
-                let window = windows.find(|(_, m)| m.id().get() == id);
-                if let Some((Some(monitor), mapped)) = window {
-                    let output = monitor.output();
-                    self.backend.with_primary_renderer(|renderer| {
-                        if let Err(err) = self.swayward.screenshot_window(
-                            renderer,
-                            output,
-                            mapped,
-                            write_to_disk,
-                            show_pointer,
-                            path,
-                        ) {
-                            warn!("error taking screenshot: {err:?}");
-                        }
-                    });
-                }
-            }
             Action::ToggleKeyboardShortcutsInhibit => {
                 if let Some(inhibitor) =
                     self.swayward.keyboard_focus.surface().and_then(|surface| {
@@ -268,49 +244,12 @@ impl State {
                     self.swayward.queue_redraw_all();
                 }
             }
-            Action::FullscreenWindowById(id) => {
-                let window = self
-                    .swayward
-                    .layout
-                    .windows()
-                    .find(|(_, m)| m.id().get() == id);
-                let window = window.map(|(_, m)| m.window.clone());
-                if let Some(window) = window {
-                    self.swayward.layout.toggle_fullscreen(&window);
-                    // FIXME: granular
-                    self.swayward.queue_redraw_all();
-                }
-            }
             Action::ToggleWindowedFullscreen => {
                 let focus = self.swayward.layout.focus().map(|m| m.window.clone());
                 if let Some(window) = focus {
                     self.swayward.layout.toggle_windowed_fullscreen(&window);
                     // FIXME: granular
                     self.swayward.queue_redraw_all();
-                }
-            }
-            Action::ToggleWindowedFullscreenById(id) => {
-                let window = self
-                    .swayward
-                    .layout
-                    .windows()
-                    .find(|(_, m)| m.id().get() == id);
-                let window = window.map(|(_, m)| m.window.clone());
-                if let Some(window) = window {
-                    self.swayward.layout.toggle_windowed_fullscreen(&window);
-                    // FIXME: granular
-                    self.swayward.queue_redraw_all();
-                }
-            }
-            Action::FocusWindow(id) => {
-                let window = self
-                    .swayward
-                    .layout
-                    .windows()
-                    .find(|(_, m)| m.id().get() == id);
-                let window = window.map(|(_, m)| m.window.clone());
-                if let Some(window) = window {
-                    self.focus_window(&window);
                 }
             }
             Action::FocusWindowInColumn(index) => {
@@ -483,43 +422,11 @@ impl State {
                 // FIXME: granular
                 self.swayward.queue_redraw_all();
             }
-            Action::ConsumeOrExpelWindowLeftById(id) => {
-                let window = self
-                    .swayward
-                    .layout
-                    .windows()
-                    .find(|(_, m)| m.id().get() == id);
-                let window = window.map(|(_, m)| m.window.clone());
-                if let Some(window) = window {
-                    self.swayward
-                        .layout
-                        .nest_or_unnest_window_left(Some(&window));
-                    self.maybe_warp_cursor_to_focus();
-                    // FIXME: granular
-                    self.swayward.queue_redraw_all();
-                }
-            }
             Action::ConsumeOrExpelWindowRight => {
                 self.swayward.layout.nest_or_unnest_window_right(None);
                 self.maybe_warp_cursor_to_focus();
                 // FIXME: granular
                 self.swayward.queue_redraw_all();
-            }
-            Action::ConsumeOrExpelWindowRightById(id) => {
-                let window = self
-                    .swayward
-                    .layout
-                    .windows()
-                    .find(|(_, m)| m.id().get() == id);
-                let window = window.map(|(_, m)| m.window.clone());
-                if let Some(window) = window {
-                    self.swayward
-                        .layout
-                        .nest_or_unnest_window_right(Some(&window));
-                    self.maybe_warp_cursor_to_focus();
-                    // FIXME: granular
-                    self.swayward.queue_redraw_all();
-                }
             }
             Action::FocusColumnLeft => {
                 self.swayward.layout.focus_left();
@@ -805,65 +712,6 @@ impl State {
                     self.swayward.queue_redraw_all();
                 }
             }
-            Action::MoveWindowToWorkspaceById {
-                window_id: id,
-                reference,
-                focus,
-            } => {
-                let window = self
-                    .swayward
-                    .layout
-                    .windows()
-                    .find(|(_, m)| m.id().get() == id);
-                let window = window.map(|(_, m)| m.window.clone());
-                if let Some(window) = window {
-                    if let Some((output, index)) =
-                        self.swayward.find_output_and_workspace_index(reference)
-                    {
-                        let target_was_active = self
-                            .swayward
-                            .layout
-                            .active_output()
-                            .is_some_and(|active| output.as_ref() == Some(active));
-
-                        let activate = if focus {
-                            ActivateWindow::Smart
-                        } else {
-                            ActivateWindow::No
-                        };
-
-                        if let Some(output) = output {
-                            self.swayward.layout.move_to_output(
-                                Some(&window),
-                                &output,
-                                Some(index),
-                                activate,
-                            );
-
-                            // If the active output changed (window was moved and focused).
-                            if !target_was_active
-                                && self.swayward.layout.active_output() == Some(&output)
-                                && !self.maybe_warp_cursor_to_focus_centered()
-                            {
-                                self.move_cursor_to_output(&output);
-                            }
-                        } else {
-                            self.swayward
-                                .layout
-                                .move_to_workspace(Some(&window), index, activate);
-
-                            // If we focused the target window.
-                            let new_focus = self.swayward.layout.focus();
-                            if new_focus.is_some_and(|win| win.window == window) {
-                                self.maybe_warp_cursor_to_focus();
-                            }
-                        }
-
-                        // FIXME: granular
-                        self.swayward.queue_redraw_all();
-                    }
-                }
-            }
             Action::MoveColumnToWorkspaceDown(focus) => {
                 self.swayward.layout.move_focused_to_workspace_down(focus);
                 self.maybe_warp_cursor_to_focus();
@@ -1012,29 +860,11 @@ impl State {
                 // FIXME: granular
                 self.swayward.queue_redraw_all();
             }
-            Action::MoveWorkspaceToIndexByRef { new_idx, reference } => {
-                if let Some(res) = self.swayward.find_output_and_workspace_index(reference) {
-                    let new_idx = new_idx.saturating_sub(1);
-                    self.swayward
-                        .layout
-                        .move_workspace_to_idx(Some(res), new_idx);
-                    // FIXME: granular
-                    self.swayward.queue_redraw_all();
-                }
-            }
             Action::SetWorkspaceName(name) => {
                 self.swayward.layout.set_workspace_name(name, None);
             }
-            Action::SetWorkspaceNameByRef { name, reference } => {
-                self.swayward
-                    .layout
-                    .set_workspace_name(name, Some(reference));
-            }
             Action::UnsetWorkspaceName => {
                 self.swayward.layout.unset_workspace_name(None);
-            }
-            Action::UnsetWorkSpaceNameByRef(reference) => {
-                self.swayward.layout.unset_workspace_name(Some(reference));
             }
             Action::ConsumeWindowIntoColumn => {
                 self.swayward.layout.nest_focused_window();
@@ -1085,63 +915,11 @@ impl State {
             Action::SwitchPresetWindowWidthBack => {
                 self.swayward.layout.toggle_window_width(None, false);
             }
-            Action::SwitchPresetWindowWidthById(id) => {
-                let window = self
-                    .swayward
-                    .layout
-                    .windows()
-                    .find(|(_, m)| m.id().get() == id);
-                let window = window.map(|(_, m)| m.window.clone());
-                if let Some(window) = window {
-                    self.swayward
-                        .layout
-                        .toggle_window_width(Some(&window), true);
-                }
-            }
-            Action::SwitchPresetWindowWidthBackById(id) => {
-                let window = self
-                    .swayward
-                    .layout
-                    .windows()
-                    .find(|(_, m)| m.id().get() == id);
-                let window = window.map(|(_, m)| m.window.clone());
-                if let Some(window) = window {
-                    self.swayward
-                        .layout
-                        .toggle_window_width(Some(&window), false);
-                }
-            }
             Action::SwitchPresetWindowHeight => {
                 self.swayward.layout.toggle_window_height(None, true);
             }
             Action::SwitchPresetWindowHeightBack => {
                 self.swayward.layout.toggle_window_height(None, false);
-            }
-            Action::SwitchPresetWindowHeightById(id) => {
-                let window = self
-                    .swayward
-                    .layout
-                    .windows()
-                    .find(|(_, m)| m.id().get() == id);
-                let window = window.map(|(_, m)| m.window.clone());
-                if let Some(window) = window {
-                    self.swayward
-                        .layout
-                        .toggle_window_height(Some(&window), true);
-                }
-            }
-            Action::SwitchPresetWindowHeightBackById(id) => {
-                let window = self
-                    .swayward
-                    .layout
-                    .windows()
-                    .find(|(_, m)| m.id().get() == id);
-                let window = window.map(|(_, m)| m.window.clone());
-                if let Some(window) = window {
-                    self.swayward
-                        .layout
-                        .toggle_window_height(Some(&window), false);
-                }
             }
             Action::CenterColumn => {
                 warn!("center-column has no sway equivalent and is not supported");
@@ -1150,19 +928,6 @@ impl State {
                 self.swayward.layout.center_window(None);
                 // FIXME: granular
                 self.swayward.queue_redraw_all();
-            }
-            Action::CenterWindowById(id) => {
-                let window = self
-                    .swayward
-                    .layout
-                    .windows()
-                    .find(|(_, m)| m.id().get() == id);
-                let window = window.map(|(_, m)| m.window.clone());
-                if let Some(window) = window {
-                    self.swayward.layout.center_window(Some(&window));
-                    // FIXME: granular
-                    self.swayward.queue_redraw_all();
-                }
             }
             Action::CenterVisibleColumns => {
                 warn!("center-visible-columns has no sway equivalent and is not supported");
@@ -1173,19 +938,6 @@ impl State {
             Action::MaximizeWindowToEdges => {
                 let focus = self.swayward.layout.focus().map(|m| m.window.clone());
                 if let Some(window) = focus {
-                    self.swayward.layout.toggle_maximized(&window);
-                    // FIXME: granular
-                    self.swayward.queue_redraw_all();
-                }
-            }
-            Action::MaximizeWindowToEdgesById(id) => {
-                let window = self
-                    .swayward
-                    .layout
-                    .windows()
-                    .find(|(_, m)| m.id().get() == id);
-                let window = window.map(|(_, m)| m.window.clone());
-                if let Some(window) = window {
                     self.swayward.layout.toggle_maximized(&window);
                     // FIXME: granular
                     self.swayward.queue_redraw_all();
@@ -1369,39 +1121,6 @@ impl State {
                     }
                 }
             }
-            Action::MoveWindowToMonitorById { id, output } => {
-                if let Some(output) = self.swayward.output_by_name_match(&output).cloned() {
-                    let window = self
-                        .swayward
-                        .layout
-                        .windows()
-                        .find(|(_, m)| m.id().get() == id);
-                    let window = window.map(|(_, m)| m.window.clone());
-
-                    if let Some(window) = window {
-                        let target_was_active = self
-                            .swayward
-                            .layout
-                            .active_output()
-                            .is_some_and(|active| output == *active);
-
-                        self.swayward.layout.move_to_output(
-                            Some(&window),
-                            &output,
-                            None,
-                            ActivateWindow::Smart,
-                        );
-
-                        // If the active output changed (window was moved and focused).
-                        if !target_was_active
-                            && self.swayward.layout.active_output() == Some(&output)
-                            && !self.maybe_warp_cursor_to_focus_centered()
-                        {
-                            self.move_cursor_to_output(&output);
-                        }
-                    }
-                }
-            }
             Action::MoveColumnToMonitorLeft => {
                 if let Some(current_output) = self.swayward.screenshot_ui.selection_output() {
                     if let Some(target_output) = self.swayward.output_left_of(current_output) {
@@ -1534,17 +1253,6 @@ impl State {
                     self.swayward.layout.set_window_width(None, change);
                 }
             }
-            Action::SetWindowWidthById { id, change } => {
-                let window = self
-                    .swayward
-                    .layout
-                    .windows()
-                    .find(|(_, m)| m.id().get() == id);
-                let window = window.map(|(_, m)| m.window.clone());
-                if let Some(window) = window {
-                    self.swayward.layout.set_window_width(Some(&window), change);
-                }
-            }
             Action::SetWindowHeight(change) => {
                 if self.swayward.screenshot_ui.is_open() {
                     self.swayward.screenshot_ui.set_height(change);
@@ -1555,32 +1263,8 @@ impl State {
                     self.swayward.layout.set_window_height(None, change);
                 }
             }
-            Action::SetWindowHeightById { id, change } => {
-                let window = self
-                    .swayward
-                    .layout
-                    .windows()
-                    .find(|(_, m)| m.id().get() == id);
-                let window = window.map(|(_, m)| m.window.clone());
-                if let Some(window) = window {
-                    self.swayward
-                        .layout
-                        .set_window_height(Some(&window), change);
-                }
-            }
             Action::ResetWindowHeight => {
                 self.swayward.layout.reset_window_height(None);
-            }
-            Action::ResetWindowHeightById(id) => {
-                let window = self
-                    .swayward
-                    .layout
-                    .windows()
-                    .find(|(_, m)| m.id().get() == id);
-                let window = window.map(|(_, m)| m.window.clone());
-                if let Some(window) = window {
-                    self.swayward.layout.reset_window_height(Some(&window));
-                }
             }
             Action::ExpandColumnToAvailableWidth => {
                 self.swayward.layout.expand_focused_to_available_width();
@@ -1650,91 +1334,20 @@ impl State {
                     }
                 }
             }
-            Action::MoveWorkspaceToMonitorByRef {
-                output_name,
-                reference,
-            } => {
-                if let Some((output, old_idx)) =
-                    self.swayward.find_output_and_workspace_index(reference)
-                {
-                    if let Some(new_output) =
-                        self.swayward.output_by_name_match(&output_name).cloned()
-                    {
-                        let workspace_id = output.as_ref().and_then(|output| {
-                            self.swayward.layout.workspace_id_at(output, old_idx)
-                        });
-                        if workspace_id.is_some_and(|workspace_id| {
-                            self.swayward.layout.move_workspace_to_output_by_id(
-                                workspace_id,
-                                output,
-                                &new_output,
-                            )
-                        }) {
-                            // Cursor warp already calls `queue_redraw_all`
-                            if !self.maybe_warp_cursor_to_focus_centered() {
-                                self.move_cursor_to_output(&new_output);
-                            }
-                        }
-                    }
-                }
-            }
             Action::ToggleWindowFloating => {
                 self.swayward.layout.toggle_window_floating(None);
                 // FIXME: granular
                 self.swayward.queue_redraw_all();
-            }
-            Action::ToggleWindowFloatingById(id) => {
-                let window = self
-                    .swayward
-                    .layout
-                    .windows()
-                    .find(|(_, m)| m.id().get() == id);
-                let window = window.map(|(_, m)| m.window.clone());
-                if let Some(window) = window {
-                    self.swayward.layout.toggle_window_floating(Some(&window));
-                    // FIXME: granular
-                    self.swayward.queue_redraw_all();
-                }
             }
             Action::MoveWindowToFloating => {
                 self.swayward.layout.set_window_floating(None, true);
                 // FIXME: granular
                 self.swayward.queue_redraw_all();
             }
-            Action::MoveWindowToFloatingById(id) => {
-                let window = self
-                    .swayward
-                    .layout
-                    .windows()
-                    .find(|(_, m)| m.id().get() == id);
-                let window = window.map(|(_, m)| m.window.clone());
-                if let Some(window) = window {
-                    self.swayward
-                        .layout
-                        .set_window_floating(Some(&window), true);
-                    // FIXME: granular
-                    self.swayward.queue_redraw_all();
-                }
-            }
             Action::MoveWindowToTiling => {
                 self.swayward.layout.set_window_floating(None, false);
                 // FIXME: granular
                 self.swayward.queue_redraw_all();
-            }
-            Action::MoveWindowToTilingById(id) => {
-                let window = self
-                    .swayward
-                    .layout
-                    .windows()
-                    .find(|(_, m)| m.id().get() == id);
-                let window = window.map(|(_, m)| m.window.clone());
-                if let Some(window) = window {
-                    self.swayward
-                        .layout
-                        .set_window_floating(Some(&window), false);
-                    // FIXME: granular
-                    self.swayward.queue_redraw_all();
-                }
             }
             Action::FocusFloating => {
                 self.swayward.layout.focus_floating();
@@ -1754,28 +1367,6 @@ impl State {
                 // FIXME: granular
                 self.swayward.queue_redraw_all();
             }
-            Action::MoveFloatingWindowById { id, x, y } => {
-                let window = if let Some(id) = id {
-                    let window = self
-                        .swayward
-                        .layout
-                        .windows()
-                        .find(|(_, m)| m.id().get() == id);
-                    let window = window.map(|(_, m)| m.window.clone());
-                    if window.is_none() {
-                        return;
-                    }
-                    window
-                } else {
-                    None
-                };
-
-                self.swayward
-                    .layout
-                    .move_floating_window(window.as_ref(), x, y, true);
-                // FIXME: granular
-                self.swayward.queue_redraw_all();
-            }
             Action::ToggleWindowRuleOpacity => {
                 let active_window = self
                     .swayward
@@ -1783,20 +1374,6 @@ impl State {
                     .active_workspace_mut()
                     .and_then(|ws| ws.active_window_mut());
                 if let Some(window) = active_window {
-                    if window.rules().opacity.is_some_and(|o| o != 1.) {
-                        window.toggle_ignore_opacity_window_rule();
-                        // FIXME: granular
-                        self.swayward.queue_redraw_all();
-                    }
-                }
-            }
-            Action::ToggleWindowRuleOpacityById(id) => {
-                let window = self
-                    .swayward
-                    .layout
-                    .workspaces_mut()
-                    .find_map(|ws| ws.windows_mut().find(|w| w.id().get() == id));
-                if let Some(window) = window {
                     if window.rules().opacity.is_some_and(|o| o != 1.) {
                         window.toggle_ignore_opacity_window_rule();
                         // FIXME: granular
@@ -1815,12 +1392,6 @@ impl State {
                     self.set_dynamic_cast_target(CastTarget::Window { id });
                 }
             }
-            Action::SetDynamicCastWindowById(id) => {
-                let layout = &self.swayward.layout;
-                if layout.windows().any(|(_, mapped)| mapped.id().get() == id) {
-                    self.set_dynamic_cast_target(CastTarget::Window { id });
-                }
-            }
             Action::SetDynamicCastMonitor(output) => {
                 let output = match output {
                     None => self.swayward.layout.active_output(),
@@ -1832,9 +1403,6 @@ impl State {
             }
             Action::ClearDynamicCastTarget => {
                 self.set_dynamic_cast_target(CastTarget::Nothing);
-            }
-            Action::StopCast(session_id) => {
-                self.swayward.stop_cast(CastSessionId::from(session_id));
             }
             Action::ToggleOverview => {
                 // A layer surface holding on-demand focus outranks the
@@ -1854,45 +1422,6 @@ impl State {
             Action::CloseOverview => {
                 if self.swayward.layout.close_overview() {
                     self.swayward.queue_redraw_all();
-                }
-            }
-            Action::ToggleWindowUrgent(id) => {
-                let window = self
-                    .swayward
-                    .layout
-                    .workspaces_mut()
-                    .find_map(|ws| ws.windows_mut().find(|w| w.id().get() == id));
-                if let Some(window) = window {
-                    let urgent = window.is_urgent();
-                    window.set_urgent(!urgent);
-                }
-                self.swayward.queue_redraw_all();
-            }
-            Action::SetWindowUrgent(id) => {
-                let window = self
-                    .swayward
-                    .layout
-                    .workspaces_mut()
-                    .find_map(|ws| ws.windows_mut().find(|w| w.id().get() == id));
-                if let Some(window) = window {
-                    window.set_urgent(true);
-                }
-                self.swayward.queue_redraw_all();
-            }
-            Action::UnsetWindowUrgent(id) => {
-                let window = self
-                    .swayward
-                    .layout
-                    .workspaces_mut()
-                    .find_map(|ws| ws.windows_mut().find(|w| w.id().get() == id));
-                if let Some(window) = window {
-                    window.set_urgent(false);
-                }
-                self.swayward.queue_redraw_all();
-            }
-            Action::LoadConfigFile(path) => {
-                if let Some(watcher) = &self.swayward.config_file_watcher {
-                    watcher.load_config(path);
                 }
             }
             Action::MruConfirm => {
