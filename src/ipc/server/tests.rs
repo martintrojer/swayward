@@ -15,6 +15,8 @@ fn test_socket_paths_are_unique_and_avoid_tmpfs() {
 fn default_socket_path_uses_runtime_dir_and_falls_back_to_tmp() {
     let runtime = PathBuf::from("/run/user/1234");
     assert_eq!(socket_dir_from(Some(runtime.clone())), runtime);
+    // Sway also falls back to /tmp without XDG_RUNTIME_DIR
+    // (`sway/sway/ipc-server.c:136-139`).
     assert_eq!(socket_dir_from(None), env::temp_dir());
     assert_eq!(
         default_socket_path(runtime, OsStr::new("wayland-7"), 42, 3),
@@ -77,15 +79,23 @@ fn overlong_socket_path_fails_instead_of_truncating() {
 
 #[test]
 fn write_buffer_matches_sways_doubling_limit() {
+    // Sway doubles from 128 until the queue fits and drops the client once
+    // the size passes 4e6 (`sway/sway/ipc-server.c:946-955`), so the last
+    // accepted queue is 2 MiB minus one byte.
+    let queue = |bytes: usize| {
+        let mut buffer = Vec::new();
+        let mut size = INITIAL_WRITE_BUFFER_SIZE;
+        queue_ipc_message(&mut buffer, &mut size, &vec![0; bytes]).map(|()| buffer.len())
+    };
+    assert_eq!(queue(2_097_151).unwrap(), 2_097_151);
+    assert!(queue(2_097_152).is_err());
+
+    // Growth is incremental: small messages accumulate until the same limit.
     let mut buffer = Vec::new();
     let mut size = INITIAL_WRITE_BUFFER_SIZE;
-    queue_ipc_message(&mut buffer, &mut size, &[0; 100]).unwrap();
-    assert_eq!(size, 128);
-    queue_ipc_message(&mut buffer, &mut size, &[0; 28]).unwrap();
-    assert_eq!(size, 256);
-
-    buffer.resize(2_097_151, 0);
-    size = 2_097_152;
+    for _ in 0..2_047 {
+        queue_ipc_message(&mut buffer, &mut size, &[0; 1024]).unwrap();
+    }
+    queue_ipc_message(&mut buffer, &mut size, &[0; 1023]).unwrap();
     assert!(queue_ipc_message(&mut buffer, &mut size, &[0]).is_err());
-    assert_eq!(size, 4_194_304);
 }
