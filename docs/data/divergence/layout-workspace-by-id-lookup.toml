@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/mod.rs"]
+what = "look up a workspace by id through `Layout::workspace`/`workspace_mut` (in the swayward-owned `sway_workspace.rs`) instead of open-coded `workspaces_mut().find(..)` scans in swayward-authored methods."
+why = "Refactor only: one lookup instead of 34 copies."

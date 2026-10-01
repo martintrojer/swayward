@@ -29,10 +29,7 @@ impl<W: LayoutElement> Layout<W> {
         });
         if let Some((source_workspace, root)) = floating_tree {
             let removed = {
-                let Some(workspace) = self
-                    .workspaces_mut()
-                    .find(|workspace| workspace.id() == source_workspace)
-                else {
+                let Some(workspace) = self.workspace_mut(source_workspace) else {
                     return;
                 };
                 workspace.clear_floating_tree_fullscreen(root);
@@ -92,8 +89,7 @@ impl<W: LayoutElement> Layout<W> {
             return None;
         }
         let removed = self.scratchpad_trees.remove(index)?;
-        self.workspaces_mut()
-            .find(|candidate| candidate.id() == workspace)?
+        self.workspace_mut(workspace)?
             .add_floating_tree(removed, true);
         Some(shown)
     }
@@ -191,9 +187,7 @@ impl<W: LayoutElement> Layout<W> {
         let mut removed = self.scratchpad.remove(index)?;
         removed.is_floating = true;
         let shown = removed.tile.window().id().clone();
-        let workspace = self
-            .workspaces_mut()
-            .find(|workspace| workspace.id() == active_workspace)?;
+        let workspace = self.workspace_mut(active_workspace)?;
         workspace.remap_floating_position(&mut removed.tile, removed.floating_working_area);
         workspace.add_tile(
             removed.tile,

@@ -428,8 +428,7 @@ impl<W: LayoutElement> Layout<W> {
                 Some(name) => sway_identity_from_name(name),
                 None => self.next_free_workspace_identity_for_output(output.as_ref()),
             };
-            self.workspaces_mut()
-                .find(|workspace| workspace.id() == id)
+            self.workspace_mut(id)
                 .unwrap()
                 .set_sway_identity(name, number);
         }

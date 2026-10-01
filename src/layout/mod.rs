@@ -1863,10 +1863,7 @@ impl<W: LayoutElement> Layout<W> {
                 candidate.id() == workspace_id && candidate.has_window(window)
             });
             if !target_is_inside {
-                if let Some(workspace) = self
-                    .workspaces_mut()
-                    .find(|candidate| candidate.id() == workspace_id)
-                {
+                if let Some(workspace) = self.workspace_mut(workspace_id) {
                     workspace.disable_fullscreen();
                 }
             }
@@ -1884,10 +1881,7 @@ impl<W: LayoutElement> Layout<W> {
                     .then_some((workspace.id(), fullscreen))
             });
         if let Some((workspace_id, fullscreen)) = obstructing {
-            if let Some(workspace) = self
-                .workspaces_mut()
-                .find(|candidate| candidate.id() == workspace_id)
-            {
+            if let Some(workspace) = self.workspace_mut(workspace_id) {
                 workspace.tiling_mut().set_node_fullscreen(fullscreen, None);
             }
         }
@@ -2205,8 +2199,7 @@ impl<W: LayoutElement> Layout<W> {
         node: tiling_tree::NodeId,
         direction: tiling_tree::Direction,
     ) -> bool {
-        self.workspaces_mut()
-            .find(|workspace| workspace.id() == workspace_id)
+        self.workspace_mut(workspace_id)
             .is_some_and(|workspace| workspace.move_tiling_node_in_direction(node, direction))
     }
 
@@ -2362,10 +2355,7 @@ impl<W: LayoutElement> Layout<W> {
         workspace_id: workspace::WorkspaceId,
         id: tiling_tree::NodeId,
     ) -> bool {
-        let Some(workspace) = self
-            .workspaces_mut()
-            .find(|workspace| workspace.id() == workspace_id)
-        else {
+        let Some(workspace) = self.workspace_mut(workspace_id) else {
             return false;
         };
         workspace.focus_tiling_node(id)
@@ -3558,8 +3548,7 @@ impl<W: LayoutElement> Layout<W> {
         width: bool,
         change: SizeChange,
     ) -> Option<bool> {
-        self.workspaces_mut()
-            .find(|workspace| workspace.id() == workspace_id)
+        self.workspace_mut(workspace_id)
             .map(|workspace| workspace.resize_tiling_node(node, width, change))
     }
 
@@ -3570,8 +3559,7 @@ impl<W: LayoutElement> Layout<W> {
         edge: ResizeEdge,
         change: SizeChange,
     ) -> Option<bool> {
-        self.workspaces_mut()
-            .find(|workspace| workspace.id() == workspace_id)
+        self.workspace_mut(workspace_id)
             .map(|workspace| workspace.resize_tiling_node_edge(node, edge, change))
     }
 
@@ -3582,10 +3570,7 @@ impl<W: LayoutElement> Layout<W> {
         width: Option<SizeChange>,
         height: Option<SizeChange>,
     ) {
-        if let Some(workspace) = self
-            .workspaces_mut()
-            .find(|workspace| workspace.id() == workspace_id)
-        {
+        if let Some(workspace) = self.workspace_mut(workspace_id) {
             workspace.set_tiling_node_size_sway(node, width, height);
         }
     }

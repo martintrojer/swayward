@@ -346,10 +346,7 @@ impl<W: LayoutElement> Layout<W> {
             .iter()
             .any(|config| config.name.0.eq_ignore_ascii_case(&new_name));
         let (name, number) = sway_identity_from_name(new_name);
-        let workspace = self
-            .workspaces_mut()
-            .find(|workspace| workspace.id() == id)
-            .unwrap();
+        let workspace = self.workspace_mut(id).unwrap();
         workspace.set_sway_identity(name, number);
         workspace.set_persistent(declared);
         self.reap_outputless_workspaces();
@@ -601,9 +598,8 @@ impl<W: LayoutElement> Layout<W> {
             return target;
         }
         let targets_source = self
-            .workspaces()
-            .find(|(_, _, workspace)| workspace.id() == source_workspace)
-            .is_some_and(|(_, _, workspace)| workspace_matches_target(workspace, &target));
+            .workspace(source_workspace)
+            .is_some_and(|workspace| workspace_matches_target(workspace, &target));
         if !targets_source {
             return target;
         }
@@ -666,10 +662,7 @@ impl<W: LayoutElement> Layout<W> {
         if let Some(window) = moved_window.filter(|_| moved_window_was_focused) {
             // The move may have been refused, so the target need not exist or
             // hold the window any more.
-            if let Some(workspace) = self
-                .workspaces_mut()
-                .find(|workspace| workspace.id() == target_workspace)
-            {
+            if let Some(workspace) = self.workspace_mut(target_workspace) {
                 workspace.activate_window(&window);
             }
         }
@@ -704,5 +697,17 @@ impl<W: LayoutElement> Layout<W> {
         let old_output = old_monitor.map(|monitor| monitor.output().clone());
         self.move_workspace_to_output_by_id(workspace.id(), old_output, &output);
         Ok(())
+    }
+
+    /// The workspace with `id`, on any output or none.
+    pub fn workspace(&self, id: WorkspaceId) -> Option<&Workspace<W>> {
+        self.workspaces()
+            .find(|(_, _, workspace)| workspace.id() == id)
+            .map(|(_, _, workspace)| workspace)
+    }
+
+    /// The workspace with `id`, on any output or none.
+    pub fn workspace_mut(&mut self, id: WorkspaceId) -> Option<&mut Workspace<W>> {
+        self.workspaces_mut().find(|workspace| workspace.id() == id)
     }
 }

@@ -55,10 +55,7 @@ impl<W: LayoutElement> Layout<W> {
         workspace_id: WorkspaceId,
         node: NodeId,
     ) -> Option<Option<tiling_tree::FullscreenMode>> {
-        let workspace = self
-            .workspaces()
-            .find(|(_, _, workspace)| workspace.id() == workspace_id)?
-            .2;
+        let workspace = self.workspace(workspace_id)?;
         workspace
             .contains_tiling_node(node)
             .then(|| workspace.tiling().fullscreen_mode(node))
@@ -78,17 +75,13 @@ impl<W: LayoutElement> Layout<W> {
                 }
             }
         }
-        if let Some(workspace) = self
-            .workspaces_mut()
-            .find(|workspace| workspace.id() == workspace_id)
-        {
+        if let Some(workspace) = self.workspace_mut(workspace_id) {
             workspace.tiling_mut().set_node_fullscreen(node, mode);
         }
         if mode == Some(tiling_tree::FullscreenMode::Global) {
             let target = self
-                .workspaces()
-                .find(|(_, _, workspace)| workspace.id() == workspace_id)
-                .and_then(|(_, _, workspace)| workspace.fullscreen_window().cloned());
+                .workspace(workspace_id)
+                .and_then(|workspace| workspace.fullscreen_window().cloned());
             if let Some(window) = target {
                 self.activate_window(&window);
             }

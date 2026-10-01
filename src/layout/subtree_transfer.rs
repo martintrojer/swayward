@@ -10,9 +10,8 @@ impl<W: LayoutElement> Layout<W> {
     }
 
     pub fn is_tiling_root(&self, workspace: WorkspaceId, node: tiling_tree::NodeId) -> bool {
-        self.workspaces()
-            .find(|(_, _, candidate)| candidate.id() == workspace)
-            .is_some_and(|(_, _, candidate)| candidate.tiling().is_root(node))
+        self.workspace(workspace)
+            .is_some_and(|candidate| candidate.tiling().is_root(node))
     }
 
     pub fn workspace_contains_tiling_node(
@@ -20,9 +19,8 @@ impl<W: LayoutElement> Layout<W> {
         workspace: WorkspaceId,
         node: tiling_tree::NodeId,
     ) -> bool {
-        self.workspaces()
-            .find(|(_, _, candidate)| candidate.id() == workspace)
-            .is_some_and(|(_, _, candidate)| candidate.contains_tiling_node(node))
+        self.workspace(workspace)
+            .is_some_and(|candidate| candidate.contains_tiling_node(node))
     }
 
     pub fn swap_tiling_nodes(
@@ -32,8 +30,7 @@ impl<W: LayoutElement> Layout<W> {
         second: tiling_tree::NodeId,
     ) -> Result<(), String> {
         let workspace = self
-            .workspaces_mut()
-            .find(|candidate| candidate.id() == workspace)
+            .workspace_mut(workspace)
             .ok_or_else(|| "No matching node.".to_owned())?;
         workspace
             .swap_tiling_nodes(first, second)
@@ -49,13 +46,11 @@ impl<W: LayoutElement> Layout<W> {
     ) -> Result<SwapRemap, String> {
         let fits = |workspace: WorkspaceId, slot: tiling_tree::NodeId, other_ws, other| {
             let height = self
-                .workspaces()
-                .find(|(_, _, candidate)| candidate.id() == other_ws)
-                .map(|(_, _, candidate)| candidate.tiling().node_height(other));
-            self.workspaces()
-                .find(|(_, _, candidate)| candidate.id() == workspace)
+                .workspace(other_ws)
+                .map(|candidate| candidate.tiling().node_height(other));
+            self.workspace(workspace)
                 .zip(height)
-                .is_some_and(|((_, _, candidate), height)| candidate.tiling().fits_at(slot, height))
+                .is_some_and(|(candidate, height)| candidate.tiling().fits_at(slot, height))
         };
         if !fits(first_workspace, first, second_workspace, second)
             || !fits(second_workspace, second, first_workspace, first)
@@ -147,8 +142,7 @@ impl<W: LayoutElement> Layout<W> {
     ) -> Result<Vec<(tiling_tree::NodeId, tiling_tree::NodeId)>, String> {
         if source_workspace == target_workspace {
             let workspace = self
-                .workspaces_mut()
-                .find(|workspace| workspace.id() == source_workspace)
+                .workspace_mut(source_workspace)
                 .ok_or_else(|| "No matching node.".to_owned())?;
             if !workspace.contains_tiling_node(source) || !workspace.contains_tiling_node(target) {
                 return Err("No matching node.".to_owned());
@@ -208,14 +202,11 @@ impl<W: LayoutElement> Layout<W> {
         preserve_empty_workspace: bool,
         auto_back_and_forth: bool,
     ) -> Result<(WorkspaceId, Vec<(tiling_tree::NodeId, tiling_tree::NodeId)>), String> {
-        let floating_group_window = self
-            .workspaces()
-            .find(|(_, _, workspace)| workspace.id() == source_workspace)
-            .and_then(|(_, _, workspace)| {
-                let floating = workspace.floating();
-                floating.tree(node)?;
-                floating.window_in_node(node).cloned()
-            });
+        let floating_group_window = self.workspace(source_workspace).and_then(|workspace| {
+            let floating = workspace.floating();
+            floating.tree(node)?;
+            floating.window_in_node(node).cloned()
+        });
         if let Some(window) = floating_group_window {
             self.move_window_to_sway_workspace(&window, target, auto_back_and_forth)?;
             let target_workspace = self
@@ -226,10 +217,9 @@ impl<W: LayoutElement> Layout<W> {
             return Ok((target_workspace, Vec::new()));
         }
         let (floating, empty_root) = self
-            .workspaces()
-            .find(|(_, _, workspace)| workspace.id() == source_workspace)
-            .filter(|(_, _, workspace)| workspace.tiling().is_root(node))
-            .map(|(_, _, workspace)| {
+            .workspace(source_workspace)
+            .filter(|workspace| workspace.tiling().is_root(node))
+            .map(|workspace| {
                 (
                     workspace.floating_transfer_window_ids(),
                     workspace.tiling().tiles().next().is_none(),

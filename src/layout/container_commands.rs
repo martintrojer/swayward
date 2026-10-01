@@ -58,8 +58,7 @@ impl<W: LayoutElement> Layout<W> {
         node: NodeId,
         value: &str,
     ) -> bool {
-        self.workspaces_mut()
-            .find(|workspace| workspace.id() == workspace_id)
+        self.workspace_mut(workspace_id)
             .is_some_and(|workspace| workspace.set_split_sticky(node, value))
     }
 
@@ -77,13 +76,10 @@ impl<W: LayoutElement> Layout<W> {
         node: NodeId,
         value: &str,
     ) -> Option<bool> {
-        let window = self
-            .workspaces()
-            .find(|(_, _, candidate)| candidate.id() == workspace)
-            .and_then(|(_, _, candidate)| {
-                candidate.floating().tree(node)?;
-                candidate.floating().window_in_node(node).cloned()
-            })?;
+        let window = self.workspace(workspace).and_then(|candidate| {
+            candidate.floating().tree(node)?;
+            candidate.floating().window_in_node(node).cloned()
+        })?;
         Some(self.set_sticky(&window, Some(node), value))
     }
 
@@ -261,8 +257,7 @@ impl<W: LayoutElement> Layout<W> {
         node: NodeId,
         layout: tiling_tree::Layout,
     ) -> bool {
-        self.workspaces_mut()
-            .find(|workspace| workspace.id() == workspace_id)
+        self.workspace_mut(workspace_id)
             .is_some_and(|workspace| workspace.set_tiling_target_layout(node, layout))
     }
 
@@ -273,8 +268,7 @@ impl<W: LayoutElement> Layout<W> {
         toggle: &swayward_ipc::command::LayoutToggle,
         container: bool,
     ) -> bool {
-        self.workspaces_mut()
-            .find(|workspace| workspace.id() == workspace_id)
+        self.workspace_mut(workspace_id)
             .is_some_and(|workspace| workspace.toggle_tiling_target_layout(node, toggle, container))
     }
 
@@ -284,8 +278,7 @@ impl<W: LayoutElement> Layout<W> {
         node: NodeId,
         container: bool,
     ) -> bool {
-        self.workspaces_mut()
-            .find(|workspace| workspace.id() == workspace_id)
+        self.workspace_mut(workspace_id)
             .is_some_and(|workspace| workspace.restore_tiling_target_layout(node, container))
     }
 
@@ -295,8 +288,7 @@ impl<W: LayoutElement> Layout<W> {
         node: NodeId,
         format: String,
     ) -> bool {
-        self.workspaces_mut()
-            .find(|workspace| workspace.id() == workspace_id)
+        self.workspace_mut(workspace_id)
             .is_some_and(|workspace| workspace.set_tiling_node_title_format(node, format))
     }
 
@@ -306,8 +298,7 @@ impl<W: LayoutElement> Layout<W> {
         node: NodeId,
         floating: bool,
     ) -> Option<NodeId> {
-        self.workspaces_mut()
-            .find(|workspace| workspace.id() == workspace_id)?
+        self.workspace_mut(workspace_id)?
             .set_container_floating(node, floating)
     }
 
@@ -319,10 +310,7 @@ impl<W: LayoutElement> Layout<W> {
     }
 
     pub fn window_in_node(&self, workspace_id: WorkspaceId, node: NodeId) -> Option<W::Id> {
-        let workspace = self
-            .workspaces()
-            .find(|(_, _, workspace)| workspace.id() == workspace_id)?
-            .2;
+        let workspace = self.workspace(workspace_id)?;
         workspace
             .tiling_node_windows(node)
             .and_then(|windows| windows.into_iter().next())
@@ -334,10 +322,7 @@ impl<W: LayoutElement> Layout<W> {
         workspace_id: WorkspaceId,
         node: NodeId,
     ) -> Option<Vec<W::Id>> {
-        self.workspaces()
-            .find(|(_, _, workspace)| workspace.id() == workspace_id)?
-            .2
-            .tiling_node_windows(node)
+        self.workspace(workspace_id)?.tiling_node_windows(node)
     }
 
     pub fn toggle_focused_layout(
