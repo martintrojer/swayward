@@ -108,17 +108,34 @@ fn dispatch_for(fixture: &mut Fixture, duration: Duration) {
     }
 }
 
-fn wait_for_locked(fixture: &mut Fixture, client: ClientId) {
-    let deadline = Instant::now() + Duration::from_secs(2);
-    while !fixture.client(client).state.session_locked && Instant::now() < deadline {
-        dispatch_for(fixture, Duration::from_millis(10));
+fn use_short_lock_deadline(fixture: &mut Fixture) {
+    fixture
+        .swayward()
+        .set_test_lock_deadline(Duration::from_millis(10));
+}
+
+fn wait_until(
+    fixture: &mut Fixture,
+    waiting_for: &str,
+    mut ready: impl FnMut(&mut Fixture) -> bool,
+) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !ready(fixture) && Instant::now() < deadline {
+        dispatch_for(fixture, Duration::from_millis(1));
     }
-    assert!(fixture.client(client).state.session_locked);
+    assert!(ready(fixture), "timed out waiting for {waiting_for}");
+}
+
+fn wait_for_locked(fixture: &mut Fixture, client: ClientId) {
+    wait_until(fixture, "the session-lock locked event", |fixture| {
+        fixture.client(client).state.session_locked
+    });
 }
 
 #[test]
 fn a_committed_lock_surface_is_confirmed_before_the_deadline() {
     let mut fixture = Fixture::new();
+    use_short_lock_deadline(&mut fixture);
     fixture.add_output(1, (800, 600));
     let client = fixture.add_client();
     let lock = begin_lock(&mut fixture, client);
@@ -133,6 +150,7 @@ fn a_committed_lock_surface_is_confirmed_before_the_deadline() {
 #[test]
 fn missing_and_late_lock_surface_commits_fall_back_to_the_secure_background() {
     let mut fixture = Fixture::new();
+    use_short_lock_deadline(&mut fixture);
     fixture.add_output(1, (800, 600));
     let client = fixture.add_client();
     let lock = begin_lock(&mut fixture, client);
@@ -141,7 +159,13 @@ fn missing_and_late_lock_surface_commits_fall_back_to_the_secure_background() {
 
     wait_for_locked(&mut fixture, client);
     commit_lock_surface(&mut fixture, client, &lock_surface, &surface, &configure);
-    dispatch_for(&mut fixture, Duration::from_millis(20));
+    wait_until(&mut fixture, "the secure lock background", |fixture| {
+        fixture
+            .swayward()
+            .output_state
+            .values()
+            .all(|state| state.lock_render_state == LockRenderState::Locked)
+    });
     assert!(fixture.client(client).state.session_locked);
     lock.unlock_and_destroy();
 }
@@ -149,6 +173,7 @@ fn missing_and_late_lock_surface_commits_fall_back_to_the_secure_background() {
 #[test]
 fn removing_the_only_output_during_lock_wait_confirms_and_readded_output_stays_locked() {
     let mut fixture = Fixture::new();
+    use_short_lock_deadline(&mut fixture);
     fixture.add_output(1, (800, 600));
     let client = fixture.add_client();
     let lock = begin_lock(&mut fixture, client);
@@ -158,7 +183,17 @@ fn removing_the_only_output_during_lock_wait_confirms_and_readded_output_stays_l
     fixture.swayward().remove_output(&output);
     wait_for_locked(&mut fixture, client);
     fixture.add_output(1, (800, 600));
-    dispatch_for(&mut fixture, Duration::from_millis(20));
+    wait_until(
+        &mut fixture,
+        "the re-added output's secure lock background",
+        |fixture| {
+            fixture
+                .swayward()
+                .output_state
+                .values()
+                .all(|state| state.lock_render_state == LockRenderState::Locked)
+        },
+    );
     assert!(fixture.client(client).state.session_locked);
     assert!(
         fixture
@@ -176,6 +211,7 @@ fn removing_the_only_output_during_lock_wait_confirms_and_readded_output_stays_l
 #[test]
 fn inactive_outputs_are_securely_confirmed_without_a_framebuffer() {
     let mut fixture = Fixture::new();
+    use_short_lock_deadline(&mut fixture);
     fixture.add_output(1, (800, 600));
     let client = fixture.add_client();
     let lock = begin_lock(&mut fixture, client);
@@ -192,6 +228,7 @@ fn inactive_outputs_are_securely_confirmed_without_a_framebuffer() {
 #[test]
 fn lock_watchdog_never_queues_over_an_in_flight_frame() {
     let mut fixture = Fixture::new();
+    use_short_lock_deadline(&mut fixture);
     fixture.add_output(1, (800, 600));
     fixture
         .swayward()
@@ -206,34 +243,31 @@ fn lock_watchdog_never_queues_over_an_in_flight_frame() {
     let lock = begin_lock(&mut fixture, client);
     fixture.roundtrip(client);
 
-    let deadline = Instant::now() + Duration::from_millis(1_250);
-    while Instant::now() < deadline {
-        fixture
-            .state
-            .server
-            .event_loop
-            .dispatch(Duration::from_millis(10), &mut fixture.state.server.state)
-            .unwrap();
-    }
-
-    assert!(matches!(
-        fixture
-            .swayward()
-            .output_state
-            .values()
-            .next()
-            .unwrap()
-            .redraw_state,
-        RedrawState::WaitingForVBlank {
-            redraw_needed: true
-        }
-    ));
+    wait_until(
+        &mut fixture,
+        "the lock watchdog to request a redraw",
+        |fixture| {
+            matches!(
+                fixture
+                    .swayward()
+                    .output_state
+                    .values()
+                    .next()
+                    .unwrap()
+                    .redraw_state,
+                RedrawState::WaitingForVBlank {
+                    redraw_needed: true
+                }
+            )
+        },
+    );
     lock.destroy();
 }
 
 #[test]
 fn a_skipped_lock_redraw_is_retried_until_the_client_is_confirmed() {
     let mut fixture = Fixture::new();
+    use_short_lock_deadline(&mut fixture);
     fixture.add_output(1, (800, 600));
     let client = fixture.add_client();
     let lock = begin_lock(&mut fixture, client);

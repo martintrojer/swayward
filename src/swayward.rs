@@ -236,6 +236,8 @@ pub struct Swayward {
     pub scheduler: Scheduler<()>,
     pub stop_signal: LoopSignal,
     pub shutdown_requested: bool,
+    #[cfg(test)]
+    lock_deadline: Duration,
     pub display_handle: DisplayHandle,
 
     /// Whether swayward was run with `--session`
@@ -1871,6 +1873,8 @@ impl Swayward {
             scheduler,
             stop_signal,
             shutdown_requested: false,
+            #[cfg(test)]
+            lock_deadline: Duration::from_millis(1000),
             socket_name,
             display_handle,
             is_session_instance,
@@ -2193,6 +2197,11 @@ impl Swayward {
             .unwrap();
     }
 
+    #[cfg(test)]
+    pub(crate) fn set_test_lock_deadline(&mut self, deadline: Duration) {
+        self.lock_deadline = deadline;
+    }
+
     pub fn is_locked(&self) -> bool {
         match self.lock_state {
             LockState::Unlocked | LockState::WaitingForSurfaces { .. } => false,
@@ -2245,7 +2254,11 @@ impl Swayward {
             // let's wait for the lock surfaces.
             //
             // Give them a second; swaylock can take its time to paint a big enough image.
-            let timer = Timer::from_duration(Duration::from_millis(1000));
+            #[cfg(not(test))]
+            let lock_deadline = Duration::from_millis(1000);
+            #[cfg(test)]
+            let lock_deadline = self.lock_deadline;
+            let timer = Timer::from_duration(lock_deadline);
             let deadline_token = self
                 .event_loop
                 .insert_source(timer, |_, _, state| {
