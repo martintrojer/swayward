@@ -224,10 +224,6 @@ fn explicit_move_position_is_not_clamped_to_exclusive_zones_like_sway() {
         // coordinate forms call `container_floating_move_to` unclamped
         // (:709, :775, :831, :917), which itself performs no bounds check
         // (`sway/sway/tree/container.c:1127-1159`).
-        //
-        // niri clamped every floating position into the working area instead.
-        // Asserting that here encoded niri's rule, so a request a sway client
-        // is entitled to make was silently overridden.
         let workspace = f.swayward().layout.active_workspace().unwrap();
         let (tile, pos, _) = workspace.tiles_with_render_positions().next().unwrap();
         let size = tile.tile_size();

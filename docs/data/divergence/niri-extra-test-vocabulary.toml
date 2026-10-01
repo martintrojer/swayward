@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/tests/fullscreen.rs", "src/tests/layer_shell.rs"]
+what = "name restored tiled-size tests with tiling vocabulary and isolate the retained overview/layer-focus interaction in a niri_extras fragment explicitly stating that sway has no overview."
+why = "Swayward retains some niri extras, but sway-focused tests must not imply that overview or scrolling-layout vocabulary is part of sway compatibility."
