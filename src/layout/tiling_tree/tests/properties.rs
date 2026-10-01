@@ -220,165 +220,181 @@ fn tiling_tree_proptest_cases() -> u32 {
     }
 }
 
-fn run_operations(ops: Vec<Op>) {
-    let mut tree = tree((1920., 1080.), 8.);
-    let mut peer = super::tests::tree((1280., 720.), 4.);
-    let mut ids = Vec::new();
-    let mut next_window = 0;
-    for op in ops {
+/// State for one `run_operations` case: the tree under test, a peer tree for cross-tree
+/// transfers, the leaves added so far and the next window id.
+struct PropState {
+    tree: TilingTree<TestWindow>,
+    peer: TilingTree<TestWindow>,
+    ids: Vec<NodeId>,
+    next_window: usize,
+}
+
+impl PropState {
+    fn new() -> Self {
+        Self {
+            tree: tree((1920., 1080.), 8.),
+            peer: super::tests::tree((1280., 720.), 4.),
+            ids: Vec::new(),
+            next_window: 0,
+        }
+    }
+
+    /// A tracked leaf, chosen by wrapping `index` over the live leaves.
+    fn pick_leaf(&self, index: usize) -> Option<NodeId> {
+        (!self.ids.is_empty()).then(|| self.ids[index % self.ids.len()])
+    }
+
+    /// Any node in depth-first order, chosen by wrapping `index`.
+    fn pick_node(&self, index: usize) -> Option<NodeId> {
+        let nodes: Vec<_> = self.tree.iter_depth_first().map(|(id, _)| id).collect();
+        (!nodes.is_empty()).then(|| nodes[index % nodes.len()])
+    }
+
+    /// The window id of a tracked leaf.
+    fn pick_window(&self, index: usize) -> Option<usize> {
+        let leaf = self.pick_leaf(index)?;
+        self.tree
+            .windows()
+            .find(|(id, _)| *id == leaf)
+            .map(|(_, window)| *window.id())
+    }
+
+    fn next_tile(&mut self) -> Tile<TestWindow> {
+        let tile = tile(self.next_window, self.tree.view_size());
+        self.next_window += 1;
+        tile
+    }
+
+    fn apply(&mut self, op: Op) {
+        match op {
+            Op::Add
+            | Op::Remove(_)
+            | Op::Split(..)
+            | Op::SetLayout(..)
+            | Op::ToggleLayout(_)
+            | Op::Consume(..)
+            | Op::Expel(..)
+            | Op::Drop(..) => self.apply_structure(op),
+            Op::FocusDirection(_) | Op::FocusParent | Op::FocusChild => self.apply_focus(op),
+            Op::Move(..)
+            | Op::ReorderFirst(_)
+            | Op::ReorderIndex(..)
+            | Op::ReorderLast(_)
+            | Op::Swap(..)
+            | Op::Transfer(..) => self.apply_transfer(op),
+            Op::Resize(..)
+            | Op::Fullscreen(..)
+            | Op::Maximize(..)
+            | Op::ResizeSession(..)
+            | Op::Border(..) => self.apply_sizing(op),
+        }
+    }
+
+    fn apply_structure(&mut self, op: Op) {
         match op {
             Op::Add => {
-                ids.push(tree.add_tile(tile(next_window, tree.view_size()), InsertTarget::Focused));
-                next_window += 1;
+                let tile = self.next_tile();
+                self.ids
+                    .push(self.tree.add_tile(tile, InsertTarget::Focused));
             }
             Op::Remove(index) => {
-                if !ids.is_empty() {
-                    let id = ids.remove(index % ids.len());
-                    tree.remove_tile_node(id);
+                if !self.ids.is_empty() {
+                    let id = self.ids.remove(index % self.ids.len());
+                    self.tree.remove_tile_node(id);
                 }
             }
             Op::Split(index, layout) => {
-                if !ids.is_empty() {
-                    tree.split(ids[index % ids.len()], layout);
+                if let Some(id) = self.pick_leaf(index) {
+                    self.tree.split(id, layout);
                 }
             }
             Op::SetLayout(index, layout) => {
-                let nodes: Vec<_> = tree.iter_depth_first().map(|(id, _)| id).collect();
-                if !nodes.is_empty() {
-                    tree.set_layout(nodes[index % nodes.len()], layout);
+                if let Some(id) = self.pick_node(index) {
+                    self.tree.set_layout(id, layout);
                 }
             }
-            Op::FocusDirection(direction) => {
-                tree.focus_direction(direction);
-            }
-            Op::FocusParent => {
-                tree.focus_parent();
-            }
-            Op::FocusChild => {
-                tree.focus_child();
-            }
-            Op::Move(index, direction) => {
-                if !ids.is_empty() {
-                    tree.move_direction(ids[index % ids.len()], direction);
-                }
-            }
-            Op::ReorderFirst(index) => {
-                let nodes: Vec<_> = tree.iter_depth_first().map(|(id, _)| id).collect();
-                if !nodes.is_empty() {
-                    tree.move_subtree_to_first(nodes[index % nodes.len()]);
-                }
-            }
-            Op::ReorderIndex(id, index) => {
-                let nodes: Vec<_> = tree.iter_depth_first().map(|(id, _)| id).collect();
-                if !nodes.is_empty() {
-                    tree.move_subtree_to_index(nodes[id % nodes.len()], index);
-                }
-            }
-            Op::ReorderLast(index) => {
-                let nodes: Vec<_> = tree.iter_depth_first().map(|(id, _)| id).collect();
-                if !nodes.is_empty() {
-                    tree.move_subtree_to_last(nodes[index % nodes.len()]);
-                }
-            }
-            Op::Resize(first, second, delta) => {
-                if !ids.is_empty() {
-                    tree.resize_adjacent(ids[first % ids.len()], ids[second % ids.len()], delta);
-                }
-            }
-            Op::Fullscreen(index, value) => {
-                if !ids.is_empty() {
-                    let window = tree
-                        .windows()
-                        .find(|(id, _)| *id == ids[index % ids.len()])
-                        .map(|(_, window)| *window.id());
-                    if let Some(window) = window {
-                        tree.set_fullscreen(&window, value);
-                    }
-                }
-            }
-            Op::Maximize(index, value) => {
-                if !ids.is_empty() {
-                    let window = tree
-                        .windows()
-                        .find(|(id, _)| *id == ids[index % ids.len()])
-                        .map(|(_, window)| *window.id());
-                    if let Some(window) = window {
-                        tree.set_maximized(&window, value);
-                    }
-                }
-            }
-            Op::ResizeSession(index, direction, delta) => {
-                if !ids.is_empty() {
-                    let window = tree
-                        .windows()
-                        .find(|(id, _)| *id == ids[index % ids.len()])
-                        .map(|(_, window)| *window.id());
-                    if let Some(window) = window {
-                        let edge = match direction {
-                            Direction::Left => crate::utils::ResizeEdge::LEFT,
-                            Direction::Right => crate::utils::ResizeEdge::RIGHT,
-                            Direction::Up => crate::utils::ResizeEdge::TOP,
-                            Direction::Down => crate::utils::ResizeEdge::BOTTOM,
-                        };
-                        if tree.interactive_resize_begin(window, edge) {
-                            tree.interactive_resize_update(&window, Point::from((delta, delta)));
-                            tree.interactive_resize_end(Some(&window));
-                        }
-                    }
+            Op::ToggleLayout(index) => {
+                if let Some(id) = self.pick_node(index) {
+                    self.tree.toggle_node_layout(id, &LayoutToggle::All);
                 }
             }
             Op::Consume(index, right) => {
-                if !ids.is_empty() {
-                    tree.consume(ids[index % ids.len()], right);
+                if let Some(id) = self.pick_leaf(index) {
+                    self.tree.consume(id, right);
                 }
             }
             Op::Expel(index, right) => {
-                if !ids.is_empty() {
-                    tree.expel(ids[index % ids.len()], right);
-                }
-            }
-            Op::Swap(first, second) => {
-                let nodes: Vec<_> = tree.iter_depth_first().map(|(id, _)| id).collect();
-                let first = nodes
-                    .get(first)
-                    .copied()
-                    .unwrap_or(NodeId(u64::MAX - first as u64));
-                let second = nodes
-                    .get(second)
-                    .copied()
-                    .unwrap_or(NodeId(u64::MAX - second as u64));
-                let _ = tree.swap_nodes(first, second);
-            }
-            Op::ToggleLayout(index) => {
-                let nodes: Vec<_> = tree.iter_depth_first().map(|(id, _)| id).collect();
-                if !nodes.is_empty() {
-                    tree.toggle_node_layout(nodes[index % nodes.len()], &LayoutToggle::All);
-                }
-            }
-            Op::Border(index, style) => {
-                let windows: Vec<_> = tree.windows().map(|(_, window)| *window.id()).collect();
-                if !windows.is_empty() {
-                    tree.set_window_border(&windows[index % windows.len()], style, Some(3));
+                if let Some(id) = self.pick_leaf(index) {
+                    self.tree.expel(id, right);
                 }
             }
             Op::Drop(index, edge) => {
-                let nodes: Vec<_> = tree.windows().map(|(id, _)| id).collect();
+                let nodes: Vec<_> = self.tree.windows().map(|(id, _)| id).collect();
                 if !nodes.is_empty() {
                     let target = nodes[index % nodes.len()];
-                    ids.push(tree.add_tile_at_drop(
-                        tile(next_window, tree.view_size()),
-                        target,
-                        edge,
-                        true,
-                    ));
-                    next_window += 1;
+                    let tile = self.next_tile();
+                    self.ids
+                        .push(self.tree.add_tile_at_drop(tile, target, edge, true));
                 }
+            }
+            _ => unreachable!("not a structure op: {op:?}"),
+        }
+    }
+
+    fn apply_focus(&mut self, op: Op) {
+        match op {
+            Op::FocusDirection(direction) => {
+                self.tree.focus_direction(direction);
+            }
+            Op::FocusParent => {
+                self.tree.focus_parent();
+            }
+            Op::FocusChild => {
+                self.tree.focus_child();
+            }
+            _ => unreachable!("not a focus op: {op:?}"),
+        }
+    }
+
+    fn apply_transfer(&mut self, op: Op) {
+        match op {
+            Op::Move(index, direction) => {
+                if let Some(id) = self.pick_leaf(index) {
+                    self.tree.move_direction(id, direction);
+                }
+            }
+            Op::ReorderFirst(index) => {
+                if let Some(id) = self.pick_node(index) {
+                    self.tree.move_subtree_to_first(id);
+                }
+            }
+            Op::ReorderIndex(id, index) => {
+                if let Some(id) = self.pick_node(id) {
+                    self.tree.move_subtree_to_index(id, index);
+                }
+            }
+            Op::ReorderLast(index) => {
+                if let Some(id) = self.pick_node(index) {
+                    self.tree.move_subtree_to_last(id);
+                }
+            }
+            Op::Swap(first, second) => {
+                // Out-of-range picks become ids that are not in the tree, so swaps also exercise
+                // the invalid-node path.
+                let nodes: Vec<_> = self.tree.iter_depth_first().map(|(id, _)| id).collect();
+                let pick = |index: usize| {
+                    nodes
+                        .get(index)
+                        .copied()
+                        .unwrap_or(NodeId(u64::MAX - index as u64))
+                };
+                let _ = self.tree.swap_nodes(pick(first), pick(second));
             }
             Op::Transfer(index, reverse) => {
                 let (source, destination) = if reverse {
-                    (&mut peer, &mut tree)
+                    (&mut self.peer, &mut self.tree)
                 } else {
-                    (&mut tree, &mut peer)
+                    (&mut self.tree, &mut self.peer)
                 };
                 let nodes: Vec<_> = source
                     .iter_depth_first()
@@ -392,11 +408,63 @@ fn run_operations(ops: Vec<Op>) {
                     }
                 }
             }
+            _ => unreachable!("not a transfer op: {op:?}"),
         }
-        sync_ids(&tree, &mut ids);
-        tree.check_invariants();
-        peer.check_invariants();
-        for tree in [&tree, &peer] {
+    }
+
+    fn apply_sizing(&mut self, op: Op) {
+        match op {
+            Op::Resize(first, second, delta) => {
+                if let (Some(first), Some(second)) = (self.pick_leaf(first), self.pick_leaf(second))
+                {
+                    self.tree.resize_adjacent(first, second, delta);
+                }
+            }
+            Op::Fullscreen(index, value) => {
+                if let Some(window) = self.pick_window(index) {
+                    self.tree.set_fullscreen(&window, value);
+                }
+            }
+            Op::Maximize(index, value) => {
+                if let Some(window) = self.pick_window(index) {
+                    self.tree.set_maximized(&window, value);
+                }
+            }
+            Op::ResizeSession(index, direction, delta) => {
+                if let Some(window) = self.pick_window(index) {
+                    let edge = match direction {
+                        Direction::Left => crate::utils::ResizeEdge::LEFT,
+                        Direction::Right => crate::utils::ResizeEdge::RIGHT,
+                        Direction::Up => crate::utils::ResizeEdge::TOP,
+                        Direction::Down => crate::utils::ResizeEdge::BOTTOM,
+                    };
+                    if self.tree.interactive_resize_begin(window, edge) {
+                        self.tree
+                            .interactive_resize_update(&window, Point::from((delta, delta)));
+                        self.tree.interactive_resize_end(Some(&window));
+                    }
+                }
+            }
+            Op::Border(index, style) => {
+                let windows: Vec<_> = self
+                    .tree
+                    .windows()
+                    .map(|(_, window)| *window.id())
+                    .collect();
+                if !windows.is_empty() {
+                    self.tree
+                        .set_window_border(&windows[index % windows.len()], style, Some(3));
+                }
+            }
+            _ => unreachable!("not a sizing op: {op:?}"),
+        }
+    }
+
+    fn check(&mut self) {
+        sync_ids(&self.tree, &mut self.ids);
+        self.tree.check_invariants();
+        self.peer.check_invariants();
+        for tree in [&self.tree, &self.peer] {
             check_ipc(&tree.ipc_tree(), &mut HashSet::new());
             if tree.fullscreen_node().is_none() {
                 check_geometry(tree);
@@ -404,6 +472,14 @@ fn run_operations(ops: Vec<Op>) {
                 check_rects_are_finite(tree);
             }
         }
+    }
+}
+
+fn run_operations(ops: Vec<Op>) {
+    let mut state = PropState::new();
+    for op in ops {
+        state.apply(op);
+        state.check();
     }
 }
 
@@ -558,158 +634,207 @@ fn floating_op_strategy() -> impl Strategy<Value = FloatingOp> {
     ]
 }
 
-fn run_resident_operations(ops: Vec<FloatingOp>) {
-    let view_size = Size::from((1920., 1080.));
-    let mut tiled = tree((1920., 1080.), 8.);
-    let mut resident: Option<(TilingTree<TestWindow>, NodeId)> = None;
-    let mut next_window = 0;
-    for op in ops {
+/// State for one `run_resident_operations` case: a tiled tree and, once a split has been
+/// floated, the resident tree that holds it with its root.
+struct ResidentState {
+    tiled: TilingTree<TestWindow>,
+    resident: Option<(TilingTree<TestWindow>, NodeId)>,
+    next_window: usize,
+}
+
+impl ResidentState {
+    const VIEW_SIZE: (f64, f64) = (1920., 1080.);
+
+    fn new() -> Self {
+        Self {
+            tiled: tree(Self::VIEW_SIZE, 8.),
+            resident: None,
+            next_window: 0,
+        }
+    }
+
+    /// Builds a resident tree for `subtree` at `rect`, as a floating group would hold it.
+    fn float(
+        subtree: DetachedSubtree<TestWindow>,
+        rect: Rectangle<f64, Logical>,
+    ) -> (TilingTree<TestWindow>, NodeId) {
+        let (tree, root, _) = TilingTree::from_detached_subtree(
+            Size::from(Self::VIEW_SIZE),
+            rect,
+            1.,
+            Clock::with_time(Duration::ZERO),
+            Rc::new(Options::default()),
+            subtree,
+        );
+        (tree, root)
+    }
+
+    /// Reconfigures the resident tree's parent area, as moving or resizing its group does.
+    fn reconfigure(
+        &mut self,
+        area: impl FnOnce(Rectangle<f64, Logical>) -> Rectangle<f64, Logical>,
+    ) {
+        if let Some((tree, _)) = &mut self.resident {
+            let area = area(tree.parent_area());
+            tree.update_config(
+                Size::from(Self::VIEW_SIZE),
+                area,
+                false,
+                1.,
+                Rc::new(Options::default()),
+            );
+        }
+    }
+
+    /// A resident leaf, chosen by wrapping `index`.
+    fn pick_resident_leaf(&self, index: usize) -> Option<NodeId> {
+        let (tree, _) = self.resident.as_ref()?;
+        let ids: Vec<_> = tree.windows().map(|(id, _)| id).collect();
+        (!ids.is_empty()).then(|| ids[index % ids.len()])
+    }
+
+    fn apply(&mut self, op: FloatingOp) {
         match op {
-            FloatingOp::Add => {
-                if let Some((tree, _)) = &mut resident {
-                    let parent = tree
-                        .focus()
-                        .filter(|id| tree.is_split(*id))
-                        .or_else(|| tree.windows().next().map(|(id, _)| id));
-                    if let Some(parent) = parent {
-                        tree.add_tile_to_subtree(parent, tile(next_window, tree.view_size()), true);
-                    }
-                } else {
-                    tiled.add_tile(tile(next_window, tiled.view_size()), InsertTarget::Focused);
-                }
-                next_window += 1;
-            }
+            FloatingOp::Add => self.add(),
             FloatingOp::Split(index, layout) => {
-                let target = resident
+                let target = self
+                    .resident
                     .as_mut()
                     .map(|(tree, _)| tree)
-                    .unwrap_or(&mut tiled);
+                    .unwrap_or(&mut self.tiled);
                 let leaves: Vec<_> = target.windows().map(|(id, _)| id).collect();
                 if let Some(id) = leaves.get(index % leaves.len().max(1)).copied() {
                     target.split(id, layout);
                 }
             }
-            FloatingOp::Float(index) if resident.is_none() => {
-                let nodes: Vec<_> = tiled
-                    .iter_depth_first()
-                    .filter_map(|(id, node)| {
-                        (id != tiled.root
-                            && matches!(node, TreeNode::Split { .. })
-                            && tiled.leaf_ids_in(id).len() > 1)
-                            .then_some(id)
-                    })
-                    .collect();
-                if let Some(id) = nodes.get(index % nodes.len().max(1)).copied() {
-                    if tiled.leaf_ids_in(id).len() > 1 {
-                        if let Some((subtree, old_parent)) = tiled.detach_subtree(id) {
-                            tiled.finish_subtree_detach(old_parent);
-                            let rect = Rectangle::new((100., 100.).into(), (800., 600.).into());
-                            let (tree, root, _) = TilingTree::from_detached_subtree(
-                                view_size,
-                                rect,
-                                1.,
-                                Clock::with_time(Duration::ZERO),
-                                Rc::new(Options::default()),
-                                subtree,
-                            );
-                            resident = Some((tree, root));
-                        }
-                    }
-                }
-            }
+            FloatingOp::Float(index) => self.float_split(index),
             FloatingOp::Unfloat => {
-                if let Some((tree, root)) = resident.take() {
+                if let Some((tree, root)) = self.resident.take() {
                     if let Some(subtree) = tree.detach_resident_root(root) {
-                        tiled.attach_subtree(subtree);
+                        self.tiled.attach_subtree(subtree);
                     }
                 }
             }
             FloatingOp::Move(x, y) => {
-                if let Some((tree, _)) = &mut resident {
-                    let old = tree.parent_area();
-                    tree.update_config(
-                        view_size,
-                        Rectangle::new((f64::from(x), f64::from(y)).into(), old.size),
-                        false,
-                        1.,
-                        Rc::new(Options::default()),
-                    );
-                }
+                self.reconfigure(|old| {
+                    Rectangle::new((f64::from(x), f64::from(y)).into(), old.size)
+                });
             }
             FloatingOp::OuterResize(w, h) => {
-                if let Some((tree, _)) = &mut resident {
-                    let old = tree.parent_area();
-                    tree.update_config(
-                        view_size,
-                        Rectangle::new(old.loc, (f64::from(w), f64::from(h)).into()),
-                        false,
-                        1.,
-                        Rc::new(Options::default()),
-                    );
-                }
+                self.reconfigure(|old| {
+                    Rectangle::new(old.loc, (f64::from(w), f64::from(h)).into())
+                });
             }
             FloatingOp::InternalResize(first, second, delta) => {
-                if let Some((tree, _)) = &mut resident {
-                    let ids: Vec<_> = tree.windows().map(|(id, _)| id).collect();
-                    if !ids.is_empty() {
-                        tree.resize_adjacent(
-                            ids[first % ids.len()],
-                            ids[second % ids.len()],
-                            delta,
-                        );
+                if let (Some(first), Some(second)) = (
+                    self.pick_resident_leaf(first),
+                    self.pick_resident_leaf(second),
+                ) {
+                    if let Some((tree, _)) = &mut self.resident {
+                        tree.resize_adjacent(first, second, delta);
                     }
                 }
             }
             FloatingOp::FocusParent => {
-                if let Some((tree, _)) = &mut resident {
+                if let Some((tree, _)) = &mut self.resident {
                     tree.focus_parent();
                 }
             }
             FloatingOp::FocusChild => {
-                if let Some((tree, _)) = &mut resident {
+                if let Some((tree, _)) = &mut self.resident {
                     tree.focus_child();
                 }
             }
             FloatingOp::Close(index) => {
-                if let Some((tree, _)) = &mut resident {
-                    let ids: Vec<_> = tree.windows().map(|(id, _)| id).collect();
-                    if let Some(id) = ids.get(index % ids.len().max(1)).copied() {
+                if let Some(id) = self.pick_resident_leaf(index) {
+                    if let Some((tree, _)) = &mut self.resident {
                         tree.remove_tile_node(id);
                     }
                 }
-                if resident.as_ref().is_some_and(|(tree, _)| tree.is_empty()) {
-                    resident = None;
+                if self
+                    .resident
+                    .as_ref()
+                    .is_some_and(|(tree, _)| tree.is_empty())
+                {
+                    self.resident = None;
                 }
             }
             FloatingOp::CrossWorkspace => {
-                if let Some((tree, root)) = resident.take() {
+                if let Some((tree, root)) = self.resident.take() {
                     if let Some(subtree) = tree.detach_resident_root(root) {
                         let rect = Rectangle::new((200., 150.).into(), (700., 500.).into());
-                        let (tree, root, _) = TilingTree::from_detached_subtree(
-                            view_size,
-                            rect,
-                            1.,
-                            Clock::with_time(Duration::ZERO),
-                            Rc::new(Options::default()),
-                            subtree,
-                        );
-                        resident = Some((tree, root));
+                        self.resident = Some(Self::float(subtree, rect));
                     }
                 }
             }
-            FloatingOp::Float(_) => {}
         }
-        tiled.check_invariants();
-        check_geometry(&tiled);
-        if let Some((tree, _)) = &resident {
+    }
+
+    fn add(&mut self) {
+        let window = self.next_window;
+        self.next_window += 1;
+        if let Some((tree, _)) = &mut self.resident {
+            let parent = tree
+                .focus()
+                .filter(|id| tree.is_split(*id))
+                .or_else(|| tree.windows().next().map(|(id, _)| id));
+            if let Some(parent) = parent {
+                tree.add_tile_to_subtree(parent, tile(window, tree.view_size()), true);
+            }
+        } else {
+            self.tiled
+                .add_tile(tile(window, self.tiled.view_size()), InsertTarget::Focused);
+        }
+    }
+
+    /// Floats a multi-window split of the tiled tree, while nothing is floating yet.
+    fn float_split(&mut self, index: usize) {
+        if self.resident.is_some() {
+            return;
+        }
+        let tiled = &self.tiled;
+        let nodes: Vec<_> = tiled
+            .iter_depth_first()
+            .filter_map(|(id, node)| {
+                (id != tiled.root
+                    && matches!(node, TreeNode::Split { .. })
+                    && tiled.leaf_ids_in(id).len() > 1)
+                    .then_some(id)
+            })
+            .collect();
+        let Some(id) = nodes.get(index % nodes.len().max(1)).copied() else {
+            return;
+        };
+        if self.tiled.leaf_ids_in(id).len() < 2 {
+            return;
+        }
+        if let Some((subtree, old_parent)) = self.tiled.detach_subtree(id) {
+            self.tiled.finish_subtree_detach(old_parent);
+            let rect = Rectangle::new((100., 100.).into(), (800., 600.).into());
+            self.resident = Some(Self::float(subtree, rect));
+        }
+    }
+
+    fn check(&self) {
+        self.tiled.check_invariants();
+        check_geometry(&self.tiled);
+        if let Some((tree, _)) = &self.resident {
             tree.check_invariants();
             assert!(!tree.is_empty());
             check_geometry(tree);
-            let tiled_ids: HashSet<_> = tiled.iter_depth_first().map(|(id, _)| id).collect();
+            let tiled_ids: HashSet<_> = self.tiled.iter_depth_first().map(|(id, _)| id).collect();
             assert!(tree
                 .iter_depth_first()
                 .all(|(id, _)| !tiled_ids.contains(&id)));
         }
+    }
+}
+
+fn run_resident_operations(ops: Vec<FloatingOp>) {
+    let mut state = ResidentState::new();
+    for op in ops {
+        state.apply(op);
+        state.check();
     }
 }
 
