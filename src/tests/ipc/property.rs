@@ -34,6 +34,10 @@ const CON_ID_COMMANDS: &[&str] = &[
     "kill",
 ];
 
+// Persisted proptest seeds select this slice by index. Reordering or inserting
+// entries changes what every `cc` line replays; named tests below are the durable
+// record of each shrunk sequence.
+//
 // Keep at least one executable form of every accepted family in
 // tests/sway/compatibility.toml. Variants below exercise forms with distinct
 // runtime paths rather than only the census probe.
@@ -809,6 +813,68 @@ fn targeted_scratchpad_window_can_be_moved_after_focus_changes() {
     let tree = run.tree();
     for app_id in ["app-0", "app-1"] {
         assert!(find_app(&tree, app_id).is_some(), "missing {app_id}");
+    }
+    run.finish();
+}
+
+#[test]
+fn moving_a_parent_between_workspaces_keeps_all_windows_reachable() {
+    let mut run = run_ops(vec![
+        Op::Command("move workspace 2"),
+        Op::Command("focus parent"),
+        Op::Command("move workspace 2"),
+        Op::Open(2),
+        Op::Command("focus parent"),
+        Op::Command("floating toggle"),
+    ]);
+
+    assert_success(run.last_outcome("floating toggle"), "floating toggle");
+    let tree = run.tree();
+    for app_id in ["app-0", "app-1", "app-2"] {
+        assert!(find_app(&tree, app_id).is_some(), "missing {app_id}");
+    }
+    run.finish();
+}
+
+#[test]
+fn sticky_toggle_after_repeated_directional_focus_keeps_windows_reachable() {
+    let mut run = run_ops(vec![
+        Op::Command("focus left"),
+        Op::Command("focus left"),
+        Op::Command("focus left"),
+        Op::Command("focus left"),
+        Op::Open(2),
+        Op::Command("focus parent"),
+        Op::Command("floating toggle"),
+        Op::Command("sticky toggle"),
+        Op::Command("workspace named"),
+    ]);
+
+    assert_success(run.last_outcome("sticky toggle"), "sticky toggle");
+    assert_success(run.last_outcome("workspace named"), "workspace named");
+    let tree = run.tree();
+    for app_id in ["app-0", "app-1", "app-2"] {
+        assert!(find_app(&tree, app_id).is_some(), "missing {app_id}");
+    }
+    run.finish();
+}
+
+#[test]
+fn changing_a_floating_parent_from_tabbed_to_split_is_rejected_safely() {
+    let run = run_ops(vec![
+        Op::Command("focus left"),
+        Op::Command("focus parent"),
+        Op::Command("floating toggle"),
+        Op::Command("layout tabbed"),
+        Op::Command("layout splith"),
+    ]);
+
+    for command in ["layout tabbed", "layout splith"] {
+        assert_failure(
+            run.last_outcome(command),
+            command,
+            "Unable to change layout of floating windows",
+        );
     }
     run.finish();
 }
