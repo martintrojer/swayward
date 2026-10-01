@@ -76,7 +76,7 @@ fn overlong_socket_path_fails_instead_of_truncating() {
 }
 
 #[test]
-fn write_buffer_doubles_and_rejects_the_first_size_above_four_mb() {
+fn write_buffer_matches_sways_doubling_limit() {
     let mut buffer = Vec::new();
     let mut size = INITIAL_WRITE_BUFFER_SIZE;
     queue_ipc_message(&mut buffer, &mut size, &[0; 100]).unwrap();

@@ -404,6 +404,12 @@ async fn handle_event_stream_client(client: EventStreamClient) -> anyhow::Result
     }
 }
 
+/// Append `message` to a subscriber's write buffer, growing the nominal size
+/// the way sway does (`sway/sway/ipc-server.c:946-955`): double until the
+/// queued bytes fit, then disconnect if the size exceeds 4,000,000. Because
+/// the size only takes power-of-two multiples of 128, the first size past
+/// the limit is 4,194,304, so a client is dropped once about 2 MiB is queued,
+/// not 4 MB. This matches sway on purpose.
 pub(super) fn queue_ipc_message(
     buffer: &mut Vec<u8>,
     buffer_size: &mut usize,
