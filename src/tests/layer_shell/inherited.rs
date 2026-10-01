@@ -311,12 +311,11 @@ fn workspace_rect_excludes_exclusive_zones() {
 }
 
 #[test]
-fn a_full_height_floating_window_stays_below_the_bar() {
-    // A window taller than the usable area makes the upper bound smaller than
-    // the lower one. Applying the maximum last then dragged the window back
-    // over the top bar, which is what `move absolute position` from a
-    // preset-size script produced. Bars on both edges are needed to reach it:
-    // with only a top bar the upper bound stays comfortably large.
+fn move_position_origin_is_the_usable_area() {
+    // `move position` is relative to the workspace's usable area: sway adds
+    // the workspace origin to both coordinates (sway/sway/commands/move.c:
+    // 913-916). A y coordinate of 0 therefore places this oversized floating
+    // window at the top exclusive zone's lower edge.
     let mut config = swayward_config::Config::default();
     config.animations.off = true;
     let mut f = Fixture::with_config(config);
@@ -373,7 +372,7 @@ fn a_full_height_floating_window_stays_below_the_bar() {
     let (_, pos, _) = workspace.tiles_with_render_positions().next().unwrap();
     assert!(
         pos.y >= 30.,
-        "a full-height floating window was pulled back over the bar at {pos:?}"
+        "move position 0 0 did not use the usable-area origin: {pos:?}"
     );
 }
 

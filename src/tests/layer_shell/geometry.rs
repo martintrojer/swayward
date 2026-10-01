@@ -139,7 +139,7 @@ fn exclusive_layers_shrink_tiling_before_non_exclusive_layers_are_arranged() {
 }
 
 #[test]
-fn floating_windows_do_not_overlap_exclusive_layers() {
+fn explicit_move_position_is_not_clamped_to_exclusive_zones_like_sway() {
     let cases = [
         (
             "top",
