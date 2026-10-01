@@ -241,6 +241,7 @@ fn stale_tree_leaf_is_omitted_without_panicking() {
         border_edges: crate::utils::ResizeEdge::all(),
         sticky: false,
         mapped_under_fullscreen: false,
+        moved_under_fullscreen: None,
     };
     assert!(crate::ipc::tree::describe_tiling(
         tree,
@@ -273,6 +274,7 @@ fn stale_tree_leaf_is_omitted_without_panicking() {
             border_edges: crate::utils::ResizeEdge::all(),
             sticky: false,
             mapped_under_fullscreen: false,
+            moved_under_fullscreen: None,
         }],
     };
     let node = crate::ipc::tree::describe_tiling(

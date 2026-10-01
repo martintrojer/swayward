@@ -866,3 +866,64 @@ fn moving_a_window_away_refocuses_the_most_recent_container_under_its_parent() {
         "the vacated split was focused through its window, so sway refocuses the split"
     );
 }
+
+// random seed 230 step 15 (sway-1.12-random): a window moved onto a workspace
+// whose child is fullscreen keeps its configured border and titlebar.
+// `container_move_to_workspace` (sway/commands/move.c:220-229) zeroes its
+// size, and `arrange_workspace` lays out only the fullscreen container
+// (sway/tree/arrange.c:310-316), so GET_TREE reports a zero-width box below
+// the titlebar rather than the border-less placeholder of a freshly mapped
+// window.
+#[test]
+fn moving_a_window_under_fullscreen_keeps_its_border() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1280, 720));
+    let client = f.add_client();
+    for (workspace, app_id) in [("2", "fullscreen"), ("1", "moved")] {
+        assert!(
+            crate::command::execute(f.niri_state(), &format!("workspace {workspace}"))[0].success
+        );
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+        if app_id == "fullscreen" {
+            assert!(crate::command::execute(f.niri_state(), "fullscreen enable")[0].success);
+        }
+    }
+
+    assert!(crate::command::execute(f.niri_state(), "move container to workspace 2")[0].success);
+
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(crate::ipc::tree::describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &swayward.marks_by_window,
+        &swayward.marks_by_container,
+    ))
+    .unwrap();
+    let moved = find_json_node_with_app_id(&tree, "moved").unwrap();
+    let fullscreen = find_json_node_with_app_id(&tree, "fullscreen").unwrap();
+    assert_eq!(moved["border"], "normal");
+    assert_eq!(moved["current_border_width"], fullscreen["current_border_width"]);
+    assert_eq!(moved["percent"], 0.0);
+    assert_eq!(fullscreen["percent"], 1.0);
+    let titlebar = moved["deco_rect"]["height"].as_i64().unwrap();
+    assert!(titlebar > 0);
+    assert_eq!(moved["rect"]["width"], 0);
+    assert_eq!(moved["rect"]["height"], -titlebar);
+    // `workspace_focus_fullscreen` raises the fullscreen view above the moved one.
+    let workspace = tree["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|output| output["nodes"].as_array().unwrap())
+        .find(|workspace| workspace["name"] == "2")
+        .unwrap();
+    assert_eq!(workspace["focus"][0], fullscreen["id"]);
+}

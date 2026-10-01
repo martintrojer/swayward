@@ -100,6 +100,7 @@ fn mapping_under_fullscreen_tab_keeps_normal_ipc_state() {
         IpcNode::Leaf {
             percent: Some(1.),
             mapped_under_fullscreen: false,
+            moved_under_fullscreen: None,
             ..
         }
     ));
@@ -149,6 +150,7 @@ fn mapping_into_container_under_fullscreen_is_arranged_without_focus() {
         IpcNode::Leaf {
             percent: Some(0.5),
             mapped_under_fullscreen: false,
+            moved_under_fullscreen: None,
             ..
         }
     ));
@@ -207,11 +209,13 @@ fn moving_a_fullscreen_leaf_reveals_later_windows_in_the_source_tree() {
             IpcNode::Leaf {
                 id,
                 mapped_under_fullscreen: false,
+                moved_under_fullscreen: None,
                 ..
             },
             IpcNode::Leaf {
                 id: revealed,
                 mapped_under_fullscreen: false,
+                moved_under_fullscreen: None,
                 ..
             },
         ] if *id == first && *revealed == mapped

@@ -1114,6 +1114,7 @@ impl<W: LayoutElement> Monitor<W> {
             .fullscreen_mode()
             .filter(|_| !tiling_fullscreen_elsewhere);
         let fullscreen_window = workspace.fullscreen_window().cloned();
+        let source_rect = workspace.tiling().ipc_rect_for_window(&window);
         let transaction = Transaction::new();
         let mut removed = workspace.remove_tile_for_transfer(&window, transaction);
         if tiling_fullscreen_elsewhere {
@@ -1153,6 +1154,10 @@ impl<W: LayoutElement> Monitor<W> {
                     .tiling_mut()
                     .mark_fullscreen_arrived();
             }
+        } else if let Some(source_rect) = source_rect {
+            self.workspaces[new_idx]
+                .tiling_mut()
+                .mark_moved_under_fullscreen(&window, source_rect);
         }
 
         if self.workspace_switch.is_none() {

@@ -138,6 +138,7 @@ pub(crate) fn describe_tiling<'a, I>(
             border_edges,
             sticky,
             mapped_under_fullscreen,
+            moved_under_fullscreen,
             ..
         } => {
             let Some(mapped) = find_window(&window) else {
@@ -213,6 +214,35 @@ pub(crate) fn describe_tiling<'a, I>(
                 }
                 _ => Rect::default(),
             };
+            if let Some(source) = moved_under_fullscreen {
+                // Sway zeroes a moved container's size and leaves it
+                // unarranged under the destination's fullscreen container
+                // (`container_move_to_workspace`, sway/commands/move.c:220-229;
+                // `arrange_workspace`, sway/tree/arrange.c:310-316), so the
+                // titlebar still claims its height from a zero-sized box and the
+                // view keeps its last content box.
+                let source = offset_rect(source, workspace_rect);
+                let titlebar = deco_rect.map_or(0, |rect| rect.size.h.round() as i32);
+                node.percent = Some(0.);
+                node.rect = Rect {
+                    x: source.x,
+                    y: source.y,
+                    width: 0,
+                    height: -titlebar,
+                };
+                node.deco_rect = Rect {
+                    x: source.x,
+                    y: 0,
+                    width: 0,
+                    height: titlebar,
+                };
+                node.window_rect = Rect {
+                    x: node.current_border_width,
+                    y: 0,
+                    width: (source.width - 2 * node.current_border_width).max(0),
+                    height: (source.height - node.current_border_width).max(0),
+                };
+            }
             Some(node)
         }
     }

@@ -199,6 +199,7 @@ impl<W: LayoutElement> TilingTree<W> {
         let node = self.remove_node(id)?;
         if removed_fullscreen {
             self.mapped_under_fullscreen.clear();
+            self.moved_under_fullscreen.clear();
         }
         let TreeNode::Leaf { mut tile } = node.value else {
             unreachable!();
@@ -240,6 +241,7 @@ impl<W: LayoutElement> TilingTree<W> {
         self.sticky_splits.remove(&id);
         self.pending_modes.remove(&id);
         self.mapped_under_fullscreen.remove(&id);
+        self.moved_under_fullscreen.remove(&id);
         self.fullscreen_layout_wrappers.remove(&id);
         self.pre_layout_ipc_rects.remove(&id);
         self.tab_indicators.remove(&id);
@@ -252,6 +254,7 @@ impl<W: LayoutElement> TilingTree<W> {
 
     pub(super) fn set_focus_id(&mut self, focus: Option<NodeId>) {
         self.focus = focus;
+        self.ipc_focus_follows_history = false;
         if let Some(id) = focus {
             // Sway raises every ancestor, outermost last, before the focused node itself, so the
             // node's parents become focus-inactive entries (`seat_set_workspace_focus`,

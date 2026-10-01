@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/monitor.rs"]
+what = "keep a window moved onto a fullscreen workspace bordered, zero-sized at its old position, out of the split, and below the fullscreen view in the focus list."
+why = "Sway zeroes the moved container's size (`container_move_to_workspace`, sway/commands/move.c:220-229), arranges only the fullscreen container (`arrange_workspace`, sway/tree/arrange.c:310-316) and re-raises the fullscreen focus-inactive view (`workspace_focus_fullscreen`, sway/commands/move.c:96-110). Random seed 311 covers it."

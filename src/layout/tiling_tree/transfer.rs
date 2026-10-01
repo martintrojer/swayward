@@ -144,6 +144,7 @@ impl<W: LayoutElement> TilingTree<W> {
         self.fullscreen_tile_slot = false;
         if moved_fullscreen {
             self.mapped_under_fullscreen.clear();
+            self.moved_under_fullscreen.clear();
             self.fullscreen_layout_wrappers.clear();
             self.pre_layout_ipc_rects.clear();
         }

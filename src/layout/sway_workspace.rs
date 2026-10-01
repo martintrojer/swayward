@@ -639,7 +639,14 @@ impl<W: LayoutElement> Layout<W> {
         if let Some(window) = moved_window.filter(|_| moved_window_was_focused) {
             // The move may have been refused, so the target need not exist or
             // hold the window any more.
-            if let Some(workspace) = self.workspace_mut(target_workspace) {
+            // Sway then raises the destination's fullscreen container back
+            // above a view moved under it (`workspace_focus_fullscreen`,
+            // sway/commands/move.c:96-110), so only refocus the moved view when
+            // nothing else on the destination is fullscreen.
+            if let Some(workspace) = self.workspace_mut(target_workspace).filter(|workspace| {
+                workspace.fullscreen_window().is_none()
+                    || workspace.fullscreen_contains_window(&window)
+            }) {
                 workspace.activate_window(&window);
             }
         }

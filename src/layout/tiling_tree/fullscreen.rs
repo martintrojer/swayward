@@ -38,6 +38,7 @@ impl<W: LayoutElement> TilingTree<W> {
                 mode.fullscreen = None;
             }
             self.mapped_under_fullscreen.clear();
+            self.moved_under_fullscreen.clear();
             self.fullscreen_layout_wrappers.clear();
             self.pre_layout_ipc_rects.clear();
         }

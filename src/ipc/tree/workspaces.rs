@@ -329,6 +329,9 @@ fn order_focus(
         return;
     }
     focus.extend(floating_focus);
+    if workspace.tiling().ipc_focus_follows_history() {
+        return;
+    }
     let stale_tiling = workspace
         .ipc_tiling_tree()
         .nodes()

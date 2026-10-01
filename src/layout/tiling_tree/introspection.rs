@@ -472,6 +472,7 @@ impl<'a, W: LayoutElement> IpcSnapshot<'a, W> {
         let fallback_titlebar = self.fullscreen.is_some()
             && tree.fullscreen_mode(id).is_none()
             && !tree.mapped_under_fullscreen.contains(&id)
+            && !tree.moved_under_fullscreen.contains_key(&id)
             && tile.has_configured_sway_titlebar()
             && (inside_pending_wrapper
                 || !geometries.titlebars.contains_key(&id)
@@ -504,6 +505,11 @@ impl<'a, W: LayoutElement> IpcSnapshot<'a, W> {
                 .then(|| geometries.titlebars.get(&id).map(|bar| bar.ipc_rect))
                 .flatten()
                 .or_else(|| {
+                    (tree.moved_under_fullscreen.contains_key(&id)
+                        && tile.has_configured_sway_titlebar())
+                    .then(|| Rectangle::new(Point::default(), (0., tree.titlebar_height).into()))
+                })
+                .or_else(|| {
                     fallback_titlebar.then(|| {
                         Rectangle::new(Point::default(), (rect.size.w, tree.titlebar_height).into())
                     })
@@ -516,6 +522,7 @@ impl<'a, W: LayoutElement> IpcSnapshot<'a, W> {
                 .unwrap_or_else(ResizeEdge::all),
             sticky: tile.is_sticky,
             mapped_under_fullscreen: tree.mapped_under_fullscreen.contains(&id),
+            moved_under_fullscreen: tree.moved_under_fullscreen.get(&id).copied(),
         }
     }
 }

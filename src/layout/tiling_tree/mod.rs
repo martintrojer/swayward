@@ -251,6 +251,8 @@ pub enum IpcNode<I> {
         border_edges: ResizeEdge,
         sticky: bool,
         mapped_under_fullscreen: bool,
+        /// Pre-move IPC box of a leaf moved into a fullscreen workspace.
+        moved_under_fullscreen: Option<Rectangle<f64, Logical>>,
     },
 }
 
@@ -357,6 +359,14 @@ pub struct TilingTree<W: LayoutElement> {
     sticky_splits: HashSet<NodeId>,
     pending_modes: HashMap<NodeId, PendingMode>,
     mapped_under_fullscreen: HashSet<NodeId>,
+    /// Leaves moved into this tree while it was fullscreen. Like mapped ones
+    /// they get no share of their parent's split, but they keep their border
+    /// and titlebar (`container_move_to_workspace`, sway/commands/move.c:220-229).
+    moved_under_fullscreen: HashMap<NodeId, Rectangle<f64, Logical>>,
+    /// The IPC focus list follows `focus_history` rather than window focus
+    /// timestamps, because the seat stack was reordered without focusing a
+    /// window (`workspace_focus_fullscreen`, sway/commands/move.c:96-110).
+    ipc_focus_follows_history: bool,
     /// The fullscreen node reports its tiled slot over IPC. Sway's
     /// `arrange_container(parent)` gives it the slot's pending box until the
     /// next workspace arrange restores the output box.

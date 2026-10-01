@@ -42,6 +42,8 @@ impl<W: LayoutElement> TilingTree<W> {
             sticky_splits: HashSet::new(),
             pending_modes: HashMap::new(),
             mapped_under_fullscreen: HashSet::new(),
+            moved_under_fullscreen: HashMap::new(),
+            ipc_focus_follows_history: false,
             fullscreen_tile_slot: false,
             fullscreen_arrived: false,
             fullscreen_layout_wrappers: HashSet::new(),

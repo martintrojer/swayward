@@ -74,6 +74,11 @@ impl<W: LayoutElement> TilingTree<W> {
                     .map(|id| ("mapped_under_fullscreen", id)),
             )
             .chain(
+                self.moved_under_fullscreen
+                    .keys()
+                    .map(|id| ("moved_under_fullscreen", id)),
+            )
+            .chain(
                 self.fullscreen_layout_wrappers
                     .iter()
                     .map(|id| ("fullscreen_layout_wrappers", id)),

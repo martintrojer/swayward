@@ -10,18 +10,60 @@ impl<W: LayoutElement> TilingTree<W> {
     /// moved container's width fraction and never re-arranges its new parent
     /// while the workspace is fullscreen, so the siblings keep their boxes.
     pub(super) fn split_excluded(&self) -> std::borrow::Cow<'_, HashSet<NodeId>> {
-        match self
+        let arrived = self
             .fullscreen_arrived
             .then(|| self.fullscreen_node())
-            .flatten()
-        {
-            Some(fullscreen) => {
-                let mut excluded = self.mapped_under_fullscreen.clone();
-                excluded.insert(fullscreen);
-                std::borrow::Cow::Owned(excluded)
-            }
-            None => std::borrow::Cow::Borrowed(&self.mapped_under_fullscreen),
+            .flatten();
+        if arrived.is_none() && self.moved_under_fullscreen.is_empty() {
+            return std::borrow::Cow::Borrowed(&self.mapped_under_fullscreen);
         }
+        let mut excluded = self.mapped_under_fullscreen.clone();
+        excluded.extend(arrived);
+        excluded.extend(self.moved_under_fullscreen.keys().copied());
+        std::borrow::Cow::Owned(excluded)
+    }
+
+    /// Record that `window` was moved into this tree while it was fullscreen.
+    /// `source_rect` is its IPC box in the source tree: sway keeps the moved
+    /// container's position and content box, zeroing only its width and height.
+    pub fn mark_moved_under_fullscreen(
+        &mut self,
+        window: &W::Id,
+        source_rect: Rectangle<f64, Logical>,
+    ) {
+        let Some(fullscreen) = self.fullscreen_node() else {
+            return;
+        };
+        if let Some(id) = self
+            .node_for_window(window)
+            .filter(|id| *id != fullscreen && !self.contains_node(fullscreen, *id))
+        {
+            self.mapped_under_fullscreen.remove(&id);
+            self.moved_under_fullscreen.insert(id, source_rect);
+            // `workspace_focus_fullscreen` (sway/commands/move.c:96-110) raises
+            // the fullscreen container's focus-inactive view back above the
+            // moved one, so the moved view's newer window focus no longer ranks
+            // it first in the workspace focus list.
+            // Sway's focus stack is seat-wide: the moved view, focused by the
+            // move, sits just below the re-raised fullscreen view.
+            self.focus_history.retain(|candidate| *candidate != id);
+            self.focus_history.insert(0, id);
+            if let Some(leaf) = self.focused_leaf_in(fullscreen) {
+                self.focus_history.retain(|candidate| *candidate != leaf);
+                self.focus_history.insert(0, leaf);
+                self.ipc_focus_follows_history = true;
+            }
+        }
+    }
+
+    pub fn ipc_focus_follows_history(&self) -> bool {
+        self.ipc_focus_follows_history
+    }
+
+    /// IPC box of a leaf as last arranged, before any transfer.
+    pub fn ipc_rect_for_window(&self, window: &W::Id) -> Option<Rectangle<f64, Logical>> {
+        let id = self.node_for_window(window)?;
+        self.compute_geometry().leaf_ipc_rects.remove(&id)
     }
 
     pub(super) fn compute_geometry(&self) -> geometry::Geometry<W::Id> {
