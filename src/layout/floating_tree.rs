@@ -730,6 +730,23 @@ impl<W: LayoutElement> FloatingLayout<W> {
         self.tree_entries.get_mut(idx)
     }
 
+    /// Pick the next floating focus when the active entry disappears.
+    ///
+    /// Sway asks the seat focus stack for the inactive container
+    /// (`seat_get_focus_inactive`, sway/sway/input/seat.c). Swayward stores
+    /// recursive floating roots and standalone windows separately; use one
+    /// fallback order everywhere so removal API choice cannot change focus.
+    fn fallback_active_window(&self) -> Option<W::Id> {
+        self.entries
+            .first()
+            .map(|entry| entry.tile.window().id().clone())
+            .or_else(|| {
+                self.tree_entries
+                    .iter()
+                    .find_map(|entry| entry.tree.active_window().map(|window| window.id().clone()))
+            })
+    }
+
     pub fn active_window(&self) -> Option<&W> {
         let id = self.active_window_id.as_ref()?;
         self.entries
@@ -916,16 +933,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
             .as_ref()
             .is_some_and(|active| window_ids.contains(active))
         {
-            self.active_window_id = self
-                .tree_entries
-                .first()
-                .and_then(|entry| entry.tree.active_window())
-                .map(|window| window.id().clone())
-                .or_else(|| {
-                    self.entries
-                        .first()
-                        .map(|entry| entry.tile.window().id().clone())
-                });
+            self.active_window_id = self.fallback_active_window();
         }
         Some(RemovedFloatingTree {
             tree: entry.tree,

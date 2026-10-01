@@ -144,17 +144,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
             self.tree_entries.remove(tree_idx);
         }
         if Some(tile.window().id()) == self.active_window_id.as_ref() {
-            self.active_window_id = self
-                .tree_entries
-                .iter()
-                .flat_map(|entry| entry.tree.windows())
-                .map(|(_, window)| window.id().clone())
-                .next()
-                .or_else(|| {
-                    self.entries
-                        .first()
-                        .map(|entry| entry.tile.window().id().clone())
-                });
+            self.active_window_id = self.fallback_active_window();
         }
         removed_floating_tile(tile, self.working_area)
     }
@@ -163,16 +153,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
         let FloatingEntry { mut tile, data } = self.entries.remove(idx);
 
         if Some(tile.window().id()) == self.active_window_id.as_ref() {
-            self.active_window_id = self
-                .entries
-                .first()
-                .map(|entry| entry.tile.window().id().clone())
-                .or_else(|| {
-                    self.tree_entries
-                        .first()
-                        .and_then(|entry| entry.tree.active_window())
-                        .map(|window| window.id().clone())
-                });
+            self.active_window_id = self.fallback_active_window();
         }
 
         // Stop interactive resize.

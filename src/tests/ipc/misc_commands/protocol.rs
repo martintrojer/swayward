@@ -568,3 +568,34 @@ fn marked_floating_group_keeps_its_mark_through_the_scratchpad() {
         "{tree:#}"
     );
 }
+#[test]
+fn hiding_active_standalone_float_falls_back_to_the_recursive_root() {
+    let mut fixture = nested_split_fixture();
+    assert!(crate::command::execute(fixture.niri_state(), "floating enable")[0].success);
+    let client = fixture.add_client();
+    let mut standalone = Vec::new();
+    for app_id in ["standalone-a", "standalone-b"] {
+        let window = fixture.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        fixture.roundtrip(client);
+        let window = fixture.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        fixture.double_roundtrip(client);
+        assert!(crate::command::execute(fixture.niri_state(), "floating enable")[0].success);
+        standalone.push(fixture.swayward().layout.focus().unwrap().id());
+    }
+    assert!(crate::command::execute(fixture.niri_state(), "move scratchpad")[0].success);
+    let active = fixture
+        .swayward()
+        .layout
+        .active_workspace()
+        .unwrap()
+        .floating()
+        .active_window()
+        .unwrap()
+        .id();
+    assert_eq!(active, standalone[0]);
+}
