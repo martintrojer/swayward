@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/tests/client.rs"]
+what = "replace byte-offset client harness fragments with include fragments grouped by Wayland protocol family."
+why = "The previous split placed xdg-shell dispatch under foreign_toplevel.rs and seat/output dispatch under workspace.rs, so protocol changes required searching unrelated file names."

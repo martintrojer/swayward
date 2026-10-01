@@ -1,5 +1,13 @@
 include!("client/core.rs");
-include!("client/wayland_dispatch.rs");
-include!("client/workspace.rs");
+include!("client/helpers.rs");
+include!("client/registry.rs");
+include!("client/core_protocols.rs");
+include!("client/xdg.rs");
+include!("client/layer_shell.rs");
+include!("client/session_lock.rs");
 include!("client/foreign_toplevel.rs");
-include!("client/output_protocols.rs");
+include!("client/ext_workspace.rs");
+include!("client/output_management.rs");
+include!("client/capture.rs");
+include!("client/input.rs");
+include!("client/misc.rs");
