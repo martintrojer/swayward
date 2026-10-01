@@ -267,11 +267,9 @@ impl<W: LayoutElement> TilingTree<W> {
                 self.focus_history.insert(0, ancestor);
             }
             self.focus_history.insert(0, id);
-            let stale = self.ipc_stale_nodes.clone();
-            self.ipc_stale_nodes = stale
-                .into_iter()
-                .filter(|candidate| !self.contains_node(*candidate, id))
-                .collect();
+            let mut stale = std::mem::take(&mut self.ipc_stale_nodes);
+            stale.retain(|candidate| !self.contains_node(*candidate, id));
+            self.ipc_stale_nodes = stale;
         }
     }
 
