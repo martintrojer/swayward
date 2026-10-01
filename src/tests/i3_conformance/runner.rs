@@ -106,7 +106,40 @@ impl ChildOutput {
     }
 }
 
+/// What one unchanged i3 file produced.
+struct I3Run {
+    success: bool,
+    stdout: String,
+    stderr: String,
+}
+
 fn run_i3_test(test: &str) {
+    let I3Run {
+        success,
+        stdout,
+        stderr,
+    } = run_i3_file(test);
+    let rejected = rejected_commands(&stderr).collect::<Vec<_>>();
+    let expected = expected_rejections(test)
+        .iter()
+        .map(|item| item.command)
+        .collect::<Vec<_>>();
+    let adapter_failed = stderr.contains("swayward xdotool adapter");
+    let skips = tap_skips(&stdout);
+    assert!(
+        success
+            && rejections_match(test, &rejected)
+            && !adapter_failed
+            && (!passing_tests().any(|green| green == test) || skips.is_empty()),
+        "i3 test {test} failed, its xdotool adapter failed, its rejected commands changed, or a green file skipped assertions\nTAP failures:\n{}\nTAP skips: {skips:?}\nexpected rejections: {expected:?}\nactual rejections: {rejected:?}\nstdout:\n{stdout}\nstderr:\n{stderr}",
+        tap_failure_summary(&stdout, &stderr),
+    );
+}
+
+/// Run one unchanged i3 file to completion and return its output without
+/// judging it. Panics only when the file times out or the harness itself
+/// fails.
+fn run_i3_file(test: &str) -> I3Run {
     let mut config = swayward_config::Config::default();
     config.layout.gaps = 0.;
     config.layout.border.off = false;
@@ -209,28 +242,17 @@ fn run_i3_test(test: &str) {
         if let Some(status) = child.child_mut().try_wait().unwrap() {
             child.disarm();
             let (stdout, stderr) = child_output.finish();
-            let stdout = String::from_utf8_lossy(&stdout);
+            let stdout = String::from_utf8_lossy(&stdout).into_owned();
             eprint!("{stdout}");
-            let stderr = String::from_utf8_lossy(&stderr);
+            let stderr = String::from_utf8_lossy(&stderr).into_owned();
             if !stderr.is_empty() {
                 eprint!("{stderr}");
             }
-            let rejected = rejected_commands(&stderr).collect::<Vec<_>>();
-            let expected = expected_rejections(test)
-                .iter()
-                .map(|item| item.command)
-                .collect::<Vec<_>>();
-            let adapter_failed = stderr.contains("swayward xdotool adapter");
-            let skips = tap_skips(&stdout);
-            assert!(
-                status.success()
-                    && rejections_match(test, &rejected)
-                    && !adapter_failed
-                    && (!passing_tests().any(|green| green == test) || skips.is_empty()),
-                "i3 test {test} failed, its xdotool adapter failed, its rejected commands changed, or a green file skipped assertions\nTAP failures:\n{}\nTAP skips: {skips:?}\nexpected rejections: {expected:?}\nactual rejections: {rejected:?}\nstdout:\n{stdout}\nstderr:\n{stderr}",
-                tap_failure_summary(&stdout, &stderr),
-            );
-            break;
+            return I3Run {
+                success: status.success(),
+                stdout,
+                stderr,
+            };
         }
         if Instant::now() >= deadline {
             child.child_mut().kill().unwrap();

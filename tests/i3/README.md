@@ -218,6 +218,16 @@ Select another vendored file with, for example:
 SWAYWARD_I3_TEST=122-split.t cargo test -p swayward i3_conformance_runner -- --nocapture
 ```
 
+The default gate does not re-run the non-green files, which hold most recorded
+passes. To check that none of them lost a pass, run the ratchet. It re-runs
+every non-green file with recorded passes, four at a time, and fails on any
+file whose first-stream pass count fell below its row. It also lists files
+that pass more than their rows record:
+
+```sh
+SWAYWARD_I3_RATCHET=1 cargo test -p swayward --lib i3_conformance_non_green -- --nocapture
+```
+
 Passing files keep the adapter wired into the normal test gate. Other vendored
 files intentionally retain their failing assertions: those failures are
 conformance findings, not expectations to bless or silently skip. See the task
