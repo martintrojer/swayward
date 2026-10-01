@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/mod.rs"]
+what = "drop the constant-false conjuncts left in Layout::add_output when `empty-workspace-above-first` was retired (0075-mod-rs), and replace the comment that justified them."
+why = "The option became the literal `false`, leaving dead branches and a comment about an always-empty leading workspace that swayward's sway workspace model does not have."

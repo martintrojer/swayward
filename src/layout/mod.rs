@@ -898,20 +898,9 @@ impl<W: LayoutElement> Layout<W> {
                             workspaces.push(ws);
                         }
 
-                        if i <= primary.active_workspace_idx
-                            // Generally when moving the currently active workspace, we want to
-                            // fall back to the workspace above, so as not to end up on the last
-                            // empty workspace. However, with empty workspace above first, when
-                            // moving the workspace at index 1 (first non-empty), we want to stay
-                            // at index 1, so as once again not to end up on an empty workspace.
-                            //
-                            // This comes into play at compositor startup when having named
-                            // workspaces set up across multiple monitors. Without this check, the
-                            // first monitor to connect can end up with the first empty workspace
-                            // focused instead of the first named workspace.
-                            && !(false
-                                && primary.active_workspace_idx == 1)
-                        {
+                        // A reclaimed workspace at or before the active one shifts the
+                        // active index down.
+                        if i <= primary.active_workspace_idx {
                             primary.active_workspace_idx =
                                 primary.active_workspace_idx.saturating_sub(1);
                         }
@@ -919,7 +908,7 @@ impl<W: LayoutElement> Layout<W> {
                 }
 
                 // If we stopped a workspace switch, then we might need to clean up workspaces.
-                if stopped_primary_ws_switch || (false && primary.workspaces.len() == 2) {
+                if stopped_primary_ws_switch {
                     primary.clean_up_workspaces();
                 }
 
