@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/main.rs", "src/swayward.rs", "src/swayward/capture.rs", "src/utils/watcher.rs"]
+what = "delete the niri-only overview, config-loaded, screenshot and cast IPC events with their state parts and refresh functions; expire screencopy casts directly from the per-frame refresh."
+why = "The niri socket server is gone and the sway event stream drops these events, so they were computed for no consumer. Sway emits workspace::reload for config reloads (sway/commands/reload.c:34), which config_reload.rs already sends."
