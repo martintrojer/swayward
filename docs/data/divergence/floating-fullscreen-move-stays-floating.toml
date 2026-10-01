@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/workspace.rs"]
+what = "keep `restore_to_floating` set on a floating fullscreen window when fullscreen is re-applied after moving it to another workspace."
+why = "Sway keeps a moved floating container floating (`container_move_to_workspace`, sway/commands/move.c:203-219); re-applying fullscreen on the destination overwrote the flag the moved tile already carried, so GET_TREE reported a tiled `con`. Random seed 105 covers it."

@@ -1348,6 +1348,9 @@ impl<W: LayoutElement> Workspace<W> {
         self.tiling.set_fullscreen(window, is_fullscreen);
 
         // When going from normal to fullscreen, remember if we should unfullscreen to floating.
+        // A tile that arrived from another workspace already carries that answer
+        // (`restore_to_floating` from `add_tile`); only a window leaving the
+        // floating layer here sets it, and only a tiled one clears it.
         let Some(tile) = self
             .tiling
             .tiles_mut()
@@ -1356,7 +1359,7 @@ impl<W: LayoutElement> Workspace<W> {
             return;
         };
         if was_normal && !tile.window().pending_sizing_mode().is_normal() {
-            tile.restore_to_floating = restore_to_floating;
+            tile.restore_to_floating |= restore_to_floating;
         }
     }
 

@@ -366,6 +366,46 @@ fn moving_a_window_out_of_a_fullscreen_container_leaves_fullscreen_behind() {
     );
 }
 
+// random seed 105 step 17 (sway-1.12-random): a floating fullscreen window
+// moved to another workspace stays a floating container there
+// (`container_move_to_workspace`, sway/commands/move.c:203-219).
+#[test]
+fn moving_a_floating_fullscreen_window_keeps_it_floating() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1280, 720));
+    let client = f.add_client();
+    for (workspace, app_id) in [("2", "tiled"), ("1", "floating")] {
+        assert!(
+            crate::command::execute(f.niri_state(), &format!("workspace {workspace}"))[0].success
+        );
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+    assert!(crate::command::execute(f.niri_state(), "floating enable")[0].success);
+    assert!(crate::command::execute(f.niri_state(), "fullscreen enable")[0].success);
+
+    assert!(crate::command::execute(f.niri_state(), "move container to workspace 2")[0].success);
+
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(crate::ipc::tree::describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &swayward.marks_by_window,
+        &swayward.marks_by_container,
+    ))
+    .unwrap();
+    let moved = find_json_node_with_app_id(&tree, "floating").unwrap();
+    assert_eq!(moved["type"], "floating_con");
+    assert_eq!(moved["fullscreen_mode"], 1);
+}
+
 #[test]
 fn live_ipc_move_to_an_empty_workspace_preserves_the_container_layout() {
     let (mut f, socket) = ipc_fixture();
