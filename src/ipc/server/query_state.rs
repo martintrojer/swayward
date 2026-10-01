@@ -12,6 +12,11 @@ pub(super) struct QueryState {
     pub(super) binding_state: String,
     pub(super) inputs: String,
     pub(super) seats: String,
+    /// GET_TREE's focused node id, which is also the seat's focus.
+    pub(super) seat_focus: i64,
+    /// The serialised input devices, kept to rebuild `seats` when focus moves.
+    pub(super) seat_devices: Vec<serde_json::Value>,
+    pub(super) seat_capabilities: u32,
 }
 
 /// Recompute every cached query reply from live compositor state.
@@ -161,27 +166,53 @@ pub(super) fn refresh_input_query_state(
     let devices = describe_inputs(swayward);
     state.inputs = serde_json::to_string(&devices).unwrap_or_else(|_| "[]".into());
 
-    let capabilities = devices.iter().fold(0, |capabilities, device| {
+    let capabilities = seat_capabilities(&devices);
+    state.seat_devices = devices;
+    state.seat_capabilities = capabilities;
+    refresh_seats(state);
+}
+
+/// The seat's `wl_seat` capability bits, folded from its input devices.
+///
+/// Sway gives a tablet tool the pointer capability, while switches and tablet
+/// pads add none (`sway/sway/input/seat.c:604-625`).
+fn seat_capabilities(devices: &[serde_json::Value]) -> u32 {
+    devices.iter().fold(0, |capabilities, device| {
         capabilities
             | match device["type"].as_str() {
-                Some("pointer") => 1,
+                Some("pointer" | "tablet_tool") => 1,
                 Some("keyboard") => 2,
                 Some("touch") => 4,
                 _ => 0,
             }
-    });
-    let focus = swayward
-        .layout
-        .focus()
-        .map(|window| crate::ipc::tree::window_id(window.id()))
-        .unwrap_or(0);
+    })
+}
+
+/// Rebuild GET_SEATS from the cached devices and the tree's focused node.
+fn refresh_seats(state: &mut QueryState) {
     state.seats = serde_json::to_string(&[IpcSeat {
         name: "seat0",
-        capabilities,
-        focus,
-        devices: &devices,
+        capabilities: state.seat_capabilities,
+        focus: state.seat_focus,
+        devices: &state.seat_devices,
     }])
     .unwrap_or_else(|_| "[]".into());
+}
+
+/// The id of the single node GET_TREE marks focused.
+///
+/// Sway reports `seat_get_focus(seat)` for the seat, which is any node: a
+/// view, a split container after `focus parent`, or the workspace when it is
+/// empty (`sway/sway/ipc-json.c:1238`). GET_TREE marks the same node
+/// `focused`, so the two replies cannot disagree.
+fn tree_focus(node: &swayward_ipc::Node) -> Option<i64> {
+    if node.focused {
+        return Some(node.id);
+    }
+    node.nodes
+        .iter()
+        .chain(&node.floating_nodes)
+        .find_map(tree_focus)
 }
 
 pub(crate) fn find_node_by_id(value: &serde_json::Value, id: i64) -> Option<&serde_json::Value> {
@@ -292,6 +323,11 @@ pub(super) fn refresh_query_state(
     state: &mut QueryState,
 ) {
     let tree = describe_tree_with_power(layout, global_space, marks, container_marks, output_power);
+    let focus = tree_focus(&tree).unwrap_or(0);
+    if focus != state.seat_focus {
+        state.seat_focus = focus;
+        refresh_seats(state);
+    }
     state.tree = serde_json::to_string(&tree)
         .unwrap_or_else(|_| r#"{"success":false,"error":"serialization failed"}"#.into());
     state.workspaces = serde_json::to_string(&describe_workspaces_with_marks(
@@ -350,4 +386,25 @@ pub(super) fn refresh_query_state(
     collect_marks(&tree, &mut all_marks);
     state.marks = serde_json::to_string(&all_marks)
         .unwrap_or_else(|_| r#"{"success":false,"error":"serialization failed"}"#.into());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::seat_capabilities;
+
+    #[test]
+    fn tablet_tools_give_the_seat_pointer_capability_like_sway() {
+        let devices = |types: &[&str]| {
+            types
+                .iter()
+                .map(|kind| serde_json::json!({ "type": kind }))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(seat_capabilities(&devices(&["tablet_tool"])), 1);
+        assert_eq!(seat_capabilities(&devices(&["tablet_pad", "switch"])), 0);
+        assert_eq!(
+            seat_capabilities(&devices(&["keyboard", "pointer", "touch", "tablet_tool"])),
+            7
+        );
+    }
 }

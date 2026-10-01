@@ -575,3 +575,60 @@ fn run_command_splits_on_newlines_like_sway() {
         assert_eq!(workspaces(&mut fixture, &mut stream), [focused], "{payload:?}");
     }
 }
+
+/// Oracle: empty/seats, and the seats rows of every captured scenario, where
+/// sway's seat focus is the id of GET_TREE's single focused node: a workspace
+/// when it is empty, a split container after `focus parent`
+/// (`sway/sway/ipc-json.c:1238`, `seat_get_focus`).
+#[test]
+fn get_seats_focus_is_the_focused_tree_node() {
+    let (mut fixture, socket) = ipc_fixture();
+    fixture.add_output(1, (1280, 720));
+    let mut stream = UnixStream::connect(socket).unwrap();
+    fn focused_id(node: &Value) -> Option<i64> {
+        if node["focused"] == true {
+            return node["id"].as_i64();
+        }
+        ["nodes", "floating_nodes"]
+            .into_iter()
+            .filter_map(|key| node[key].as_array())
+            .flatten()
+            .find_map(focused_id)
+    }
+    let check = |fixture: &mut Fixture, stream: &mut UnixStream, expected_type: &str| {
+        fixture.niri_state().ipc_refresh_layout();
+        let tree = query_ipc(fixture, stream, MessageType::GetTree);
+        let seats = query_ipc(fixture, stream, MessageType::GetSeats);
+        let focused = focused_id(&tree).unwrap();
+        let node = crate::ipc::server::find_node_by_id(&tree, focused).unwrap();
+        assert_eq!(node["type"], expected_type, "{tree:#}");
+        assert_eq!(seats[0]["focus"], focused, "{seats:#}");
+    };
+
+    check(&mut fixture, &mut stream, "workspace");
+
+    let client = fixture.add_client();
+    for _ in 0..2 {
+        let window = fixture.client(client).create_window();
+        window.commit();
+        let surface = window.surface.clone();
+        fixture.roundtrip(client);
+        let window = fixture.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        fixture.double_roundtrip(client);
+    }
+    check(&mut fixture, &mut stream, "con");
+
+    // splitv wraps the focused window, so one `focus parent` selects the new
+    // split container.
+    assert!(crate::command::execute(fixture.niri_state(), "splitv")[0].success);
+    assert!(crate::command::execute(fixture.niri_state(), "focus parent")[0].success);
+    check(&mut fixture, &mut stream, "con");
+    let tree = query_ipc(&mut fixture, &mut stream, MessageType::GetTree);
+    let focused = crate::ipc::server::find_node_by_id(&tree, focused_id(&tree).unwrap()).unwrap();
+    assert!(
+        !focused["nodes"].as_array().unwrap().is_empty(),
+        "focus parent selects a split container: {focused:#}"
+    );
+}
