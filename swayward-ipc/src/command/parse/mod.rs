@@ -532,4 +532,6 @@ pub fn parse_boolean(value: &str, current: bool) -> bool {
 }
 
 #[cfg(test)]
+mod command_tests;
+#[cfg(test)]
 mod tests;
