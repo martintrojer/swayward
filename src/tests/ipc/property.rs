@@ -169,18 +169,22 @@ const COMMANDS: &[&str] = &[
     "kill",
 ];
 
-fn map_window(fixture: &mut Fixture, client: super::client::ClientId, slot: u8) -> WlSurface {
-    let window = fixture.client(client).create_window();
-    window.xdg_toplevel.set_app_id(format!("app-{slot}"));
-    window.set_title(&format!("window-{slot}"));
-    let surface = window.surface.clone();
-    window.commit();
-    fixture.roundtrip(client);
-    let window = fixture.client(client).window(&surface);
-    window.attach_new_buffer();
-    window.ack_last_and_commit();
-    fixture.double_roundtrip(client);
-    surface
+fn map_property_window(
+    fixture: &mut Fixture,
+    client: super::client::ClientId,
+    slot: u8,
+) -> WlSurface {
+    let app_id = format!("app-{slot}");
+    let title = format!("window-{slot}");
+    windows::map_window(
+        fixture,
+        client,
+        windows::WindowSpec {
+            app_id: Some(&app_id),
+            title: Some(&title),
+            ..Default::default()
+        },
+    )
 }
 
 fn unmap_window(fixture: &mut Fixture, client: super::client::ClientId, surface: &WlSurface) {
@@ -375,8 +379,8 @@ fn run_ops(ops: Vec<Op>) -> Run {
     fixture.add_output_at(2, (1280, 720), Some((1280, 0)));
     let client = fixture.add_client();
     let mut windows: Vec<Option<WlSurface>> = vec![None; 6];
-    windows[0] = Some(map_window(&mut fixture, client, 0));
-    windows[1] = Some(map_window(&mut fixture, client, 1));
+    windows[0] = Some(map_property_window(&mut fixture, client, 0));
+    windows[1] = Some(map_property_window(&mut fixture, client, 1));
     assert_state(&mut fixture);
 
     for op in ops {
@@ -432,7 +436,7 @@ fn run_ops(ops: Vec<Op>) -> Run {
             Op::Open(slot) => {
                 let slot = usize::from(slot);
                 if windows[slot].is_none() {
-                    windows[slot] = Some(map_window(&mut fixture, client, slot as u8));
+                    windows[slot] = Some(map_property_window(&mut fixture, client, slot as u8));
                 }
             }
             Op::Close(slot) => {

@@ -1,15 +1,14 @@
 fn add_two_tiled_windows(fixture: &mut Fixture) {
     let client = fixture.add_client();
     for app_id in ["left", "right"] {
-        let window = fixture.client(client).create_window();
-        window.xdg_toplevel.set_app_id(app_id.into());
-        let surface = window.surface.clone();
-        window.commit();
-        fixture.roundtrip(client);
-        let window = fixture.client(client).window(&surface);
-        window.attach_new_buffer();
-        window.ack_last_and_commit();
-        fixture.double_roundtrip(client);
+        windows::map_window(
+            fixture,
+            client,
+            windows::WindowSpec {
+                app_id: Some(app_id),
+                ..Default::default()
+            },
+        );
     }
 }
 

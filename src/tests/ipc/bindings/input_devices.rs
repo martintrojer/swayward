@@ -588,14 +588,7 @@ fn translated_keysym_binding_fires_in_its_xkb_layout() {
 
 fn add_tiled_windows(fixture: &mut Fixture, client: super::client::ClientId, count: usize) {
     for _ in 0..count {
-        let window = fixture.client(client).create_window();
-        window.commit();
-        let surface = window.surface.clone();
-        fixture.roundtrip(client);
-        let window = fixture.client(client).window(&surface);
-        window.attach_new_buffer();
-        window.ack_last_and_commit();
-        fixture.double_roundtrip(client);
+        windows::map_window(fixture, client, windows::WindowSpec::default());
     }
 }
 

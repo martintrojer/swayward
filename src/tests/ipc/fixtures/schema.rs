@@ -332,16 +332,15 @@ fn nested_live_tree() -> Value {
     f.add_output(1, (1920, 1080));
     let id = f.add_client();
     for title in ["fixture-1", "fixture-2", "fixture-3"] {
-        let window = f.client(id).create_window();
-        window.xdg_toplevel.set_app_id(title.into());
-        window.set_title(title);
-        let surface = window.surface.clone();
-        window.commit();
-        f.roundtrip(id);
-        let window = f.client(id).window(&surface);
-        window.attach_new_buffer();
-        window.ack_last_and_commit();
-        f.double_roundtrip(id);
+        windows::map_window(
+            &mut f,
+            id,
+            windows::WindowSpec {
+                app_id: Some(title),
+                title: Some(title),
+                ..Default::default()
+            },
+        );
     }
     f.swayward().layout.nest_or_unnest_window_left(None);
     f.swayward().layout.move_down();
@@ -365,16 +364,15 @@ fn nested_representation_live_tree() -> Value {
         if index == 2 {
             assert!(crate::command::execute(f.niri_state(), "split horizontal")[0].success);
         }
-        let window = f.client(client).create_window();
-        window.xdg_toplevel.set_app_id(title.into());
-        window.set_title(title);
-        let surface = window.surface.clone();
-        window.commit();
-        f.roundtrip(client);
-        let window = f.client(client).window(&surface);
-        window.attach_new_buffer();
-        window.ack_last_and_commit();
-        f.double_roundtrip(client);
+        windows::map_window(
+            &mut f,
+            client,
+            windows::WindowSpec {
+                app_id: Some(title),
+                title: Some(title),
+                ..Default::default()
+            },
+        );
     }
     let swayward = f.swayward();
     serde_json::to_value(describe_tree(
@@ -391,14 +389,7 @@ fn mixed_live_tree() -> Value {
     f.add_output(1, (1920, 1080));
     let client = f.add_client();
     for floating in [false, true] {
-        let window = f.client(client).create_window();
-        window.commit();
-        let surface = window.surface.clone();
-        f.roundtrip(client);
-        let window = f.client(client).window(&surface);
-        window.attach_new_buffer();
-        window.ack_last_and_commit();
-        f.double_roundtrip(client);
+        windows::map_window(&mut f, client, windows::WindowSpec::default());
         if floating {
             assert!(crate::command::execute(f.niri_state(), "floating enable")[0].success);
         }

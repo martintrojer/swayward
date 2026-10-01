@@ -12,28 +12,14 @@ fn subscribe_to_window_events(fixture: &mut Fixture, socket: &std::path::Path) -
 }
 
 fn map_test_window(fixture: &mut Fixture, client: super::client::ClientId, app_id: &str) {
-    let window = fixture.client(client).create_window();
-    window.xdg_toplevel.set_app_id(app_id.into());
-    window.commit();
-    let surface = window.surface.clone();
-    fixture.roundtrip(client);
-    let window = fixture.client(client).window(&surface);
-    window.attach_new_buffer();
-    window.ack_last_and_commit();
-    fixture.double_roundtrip(client);
-}
-
-fn map_titled_test_window(fixture: &mut Fixture, client: super::client::ClientId, app_id: &str) {
-    let window = fixture.client(client).create_window();
-    window.xdg_toplevel.set_app_id(app_id.into());
-    window.set_title(app_id);
-    window.commit();
-    let surface = window.surface.clone();
-    fixture.roundtrip(client);
-    let window = fixture.client(client).window(&surface);
-    window.attach_new_buffer();
-    window.ack_last_and_commit();
-    fixture.double_roundtrip(client);
+    windows::map_window(
+        fixture,
+        client,
+        windows::WindowSpec {
+            app_id: Some(app_id),
+            ..Default::default()
+        },
+    );
 }
 
 #[test]
@@ -370,7 +356,15 @@ fn map_events_keep_a_new_tab_hidden_until_its_focus_event() {
     let client = fixture.add_client();
     let mut subscriber = subscribe_to_window_events(&mut fixture, &socket);
 
-    map_titled_test_window(&mut fixture, client, "first-tab");
+    windows::map_window(
+        &mut fixture,
+        client,
+        windows::WindowSpec {
+            app_id: Some("first-tab"),
+            title: Some("first-tab"),
+            ..Default::default()
+        },
+    );
     fixture.niri_state().update_keyboard_focus();
     fixture.niri_state().ipc_refresh_layout();
     let mut remainder = Vec::new();
@@ -380,7 +374,15 @@ fn map_events_keep_a_new_tab_hidden_until_its_focus_event() {
         remainder = next;
     }
 
-    map_titled_test_window(&mut fixture, client, "second-tab");
+    windows::map_window(
+        &mut fixture,
+        client,
+        windows::WindowSpec {
+            app_id: Some("second-tab"),
+            title: Some("second-tab"),
+            ..Default::default()
+        },
+    );
     fixture.niri_state().update_keyboard_focus();
     fixture.niri_state().ipc_refresh_layout();
     let mut events = Vec::new();
@@ -635,8 +637,17 @@ fn closing_the_focused_window_emits_close_before_restored_focus() {
     let (mut fixture, socket) = ipc_fixture();
     fixture.add_output(1, (1920, 1080));
     let client = fixture.add_client();
-    map_titled_test_window(&mut fixture, client, "first");
-    map_titled_test_window(&mut fixture, client, "second");
+    for app_id in ["first", "second"] {
+        windows::map_window(
+            &mut fixture,
+            client,
+            windows::WindowSpec {
+                app_id: Some(app_id),
+                title: Some(app_id),
+                ..Default::default()
+            },
+        );
+    }
     fixture.niri_state().ipc_refresh_layout();
     let mut subscriber = subscribe_to_window_events(&mut fixture, &socket);
     let mapped = fixture
