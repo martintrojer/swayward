@@ -304,3 +304,52 @@ fn removing_a_node_clears_every_node_side_collection() {
     assert!(!t.tab_indicators.contains_key(&leaf));
     t.check_invariants();
 }
+
+#[test]
+fn a_sub_pixel_last_child_reports_a_non_negative_percent() {
+    // Tiling proptest case (integrator batch 7): a tabbed root holding a vertical split whose
+    // last child a resize left 0.23 px tall. Rounding the earlier children's shares up left
+    // the last child -1 px and GET_TREE reported percent -0.00096. Sway's last child takes the
+    // parent's remainder (sway/tree/arrange.c:171-174) and never reports a negative percent.
+    let mut t = tree((1920., 1080.), 8.);
+    let leaves = (0..4)
+        .map(|window| t.add_tile(tile(window, t.view_size()), InsertTarget::Focused))
+        .collect::<Vec<_>>();
+    let root = t.root;
+    let split = t.alloc(Node {
+        parent: Some(root),
+        value: TreeNode::Split {
+            layout: Layout::SplitV,
+            children: leaves.clone(),
+            percents: vec![0.25, 0.4997758843775979, 0.25, 0.00022411562240215455],
+        },
+    });
+    for leaf in &leaves {
+        t.nodes.get_mut(leaf).unwrap().parent = Some(split);
+    }
+    t.nodes.get_mut(&root).unwrap().value = TreeNode::Split {
+        layout: Layout::Tabbed,
+        children: vec![split],
+        percents: vec![1.],
+    };
+    t.request_window_sizes();
+
+    let IpcNode::Split { children, .. } = t.ipc_tree() else {
+        panic!("root must be a split");
+    };
+    let [IpcNode::Split { children, .. }] = children.as_slice() else {
+        panic!("the tabbed root holds one split");
+    };
+    let percents = children
+        .iter()
+        .map(|child| match child {
+            IpcNode::Split { percent, .. } | IpcNode::Leaf { percent, .. } => *percent,
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        percents
+            .iter()
+            .all(|percent| percent.is_some_and(|p| p >= 0.)),
+        "negative percent in {percents:?}"
+    );
+}

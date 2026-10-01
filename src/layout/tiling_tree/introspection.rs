@@ -277,13 +277,17 @@ impl<W: LayoutElement> TilingTree<W> {
                                     };
                                     let parent_rect = rect(&id).unwrap_or_default();
                                     let parent_extent = extent(parent_rect).round();
+                                    // Sway's last child takes the parent's remainder
+                                    // (sway/tree/arrange.c:171-174); a sub-pixel last child
+                                    // can leave that negative, which sway never reports.
                                     let allocated = if index + 1 == children.len() {
-                                        parent_extent
+                                        (parent_extent
                                             - percents
                                                 .iter()
                                                 .take(index)
                                                 .map(|percent| (parent_extent * percent).round())
-                                                .sum::<f64>()
+                                                .sum::<f64>())
+                                        .max(0.)
                                     } else {
                                         (parent_extent * stored_percent).round()
                                     };
@@ -351,13 +355,17 @@ impl<W: LayoutElement> TilingTree<W> {
                                         })
                                         .map(raw_extent)
                                         .sum::<f64>();
+                                    // Sway's last child takes the parent's remainder
+                                    // (sway/tree/arrange.c:171-174); a sub-pixel last child
+                                    // can leave that negative, which sway never reports.
                                     let allocated = if index + 1 == children.len() {
-                                        available.round()
+                                        (available.round()
                                             - percents
                                                 .iter()
                                                 .take(index)
                                                 .map(|percent| (available * percent).round())
-                                                .sum::<f64>()
+                                                .sum::<f64>())
+                                        .max(0.)
                                     } else {
                                         (available * stored_percent).round()
                                     };
