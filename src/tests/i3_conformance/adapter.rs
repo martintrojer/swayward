@@ -392,7 +392,12 @@ fn configure_client_state_oracle(config: &mut swayward_config::Config, test: &st
 /// `SWAYWARD_I3_TEST`: that variable is set only when one file is selected,
 /// so reading it here made the gate and a single-file measurement load
 /// different configs for the same file.
-fn apply_test_config_defaults(config: &mut swayward_config::Config, test: &str, source: &str) {
+fn apply_harness_policy(
+    config: &mut swayward_config::Config,
+    source: Option<&str>,
+    test: &str,
+) {
+    let source = source.unwrap_or_default();
     if !source.lines().any(|line| {
         line.trim_start()
             .to_ascii_lowercase()
@@ -401,6 +406,8 @@ fn apply_test_config_defaults(config: &mut swayward_config::Config, test: &str, 
         config.layout.gaps = 0.;
     }
     config.layout.border.off = false;
+    config.animations.window_movement.0.off = true;
+    config.animations.window_resize.anim.off = true;
     configure_client_state_oracle(config, test);
     if !source.lines().any(|line| {
         line.split_whitespace()
@@ -419,7 +426,7 @@ fn apply_test_config_defaults(config: &mut swayward_config::Config, test: &str, 
 
 fn prepare_test_config(test: &str, source: &str) -> Result<swayward_config::Config, String> {
     let mut config = translate_config(test, source)?;
-    apply_test_config_defaults(&mut config, test, source);
+    apply_harness_policy(&mut config, Some(source), test);
     Ok(config)
 }
 
@@ -444,8 +451,11 @@ fn reload_loaded_test_config(
     reload_test_config(fixture, test, source)
 }
 
-fn reset_config(fixture: &mut Fixture) -> Value {
+fn reset_config(fixture: &mut Fixture, test: &str) -> Value {
+    // i3test's `launch_with_config('-default')` requests the harness baseline,
+    // not swayward's user-facing KDL defaults.
     let mut config = swayward_config::Config::default();
+    apply_harness_policy(&mut config, None, test);
     config.gestures.hot_corners.off = true;
     fixture.niri_state().reload_config(Ok(config));
     json!({ "success": true })
@@ -471,7 +481,7 @@ fn load_config_source(fixture: &mut Fixture, session: &mut Session, source: &str
     if let Some(server) = &fixture.swayward().ipc_server {
         server.set_loaded_config_file_name(path.to_string_lossy().into_owned());
     }
-    apply_test_config_defaults(&mut config, session.test, source);
+    apply_harness_policy(&mut config, Some(source), session.test);
     fixture.swayward().layout.initialize_workspaces_from_bindings(&config);
     fixture.swayward().for_window.clear();
     fixture.niri_state().reload_config(Ok(config));
@@ -546,7 +556,7 @@ fn handle_control(fixture: &mut Fixture, session: &mut Session, stream: UnixStre
 
 fn dispatch_control(fixture: &mut Fixture, session: &mut Session, control: Control) -> Value {
     match control {
-        Control::ConfigDefault => reset_config(fixture),
+        Control::ConfigDefault => reset_config(fixture, session.test),
         Control::Config { config } => load_config_source(fixture, session, &config),
         Control::Reload => match reload_loaded_test_config(
             fixture,

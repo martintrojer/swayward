@@ -141,15 +141,7 @@ fn run_i3_test(test: &str) {
 /// fails.
 fn run_i3_file(test: &str) -> I3Run {
     let mut config = swayward_config::Config::default();
-    config.layout.gaps = 0.;
-    config.layout.border.off = false;
-    configure_client_state_oracle(&mut config, test);
-    config.input.focus_follows_mouse = Some(swayward_config::input::FocusFollowsMouse {
-        mode: swayward_config::input::FocusFollowsMouseMode::Yes,
-        max_scroll_amount: None,
-    });
-    config.animations.window_movement.0.off = true;
-    config.animations.window_resize.anim.off = true;
+    apply_harness_policy(&mut config, None, test);
     let mut fixture = Fixture::with_config(config);
     fixture.add_output(1, (1280, 800));
     let client = fixture.add_client();
