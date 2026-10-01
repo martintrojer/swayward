@@ -426,10 +426,11 @@ fn relative_move_includes_empty_active_workspace_and_uses_direction() {
 
 #[test]
 fn targeted_focus_reveals_a_hidden_scratchpad_window() {
-    let mut f = Fixture::new();
+    let (mut f, socket) = ipc_fixture();
     f.add_output(1, (1920, 1080));
     let client = f.add_client();
     let window = f.client(client).create_window();
+    window.xdg_toplevel.set_app_id("target".into());
     window.set_title("target");
     window.commit();
     let surface = window.surface.clone();
@@ -442,8 +443,11 @@ fn targeted_focus_reveals_a_hidden_scratchpad_window() {
     assert!(crate::command::execute(f.niri_state(), "move scratchpad")[0].success);
     let outcome = crate::command::execute(f.niri_state(), r#"[title="target"] focus workspace"#);
     assert!(outcome[0].success, "{outcome:?}");
-    assert_eq!(f.swayward().layout.scratchpad_windows().count(), 0);
-    assert!(f.swayward().layout.focus().is_some());
+    let mut stream = UnixStream::connect(socket).unwrap();
+    let tree = query_ipc(&mut f, &mut stream, MessageType::GetTree);
+    let target = find_json_node_with_app_id(&tree, "target").unwrap();
+    assert_eq!(target["focused"], true);
+    assert_eq!(target["scratchpad_state"], "fresh");
 }
 
 fn set_test_window_urgent_at(f: &mut Fixture, app_id: &str, now: Duration) {

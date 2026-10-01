@@ -136,8 +136,10 @@ fn reloaded_gap_defaults_do_not_change_an_existing_workspace() {
         serde_json::from_str::<Value>(&payload).unwrap(),
         serde_json::from_str::<Value>(&sway_fixture!("events/workspace.reload.json")).unwrap()
     );
-    assert_eq!(fixture.swayward().config.borrow().layout.gaps, 16.);
     assert_eq!(tiled_window_rects(&mut fixture), before);
+    assert!(crate::command::execute(fixture.niri_state(), "workspace reload-fresh")[0].success);
+    add_two_tiled_windows(&mut fixture);
+    assert_eq!(tiled_window_rects_on(&mut fixture, "reload-fresh")[0]["x"], 14);
 
 }
 
@@ -180,10 +182,12 @@ fn gaps_defaults_form_does_not_disturb_an_existing_workspace() {
 
     assert!(crate::command::execute(fixture.niri_state(), "gaps inner 40")[0].success);
 
-    // The default moved...
-    assert_eq!(fixture.swayward().config.borrow().layout.gaps, 40.);
-    // ...and the existing workspace did not.
+    // The existing workspace did not move, but a newly created one observes
+    // the changed default.
     assert_eq!(tiled_window_rects(&mut fixture), before);
+    assert!(crate::command::execute(fixture.niri_state(), "workspace fresh")[0].success);
+    add_two_tiled_windows(&mut fixture);
+    assert_eq!(tiled_window_rects_on(&mut fixture, "fresh")[0]["x"], 38);
 }
 
 /// The converse, and the other half of the "must not fight" requirement: the
@@ -203,10 +207,7 @@ fn runtime_gaps_form_does_not_overwrite_the_defaults() {
     // The live workspace moved.
     let after = tiled_window_rects(&mut fixture);
     assert_eq!(after[0]["x"], 30);
-    // The default did not, so a later workspace still gets 10.
-    assert_eq!(fixture.swayward().config.borrow().layout.gaps, 10.);
-
-    // Prove it by creating one and reading its gaps back.
+    // The default did not: prove it through a later workspace.
     assert!(crate::command::execute(fixture.niri_state(), "workspace fresh")[0].success);
     add_two_tiled_windows(&mut fixture);
     assert_eq!(tiled_window_rects_on(&mut fixture, "fresh")[0]["x"], 10);
@@ -226,14 +227,21 @@ fn gaps_defaults_and_runtime_forms_hold_separate_state() {
     assert!(crate::command::execute(fixture.niri_state(), "gaps inner 25")[0].success);
     assert!(crate::command::execute(fixture.niri_state(), "gaps inner current set 5")[0].success);
 
-    // Runtime change won for the live workspace; the default is still 25.
+    // Runtime change won for the live workspace; a new workspace observes the
+    // default 25.
     assert_eq!(tiled_window_rects(&mut fixture)[0]["x"], 5);
-    assert_eq!(fixture.swayward().config.borrow().layout.gaps, 25.);
+    assert!(crate::command::execute(fixture.niri_state(), "workspace first-fresh")[0].success);
+    add_two_tiled_windows(&mut fixture);
+    assert_eq!(tiled_window_rects_on(&mut fixture, "first-fresh")[0]["x"], 25);
 
-    // A further default write still does not touch the live workspace.
+    // A further default write still does not touch the original live
+    // workspace, while another new workspace observes 50.
+    assert!(crate::command::execute(fixture.niri_state(), "workspace 1")[0].success);
     assert!(crate::command::execute(fixture.niri_state(), "gaps inner 50")[0].success);
     assert_eq!(tiled_window_rects(&mut fixture)[0]["x"], 5);
-    assert_eq!(fixture.swayward().config.borrow().layout.gaps, 50.);
+    assert!(crate::command::execute(fixture.niri_state(), "workspace second-fresh")[0].success);
+    add_two_tiled_windows(&mut fixture);
+    assert_eq!(tiled_window_rects_on(&mut fixture, "second-fresh")[0]["x"], 50);
 }
 
 /// `workspace <name> gaps <kind> <px>` is a per-workspace-name default applied
@@ -255,9 +263,6 @@ fn workspace_gaps_apply_to_a_later_workspace_of_that_name() {
 
     // The current workspace is untouched, as in sway.
     assert_eq!(tiled_window_rects(&mut fixture), before);
-    // The global default is untouched too: this is per-name state.
-    assert_eq!(fixture.swayward().config.borrow().layout.gaps, 10.);
-
     // A workspace with that name picks the value up.
     assert!(crate::command::execute(fixture.niri_state(), "workspace roomy")[0].success);
     add_two_tiled_windows(&mut fixture);

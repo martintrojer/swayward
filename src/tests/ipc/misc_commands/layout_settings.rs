@@ -4,8 +4,11 @@ fn layout_settings_apply_at_runtime_like_sway() {
 
     // These directives are in sway's shared `handlers` table, which serves both
     // the config file and IPC (`sway/sway/commands.c:43-100,160-173`), so they
-    // are live commands there. swayward keeps the setting in KDL; this asserts
-    // the command reaches the same state, rather than merely returning success.
+    // are live commands there. This test deliberately covers parsing and the
+    // stored mode distinctions that are not observable until later input or
+    // mapping. Consumer behavior is covered by the geometry, real-input,
+    // borders and rendering tests; do not treat these field checks as evidence
+    // that a setting's consumer works.
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));
 

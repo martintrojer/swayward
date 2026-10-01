@@ -566,10 +566,11 @@ fn scratchpad_show_disables_target_workspace_and_global_fullscreen() {
 
 #[test]
 fn scratchpad_show_toggles_the_only_window() {
-    let mut f = Fixture::new();
+    let (mut f, socket) = ipc_fixture();
     f.add_output(1, (1920, 1080));
     let client = f.add_client();
     let window = f.client(client).create_window();
+    window.xdg_toplevel.set_app_id("only".into());
     window.commit();
     let surface = window.surface.clone();
     f.roundtrip(client);
@@ -581,10 +582,15 @@ fn scratchpad_show_toggles_the_only_window() {
     for command in ["move scratchpad", "scratchpad show"] {
         assert!(crate::command::execute(f.niri_state(), command)[0].success);
     }
-    assert!(f.swayward().layout.focus().is_some());
+    let mut stream = UnixStream::connect(&socket).unwrap();
+    let tree = query_ipc(&mut f, &mut stream, MessageType::GetTree);
+    assert_eq!(find_json_node_with_app_id(&tree, "only").unwrap()["focused"], true);
+
     assert!(crate::command::execute(f.niri_state(), "scratchpad show")[0].success);
-    assert!(f.swayward().layout.focus().is_none());
-    assert_eq!(f.swayward().layout.scratchpad_windows().count(), 1);
+    let tree = query_ipc(&mut f, &mut stream, MessageType::GetTree);
+    let hidden = find_json_node_with_app_id(&tree, "only").unwrap();
+    assert_eq!(hidden["focused"], false);
+    assert_eq!(hidden["scratchpad_state"], "fresh");
 }
 
 #[test]
