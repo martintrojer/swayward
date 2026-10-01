@@ -3651,6 +3651,12 @@ impl<W: LayoutElement> Layout<W> {
         Some((Some(output), monitor.previous_workspace_idx()?))
     }
 
+    pub fn detach_floating_group_child(&mut self, window: &W::Id) -> bool {
+        self.workspaces_mut()
+            .find(|workspace| workspace.has_window(window))
+            .is_some_and(|workspace| workspace.detach_floating_group_child(window))
+    }
+
     pub fn move_window_to_sway_workspace(
         &mut self,
         window: &W::Id,

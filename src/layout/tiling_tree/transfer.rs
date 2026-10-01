@@ -172,6 +172,27 @@ impl<W: LayoutElement> TilingTree<W> {
         subtree: DetachedSubtree<W>,
         target: Option<NodeId>,
     ) -> (NodeId, Vec<(NodeId, NodeId)>) {
+        self.attach_subtree_with(subtree, target, true)
+    }
+
+    /// Attaches a floating group that is returning to tiling. Sway adds the group container
+    /// itself with `workspace_add_tiling`, keeping it as a split even on an empty workspace
+    /// (`container_set_floating`, sway/tree/container.c:976-1003), rather than unwrapping its
+    /// children into the workspace as a workspace move does.
+    pub fn attach_unfloated_subtree(
+        &mut self,
+        subtree: DetachedSubtree<W>,
+    ) -> (NodeId, Vec<(NodeId, NodeId)>) {
+        let target = self.focus;
+        self.attach_subtree_with(subtree, target, false)
+    }
+
+    fn attach_subtree_with(
+        &mut self,
+        subtree: DetachedSubtree<W>,
+        target: Option<NodeId>,
+        unwrap_into_empty_root: bool,
+    ) -> (NodeId, Vec<(NodeId, NodeId)>) {
         if subtree.has_fullscreen() {
             if let Some(current) = self.fullscreen_node() {
                 self.replace_fullscreen_state(current, None);
@@ -179,7 +200,7 @@ impl<W: LayoutElement> TilingTree<W> {
         }
         let focus_history = subtree.focus_history;
         let mut remapped = Vec::new();
-        let node = if self.is_empty() {
+        let node = if self.is_empty() && unwrap_into_empty_root {
             match subtree.node {
                 DetachedNode::Split {
                     old_id,

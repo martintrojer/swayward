@@ -1984,3 +1984,9 @@ migrated = false
 paths = ["src/swayward.rs"]
 what = "make the one-second session-lock surface deadline test-injectable under cfg(test), retaining the production duration unchanged."
 why = "Session-lock tests need to trigger the watchdog deterministically without waiting 1.25 real seconds or using short sleep-then-absence assertions that flake under load."
+
+[[edit]]
+migrated = false
+paths = ["src/command/movement.rs", "src/layout/mod.rs", "src/layout/tiling_tree/transfer.rs", "src/layout/workspace.rs"]
+what = "move a focused floating-group child to a workspace or output as a tiled container, leaving its siblings in the group, and re-tile a toggled floating group as a split instead of unwrapping it into an empty workspace."
+why = "Sway treats only a floating group's root as floating (`container_is_floating`, sway/tree/container.c:1041-1049), so commands aimed at a child follow the tiled path, while `floating toggle` toggles the root (sway/commands/floating.c:41-46) and re-adds it with `workspace_add_tiling` (sway/tree/container.c:976-1003). Oracle scenarios floating_group_child_workspace_move, floating_group_child_output_move and floating_group_child_floating_toggle (sway-ipc-oracle 418bad7)."

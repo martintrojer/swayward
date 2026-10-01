@@ -670,3 +670,110 @@ fn directional_resize_of_a_floating_group_child_resizes_inside_the_group() {
     assert!(left[0] < after[0], "after={after:?} left={left:?}");
     f.swayward().layout.verify_invariants();
 }
+
+fn floating_group_with_focused_child(f: &mut Fixture) {
+    f.add_output(1, (1280, 720));
+    let client = f.add_client();
+    assert!(crate::command::execute(f.niri_state(), "splith")[0].success);
+    for app_id in ["group-first", "group-second"] {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+    for command in ["focus parent", "floating enable", "focus child"] {
+        let outcome = crate::command::execute(f.niri_state(), command);
+        assert!(outcome[0].success, "{command}: {outcome:?}");
+    }
+}
+
+fn workspace_shapes(f: &mut Fixture) -> Vec<(String, Vec<String>, Vec<String>)> {
+    f.niri_state().ipc_refresh_layout();
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &swayward.marks_by_window,
+        &swayward.marks_by_container,
+    ))
+    .unwrap();
+    fn shape(node: &serde_json::Value) -> String {
+        match node["app_id"].as_str() {
+            Some(app_id) => app_id.to_owned(),
+            None => format!(
+                "{}[{}]",
+                node["layout"].as_str().unwrap_or_default(),
+                node["nodes"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(shape)
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            ),
+        }
+    }
+    let mut workspaces = Vec::new();
+    for output in tree["nodes"].as_array().unwrap() {
+        for workspace in output["nodes"].as_array().into_iter().flatten() {
+            if workspace["name"] == "__i3_scratch" {
+                continue;
+            }
+            let shapes = |key: &str| {
+                workspace[key]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(shape)
+                    .collect::<Vec<_>>()
+            };
+            workspaces.push((
+                workspace["name"].as_str().unwrap_or_default().to_owned(),
+                shapes("nodes"),
+                shapes("floating_nodes"),
+            ));
+        }
+    }
+    workspaces
+}
+
+#[test]
+fn moving_a_floating_group_child_to_a_workspace_leaves_its_sibling_floating() {
+    // Oracle scenario floating_group_child_workspace_move (sway-ipc-oracle 418bad7): sway
+    // treats only the group root as floating (`container_is_floating`,
+    // sway/tree/container.c:1041-1049), so the child moves as a tiled container.
+    let mut f = Fixture::new();
+    floating_group_with_focused_child(&mut f);
+    assert!(crate::command::execute(f.niri_state(), "move container to workspace 2")[0].success);
+    assert_eq!(
+        workspace_shapes(&mut f),
+        [
+            ("1".to_owned(), vec![], vec!["splith[group-first]".to_owned()]),
+            ("2".to_owned(), vec!["group-second".to_owned()], vec![]),
+        ]
+    );
+}
+
+#[test]
+fn floating_toggle_on_a_floating_group_child_tiles_the_whole_group() {
+    // Oracle scenario floating_group_child_floating_toggle (sway-ipc-oracle 418bad7): sway
+    // toggles the group root (sway/commands/floating.c:41-46) and re-adds it with
+    // `workspace_add_tiling`, so the group stays a split under the workspace
+    // (sway/tree/container.c:976-1003).
+    let mut f = Fixture::new();
+    floating_group_with_focused_child(&mut f);
+    assert!(crate::command::execute(f.niri_state(), "floating toggle")[0].success);
+    assert_eq!(
+        workspace_shapes(&mut f),
+        [(
+            "1".to_owned(),
+            vec!["splith[group-first group-second]".to_owned()],
+            vec![]
+        )]
+    );
+}

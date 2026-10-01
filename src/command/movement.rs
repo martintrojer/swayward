@@ -481,6 +481,7 @@ pub(super) fn move_target_to_workspace(
             let Some(window) = window else {
                 return failure("No matching node.");
             };
+            state.swayward.layout.detach_floating_group_child(&window);
             state
                 .swayward
                 .layout
@@ -966,8 +967,13 @@ pub(super) fn to_output_focused(state: &mut State, target: &OutputTarget) -> sup
             state, workspace, node, &output,
         ))?;
     } else {
+        // A focused floating-group child moves alone, as a tiled container (sway's
+        // `container_is_floating` is root-only, sway/tree/container.c:1041-1049).
+        if let Some((window, _)) = &focused {
+            state.swayward.layout.detach_floating_group_child(window);
+        }
         state.swayward.layout.move_to_output(
-            None,
+            focused.as_ref().map(|(window, _)| window),
             &output,
             None,
             crate::layout::ActivateWindow::No,

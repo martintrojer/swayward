@@ -2634,6 +2634,30 @@ impl<W: LayoutElement> Workspace<W> {
                 .any(|root| !self.floating.tree_is_sticky(root))
     }
 
+    /// Moves a child of a multi-window floating group into the tiling tree. Sway treats only
+    /// the group root as floating (`container_is_floating`, sway/tree/container.c:1041-1049),
+    /// so a command aimed at the child moves it as a tiled container and leaves its siblings in
+    /// the group. Returns false when the window is not such a child.
+    pub fn detach_floating_group_child(&mut self, window: &W::Id) -> bool {
+        let Some(root) = self.floating.tree_root_for_window(window) else {
+            return false;
+        };
+        if self
+            .floating
+            .tree_window_ids(root)
+            .is_none_or(|windows| windows.len() < 2)
+        {
+            return false;
+        }
+        let removed = self.floating.remove_tile(window, Transaction::new());
+        let mut tile = removed.tile;
+        tile.restore_to_floating = false;
+        self.tiling
+            .add_tile_with_activation(tile, InsertTarget::Focused, true);
+        self.floating_is_active = FloatingActive::No;
+        true
+    }
+
     pub fn floating_tree_root_for_window(&self, window: &W::Id) -> Option<NodeId> {
         self.floating.tree_root_for_window(window)
     }
@@ -2819,7 +2843,14 @@ impl<W: LayoutElement> Workspace<W> {
                 return Some(root);
             }
             let subtree = self.floating.remove_tree(root)?;
-            let (root, _) = self.attach_tiling_subtree(subtree);
+            if let Some(output) = &self.output {
+                subtree.for_each_window(|window| window.output_enter(output));
+            }
+            if subtree.has_fullscreen() {
+                self.disable_fullscreen();
+            }
+            self.floating_is_active = FloatingActive::No;
+            let (root, _) = self.tiling.attach_unfloated_subtree(subtree);
             if self.floating.is_empty() {
                 self.floating_is_active = FloatingActive::No;
             }
