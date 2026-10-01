@@ -564,3 +564,22 @@ fn opening_a_window_preserves_intentional_nested_splits() {
 
     assert_eq!(t.ipc_tree().nodes().len(), 7);
 }
+
+#[test]
+fn focus_top_skips_hidden_tabs() {
+    // Every tab shares the shown tab's box, so a geometric pick that includes the hidden tabs
+    // lands on one chosen by HashMap order. Build several trees (each with its own hash seed).
+    for _ in 0..32 {
+        let mut t = tree((1200., 800.), 0.);
+        let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+        t.split(first, Layout::Tabbed);
+        t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+        let third = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+        t.set_focus(third);
+
+        t.focus_top();
+        assert_eq!(t.focus, Some(third));
+        t.focus_bottom();
+        assert_eq!(t.focus, Some(third));
+    }
+}

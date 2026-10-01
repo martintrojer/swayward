@@ -559,20 +559,23 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     fn focus_extreme(&mut self, bottom: bool) {
+        // Hidden tabs share the shown tab's box, so only visible leaves compete. Ties go to the
+        // first in tree order, not to HashMap order.
         let geometries = self.compute_geometry();
-        let focus = geometries
-            .leaf_boxes
-            .iter()
-            .min_by(|(_, a), (_, b)| {
-                let a = a.loc.y + if bottom { a.size.h } else { 0. };
-                let b = b.loc.y + if bottom { b.size.h } else { 0. };
-                if bottom {
-                    b.total_cmp(&a)
-                } else {
-                    a.total_cmp(&b)
-                }
-            })
-            .map(|(id, _)| *id)
+        let visible = self.visible_leaves();
+        let edge = |rect: &Rectangle<f64, Logical>| {
+            if bottom {
+                -(rect.loc.y + rect.size.h)
+            } else {
+                rect.loc.y
+            }
+        };
+        let focus = self
+            .iter_depth_first()
+            .filter(|(id, _)| visible.contains(id))
+            .filter_map(|(id, _)| Some((id, edge(geometries.leaf_boxes.get(&id)?))))
+            .min_by(|(_, a), (_, b)| a.total_cmp(b))
+            .map(|(id, _)| id)
             .or(self.focus);
         self.set_focus_id(focus);
     }
