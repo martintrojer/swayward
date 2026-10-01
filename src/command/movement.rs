@@ -883,16 +883,12 @@ pub(super) fn direction_focused(
         return Err(failure("Cannot move workspaces in a direction"));
     };
     let Some(target) = super::targeted::focused_target(state) else {
-        return Err(super::command_failure(
-            "Cannot move workspaces in a direction",
-        ));
+        return Err(super::failure("Cannot move workspaces in a direction"));
     };
     if matches!(target, CommandTarget::Container(workspace, node)
         if state.swayward.layout.is_tiling_root(workspace, node))
     {
-        return Err(super::command_failure(
-            "Cannot move workspaces in a direction",
-        ));
+        return Err(super::failure("Cannot move workspaces in a direction"));
     }
     let fullscreen_floating = workspace.active_floating_is_fullscreen();
     if workspace.floating_is_active() || fullscreen_floating {
@@ -953,7 +949,7 @@ pub(super) fn to_workspace_focused(
         return Err(failure("Can't move fullscreen global container"));
     }
     let Some(focused) = super::targeted::focused_target(state) else {
-        return Err(super::command_failure("Can't move an empty workspace"));
+        return Err(super::failure("Can't move an empty workspace"));
     };
     let auto_back_and_forth = auto_back_and_forth
         && state

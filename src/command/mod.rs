@@ -98,9 +98,5 @@ pub(super) fn failure(error: impl Into<String>) -> CommandOutcome {
     }
 }
 
-pub(super) fn command_failure(error: impl Into<String>) -> CommandOutcome {
-    failure(error)
-}
-
 #[cfg(test)]
 mod tests;

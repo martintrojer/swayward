@@ -21,19 +21,6 @@ use rules::*;
 use settings::*;
 use workspace::*;
 
-pub fn validate(input: &str) -> Result<(), String> {
-    let parsed = parse(input);
-    if parsed.is_empty() {
-        return Err("expected a command".into());
-    }
-    parsed
-        .into_iter()
-        .find_map(Result::err)
-        .map_or(Ok(()), |error| {
-            Err(error.error.unwrap_or_else(|| "invalid sway command".into()))
-        })
-}
-
 /// Expand sway variables in a command line, as sway does before dispatch.
 ///
 /// Mirrors `do_var_replacement` (`sway/sway/config.c:890-940`):

@@ -471,7 +471,7 @@ pub(super) fn sticky_focused(state: &mut State, value: &str) -> super::HandlerRe
         .active_workspace()
         .is_some_and(|workspace| workspace.is_workspace_focused())
     {
-        return Err(super::command_failure("No current container"));
+        return Err(super::failure("No current container"));
     }
     let target = super::targeted::focused_target(state);
     let container_window = match target {
@@ -495,7 +495,7 @@ pub(super) fn sticky_focused(state: &mut State, value: &str) -> super::HandlerRe
             .map(|mapped| mapped.window.clone())
     });
     let Some(window) = window else {
-        return Err(super::command_failure("No current container"));
+        return Err(super::failure("No current container"));
     };
     if state.swayward.layout.is_scratchpad_hidden(&window) {
         return Err(super::success());

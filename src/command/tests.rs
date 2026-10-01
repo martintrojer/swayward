@@ -6,10 +6,7 @@ fn empty_layout_command_failures_match_sway() {
     fixture.add_output(1, (1920, 1080));
     let outcome = execute(fixture.niri_state(), "nop before; focus");
     assert!(outcome[0].success);
-    assert_eq!(
-        outcome[1],
-        command_failure("No container to focus was specified.")
-    );
+    assert_eq!(outcome[1], failure("No container to focus was specified."));
 
     let outcome = execute(fixture.niri_state(), "workspace fuzz; resize");
     assert!(outcome[0].success);

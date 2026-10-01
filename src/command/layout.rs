@@ -1,6 +1,6 @@
 use swayward_ipc::CommandOutcome;
 
-use super::{command_failure, failure, tiling_target, CommandTarget, Layout, LayoutToggle, Toggle};
+use super::{failure, tiling_target, CommandTarget, Layout, LayoutToggle, Toggle};
 use crate::layout::tiling_tree::NodeId;
 use crate::layout::workspace::WorkspaceId;
 use crate::swayward::State;
@@ -20,9 +20,7 @@ fn reject_floating(state: &State) -> Result<(), CommandOutcome> {
             workspace.floating_is_active() && !workspace.focused_floating_tree_child()
         })
     {
-        Err(command_failure(
-            "Unable to change layout of floating windows",
-        ))
+        Err(failure("Unable to change layout of floating windows"))
     } else {
         Ok(())
     }
