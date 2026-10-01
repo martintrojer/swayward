@@ -322,11 +322,7 @@ fn a_file_loaded_config_keeps_its_per_file_overrides() {
         scratch: &scratch,
         initially_floating: HashSet::new(),
     };
-    let reply = load_config(
-        &mut fixture,
-        &mut session,
-        &json!({ "config": "font monospace\n" }),
-    );
+    let reply = load_config_source(&mut fixture, &mut session, "font monospace\n");
     assert_eq!(reply, json!({ "success": true }));
     let xkb = fixture.swayward().config.borrow().input.keyboard.xkb.clone();
     assert_eq!(xkb.layout, "us,ru");

@@ -35,6 +35,27 @@ impl Drop for I3Scratch {
     }
 }
 
+fn client_surface(
+    fixture: &mut Fixture,
+    client: super::client::ClientId,
+    surface_id: u32,
+) -> Option<wayland_client::protocol::wl_surface::WlSurface> {
+    fixture
+        .client(client)
+        .state
+        .windows
+        .iter()
+        .find(|window| window.surface.id().protocol_id() == surface_id)
+        .map(|window| window.surface.clone())
+}
+
+fn surface_id_for_window(fixture: &mut Fixture, id: i64) -> Option<u32> {
+    fixture.swayward().layout.windows().find_map(|(_, mapped)| {
+        (crate::ipc::tree::window_id(mapped.id()) == id)
+            .then(|| mapped.toplevel().wl_surface().id().protocol_id())
+    })
+}
+
 fn requested_size(request: &Value) -> Option<(u16, u16)> {
     Some((
         request["requested_width"].as_u64()?.try_into().ok()?,
@@ -80,15 +101,7 @@ fn map_window(
                 ..Default::default()
             });
     }
-    let surface = fixture
-        .client(client)
-        .state
-        .windows
-        .iter()
-        .find(|window| window.surface.id().protocol_id() == surface_id)
-        .unwrap()
-        .surface
-        .clone();
+    let surface = client_surface(fixture, client, surface_id).unwrap();
     fixture.client(client).window(&surface).commit();
     fixture.roundtrip(client);
     let window = fixture.client(client).window(&surface);
@@ -191,22 +204,11 @@ fn remove_all_windows(fixture: &mut Fixture, client: super::client::ClientId) {
 }
 
 fn activate_window(fixture: &mut Fixture, client: super::client::ClientId, id: i64) -> bool {
-    let surface_id = fixture.swayward().layout.windows().find_map(|(_, mapped)| {
-        (crate::ipc::tree::window_id(mapped.id()) == id)
-            .then(|| mapped.toplevel().wl_surface().id().protocol_id())
-    });
+    let surface_id = surface_id_for_window(fixture, id);
     let Some(surface_id) = surface_id else {
         return false;
     };
-    let surface = fixture
-        .client(client)
-        .state
-        .windows
-        .iter()
-        .find(|window| window.surface.id().protocol_id() == surface_id)
-        .unwrap()
-        .surface
-        .clone();
+    let surface = client_surface(fixture, client, surface_id).unwrap();
     let token = fixture.client(client).request_activation_token(&surface);
     fixture.double_roundtrip(client);
     let token = token.lock().unwrap().take().unwrap();
@@ -253,10 +255,7 @@ fn window_states(
 }
 
 fn close_window(fixture: &mut Fixture, client: super::client::ClientId, id: i64) -> bool {
-    let surface_id = fixture.swayward().layout.windows().find_map(|(_, mapped)| {
-        (crate::ipc::tree::window_id(mapped.id()) == id)
-            .then(|| mapped.toplevel().wl_surface().id().protocol_id())
-    });
+    let surface_id = surface_id_for_window(fixture, id);
     surface_id.is_some_and(|surface_id| remove_window_for_surface(fixture, client, surface_id))
 }
 
@@ -461,8 +460,7 @@ struct Session<'a> {
     initially_floating: HashSet<u32>,
 }
 
-fn load_config(fixture: &mut Fixture, session: &mut Session, request: &Value) -> Value {
-    let source = request["config"].as_str().unwrap();
+fn load_config_source(fixture: &mut Fixture, session: &mut Session, source: &str) -> Value {
     let (outputs, path, mut config) =
         match (fake_outputs(source), translate_config_file(session.test, source, session.scratch)) {
             (Ok(outputs), Ok((path, config))) => (outputs, path, config),
@@ -490,17 +488,67 @@ fn load_config(fixture: &mut Fixture, session: &mut Session, request: &Value) ->
     json!({ "success": true })
 }
 
+#[derive(serde::Deserialize)]
+struct WindowRequest {
+    app_id: Option<String>,
+    name: Option<String>,
+    fullscreen_output: Option<String>,
+    requested_width: Option<u16>,
+    requested_height: Option<u16>,
+    initial_floating: Option<bool>,
+}
+
+impl WindowRequest {
+    fn size(&self) -> Option<(u16, u16)> {
+        Some((self.requested_width?, self.requested_height?))
+    }
+}
+
+#[derive(serde::Deserialize)]
+#[serde(tag = "action", rename_all = "snake_case")]
+enum Control {
+    ConfigDefault,
+    Config { config: String },
+    Reload,
+    Create { #[serde(flatten)] window: WindowRequest },
+    Open { #[serde(flatten)] window: WindowRequest },
+    Map { handle: u32, requested_width: Option<u16>, requested_height: Option<u16> },
+    Fullscreen { handle: u32, enabled: bool },
+    SetTitle { handle: u32, title: String },
+    SetParent { handle: u32, parent_handle: u32 },
+    Close { id: i64 },
+    Focused,
+    Activate { id: i64 },
+    WindowStates { id: i64 },
+    PointerButton { button: u32, pressed: bool },
+    PointerAxis { horizontal_v120: f64, vertical_v120: f64 },
+    KeyEvent { key: u32, pressed: bool },
+    SetXkbGroup { group: u32 },
+    TypeKeyChords { chords: Vec<Vec<u32>> },
+    WarpPointer { x: f64, y: f64 },
+    PrepareResize,
+    ReapClosed { #[serde(default)] settle_configures: bool },
+    RemoveAllWindows,
+    RequestStop,
+}
+
 fn handle_control(fixture: &mut Fixture, session: &mut Session, stream: UnixStream) {
-    let client = session.client;
     let mut request = String::new();
-    BufReader::new(stream.try_clone().unwrap())
-        .read_line(&mut request)
-        .unwrap();
-    let request: Value = serde_json::from_str(&request).unwrap();
-    let reply = match request["action"].as_str().unwrap() {
-        "config_default" => reset_config(fixture),
-        "config" => load_config(fixture, session, &request),
-        "reload" => match reload_loaded_test_config(
+    let reply = match BufReader::new(stream.try_clone().unwrap()).read_line(&mut request) {
+        Ok(_) => match serde_json::from_str::<Control>(&request) {
+            Ok(control) => dispatch_control(fixture, session, control),
+            Err(error) => json!({ "success": false, "error": format!("invalid control request: {error}") }),
+        },
+        Err(error) => json!({ "success": false, "error": format!("cannot read control request: {error}") }),
+    };
+    writeln!(&stream, "{reply}").unwrap();
+}
+
+fn dispatch_control(fixture: &mut Fixture, session: &mut Session, control: Control) -> Value {
+    match control {
+        Control::ConfigDefault => reset_config(fixture),
+        Control::Config { config } => load_config_source(fixture, session, &config),
+        Control::Reload => match reload_loaded_test_config(
             fixture,
             session.test,
             session.loaded_config_source.as_deref(),
@@ -508,213 +556,139 @@ fn handle_control(fixture: &mut Fixture, session: &mut Session, stream: UnixStre
             Ok(()) => json!({ "success": true }),
             Err(error) => json!({ "success": false, "error": error }),
         },
-        "create" => {
-            let handle = create_window(fixture, client, &request);
-            if request["initial_floating"].as_bool() == Some(true) {
-                session.initially_floating.insert(handle);
+        Control::Create { window } => create_control_window(fixture, session, window, false),
+        Control::Open { window } => create_control_window(fixture, session, window, true),
+        Control::Map { handle, requested_width, requested_height } => {
+            if client_surface(fixture, session.client, handle).is_none() {
+                return json!({ "success": false, "error": format!("unknown surface handle {handle}") });
             }
-            json!({ "handle": handle })
+            let size = requested_width.zip(requested_height);
+            json!({ "id": map_window(
+                fixture,
+                session.client,
+                handle,
+                size,
+                session.initially_floating.remove(&handle),
+            ) })
         }
-        "open" => {
-            let handle = create_window(fixture, client, &request);
-            json!({
-                "id": map_window(
-                    fixture,
-                    client,
-                    handle,
-                    requested_size(&request),
-                    request["initial_floating"].as_bool() == Some(true),
-                )
-            })
-        }
-        "map" => {
-            let handle = request["handle"].as_u64().unwrap() as u32;
-            json!({
-                "id": map_window(
-                    fixture,
-                    client,
-                    handle,
-                    requested_size(&request),
-                    session.initially_floating.remove(&handle),
-                )
-            })
-        }
-        "fullscreen" => {
-            let surface_id = request["handle"].as_u64().unwrap() as u32;
-            let surface = fixture
-                .client(client)
-                .state
-                .windows
-                .iter()
-                .find(|window| window.surface.id().protocol_id() == surface_id)
-                .unwrap()
-                .surface
-                .clone();
-            let window = fixture.client(client).window(&surface);
-            if request["enabled"].as_bool() == Some(true) {
-                window.set_fullscreen(None);
-            } else {
-                window.unset_fullscreen();
-            }
-            fixture.double_roundtrip(client);
-            json!({ "success": true })
-        }
-        "set_title" => {
-            let surface_id = request["handle"].as_u64().unwrap() as u32;
-            let title = request["title"].as_str().unwrap();
-            let surface = fixture
-                .client(client)
-                .state
-                .windows
-                .iter()
-                .find(|window| window.surface.id().protocol_id() == surface_id)
-                .unwrap()
-                .surface
-                .clone();
-            fixture.client(client).window(&surface).set_title(title);
-            fixture.double_roundtrip(client);
-            json!({ "success": true })
-        }
-        "set_parent" => {
-            let surface_id = request["handle"].as_u64().unwrap() as u32;
-            let parent_id = request["parent_handle"].as_u64().unwrap() as u32;
-            let windows = &fixture.client(client).state.windows;
-            let surface = windows
-                .iter()
-                .find(|window| window.surface.id().protocol_id() == surface_id)
-                .unwrap()
-                .surface
-                .clone();
-            let parent_surface = windows
-                .iter()
-                .find(|window| window.surface.id().protocol_id() == parent_id)
-                .unwrap()
-                .surface
-                .clone();
-            let client_id = client;
-            let wayland_client = fixture.client(client_id);
-            let parent = wayland_client.window(&parent_surface).xdg_toplevel.clone();
-            wayland_client.window(&surface).set_parent(Some(&parent));
-            fixture.double_roundtrip(client_id);
-            json!({ "success": true })
-        }
-        "close" => {
-            json!({ "success": close_window(fixture, client, request["id"].as_i64().unwrap()) })
-        }
-        "focused" => json!({
-            "id": fixture
-                .swayward()
-                .layout
-                .focus()
-                .map(|mapped| crate::ipc::tree::window_id(mapped.id()))
+        Control::Fullscreen { handle, enabled } => window_control(fixture, session.client, handle, |window| {
+            if enabled { window.set_fullscreen(None); } else { window.unset_fullscreen(); }
         }),
-        "activate" => json!({
-            "success": activate_window(fixture, client, request["id"].as_i64().unwrap())
+        Control::SetTitle { handle, title } => window_control(fixture, session.client, handle, |window| window.set_title(&title)),
+        Control::SetParent { handle, parent_handle } => set_parent_control(fixture, session.client, handle, parent_handle),
+        Control::Close { id } => json!({ "success": close_window(fixture, session.client, id) }),
+        Control::Focused => json!({ "id": fixture.swayward().layout.focus().map(|mapped| crate::ipc::tree::window_id(mapped.id())) }),
+        Control::Activate { id } => json!({ "success": activate_window(fixture, session.client, id) }),
+        Control::WindowStates { id } => json!({
+            "states": window_states(fixture, session.client, id),
+            "xdg_wm_base_version": fixture.client(session.client).state.xdg_wm_base_version,
         }),
-        "window_states" => {
-            let states = window_states(fixture, client, request["id"].as_i64().unwrap());
-            json!({
-                "states": states,
-                "xdg_wm_base_version": fixture.client(client).state.xdg_wm_base_version,
-            })
-        }
-        "pointer_button" => match (request["button"].as_u64(), request["pressed"].as_bool()) {
-            (Some(button), Some(pressed)) => {
-                super::ipc::pointer_button(fixture, u32::try_from(button).unwrap(), pressed);
-                json!({ "success": true })
-            }
-            _ => json!({ "success": false, "error": "button and pressed are required" }),
-        },
-        "pointer_axis" => match (
-            request["horizontal_v120"].as_f64(),
-            request["vertical_v120"].as_f64(),
-        ) {
-            (Some(horizontal), Some(vertical)) => {
-                super::ipc::pointer_axis(fixture, horizontal, vertical);
-                json!({ "success": true })
-            }
-            _ => {
-                json!({ "success": false, "error": "horizontal_v120 and vertical_v120 are required" })
-            }
-        },
-        "key_event" => match (request["key"].as_u64(), request["pressed"].as_bool()) {
-            (Some(key), Some(pressed)) => {
-                super::ipc::key_event(fixture, u32::try_from(key).unwrap(), pressed);
-                json!({ "success": true })
-            }
-            _ => json!({ "success": false, "error": "key and pressed are required" }),
-        },
-        "set_xkb_group" => match request["group"].as_u64() {
-            Some(group) => {
-                let keyboard = fixture.swayward().seat.get_keyboard().unwrap();
-                keyboard.with_xkb_state(fixture.niri_state(), |mut context| {
-                    context.set_layout(smithay::input::keyboard::Layout(
-                        u32::try_from(group).unwrap(),
-                    ));
-                });
-                json!({ "success": true })
-            }
-            None => json!({ "success": false, "error": "group is required" }),
-        },
-        "type_key_chords" => {
-            let chords = request["chords"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|chord| {
-                    chord
-                        .as_array()
-                        .unwrap()
-                        .iter()
-                        .map(|key| u32::try_from(key.as_u64().unwrap()).unwrap())
-                        .collect::<Vec<_>>()
-                })
-                .collect::<Vec<_>>();
-            let chords = chords.iter().map(Vec::as_slice).collect::<Vec<_>>();
-            super::ipc::type_key_chords(fixture, &chords);
-            json!({ "success": true })
-        }
-        "warp_pointer" => match (request["x"].as_f64(), request["y"].as_f64()) {
-            (Some(x), Some(y)) => {
-                settle_configures(fixture, client);
-                fixture.swayward().clock.set_complete_instantly(true);
-                fixture.swayward().layout.advance_animations();
-                fixture.swayward().clock.set_complete_instantly(false);
-                // Feed a real absolute motion event so a pointer grab sees it.
-                // move_cursor alone teleports the cursor and updates pointer
-                // contents, but never reaches Layout::interactive_move_update,
-                // so a dragged window did not follow the pointer at all.
-                super::ipc::pointer_motion_absolute(fixture, x, y);
-                let location = (x, y).into();
-                let under = fixture.swayward().contents_under(location);
-                fixture.swayward().handle_focus_follows_mouse(&under);
-                fixture.niri_state().move_cursor(location);
-                json!({ "success": true })
-            }
-            _ => json!({ "success": false, "error": "pointer coordinates must be numeric" }),
-        },
-        "prepare_resize" => {
-            settle_configures(fixture, client);
-            json!({ "success": true })
-        }
-        "reap_closed" => {
-            let settle = request["settle_configures"].as_bool() == Some(true);
-            if settle {
-                settle_configures(fixture, client);
-            }
-            reap_closed_windows(fixture, client);
-            json!({ "success": true })
-        }
-        "remove_all_windows" => {
-            remove_all_windows(fixture, client);
-            json!({ "success": true })
-        }
-        "request_stop" => {
-            fixture.niri_state().request_stop("exit");
-            json!({ "success": true })
-        }
-        action => panic!("unknown i3 test control action: {action}"),
-    };
-    writeln!(&stream, "{reply}").unwrap();
+        input => dispatch_input_control(fixture, session.client, input),
+    }
 }
 
+fn create_control_window(
+    fixture: &mut Fixture,
+    session: &mut Session,
+    request: WindowRequest,
+    map: bool,
+) -> Value {
+    let request_value = json!({
+        "app_id": request.app_id,
+        "name": request.name,
+        "fullscreen_output": request.fullscreen_output,
+        "requested_width": request.requested_width,
+        "requested_height": request.requested_height,
+    });
+    let handle = create_window(fixture, session.client, &request_value);
+    if !map {
+        if request.initial_floating == Some(true) {
+            session.initially_floating.insert(handle);
+        }
+        return json!({ "handle": handle });
+    }
+    json!({ "id": map_window(
+        fixture,
+        session.client,
+        handle,
+        request.size(),
+        request.initial_floating == Some(true),
+    ) })
+}
+
+fn window_control(
+    fixture: &mut Fixture,
+    client: super::client::ClientId,
+    handle: u32,
+    action: impl FnOnce(&super::client::Window),
+) -> Value {
+    let Some(surface) = client_surface(fixture, client, handle) else {
+        return json!({ "success": false, "error": format!("unknown surface handle {handle}") });
+    };
+    action(fixture.client(client).window(&surface));
+    fixture.double_roundtrip(client);
+    json!({ "success": true })
+}
+
+fn set_parent_control(
+    fixture: &mut Fixture,
+    client: super::client::ClientId,
+    handle: u32,
+    parent_handle: u32,
+) -> Value {
+    let Some(surface) = client_surface(fixture, client, handle) else {
+        return json!({ "success": false, "error": format!("unknown surface handle {handle}") });
+    };
+    let Some(parent_surface) = client_surface(fixture, client, parent_handle) else {
+        return json!({ "success": false, "error": format!("unknown parent surface handle {parent_handle}") });
+    };
+    let wayland_client = fixture.client(client);
+    let parent = wayland_client.window(&parent_surface).xdg_toplevel.clone();
+    wayland_client.window(&surface).set_parent(Some(&parent));
+    fixture.double_roundtrip(client);
+    json!({ "success": true })
+}
+
+fn dispatch_input_control(
+    fixture: &mut Fixture,
+    client: super::client::ClientId,
+    control: Control,
+) -> Value {
+    match control {
+        Control::PointerButton { button, pressed } => super::ipc::pointer_button(fixture, button, pressed),
+        Control::PointerAxis { horizontal_v120, vertical_v120 } => super::ipc::pointer_axis(fixture, horizontal_v120, vertical_v120),
+        Control::KeyEvent { key, pressed } => super::ipc::key_event(fixture, key, pressed),
+        Control::SetXkbGroup { group } => {
+            let Some(keyboard) = fixture.swayward().seat.get_keyboard() else {
+                return json!({ "success": false, "error": "no keyboard" });
+            };
+            keyboard.with_xkb_state(fixture.niri_state(), |mut context| {
+                context.set_layout(smithay::input::keyboard::Layout(group));
+            });
+        }
+        Control::TypeKeyChords { chords } => {
+            let chords = chords.iter().map(Vec::as_slice).collect::<Vec<_>>();
+            super::ipc::type_key_chords(fixture, &chords);
+        }
+        Control::WarpPointer { x, y } => {
+            settle_configures(fixture, client);
+            fixture.swayward().clock.set_complete_instantly(true);
+            fixture.swayward().layout.advance_animations();
+            fixture.swayward().clock.set_complete_instantly(false);
+            super::ipc::pointer_motion_absolute(fixture, x, y);
+            let location = (x, y).into();
+            let under = fixture.swayward().contents_under(location);
+            fixture.swayward().handle_focus_follows_mouse(&under);
+            fixture.niri_state().move_cursor(location);
+        }
+        Control::PrepareResize => settle_configures(fixture, client),
+        Control::ReapClosed { settle_configures: settle } => {
+            if settle { settle_configures(fixture, client); }
+            reap_closed_windows(fixture, client);
+        }
+        Control::RemoveAllWindows => remove_all_windows(fixture, client),
+        Control::RequestStop => fixture.niri_state().request_stop("exit"),
+        _ => return json!({ "success": false, "error": "control action is not an input or lifecycle action" }),
+    }
+    json!({ "success": true })
+}
