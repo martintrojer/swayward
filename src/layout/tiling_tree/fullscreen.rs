@@ -74,6 +74,32 @@ impl<W: LayoutElement> TilingTree<W> {
 
     /// Record that the current fullscreen node was moved into this tree while
     /// fullscreen, so its branch keeps no share of the parent split.
+    /// Re-arrange the split holding the fullscreen node without a workspace
+    /// arrange, so the fullscreen container reports its tiled slot.
+    pub fn arrange_fullscreen_parent(&mut self) {
+        let Some(fullscreen) = self.fullscreen_node() else {
+            return;
+        };
+        let focused_in_fullscreen = self
+            .focus
+            .is_some_and(|focus| self.contains_node(fullscreen, focus));
+        let parent = self.nodes.get(&fullscreen).and_then(|node| node.parent);
+        if focused_in_fullscreen
+            && parent.is_some_and(|parent| {
+                parent != self.root
+                    && matches!(
+                        self.nodes.get(&parent).map(|node| &node.value),
+                        Some(TreeNode::Split {
+                            layout: Layout::SplitH | Layout::SplitV,
+                            ..
+                        })
+                    )
+            })
+        {
+            self.fullscreen_tile_slot = true;
+        }
+    }
+
     pub fn mark_fullscreen_arrived(&mut self) {
         if self.fullscreen_node().is_some() {
             self.fullscreen_arrived = true;

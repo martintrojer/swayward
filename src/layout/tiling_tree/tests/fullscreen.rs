@@ -413,3 +413,32 @@ fn fullscreen_arriving_in_a_tab_keeps_the_tabbed_container_sized() {
     assert_eq!(rect.size.w, 640.);
     t.check_invariants();
 }
+
+// random seed 30 step 16 (sway-1.12-random): `move container to workspace`
+// naming the current workspace still arranges the fullscreen container's
+// parent split, so the fullscreen container reports its tiled slot.
+#[test]
+fn arranging_the_fullscreen_parent_reports_the_tile_slot() {
+    let mut t = tree((1280., 720.), 0.);
+    t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let fullscreen = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.split(fullscreen, Layout::SplitV);
+    t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+    t.activate_window(&2);
+    assert!(t.set_node_fullscreen(fullscreen, Some(FullscreenMode::Workspace)));
+
+    t.arrange_fullscreen_parent();
+
+    let IpcNode::Split { children, .. } = t.ipc_tree() else {
+        panic!("IPC root must be a split");
+    };
+    let IpcNode::Split { children, .. } = &children[1] else {
+        panic!("second child must be the split container");
+    };
+    let IpcNode::Leaf { id, percent, .. } = &children[0] else {
+        panic!("fullscreen view must be a leaf");
+    };
+    assert_eq!(*id, fullscreen);
+    assert_eq!(*percent, Some(0.5));
+    t.check_invariants();
+}

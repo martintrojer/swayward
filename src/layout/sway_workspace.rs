@@ -629,6 +629,17 @@ impl<W: LayoutElement> Layout<W> {
         }
         .map(Workspace::id)
         .ok_or_else(|| "target workspace does not exist".to_owned())?;
+        if source_workspace == Some(target_workspace) {
+            // `container_move_to_workspace` returns early for the current
+            // workspace, but `cmd_move_container` still arranges the parent of
+            // the destination, the workspace's focus-inactive tiling container
+            // (sway/commands/move.c:98-99, 199-207). Under fullscreen that
+            // gives the fullscreen container its tiled slot.
+            if let Some(workspace) = self.workspace_mut(target_workspace) {
+                workspace.tiling_mut().arrange_fullscreen_parent();
+            }
+            return Ok(());
+        }
         if target_output != source_output {
             let output =
                 target_output.ok_or_else(|| "target workspace has no output".to_owned())?;
