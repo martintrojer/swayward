@@ -235,8 +235,6 @@ impl<W: LayoutElement> TilingTree<W> {
         let backwards = direction.is_backwards();
         let mut branch = id;
         let mut parent = self.nodes.get(&id).and_then(|node| node.parent);
-        let mut exhausted_axis = false;
-        let mut vacated_explicit_split = false;
         while let Some(parent_id) = parent {
             let Some(Node {
                 parent: grandparent,
@@ -248,8 +246,6 @@ impl<W: LayoutElement> TilingTree<W> {
                 return false;
             };
             if Self::layouts_parallel(*layout, wanted_layout) {
-                exhausted_axis = true;
-                vacated_explicit_split |= branch == id && children.len() > 1;
                 let Some(index) = children.iter().position(|child| *child == branch) else {
                     return false;
                 };
@@ -286,7 +282,7 @@ impl<W: LayoutElement> TilingTree<W> {
         if boundary_root != self.root || !self.can_wrap_root_children() {
             return false;
         }
-        self.promote_by_wrapping_root(id, direction, exhausted_axis && !vacated_explicit_split)
+        self.promote_by_wrapping_root(id, direction)
     }
 
     /// Promotes `id` to the outer end of `boundary_root`, a parallel root it has escaped
@@ -315,23 +311,17 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     /// No ancestor runs along the move axis, so the root's children are wrapped and `id` becomes
-    /// their sibling along that axis (sway/commands/move.c:333-344). `collapse` flattens the
-    /// old parent instead of only reaping it when empty.
-    fn promote_by_wrapping_root(
-        &mut self,
-        id: NodeId,
-        direction: Direction,
-        collapse: bool,
-    ) -> bool {
+    /// their sibling along that axis (sway/commands/move.c:333-344).
+    fn promote_by_wrapping_root(&mut self, id: NodeId, direction: Direction) -> bool {
         let Some(old_parent) = self.detach_subtree_only(id) else {
             return false;
         };
         self.wrap_root_for_direction(id, direction);
-        if collapse {
-            self.collapse_from(old_parent);
-        } else {
-            self.reap_empty_from(old_parent);
-        }
+        // Sway reaps only the emptied ancestors of the moved node
+        // (`container_reap_empty`); a wrapper left with one view is not a
+        // squashable H/V pair, so it survives (`container_squash`,
+        // sway/tree/container.c:1686-1716).
+        self.reap_empty_from(old_parent);
         self.compact_tree();
         self.finish_directional_move(id);
         true

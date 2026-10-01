@@ -41,6 +41,13 @@ fn directional_move_squashes_the_whole_tree() {
     t.check_invariants();
 }
 
+// random seeds 335 step 10 and 182 step 7 (sway-1.12-random): with no
+// parallel ancestor, sway wraps the workspace children in the old layout
+// (`workspace_wrap_children`, sway/commands/move.c:333-344) and promotes the
+// moved view beside that wrapper. The vacated singleton split is reaped, but
+// the wrapper around the remaining view stays: `container_squash`
+// (sway/tree/container.c:1686-1716) keeps a
+// split whose only child is a view.
 #[test]
 fn directional_move_escapes_a_singleton_parallel_parent() {
     let mut t = tree((1200., 800.), 0.);
@@ -59,8 +66,11 @@ fn directional_move_escapes_a_singleton_parallel_parent() {
     assert_eq!(layout, Layout::SplitV);
     assert!(matches!(
         &children[..],
-        [IpcNode::Leaf { id: top, .. }, IpcNode::Leaf { id: bottom, .. }]
-            if *top == first && *bottom == second
+        [
+            IpcNode::Split { layout: Layout::SplitH, children: wrapped, .. },
+            IpcNode::Leaf { id: bottom, .. },
+        ] if *bottom == second
+            && matches!(&wrapped[..], [IpcNode::Leaf { id, .. }] if *id == first)
     ));
     t.check_invariants();
 }
