@@ -1,7 +1,7 @@
 use super::*;
 
 impl State {
-    pub(super) fn ipc_refresh_workspaces(&mut self) {
+    pub(super) fn ipc_refresh_workspaces(&self, current_tree: &swayward_ipc::Node) {
         let Some(server) = &self.swayward.ipc_server else {
             return;
         };
@@ -19,12 +19,6 @@ impl State {
         let layout = &self.swayward.layout;
         let focused_ws_id = layout.active_workspace().map(|ws| ws.id().get());
 
-        let current_tree = crate::ipc::tree::describe_tree(
-            layout,
-            &self.swayward.global_space,
-            &self.swayward.marks_by_window,
-            &self.swayward.marks_by_container,
-        );
         let old_focused = state
             .workspaces
             .values()
@@ -48,7 +42,7 @@ impl State {
         let mut need_workspaces_changed = false;
         for (mon, ws_idx, ws) in layout.workspaces() {
             let id = ws.id().get();
-            let Some(current_node) = find_workspace_by_id(&current_tree, id) else {
+            let Some(current_node) = find_workspace_by_id(current_tree, id) else {
                 continue;
             };
             seen.insert(id);
@@ -74,7 +68,7 @@ impl State {
 
             let output_name = mon.map(|mon| mon.output_name());
             if ipc_ws.name != ws.sway_name() {
-                if let Some(current) = find_workspace_by_id(&current_tree, id).cloned() {
+                if let Some(current) = find_workspace_by_id(current_tree, id).cloned() {
                     events.push(Event::WorkspaceRenamed {
                         current: Box::new(current),
                     });
@@ -109,7 +103,7 @@ impl State {
             // Check if this workspace became focused.
             let is_focused = Some(id) == focused_ws_id;
             if is_focused && !ipc_ws.is_focused {
-                if let Some(mut current) = find_workspace_by_id(&current_tree, id).cloned() {
+                if let Some(mut current) = find_workspace_by_id(current_tree, id).cloned() {
                     current.focused = true;
                     events.push(Event::WorkspaceFocusChanged {
                         old: old_focused_node.clone(),
@@ -130,7 +124,7 @@ impl State {
         if old_focused.is_some_and(|workspace| !seen.contains(&workspace.id)) {
             events.retain(|event| !matches!(event, Event::WorkspaceFocusChanged { .. }));
             if let Some(id) = focused_ws_id {
-                if let Some(mut current) = find_workspace_by_id(&current_tree, id).cloned() {
+                if let Some(mut current) = find_workspace_by_id(current_tree, id).cloned() {
                     current.focused = true;
                     events.push(Event::WorkspaceFocusChanged {
                         old: old_focused_node.clone(),
@@ -188,7 +182,7 @@ impl State {
                 .workspaces()
                 .filter_map(|(mon, ws_idx, ws)| {
                     let id = ws.id().get();
-                    find_workspace_by_id(&current_tree, id).map(|_| Workspace {
+                    find_workspace_by_id(current_tree, id).map(|_| Workspace {
                         id,
                         idx: u8::try_from(ws_idx + 1).unwrap_or(u8::MAX),
                         name: ws.sway_name(),

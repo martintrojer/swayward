@@ -82,6 +82,44 @@ impl State {
         self.ipc_keyboard_input_changed("xkb_layout");
     }
 
+    /// Container `id` as GET_TREE currently describes it, or `None` when no
+    /// IPC server is running.
+    pub(crate) fn ipc_container_snapshot(&self, id: i64) -> Option<serde_json::Value> {
+        self.swayward.ipc_server.as_ref()?;
+        let tree = serde_json::to_value(crate::ipc::tree::describe_tree(
+            &self.swayward.layout,
+            &self.swayward.global_space,
+            &self.swayward.marks_by_window,
+            &self.swayward.marks_by_container,
+        ))
+        .unwrap_or_default();
+        find_node_by_id(&tree, id).cloned()
+    }
+
+    /// Send a sway window event carrying `container`.
+    pub(crate) fn ipc_send_window_change(&self, change: &str, container: serde_json::Value) {
+        if let Some(server) = &self.swayward.ipc_server {
+            server.send_event(Event::SwayWindowChanged {
+                change: change.into(),
+                container,
+            });
+        }
+    }
+
+    /// Send a sway window event for container `id` from the live tree,
+    /// after `patch` adjusts the snapshot.
+    pub(crate) fn ipc_emit_window_change(
+        &self,
+        change: &str,
+        id: i64,
+        patch: impl FnOnce(&mut serde_json::Value),
+    ) {
+        if let Some(mut container) = self.ipc_container_snapshot(id) {
+            patch(&mut container);
+            self.ipc_send_window_change(change, container);
+        }
+    }
+
     pub fn ipc_refresh_layout(&mut self) {
         if self
             .swayward
@@ -98,18 +136,23 @@ impl State {
         let previous_tree = self.swayward.ipc_server.as_ref().and_then(|server| {
             serde_json::from_str(&server.query_state.borrow().event_baseline_tree).ok()
         });
-        self.ipc_refresh_workspaces();
-        if let Some(server) = &self.swayward.ipc_server {
-            let tree = describe_tree_with_power(
-                &self.swayward.layout,
-                &self.swayward.global_space,
-                &self.swayward.marks_by_window,
-                &self.swayward.marks_by_container,
-                &self.swayward.output_power,
-            );
-            server.query_state.borrow_mut().event_baseline_tree = serde_json::to_string(&tree)
-                .unwrap_or_else(|_| r#"{"success":false,"error":"serialization failed"}"#.into());
-        }
-        self.ipc_refresh_windows(previous_tree.as_ref());
+        let Some(server) = &self.swayward.ipc_server else {
+            return;
+        };
+        // One serialisation serves the workspace diff, the window diff and
+        // the next baseline. Output power appears only on output nodes, which
+        // neither diff reads.
+        let current_tree = describe_tree_with_power(
+            &self.swayward.layout,
+            &self.swayward.global_space,
+            &self.swayward.marks_by_window,
+            &self.swayward.marks_by_container,
+            &self.swayward.output_power,
+        );
+        self.ipc_refresh_workspaces(&current_tree);
+        let current_value = serde_json::to_value(&current_tree).unwrap_or_default();
+        server.query_state.borrow_mut().event_baseline_tree = serde_json::to_string(&current_tree)
+            .unwrap_or_else(|_| r#"{"success":false,"error":"serialization failed"}"#.into());
+        self.ipc_refresh_windows(previous_tree.as_ref(), &current_value);
     }
 }

@@ -7,9 +7,8 @@ pub(super) struct WorkspaceNodeContext<'a> {
     pub(super) index: usize,
     pub(super) rect: Rect,
     pub(super) output_origin: Rect,
-    pub(super) marks: &'a std::collections::HashMap<MappedId, Vec<String>>,
-    pub(super) container_marks:
-        &'a std::collections::HashMap<crate::layout::tiling_tree::NodeId, Vec<String>>,
+    pub(super) marks: &'a WindowMarks,
+    pub(super) container_marks: &'a ContainerMarks,
 }
 
 pub fn describe_workspaces(
@@ -27,8 +26,8 @@ pub fn describe_workspaces(
 pub(crate) fn describe_workspaces_with_marks(
     layout: &Layout<Mapped>,
     global_space: &Space<Window>,
-    marks: &std::collections::HashMap<MappedId, Vec<String>>,
-    container_marks: &std::collections::HashMap<crate::layout::tiling_tree::NodeId, Vec<String>>,
+    marks: &WindowMarks,
+    container_marks: &ContainerMarks,
 ) -> Vec<Workspace> {
     layout
         .monitors()

@@ -199,28 +199,16 @@ fn set_container_floating(
         return Err(failure("No matching node."));
     };
     state.ipc_refresh_layout();
-    if let Some(server) = &state.swayward.ipc_server {
-        let tree = serde_json::to_value(crate::ipc::tree::describe_tree(
-            &state.swayward.layout,
-            &state.swayward.global_space,
-            &state.swayward.marks_by_window,
-            &state.swayward.marks_by_container,
-        ))
-        .unwrap_or_default();
-        if let Some(mut container) =
-            crate::ipc::server::find_node_by_id(&tree, crate::ipc::tree::container_id(root))
-                .cloned()
-        {
+    state.ipc_emit_window_change(
+        "floating",
+        crate::ipc::tree::container_id(root),
+        |container| {
             if floating {
                 container["type"] = "floating_con".into();
                 container["floating"] = "user_on".into();
             }
-            server.send_event(swayward_ipc::legacy::Event::SwayWindowChanged {
-                change: "floating".into(),
-                container,
-            });
-        }
-    }
+        },
+    );
     state.swayward.queue_redraw_all();
     Ok(())
 }

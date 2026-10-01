@@ -448,21 +448,11 @@ pub(super) fn mark_target(
             CommandTarget::Window(window) => crate::ipc::tree::window_id(window),
             CommandTarget::Container(_, node) => crate::ipc::tree::container_id(node),
         };
-        let tree = serde_json::to_value(crate::ipc::tree::describe_tree(
-            &state.swayward.layout,
-            &state.swayward.global_space,
-            &state.swayward.marks_by_window,
-            &state.swayward.marks_by_container,
-        ))
-        .unwrap_or_default();
-        let container = crate::ipc::server::find_node_by_id(&tree, node_id).cloned();
+        let container = state.ipc_container_snapshot(node_id);
         unmark_target(state, target, None);
-        if let (Some(server), Some(mut container)) = (&state.swayward.ipc_server, container) {
+        if let Some(mut container) = container {
             container["marks"] = serde_json::json!([]);
-            server.send_event(swayward_ipc::legacy::Event::SwayWindowChanged {
-                change: "mark".into(),
-                container,
-            });
+            state.ipc_send_window_change("mark", container);
         }
     }
     unmark_globally(state, Some(mark));
@@ -478,22 +468,7 @@ pub(super) fn mark_target(
         }
     }
     if let CommandTarget::Container(_, node) = target {
-        let tree = serde_json::to_value(crate::ipc::tree::describe_tree(
-            &state.swayward.layout,
-            &state.swayward.global_space,
-            &state.swayward.marks_by_window,
-            &state.swayward.marks_by_container,
-        ))
-        .unwrap_or_default();
-        if let (Some(server), Some(container)) = (
-            &state.swayward.ipc_server,
-            crate::ipc::server::find_node_by_id(&tree, crate::ipc::tree::container_id(node)),
-        ) {
-            server.send_event(swayward_ipc::legacy::Event::SwayWindowChanged {
-                change: "mark".into(),
-                container: container.clone(),
-            });
-        }
+        state.ipc_emit_window_change("mark", crate::ipc::tree::container_id(node), |_| {});
     }
     refresh_titlebar_marks(state);
     if let CommandTarget::Window(window) = target {

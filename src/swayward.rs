@@ -266,8 +266,8 @@ pub struct Swayward {
     pub layout: Layout<Mapped>,
 
     pub marks: HashMap<String, MappedId>,
-    pub marks_by_window: HashMap<MappedId, Vec<String>>,
-    pub marks_by_container: HashMap<crate::layout::tiling_tree::NodeId, Vec<String>>,
+    pub marks_by_window: WindowMarks,
+    pub marks_by_container: ContainerMarks,
     pub runtime_window_rules: Vec<RuntimeWindowRule>,
     pub for_window: Vec<(String, String, crate::criteria::Criteria)>,
     /// Runtime `for_window` criteria added since the last successful reload.
@@ -661,6 +661,11 @@ pub enum CenterCoords {
     // Force centering even if the cursor is already in the rectangle.
     BothAlways,
 }
+
+/// Marks on each window, in the order they were added.
+pub type WindowMarks = HashMap<MappedId, Vec<String>>;
+/// Marks on each split container, in the order they were added.
+pub type ContainerMarks = HashMap<crate::layout::tiling_tree::NodeId, Vec<String>>;
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum CastTarget {

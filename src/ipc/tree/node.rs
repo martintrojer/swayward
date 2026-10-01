@@ -9,7 +9,7 @@ pub(super) struct WindowNodeContext<'a> {
     pub(super) node_type: NodeType,
     pub(super) floating: &'a str,
     pub(super) parent: Option<Rect>,
-    pub(super) marks: &'a std::collections::HashMap<MappedId, Vec<String>>,
+    pub(super) marks: &'a WindowMarks,
     pub(super) in_scratchpad: bool,
     pub(super) visible: bool,
 }
@@ -71,8 +71,8 @@ pub(crate) fn describe_tiling<'a, I>(
     node: IpcNode<I>,
     find_window: &impl Fn(&I) -> Option<&'a Mapped>,
     workspace_rect: Rect,
-    marks: &std::collections::HashMap<MappedId, Vec<String>>,
-    container_marks: &std::collections::HashMap<crate::layout::tiling_tree::NodeId, Vec<String>>,
+    marks: &WindowMarks,
+    container_marks: &ContainerMarks,
 ) -> Option<Node> {
     match node {
         IpcNode::Split {

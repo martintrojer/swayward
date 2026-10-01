@@ -15,46 +15,24 @@ pub(super) fn show(state: &mut State) {
     });
     if let Some((root, focused)) = group {
         state.ipc_refresh_layout();
-        if let Some(server) = &state.swayward.ipc_server {
-            let tree = serde_json::to_value(crate::ipc::tree::describe_tree(
-                &state.swayward.layout,
-                &state.swayward.global_space,
-                &state.swayward.marks_by_window,
-                &state.swayward.marks_by_container,
-            ))
-            .unwrap_or_default();
-            for (change, id) in [
-                ("focus", crate::ipc::tree::window_id(focused)),
-                ("move", crate::ipc::tree::container_id(root)),
-            ] {
-                if let Some(mut container) = crate::ipc::server::find_node_by_id(&tree, id).cloned()
-                {
-                    if change == "focus" {
-                        container["focused"] = true.into();
-                        if let Some(percent) = container["percent"].as_f64() {
-                            container["percent"] = (1. - percent).into();
-                        }
-                    } else {
-                        container["focused"] = false.into();
-                        if let Some(focused) =
-                            container["focus"].as_array().and_then(|ids| ids.first())
-                        {
-                            let focused = focused.clone();
-                            if let Some(nodes) = container["nodes"].as_array_mut() {
-                                for node in nodes {
-                                    node["focused"] = (node["id"] == focused).into();
-                                }
-                            }
-                        }
-                        container["scratchpad_state"] = "fresh".into();
+        state.ipc_emit_window_change("focus", crate::ipc::tree::window_id(focused), |container| {
+            container["focused"] = true.into();
+            if let Some(percent) = container["percent"].as_f64() {
+                container["percent"] = (1. - percent).into();
+            }
+        });
+        state.ipc_emit_window_change("move", crate::ipc::tree::container_id(root), |container| {
+            container["focused"] = false.into();
+            if let Some(focused) = container["focus"].as_array().and_then(|ids| ids.first()) {
+                let focused = focused.clone();
+                if let Some(nodes) = container["nodes"].as_array_mut() {
+                    for node in nodes {
+                        node["focused"] = (node["id"] == focused).into();
                     }
-                    server.send_event(swayward_ipc::legacy::Event::SwayWindowChanged {
-                        change: change.into(),
-                        container,
-                    });
                 }
             }
-        }
+            container["scratchpad_state"] = "fresh".into();
+        });
     }
     state.swayward.queue_redraw_all();
 }
@@ -139,27 +117,11 @@ pub(super) fn move_focused(state: &mut State) -> super::HandlerResult {
     state.swayward.layout.move_to_scratchpad(window.as_ref());
     if let Some(root) = floating_root {
         state.ipc_refresh_layout();
-        if let Some(server) = &state.swayward.ipc_server {
-            let tree = serde_json::to_value(crate::ipc::tree::describe_tree(
-                &state.swayward.layout,
-                &state.swayward.global_space,
-                &state.swayward.marks_by_window,
-                &state.swayward.marks_by_container,
-            ))
-            .unwrap_or_default();
-            if let Some(mut container) =
-                crate::ipc::server::find_node_by_id(&tree, crate::ipc::tree::container_id(root))
-                    .cloned()
-            {
-                if let Some(container) = container.as_object_mut() {
-                    container.remove("visible");
-                }
-                server.send_event(swayward_ipc::legacy::Event::SwayWindowChanged {
-                    change: "move".into(),
-                    container,
-                });
+        state.ipc_emit_window_change("move", crate::ipc::tree::container_id(root), |container| {
+            if let Some(container) = container.as_object_mut() {
+                container.remove("visible");
             }
-        }
+        });
     }
     state.swayward.queue_redraw_all();
     Ok(None)

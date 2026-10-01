@@ -21,20 +21,17 @@ fn make_ipc_window(
 }
 
 impl State {
-    pub(super) fn ipc_refresh_windows(&mut self, previous_tree: Option<&serde_json::Value>) {
+    pub(super) fn ipc_refresh_windows(
+        &self,
+        previous_tree: Option<&serde_json::Value>,
+        current_tree: &serde_json::Value,
+    ) {
         let Some(server) = &self.swayward.ipc_server else {
             return;
         };
 
         let _span = tracy_client::span!("State::ipc_refresh_windows");
 
-        let current_tree = serde_json::to_value(crate::ipc::tree::describe_tree(
-            &self.swayward.layout,
-            &self.swayward.global_space,
-            &self.swayward.marks_by_window,
-            &self.swayward.marks_by_container,
-        ))
-        .unwrap_or_default();
         let mut state = server.event_stream_state.borrow_mut();
         let state = &mut state.windows;
 
@@ -44,7 +41,7 @@ impl State {
         let focused_window_closed = state.windows.values().any(|window| {
             window.is_focused
                 && find_node_by_id(
-                    &current_tree,
+                    current_tree,
                     crate::ipc::tree::window_id_from_raw(window.id),
                 )
                 .is_none()
@@ -60,7 +57,7 @@ impl State {
             seen.insert(id);
 
             let node_id = crate::ipc::tree::window_id(mapped.id());
-            let current_node = find_node_by_id(&current_tree, node_id).cloned();
+            let current_node = find_node_by_id(current_tree, node_id).cloned();
             let is_focused = mapped.is_focused();
             if is_focused {
                 focused_id = Some(id);
@@ -77,7 +74,7 @@ impl State {
                     container["border"] = "none".into();
                     container["current_border_width"] = 0.into();
                     container["focused"] = false.into();
-                    let hidden_before_focus = find_parent_of_node(&current_tree, node_id)
+                    let hidden_before_focus = find_parent_of_node(current_tree, node_id)
                         .is_some_and(|parent| {
                             parent["layout"]
                                 .as_str()
@@ -205,7 +202,7 @@ impl State {
                 let mut container = if focused_window_closed {
                     previous_tree.and_then(|tree| find_node_by_id(tree, node_id))
                 } else {
-                    find_node_by_id(&current_tree, node_id)
+                    find_node_by_id(current_tree, node_id)
                 }
                 .cloned();
                 if let Some(container) = &mut container {
@@ -241,8 +238,7 @@ impl State {
             let urgent = mapped.is_urgent();
             if urgent != ipc_win.is_urgent {
                 if let Some(container) =
-                    find_node_by_id(&current_tree, crate::ipc::tree::window_id(mapped.id()))
-                        .cloned()
+                    find_node_by_id(current_tree, crate::ipc::tree::window_id(mapped.id())).cloned()
                 {
                     events.push(Event::SwayWindowChanged {
                         change: "urgent".into(),
@@ -268,7 +264,7 @@ impl State {
         let mut ipc_focused_id = None;
         for (id, ipc_win) in &state.windows {
             let node_id = crate::ipc::tree::window_id_from_raw(*id);
-            if !seen.contains(id) && find_node_by_id(&current_tree, node_id).is_none() {
+            if !seen.contains(id) && find_node_by_id(current_tree, node_id).is_none() {
                 if let Some(mut container) = previous_tree
                     .and_then(|tree| find_node_by_id(tree, node_id))
                     .cloned()
