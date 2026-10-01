@@ -253,6 +253,11 @@ fn floating_part(context: &WorkspaceNodeContext<'_>, state: &WorkspaceState) -> 
             node.floating = Some("user_on".into());
             node.scratchpad_state = Some("none".into());
             node.sticky = sticky;
+            // A floating group's own tree keeps its internal focus while another layer is
+            // active; sway reports a container focused only when it holds the seat focus.
+            if !state.focused || !workspace.floating_is_active() {
+                clear_focused(&mut node);
+            }
             Some(node)
         })
         .chain(

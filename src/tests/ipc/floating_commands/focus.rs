@@ -601,3 +601,64 @@ fn unfloating_a_shown_scratchpad_window_removes_it_from_the_scratchpad() {
         );
     }
 }
+
+#[test]
+fn an_unfocused_floating_group_does_not_report_itself_focused() {
+    // Oracle random seed 133 step 19: a tabbed group is floated and focused, then a tiled
+    // view maps and takes focus. Sway reports only the seat focus as focused, so the
+    // floating group must clear its flag; its own tree still remembers its focused child.
+    let mut f = Fixture::new();
+    f.add_output(1, (1280, 720));
+    let client = f.add_client();
+    crate::tests::windows::map_window(
+        &mut f,
+        client,
+        crate::tests::windows::WindowSpec {
+            app_id: Some("group-tab"),
+            ..Default::default()
+        },
+    );
+    for command in ["layout tabbed", "focus parent", "floating toggle"] {
+        assert!(
+            crate::command::execute(f.niri_state(), command)[0].success,
+            "{command}"
+        );
+    }
+    crate::tests::windows::map_window(
+        &mut f,
+        client,
+        crate::tests::windows::WindowSpec {
+            app_id: Some("tiled-new"),
+            ..Default::default()
+        },
+    );
+
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &swayward.marks_by_window,
+        &swayward.marks_by_container,
+    ))
+    .unwrap();
+    let mut focused = Vec::new();
+    fn collect(node: &serde_json::Value, focused: &mut Vec<String>) {
+        if node["focused"] == true {
+            focused.push(format!(
+                "{}:{}",
+                node["type"].as_str().unwrap_or_default(),
+                node["app_id"].as_str().unwrap_or("-")
+            ));
+        }
+        for child in node["nodes"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .chain(node["floating_nodes"].as_array().into_iter().flatten())
+        {
+            collect(child, focused);
+        }
+    }
+    collect(&tree, &mut focused);
+    assert_eq!(focused, ["con:tiled-new"]);
+}
