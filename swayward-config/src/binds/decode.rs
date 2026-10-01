@@ -50,6 +50,156 @@ impl Binds {
     }
 }
 
+#[derive(Clone)]
+struct BindProps {
+    mouse_regions: MouseRegions,
+    input_device: String,
+    release: bool,
+    repeat: bool,
+    cooldown: Option<Duration>,
+    allow_when_locked: bool,
+    allow_when_locked_set: bool,
+    allow_inhibiting: bool,
+    hotkey_overlay_title: Option<Option<String>>,
+}
+
+impl BindProps {
+    fn decode<S: knuffel::traits::ErrorSpan>(
+        node: &knuffel::ast::SpannedNode<S>,
+        ctx: &mut knuffel::decode::Context<S>,
+    ) -> Result<Self, DecodeError<S>> {
+        let mut props = Self {
+            mouse_regions: MouseRegions::empty(),
+            input_device: "*".to_owned(),
+            release: false,
+            repeat: true,
+            cooldown: None,
+            allow_when_locked: false,
+            allow_when_locked_set: false,
+            allow_inhibiting: true,
+            hotkey_overlay_title: None,
+        };
+        for (name, val) in &node.properties {
+            match &***name {
+                "mouse-regions" => {
+                    let regions: String = knuffel::traits::DecodeScalar::decode(val, ctx)?;
+                    for region in regions.split('+') {
+                        props.mouse_regions |= match region {
+                            "titlebar" => MouseRegions::TITLEBAR,
+                            "border" => MouseRegions::BORDER,
+                            "contents" => MouseRegions::CONTENTS,
+                            _ => {
+                                ctx.emit_error(DecodeError::unexpected(
+                                    name,
+                                    "property",
+                                    "mouse-regions must contain titlebar, border, or contents",
+                                ));
+                                MouseRegions::empty()
+                            }
+                        };
+                    }
+                }
+                "input-device" => {
+                    props.input_device = knuffel::traits::DecodeScalar::decode(val, ctx)?;
+                    if props.input_device.is_empty() {
+                        ctx.emit_error(DecodeError::unexpected(
+                            &val.literal,
+                            "property value",
+                            "input-device must not be empty",
+                        ));
+                    }
+                }
+                "release" => props.release = knuffel::traits::DecodeScalar::decode(val, ctx)?,
+                "repeat" => props.repeat = knuffel::traits::DecodeScalar::decode(val, ctx)?,
+                "cooldown-ms" => {
+                    props.cooldown = Some(Duration::from_millis(
+                        knuffel::traits::DecodeScalar::decode(val, ctx)?,
+                    ));
+                }
+                "allow-when-locked" => {
+                    props.allow_when_locked = knuffel::traits::DecodeScalar::decode(val, ctx)?;
+                    props.allow_when_locked_set = true;
+                }
+                "allow-inhibiting" => {
+                    props.allow_inhibiting = knuffel::traits::DecodeScalar::decode(val, ctx)?;
+                }
+                "hotkey-overlay-title" => {
+                    props.hotkey_overlay_title =
+                        Some(knuffel::traits::DecodeScalar::decode(val, ctx)?);
+                }
+                name_str => ctx.emit_error(DecodeError::unexpected(
+                    name,
+                    "property",
+                    format!("unexpected property `{}`", name_str.escape_default()),
+                )),
+            }
+        }
+        if props.release {
+            props.repeat = false;
+        }
+        Ok(props)
+    }
+
+    fn into_bind(self, key: Key, group: Option<u8>, action: Action) -> Bind {
+        Bind {
+            key,
+            action,
+            mouse_regions: self.mouse_regions,
+            input_device: self.input_device,
+            group,
+            release: self.release,
+            repeat: self.repeat,
+            cooldown: self.cooldown,
+            allow_when_locked: self.allow_when_locked,
+            allow_inhibiting: self.allow_inhibiting,
+            hotkey_overlay_title: self.hotkey_overlay_title,
+        }
+    }
+
+    fn dummy(&self, key: Key, group: Option<u8>) -> Bind {
+        // A harmless placeholder lets the parent still diagnose duplicate keys.
+        Bind {
+            key,
+            action: Action::Spawn(vec![]),
+            mouse_regions: self.mouse_regions,
+            input_device: self.input_device.clone(),
+            group,
+            release: self.release,
+            repeat: true,
+            cooldown: None,
+            allow_when_locked: false,
+            allow_inhibiting: true,
+            hotkey_overlay_title: None,
+        }
+    }
+}
+
+fn split_group<S: knuffel::traits::ErrorSpan>(
+    node: &knuffel::ast::SpannedNode<S>,
+    ctx: &mut knuffel::decode::Context<S>,
+) -> (String, Option<u8>) {
+    let mut group = None;
+    let mut parts = node.node_name.split('+').collect::<Vec<_>>();
+    parts.retain(|part| {
+        let value = if *part == "Mode_switch" {
+            Some("2")
+        } else {
+            part.strip_prefix("Group")
+        };
+        let Some(value) = value else { return true };
+        match value.parse::<u8>() {
+            Ok(value @ 1..=4) if group.is_none() => group = Some(value - 1),
+            _ => ctx.emit_error(DecodeError::unexpected(
+                &node.node_name,
+                "keybind",
+                "exactly one XKB group from Group1 to Group4 is allowed",
+            )),
+        }
+        false
+    });
+    (parts.join("+"), group)
+}
+
 impl<S> knuffel::Decode<S> for Binds
 where
     S: knuffel::traits::ErrorSpan,
@@ -87,105 +237,14 @@ where
             ));
         }
 
-        let mut key_name = node.node_name.to_string();
-        let mut group = None;
-        let mut key_parts = key_name.split('+').collect::<Vec<_>>();
-        key_parts.retain(|part| {
-            let value = if *part == "Mode_switch" {
-                Some("2")
-            } else {
-                part.strip_prefix("Group")
-            };
-            let Some(value) = value else {
-                return true;
-            };
-            match value.parse::<u8>() {
-                Ok(value @ 1..=4) if group.is_none() => group = Some(value - 1),
-                _ => ctx.emit_error(DecodeError::unexpected(
-                    &node.node_name,
-                    "keybind",
-                    "exactly one XKB group from Group1 to Group4 is allowed",
-                )),
-            }
-            false
-        });
-        key_name = key_parts.join("+");
+        let (key_name, group) = split_group(node, ctx);
         let key = key_name
             .parse::<Key>()
             .map_err(|e| DecodeError::conversion(&node.node_name, e.wrap_err("invalid keybind")))?;
 
-        let mut mouse_regions = MouseRegions::empty();
-        let mut input_device = "*".to_owned();
-        let mut release = false;
-        let mut repeat = true;
-        let mut cooldown = None;
-        let mut allow_when_locked = false;
-        let mut allow_when_locked_node = None;
-        let mut allow_inhibiting = true;
-        let mut hotkey_overlay_title = None;
-        for (name, val) in &node.properties {
-            match &***name {
-                "mouse-regions" => {
-                    let regions: String = knuffel::traits::DecodeScalar::decode(val, ctx)?;
-                    for region in regions.split('+') {
-                        mouse_regions |= match region {
-                            "titlebar" => MouseRegions::TITLEBAR,
-                            "border" => MouseRegions::BORDER,
-                            "contents" => MouseRegions::CONTENTS,
-                            _ => {
-                                ctx.emit_error(DecodeError::unexpected(
-                                    name,
-                                    "property",
-                                    "mouse-regions must contain titlebar, border, or contents",
-                                ));
-                                MouseRegions::empty()
-                            }
-                        };
-                    }
-                }
-                "input-device" => {
-                    input_device = knuffel::traits::DecodeScalar::decode(val, ctx)?;
-                    if input_device.is_empty() {
-                        ctx.emit_error(DecodeError::unexpected(
-                            &val.literal,
-                            "property value",
-                            "input-device must not be empty",
-                        ));
-                    }
-                }
-                "release" => {
-                    release = knuffel::traits::DecodeScalar::decode(val, ctx)?;
-                }
-                "repeat" => {
-                    repeat = knuffel::traits::DecodeScalar::decode(val, ctx)?;
-                }
-                "cooldown-ms" => {
-                    cooldown = Some(Duration::from_millis(
-                        knuffel::traits::DecodeScalar::decode(val, ctx)?,
-                    ));
-                }
-                "allow-when-locked" => {
-                    allow_when_locked = knuffel::traits::DecodeScalar::decode(val, ctx)?;
-                    allow_when_locked_node = Some(name);
-                }
-                "allow-inhibiting" => {
-                    allow_inhibiting = knuffel::traits::DecodeScalar::decode(val, ctx)?;
-                }
-                "hotkey-overlay-title" => {
-                    hotkey_overlay_title = Some(knuffel::traits::DecodeScalar::decode(val, ctx)?);
-                }
-                name_str => {
-                    ctx.emit_error(DecodeError::unexpected(
-                        name,
-                        "property",
-                        format!("unexpected property `{}`", name_str.escape_default()),
-                    ));
-                }
-            }
-        }
-
+        let props = BindProps::decode(node, ctx)?;
         let keyboard_trigger = matches!(key.trigger, Trigger::Keysym(_) | Trigger::Keycode(_));
-        if keyboard_trigger && !mouse_regions.is_empty() {
+        if keyboard_trigger && !props.mouse_regions.is_empty() {
             ctx.emit_error(DecodeError::unexpected(
                 &node.node_name,
                 "keybind",
@@ -200,28 +259,12 @@ where
             ));
         }
 
-        if release {
-            repeat = false;
-        }
-
         let mut children = node.children();
 
         // If the action is invalid but the key is fine, we still want to return something.
         // That way, the parent can handle the existence of duplicate keybinds,
         // even if their contents are not valid.
-        let dummy = Self {
-            key,
-            action: Action::Spawn(vec![]),
-            mouse_regions,
-            input_device: input_device.clone(),
-            group,
-            release,
-            repeat: true,
-            cooldown: None,
-            allow_when_locked: false,
-            allow_inhibiting: true,
-            hotkey_overlay_title: None,
-        };
+        let dummy = props.dummy(key, group);
 
         if let Some(child) = children.next() {
             for unwanted_child in children {
@@ -271,24 +314,18 @@ where
                     ));
                     return Ok(dummy);
                 }
-                return Ok(Self {
-                    key,
-                    action: Action::SwayCommand(command),
-                    mouse_regions,
-                    input_device,
-                    group,
-                    release,
-                    repeat,
-                    cooldown,
-                    allow_when_locked,
-                    allow_inhibiting,
-                    hotkey_overlay_title,
-                });
+                return Ok(props.into_bind(key, group, Action::SwayCommand(command)));
             }
             match Action::decode_node(child, ctx) {
                 Ok(action) => {
-                    if !matches!(action, Action::Spawn(_) | Action::SpawnSh(_)) {
-                        if let Some(node) = allow_when_locked_node {
+                    if !matches!(action, Action::Spawn(_) | Action::SpawnSh(_))
+                        && props.allow_when_locked_set
+                    {
+                        if let Some((node, _)) = node
+                            .properties
+                            .iter()
+                            .find(|(name, _)| name.to_string() == "allow-when-locked")
+                        {
                             ctx.emit_error(DecodeError::unexpected(
                                 node,
                                 "property",
@@ -299,23 +336,12 @@ where
 
                     // The toggle-inhibit action must always be uninhibitable.
                     // Otherwise, it would be impossible to trigger it.
+                    let mut props = props;
                     if matches!(action, Action::ToggleKeyboardShortcutsInhibit) {
-                        allow_inhibiting = false;
+                        props.allow_inhibiting = false;
                     }
 
-                    Ok(Self {
-                        key,
-                        action,
-                        mouse_regions,
-                        input_device,
-                        group,
-                        release,
-                        repeat,
-                        cooldown,
-                        allow_when_locked,
-                        allow_inhibiting,
-                        hotkey_overlay_title,
-                    })
+                    Ok(props.into_bind(key, group, action))
                 }
                 Err(e) => {
                     ctx.emit_error(e);
