@@ -50,9 +50,15 @@ struct CachedTitlebar {
     buffer: TextureBuffer<GlesTexture>,
 }
 
+/// One titlebar's cached buffer, re-rasterised only when what it shows changes.
+#[derive(Debug, Default)]
+pub struct TitlebarSlot {
+    cached: RefCell<Option<CachedTitlebar>>,
+}
+
 #[derive(Debug, Default)]
 pub struct TitlebarRenderer {
-    buffers: RefCell<HashMap<NodeId, CachedTitlebar>>,
+    buffers: RefCell<HashMap<NodeId, TitlebarSlot>>,
     uncovered_top_borders: RefCell<HashMap<(NodeId, usize), SolidColorBuffer>>,
 }
 
@@ -109,7 +115,7 @@ pub(crate) fn physical_extent(scale: f64, offset: f64, length: f64) -> i32 {
 
 impl TitlebarRenderer {
     pub fn retain(&self, ids: impl Iterator<Item = NodeId>) {
-        let ids = ids.collect::<Vec<_>>();
+        let ids = ids.collect::<std::collections::HashSet<_>>();
         self.buffers.borrow_mut().retain(|id, _| ids.contains(id));
         self.uncovered_top_borders
             .borrow_mut()
@@ -155,6 +161,23 @@ impl TitlebarRenderer {
         config: &swayward_config::Titlebar,
         top_radius: (f64, f64),
     ) -> Option<PrimaryGpuTextureRenderElement> {
+        self.buffers
+            .borrow_mut()
+            .entry(id)
+            .or_default()
+            .render(renderer, titlebar, scale, config, top_radius)
+    }
+}
+
+impl TitlebarSlot {
+    pub fn render<R: NiriRenderer>(
+        &self,
+        renderer: &mut R,
+        titlebar: &Titlebar<impl Clone>,
+        scale: f64,
+        config: &swayward_config::Titlebar,
+        top_radius: (f64, f64),
+    ) -> Option<PrimaryGpuTextureRenderElement> {
         let width = physical_extent(scale, titlebar.rect.loc.x, titlebar.rect.size.w).max(1);
         let height = physical_extent(scale, titlebar.rect.loc.y, titlebar.rect.size.h).max(1);
         // The decorated-box model assigns each titlebar its outer top corners.
@@ -165,8 +188,8 @@ impl TitlebarRenderer {
             (scale * top_radius.0).clamp(0., max_radius),
             (scale * top_radius.1).clamp(0., max_radius),
         );
-        let mut buffers = self.buffers.borrow_mut();
-        let reusable = buffers.get(&id).is_some_and(|cached| {
+        let mut cached = self.cached.borrow_mut();
+        let reusable = cached.as_ref().is_some_and(|cached| {
             cached.title == titlebar.title
                 && cached.marks == titlebar.marks
                 && cached.width == width
@@ -179,22 +202,19 @@ impl TitlebarRenderer {
         if !reusable {
             let buffer =
                 render_buffer(renderer, titlebar, scale, width, height, config, top_radius)?;
-            buffers.insert(
-                id,
-                CachedTitlebar {
-                    title: titlebar.title.clone(),
-                    marks: titlebar.marks.clone(),
-                    width,
-                    height,
-                    scale,
-                    state: titlebar.state,
-                    config: config.clone(),
-                    top_radius,
-                    buffer,
-                },
-            );
+            *cached = Some(CachedTitlebar {
+                title: titlebar.title.clone(),
+                marks: titlebar.marks.clone(),
+                width,
+                height,
+                scale,
+                state: titlebar.state,
+                config: config.clone(),
+                top_radius,
+                buffer,
+            });
         }
-        let buffer = buffers.get(&id)?.buffer.clone();
+        let buffer = cached.as_ref()?.buffer.clone();
         Some(PrimaryGpuTextureRenderElement(
             TextureRenderElement::from_texture_buffer(
                 buffer,

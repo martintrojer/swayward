@@ -68,7 +68,14 @@ impl<W: LayoutElement> FloatingLayout<W> {
         };
 
         let data = Data::new(self.view_size, self.working_area, &tile, pos);
-        self.entries.insert(idx, FloatingEntry { tile, data });
+        self.entries.insert(
+            idx,
+            FloatingEntry {
+                tile,
+                data,
+                titlebar: Box::default(),
+            },
+        );
 
         self.bring_up_descendants_of(idx);
     }
@@ -150,7 +157,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
     }
 
     fn remove_tile_by_idx(&mut self, idx: usize) -> RemovedTile<W> {
-        let FloatingEntry { mut tile, data } = self.entries.remove(idx);
+        let FloatingEntry { mut tile, data, .. } = self.entries.remove(idx);
 
         if Some(tile.window().id()) == self.active_window_id.as_ref() {
             self.active_window_id = self.fallback_active_window();

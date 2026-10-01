@@ -32,9 +32,8 @@ impl<W: LayoutElement> FloatingLayout<W> {
         }
         let active = self.active_window_id.clone();
         let workspace_focused = focus_ring;
-        self.titlebars
-            .retain((0..self.entries.len()).map(|index| NodeId(index as u64)));
-        for (index, (tile, tile_pos)) in self.tiles_with_render_positions().enumerate() {
+        for (entry, (tile, tile_pos)) in self.entries.iter().zip(self.tiles_with_render_positions())
+        {
             // Skip tiles belonging to a different render layer.
             if layer.is_normal() == tile.is_moving_between_workspaces() {
                 continue;
@@ -63,9 +62,8 @@ impl<W: LayoutElement> FloatingLayout<W> {
                     visible: true,
                 };
                 let radius = tile.window().geometry_corner_radius();
-                if let Some(element) = self.titlebars.render(
+                if let Some(element) = entry.titlebar.render(
                     ctx.renderer,
-                    NodeId(index as u64),
                     &titlebar,
                     self.scale,
                     &self.options.layout.titlebar,

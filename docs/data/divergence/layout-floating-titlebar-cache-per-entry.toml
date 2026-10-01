@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/floating_tree.rs"]
+what = "store each single-window floating entry's titlebar cache in the entry instead of a shared renderer keyed by a synthetic NodeId(stacking index)."
+why = "Raising a window shifted every stacking index, so each cached buffer belonged to a different window and every floating titlebar re-rasterised on the next frame; the synthetic NodeId also put non-tree ids into a tree-id map."

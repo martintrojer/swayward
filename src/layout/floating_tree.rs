@@ -10,7 +10,7 @@ use swayward_ipc::{PositionChange, SizeChange, WindowLayout};
 use super::closing_window::{ClosingWindow, ClosingWindowRenderElement};
 use super::tile::{Tile, TileRenderElement, TileRenderSnapshot};
 use super::tiling_tree::{DetachedSubtree, Direction, NodeId, TilingTree, TilingTreeRenderElement};
-use super::titlebar::{self, Titlebar, TitlebarRenderer, TitlebarState};
+use super::titlebar::{self, Titlebar, TitlebarSlot, TitlebarState};
 use super::workspace::{InteractiveResize, ResolvedSize};
 use super::{
     ConfigureIntent, InteractiveResizeData, LayoutElement, Options, RemovedTile, SizeFrac,
@@ -127,8 +127,6 @@ pub struct FloatingLayout<W: LayoutElement> {
 
     /// Configurable properties of the layout.
     options: Rc<Options>,
-
-    titlebars: TitlebarRenderer,
 }
 
 swayward_render_elements! {
@@ -145,6 +143,9 @@ swayward_render_elements! {
 struct FloatingEntry<W: LayoutElement> {
     tile: Tile<W>,
     data: Data,
+    /// Lives with the entry, so raising a window keeps its titlebar buffer.
+    /// Boxed so the cache keeps one address as the entry moves in the stack.
+    titlebar: Box<TitlebarSlot>,
 }
 
 /// A nested container root resident in the floating layer.
@@ -408,7 +409,6 @@ impl<W: LayoutElement> FloatingLayout<W> {
             scale,
             clock,
             options,
-            titlebars: Default::default(),
         }
     }
 
@@ -532,6 +532,16 @@ impl<W: LayoutElement> FloatingLayout<W> {
                 .iter_mut()
                 .flat_map(|entry| entry.tree.tiles_mut()),
         )
+    }
+
+    /// Each single-window entry's window and the address of its titlebar
+    /// cache, in stacking order.
+    #[cfg(test)]
+    pub(super) fn titlebar_slots(&self) -> Vec<(W::Id, *const TitlebarSlot)> {
+        self.entries
+            .iter()
+            .map(|entry| (entry.tile.window().id().clone(), &raw const *entry.titlebar))
+            .collect()
     }
 
     pub fn tiles_with_offsets(&self) -> impl Iterator<Item = (&Tile<W>, Point<f64, Logical>)> + '_ {
@@ -826,7 +836,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
         let Some(index) = self.idx_of(&active) else {
             return;
         };
-        let FloatingEntry { tile, data } = self.entries.remove(index);
+        let FloatingEntry { tile, data, .. } = self.entries.remove(index);
         let rect = Rectangle::new(data.logical_pos, data.size);
         let mut tree = TilingTree::new(
             self.view_size,

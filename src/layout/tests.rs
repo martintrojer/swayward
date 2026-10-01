@@ -2576,6 +2576,42 @@ fn move_window_to_different_output() {
     check_ops(ops);
 }
 
+/// A floating titlebar's cache belongs to its window. It was keyed by the
+/// stacking index, so raising a window handed every cached buffer to a
+/// different window and each titlebar re-rasterised on the next frame.
+#[test]
+fn raising_a_floating_window_keeps_each_titlebar_cache_with_its_window() {
+    let mut first = TestWindowParams::new(1);
+    first.is_floating = true;
+    let mut second = TestWindowParams::new(2);
+    second.is_floating = true;
+    let mut layout = check_ops([
+        Op::AddOutput(1),
+        Op::AddWindow { params: first },
+        Op::AddWindow { params: second },
+    ]);
+    let before = layout
+        .active_workspace()
+        .unwrap()
+        .floating()
+        .titlebar_slots();
+    let lower = before.last().unwrap().0;
+
+    layout.activate_window(&lower);
+
+    let after = layout
+        .active_workspace()
+        .unwrap()
+        .floating()
+        .titlebar_slots();
+    assert_eq!(after.first().unwrap().0, lower, "the window was raised");
+    let slot =
+        |slots: &[(usize, *const _)], id| slots.iter().find(|(window, _)| *window == id).unwrap().1;
+    for id in [1, 2] {
+        assert_eq!(slot(&after, id), slot(&before, id));
+    }
+}
+
 #[test]
 fn floating_tree_entry_routes_geometry_focus_hit_testing_and_lifecycle() {
     let output = Output::new(
