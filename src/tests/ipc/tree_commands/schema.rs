@@ -65,8 +65,7 @@ fn get_tree_reports_sway_default_floating_rules() {
     );
 }
 
-#[test]
-fn live_ipc_descriptions_match_sway_schema_and_values() {
+fn one_window_schema_fixture() -> (Fixture, std::path::PathBuf, super::client::ClientId) {
     let config = swayward_config::Config::parse_mem(
         "layout { gaps 0; outer-gaps { left 0; right 0; top 0; bottom 0; }; border { on; width 2; }; }",
     )
@@ -87,6 +86,27 @@ fn live_ipc_descriptions_match_sway_schema_and_values() {
     window.ack_last_and_commit();
     f.double_roundtrip(id);
 
+    (f, socket, id)
+}
+
+fn add_schema_floating_window(f: &mut Fixture, id: super::client::ClientId) {
+    let window = f.client(id).create_window();
+    window.xdg_toplevel.set_app_id("fixture-2".into());
+    window.set_title("fixture-2");
+    window.set_size(696, 491);
+    let surface = window.surface.clone();
+    window.commit();
+    f.roundtrip(id);
+    let window = f.client(id).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(id);
+    assert!(crate::command::execute(f.niri_state(), "floating enable")[0].success);
+}
+
+#[test]
+fn live_get_tree_matches_sway_schema_and_values() {
+    let (mut f, socket, _id) = one_window_schema_fixture();
     let mut stream = UnixStream::connect(&socket).unwrap();
     let ours = query_ipc(&mut f, &mut stream, MessageType::GetTree);
     let fixture: Value = serde_json::from_str(&sway_fixture!("one_window.tree.json")).unwrap();
@@ -105,20 +125,13 @@ fn live_ipc_descriptions_match_sway_schema_and_values() {
         ours["nodes"][1]["nodes"][0]["representation"],
         "workspace representation at $tree.nodes[1].nodes[0]"
     );
+}
 
-    let window = f.client(id).create_window();
-    window.xdg_toplevel.set_app_id("fixture-2".into());
-    window.set_title("fixture-2");
-    window.set_size(696, 491);
-    let surface = window.surface.clone();
-    window.commit();
-    f.roundtrip(id);
-    let window = f.client(id).window(&surface);
-    window.attach_new_buffer();
-    window.ack_last_and_commit();
-    f.double_roundtrip(id);
-    assert!(crate::command::execute(f.niri_state(), "floating enable")[0].success);
-
+#[test]
+fn live_floating_tree_matches_sway_roles() {
+    let (mut f, socket, id) = one_window_schema_fixture();
+    add_schema_floating_window(&mut f, id);
+    let mut stream = UnixStream::connect(socket).unwrap();
     let ours = query_ipc(&mut f, &mut stream, MessageType::GetTree);
     let fixture: Value = serde_json::from_str(&sway_fixture!("one_floating.tree.json")).unwrap();
     assert_same_shape(&fixture, &ours, "$tree");
@@ -135,7 +148,14 @@ fn live_ipc_descriptions_match_sway_schema_and_values() {
     assert_eq!(floating["deco_rect"]["x"], floating["rect"]["x"]);
     assert_eq!(floating["deco_rect"]["width"], floating["rect"]["width"]);
     assert_eq!(floating["deco_rect"]["y"], floating["rect"]["y"]);
+}
 
+#[test]
+fn get_tree_node_keys_all_appear_in_sway_fixtures() {
+    let (mut f, socket, id) = one_window_schema_fixture();
+    add_schema_floating_window(&mut f, id);
+    let mut stream = UnixStream::connect(socket).unwrap();
+    let ours = query_ipc(&mut f, &mut stream, MessageType::GetTree);
     let fixture_trees = [
         sway_fixture!("empty.tree.json"),
         sway_fixture!("empty_named.tree.json"),
@@ -162,7 +182,13 @@ fn live_ipc_descriptions_match_sway_schema_and_values() {
     assert_eq!(scratch["name"], "__i3");
     assert_eq!(scratch["nodes"][0]["name"], "__i3_scratch");
     assert!(ours["nodes"][1]["nodes"][0]["nodes"][0]["app_id"].is_string());
+}
 
+#[test]
+fn live_workspace_output_and_marks_match_sway() {
+    let (mut f, socket, id) = one_window_schema_fixture();
+    add_schema_floating_window(&mut f, id);
+    let mut stream = UnixStream::connect(socket).unwrap();
     let ours = query_ipc(&mut f, &mut stream, MessageType::GetWorkspaces);
     let fixture: Value =
         serde_json::from_str(&sway_fixture!("one_floating.workspaces.json")).unwrap();
