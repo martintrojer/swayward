@@ -2399,40 +2399,6 @@ fn interactive_move_onto_empty_output() {
 }
 
 #[test]
-fn interactive_move_onto_empty_output_ewaf() {
-    let ops = [
-        Op::AddOutput(1),
-        Op::AddWindow {
-            params: TestWindowParams::new(0),
-        },
-        Op::InteractiveMoveBegin {
-            window: 0,
-            output_idx: 1,
-            px: 0.,
-            py: 0.,
-        },
-        Op::AddOutput(2),
-        Op::InteractiveMoveUpdate {
-            window: 0,
-            dx: 1000.,
-            dy: 0.,
-            output_idx: 2,
-            px: 0.,
-            py: 0.,
-        },
-        Op::InteractiveMoveEnd { window: 0 },
-    ];
-
-    let options = Options {
-        layout: swayward_config::Layout {
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-    check_ops_with_options(options, ops);
-}
-
-#[test]
 fn interactive_move_onto_last_workspace() {
     let ops = [
         Op::AddOutput(1),
@@ -2486,13 +2452,7 @@ fn interactive_move_onto_first_empty_workspace() {
         Op::AdvanceAnimations { msec_delta: 1000 },
         Op::InteractiveMoveEnd { window: 1 },
     ];
-    let options = Options {
-        layout: swayward_config::Layout {
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-    check_ops_with_options(options, ops);
+    check_ops(ops);
 }
 
 #[test]
@@ -2613,13 +2573,7 @@ fn move_window_to_different_output() {
         Op::AddOutput(2),
         Op::MoveWorkspaceToOutput(2),
     ];
-    let options = Options {
-        layout: swayward_config::Layout {
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-    check_ops_with_options(options, ops);
+    check_ops(ops);
 }
 
 #[test]
@@ -3382,7 +3336,11 @@ fn mixed_layer_selection_filters_one_global_focus_order() {
 }
 
 #[test]
-fn close_window_empty_ws_above_first() {
+fn closing_a_window_mapped_before_any_output_leaves_one_workspace() {
+    // The window maps before any output exists, then the output adopts its
+    // workspace. Closing it leaves that workspace focused and empty; sway
+    // keeps a focused workspace even when empty (workspace_consider_destroy,
+    // sway/tree/workspace.c:313-330, returns while it is the active one).
     let ops = [
         Op::AddWindow {
             params: TestWindowParams::new(1),
@@ -3390,13 +3348,11 @@ fn close_window_empty_ws_above_first() {
         Op::AddOutput(1),
         Op::CloseWindow(1),
     ];
-    let options = Options {
-        layout: swayward_config::Layout {
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-    check_ops_with_options(options, ops);
+    let layout = check_ops(ops);
+    let workspaces = layout.workspaces().collect::<Vec<_>>();
+    assert_eq!(workspaces.len(), 1);
+    assert!(workspaces[0].0.is_some(), "the workspace is on the output");
+    assert!(!workspaces[0].2.has_windows());
 }
 
 #[test]
@@ -3409,52 +3365,7 @@ fn add_and_remove_output() {
         },
         Op::RemoveOutput(2),
     ];
-    let options = Options {
-        layout: swayward_config::Layout {
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-    check_ops_with_options(options, ops);
-}
-
-#[test]
-fn switch_ewaf_on() {
-    let ops = [
-        Op::AddOutput(1),
-        Op::AddWindow {
-            params: TestWindowParams::new(1),
-        },
-    ];
-
-    let mut layout = check_ops(ops);
-    layout.update_options(Options {
-        layout: swayward_config::Layout {
-            ..Default::default()
-        },
-        ..Default::default()
-    });
-    layout.verify_invariants();
-}
-
-#[test]
-fn switch_ewaf_off() {
-    let ops = [
-        Op::AddOutput(1),
-        Op::AddWindow {
-            params: TestWindowParams::new(1),
-        },
-    ];
-
-    let options = Options {
-        layout: swayward_config::Layout {
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-    let mut layout = check_ops_with_options(options, ops);
-    layout.update_options(Options::default());
-    layout.verify_invariants();
+    check_ops(ops);
 }
 
 #[test]
@@ -3814,25 +3725,6 @@ fn set_first_workspace_name() {
     ];
 
     check_ops(ops);
-}
-
-#[test]
-fn set_first_workspace_name_ewaf() {
-    let ops = [
-        Op::AddOutput(0),
-        Op::SetWorkspaceName {
-            new_ws_name: 0,
-            ws_name: None,
-        },
-    ];
-
-    let options = Options {
-        layout: swayward_config::Layout {
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-    check_ops_with_options(options, ops);
 }
 
 #[test]
