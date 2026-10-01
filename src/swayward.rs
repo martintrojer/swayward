@@ -684,27 +684,6 @@ impl CastTarget {
     pub fn matches_output(&self, weak: &WeakOutput) -> bool {
         matches!(self, CastTarget::Output { output, .. } if output == weak)
     }
-
-    pub fn matches(&self, ipc: &swayward_ipc::CastTarget) -> bool {
-        use CastTarget::*;
-        match (self, ipc) {
-            (Nothing, swayward_ipc::CastTarget::Nothing {}) => true,
-            (Output { name, .. }, swayward_ipc::CastTarget::Output { name: ipc_name }) => {
-                name == ipc_name
-            }
-            (Window { id }, swayward_ipc::CastTarget::Window { id: ipc_id }) => id == ipc_id,
-            _ => false,
-        }
-    }
-
-    pub fn make_ipc(&self) -> swayward_ipc::CastTarget {
-        use CastTarget::*;
-        match self {
-            Nothing => swayward_ipc::CastTarget::Nothing {},
-            Output { name, .. } => swayward_ipc::CastTarget::Output { name: name.clone() },
-            Window { id } => swayward_ipc::CastTarget::Window { id: *id },
-        }
-    }
 }
 
 /// Pending update to a window's focus timestamp.
@@ -956,7 +935,9 @@ impl State {
         // screencasts.
         #[cfg(feature = "xdp-gnome-screencast")]
         self.swayward.refresh_mapped_cast_window_rules();
-        self.ipc_refresh_casts();
+        // Clear expired screencopy casts. Ideally we'd have a deadline timer, but our 1 second
+        // frame callback timer calls refresh regularly, so that's fine as is.
+        self.swayward.screencopy_state.clear_expired_casts();
 
         self.swayward.refresh_window_rules();
         self.refresh_ipc_outputs();

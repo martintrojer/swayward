@@ -185,45 +185,4 @@ pub enum Event {
         /// Whether clients should render the mode as Pango markup.
         pango_markup: bool,
     },
-    /// The overview was opened or closed.
-    OverviewOpenedOrClosed {
-        /// The new state of the overview.
-        is_open: bool,
-    },
-    /// The configuration was reloaded.
-    ///
-    /// You will always receive this event when connecting to the event stream, indicating the last
-    /// config load attempt.
-    ConfigLoaded {
-        /// Whether the loading failed.
-        ///
-        /// For example, the config file couldn't be parsed.
-        failed: bool,
-    },
-    /// A screenshot was captured.
-    ScreenshotCaptured {
-        /// The file path where the screenshot was saved, if it was written to disk.
-        ///
-        /// If `None`, the screenshot was either only copied to the clipboard, or the path couldn't
-        /// be converted to a `String` (e.g. contained invalid UTF-8 bytes).
-        path: Option<String>,
-    },
-    /// The screencasts have changed.
-    CastsChanged {
-        /// The new screencast information.
-        ///
-        /// This configuration completely replaces the previous configuration. I.e. if any casts
-        /// are missing from here, then they were stopped.
-        casts: Vec<Cast>,
-    },
-    /// A screencast started, or an existing cast changed.
-    CastStartedOrChanged {
-        /// The cast that started or changed.
-        cast: Cast,
-    },
-    /// A screencast stopped.
-    CastStopped {
-        /// Stream ID of the stopped screencast.
-        stream_id: u64,
-    },
 }

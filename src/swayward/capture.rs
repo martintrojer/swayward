@@ -426,17 +426,6 @@ impl Swayward {
             })
             .unwrap();
 
-        // Prepare to send screenshot completion event back to main thread.
-        let (event_tx, event_rx) = calloop::channel::sync_channel::<Option<String>>(1);
-        self.event_loop
-            .insert_source(event_rx, move |event, _, state| match event {
-                calloop::channel::Event::Msg(path) => {
-                    state.ipc_screenshot_taken(path);
-                }
-                calloop::channel::Event::Closed => (),
-            })
-            .unwrap();
-
         // Encode and save the image in a thread as it's slow.
         thread::spawn(move || {
             let mut buf = vec![];
@@ -482,13 +471,8 @@ impl Swayward {
             if let Err(err) = crate::utils::show_screenshot_notification(image_path.as_deref()) {
                 warn!("error showing screenshot notification: {err:?}");
             }
-
-            // Send screenshot completion event.
-            let path_string = image_path
-                .as_ref()
-                .and_then(|p| p.to_str())
-                .map(|s| s.to_owned());
-            let _ = event_tx.send(path_string);
+            #[cfg(not(feature = "dbus"))]
+            let _ = image_path;
         });
 
         Ok(())

@@ -204,12 +204,6 @@ impl IpcServer {
             Event::Tick { .. } => "tick",
             Event::SwayBinding { .. } => "binding",
             Event::BindingModeChanged { .. } => "binding_mode",
-            Event::OverviewOpenedOrClosed { .. } => "overview",
-            Event::ConfigLoaded { .. } => "config",
-            Event::ScreenshotCaptured { .. } => "screenshot",
-            Event::CastsChanged { .. } => "casts_changed",
-            Event::CastStartedOrChanged { .. } => "cast_started_or_changed",
-            Event::CastStopped { .. } => "cast_stopped",
         };
         trace!(event_type, "emitting IPC event");
         let mut streams = self.event_streams.borrow_mut();

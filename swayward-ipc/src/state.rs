@@ -10,7 +10,7 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
 use crate::legacy::{Event, Workspace};
-use crate::{Cast, KeyboardLayouts, Window};
+use crate::{KeyboardLayouts, Window};
 
 /// Part of the state communicated via the event stream.
 pub trait EventStreamStatePart {
@@ -42,15 +42,6 @@ pub struct EventStreamState {
 
     /// State of the keyboard layouts.
     pub keyboard_layouts: KeyboardLayoutsState,
-
-    /// State of the overview.
-    pub overview: OverviewState,
-
-    /// State of the config.
-    pub config: ConfigState,
-
-    /// State of screencasts.
-    pub casts: CastsState,
 }
 
 /// The workspaces state communicated over the event stream.
@@ -74,36 +65,12 @@ pub struct KeyboardLayoutsState {
     pub keyboard_layouts: Option<KeyboardLayouts>,
 }
 
-/// The overview state communicated over the event stream.
-#[derive(Debug, Default)]
-pub struct OverviewState {
-    /// Whether the overview is currently open.
-    pub is_open: bool,
-}
-
-/// The config state communicated over the event stream.
-#[derive(Debug, Default)]
-pub struct ConfigState {
-    /// Whether the last config load attempt had failed.
-    pub failed: bool,
-}
-
-/// The casts state communicated over the event stream.
-#[derive(Debug, Default)]
-pub struct CastsState {
-    /// Map from a stream id to the screencast.
-    pub casts: HashMap<u64, Cast>,
-}
-
 impl EventStreamStatePart for EventStreamState {
     fn replicate(&self) -> Vec<Event> {
         let mut events = Vec::new();
         events.extend(self.workspaces.replicate());
         events.extend(self.windows.replicate());
         events.extend(self.keyboard_layouts.replicate());
-        events.extend(self.overview.replicate());
-        events.extend(self.config.replicate());
-        events.extend(self.casts.replicate());
         events
     }
 
@@ -111,9 +78,6 @@ impl EventStreamStatePart for EventStreamState {
         let event = self.workspaces.apply(event)?;
         let event = self.windows.apply(event)?;
         let event = self.keyboard_layouts.apply(event)?;
-        let event = self.overview.apply(event)?;
-        let event = self.config.apply(event)?;
-        let event = self.casts.apply(event)?;
         Some(event)
     }
 }
@@ -286,65 +250,6 @@ impl EventStreamStatePart for KeyboardLayoutsState {
     }
 }
 
-impl EventStreamStatePart for OverviewState {
-    fn replicate(&self) -> Vec<Event> {
-        vec![Event::OverviewOpenedOrClosed {
-            is_open: self.is_open,
-        }]
-    }
-
-    fn apply(&mut self, event: Event) -> Option<Event> {
-        match event {
-            Event::OverviewOpenedOrClosed { is_open } => {
-                self.is_open = is_open;
-            }
-            event => return Some(event),
-        }
-        None
-    }
-}
-
-impl EventStreamStatePart for ConfigState {
-    fn replicate(&self) -> Vec<Event> {
-        vec![Event::ConfigLoaded {
-            failed: self.failed,
-        }]
-    }
-
-    fn apply(&mut self, event: Event) -> Option<Event> {
-        match event {
-            Event::ConfigLoaded { failed } => {
-                self.failed = failed;
-            }
-            event => return Some(event),
-        }
-        None
-    }
-}
-
-impl EventStreamStatePart for CastsState {
-    fn replicate(&self) -> Vec<Event> {
-        let casts = self.casts.values().cloned().collect();
-        vec![Event::CastsChanged { casts }]
-    }
-
-    fn apply(&mut self, event: Event) -> Option<Event> {
-        match event {
-            Event::CastsChanged { casts } => {
-                self.casts = casts.into_iter().map(|c| (c.stream_id, c)).collect();
-            }
-            Event::CastStartedOrChanged { cast } => {
-                self.casts.insert(cast.stream_id, cast);
-            }
-            Event::CastStopped { stream_id } => {
-                self.casts.remove(&stream_id);
-            }
-            event => return Some(event),
-        }
-        None
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -400,15 +305,6 @@ mod tests {
             Some(Event::KeyboardLayoutSwitched { idx: 1 })
         ));
         assert!(state.keyboard_layouts.is_none());
-    }
-
-    #[test]
-    fn duplicate_cast_stops_are_idempotent() {
-        let mut state = CastsState::default();
-
-        assert!(state.apply(Event::CastStopped { stream_id: 42 }).is_none());
-        assert!(state.apply(Event::CastStopped { stream_id: 42 }).is_none());
-        assert!(state.casts.is_empty());
     }
 
     /// The active layout index used to be narrowed to `u8` on the way out of

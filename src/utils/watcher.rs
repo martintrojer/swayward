@@ -210,11 +210,7 @@ pub fn setup(state: &mut State, config_path: &ConfigPath, includes: Vec<PathBuf>
         .insert_source(
             rx,
             |event: calloop::channel::Event<Result<Config, ()>>, _, state| match event {
-                calloop::channel::Event::Msg(config) => {
-                    let failed = config.is_err();
-                    state.reload_config(config);
-                    state.ipc_config_loaded(failed);
-                }
+                calloop::channel::Event::Msg(config) => state.reload_config(config),
                 calloop::channel::Event::Closed => (),
             },
         )

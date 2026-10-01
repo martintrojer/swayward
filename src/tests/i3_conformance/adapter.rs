@@ -438,7 +438,6 @@ pub(super) fn reload_test_config(
     let config = prepare_test_config(test, source)?;
     fixture.swayward().for_window.clear();
     fixture.niri_state().reload_config(Ok(config));
-    fixture.niri_state().ipc_config_loaded(false);
     Ok(())
 }
 
