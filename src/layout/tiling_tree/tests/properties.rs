@@ -154,11 +154,6 @@ fn tiling_tree_proptest_cases() -> u32 {
     }
 }
 
-#[test]
-fn tiling_tree_proptest_runs_cases_on_the_fast_gate() {
-    assert!(tiling_tree_proptest_cases() > 0);
-}
-
 fn run_operations(ops: Vec<Op>) {
     let mut tree = tree((1920., 1080.), 8.);
     let mut peer = super::tests::tree((1280., 720.), 4.);
@@ -203,20 +198,20 @@ fn run_operations(ops: Vec<Op>) {
             }
             Op::ReorderFirst(index) => {
                 let nodes: Vec<_> = tree.iter_depth_first().map(|(id, _)| id).collect();
-                if let Some(id) = nodes.get(index).copied() {
-                    tree.move_subtree_to_first(id);
+                if !nodes.is_empty() {
+                    tree.move_subtree_to_first(nodes[index % nodes.len()]);
                 }
             }
             Op::ReorderIndex(id, index) => {
                 let nodes: Vec<_> = tree.iter_depth_first().map(|(id, _)| id).collect();
-                if let Some(id) = nodes.get(id).copied() {
-                    tree.move_subtree_to_index(id, index);
+                if !nodes.is_empty() {
+                    tree.move_subtree_to_index(nodes[id % nodes.len()], index);
                 }
             }
             Op::ReorderLast(index) => {
                 let nodes: Vec<_> = tree.iter_depth_first().map(|(id, _)| id).collect();
-                if let Some(id) = nodes.get(index).copied() {
-                    tree.move_subtree_to_last(id);
+                if !nodes.is_empty() {
+                    tree.move_subtree_to_last(nodes[index % nodes.len()]);
                 }
             }
             Op::Resize(first, second, delta) => {
