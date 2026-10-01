@@ -316,6 +316,50 @@ fn cross_workspace_swap_exchanges_positions_marks_and_fullscreen() {
     );
 }
 
+// random seed 274 step 10 (sway-1.12-random): moving a window out of a
+// fullscreen split container moves only the window. The container stays
+// behind and is reaped, so the moved window does not arrive fullscreen
+// (`container_move_to_workspace`, sway/commands/move.c:220-229).
+#[test]
+fn moving_a_window_out_of_a_fullscreen_container_leaves_fullscreen_behind() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1280, 720));
+    let client = f.add_client();
+    for app_id in ["moved", "other"] {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+    for command in [
+        "splitv",
+        "splith",
+        "focus left",
+        "fullscreen toggle",
+        "splith",
+        "move left",
+        "splith",
+        "move container to workspace 2",
+    ] {
+        assert!(crate::command::execute(f.niri_state(), command)[0].success, "{command}");
+    }
+
+    let swayward = f.swayward();
+    let tree = serde_json::to_value(crate::ipc::tree::describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &swayward.marks_by_window,
+        &swayward.marks_by_container,
+    ))
+    .unwrap();
+    assert_eq!(find_json_node_with_app_id(&tree, "moved").unwrap()["fullscreen_mode"], 0);
+}
+
 #[test]
 fn live_ipc_move_to_an_empty_workspace_preserves_the_container_layout() {
     let (mut f, socket) = ipc_fixture();

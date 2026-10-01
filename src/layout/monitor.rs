@@ -1099,10 +1099,31 @@ impl<W: LayoutElement> Monitor<W> {
             .find_map(|(tile, offset, _visible)| (tile.window().id() == &window).then_some(offset))
             .unwrap_or_default();
 
-        let fullscreen = workspace.fullscreen_mode();
+        // Only a fullscreen leaf travels with its window. Sway moves the view's
+        // own container, so a fullscreen parent stays behind and is reaped
+        // (`container_move_to_workspace`, sway/commands/move.c:220-229;
+        // `container_reap_empty`, sway/tree/container.c).
+        let tiling_fullscreen_elsewhere = workspace
+            .tiling()
+            .fullscreen_node()
+            .zip(workspace.tiling().node_for_window(&window))
+            .is_some_and(|(fullscreen, leaf)| {
+                fullscreen != leaf && workspace.tiling().contains_node(fullscreen, leaf)
+            });
+        let fullscreen = workspace
+            .fullscreen_mode()
+            .filter(|_| !tiling_fullscreen_elsewhere);
         let fullscreen_window = workspace.fullscreen_window().cloned();
         let transaction = Transaction::new();
-        let removed = workspace.remove_tile_for_transfer(&window, transaction);
+        let mut removed = workspace.remove_tile_for_transfer(&window, transaction);
+        if tiling_fullscreen_elsewhere {
+            // The window was sized for its fullscreen ancestor; it arrives as
+            // an ordinary tile, so drop that request before the destination
+            // reads it back as a fullscreen map.
+            removed
+                .tile
+                .request_tile_size(removed.tile.tile_size(), false, None);
+        }
 
         // If the view is following the tile, match the animation.
         let config = if activate {

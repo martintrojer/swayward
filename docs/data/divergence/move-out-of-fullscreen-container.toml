@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/monitor.rs"]
+what = "carry fullscreen with a moved window only when the window itself is the fullscreen node, not when it sits inside a fullscreen container."
+why = "Sway moves the view's own container (`container_move_to_workspace`, sway/commands/move.c:220-229); a fullscreen parent stays on the source workspace and is reaped, so the moved window arrives unfullscreened. Random seed 274 covers it."
