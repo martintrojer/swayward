@@ -59,59 +59,49 @@ fn read_ipc_reply(fixture: &mut Fixture, stream: &mut UnixStream) -> (u32, Strin
 fn read_ipc_reply_with_remainder(
     fixture: &mut Fixture,
     stream: &mut UnixStream,
-    mut response: Vec<u8>,
+    response: Vec<u8>,
 ) -> ((u32, String), Vec<u8>) {
-    stream.set_nonblocking(true).unwrap();
-    let deadline = Instant::now() + Duration::from_secs(1);
-    loop {
-        fixture.dispatch();
-        let mut buf = [0; 4096];
-        match stream.read(&mut buf) {
-            Ok(0) => panic!("IPC connection closed before a reply"),
-            Ok(len) => response.extend_from_slice(&buf[..len]),
-            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
-            Err(error) => panic!("error reading IPC reply: {error}"),
-        }
-        if response.len() >= swayward_ipc::wire::HEADER_SIZE {
-            let payload_len = u32::from_ne_bytes(response[6..10].try_into().unwrap()) as usize;
-            if response.len() >= swayward_ipc::wire::HEADER_SIZE + payload_len {
-                let msg_type = u32::from_ne_bytes(response[10..14].try_into().unwrap());
-                let payload = String::from_utf8(
-                    response[swayward_ipc::wire::HEADER_SIZE..][..payload_len].to_vec(),
-                )
-                .unwrap();
-                let consumed = swayward_ipc::wire::HEADER_SIZE + payload_len;
-                let remainder = response.split_off(consumed);
-                return ((msg_type, payload), remainder);
-            }
-        }
-        assert!(Instant::now() < deadline, "timed out waiting for IPC reply");
-    }
+    read_frame(fixture, stream, response, Duration::from_secs(1))
+        .expect("timed out waiting for IPC reply")
 }
 
 /// Like `read_ipc_reply_with_remainder`, but returns None instead of panicking
-/// when no further event arrives. Used to drain a burst whose length is the
-/// thing under test.
+/// when no further event arrives.
 fn try_read_ipc_reply_with_remainder(
     fixture: &mut Fixture,
     stream: &mut UnixStream,
+    response: Vec<u8>,
+) -> Option<((u32, String), Vec<u8>)> {
+    read_frame(fixture, stream, response, Duration::from_millis(200))
+}
+
+fn read_frame(
+    fixture: &mut Fixture,
+    stream: &mut UnixStream,
     mut response: Vec<u8>,
+    timeout: Duration,
 ) -> Option<((u32, String), Vec<u8>)> {
     stream.set_nonblocking(true).unwrap();
-    let deadline = Instant::now() + Duration::from_millis(200);
+    let deadline = Instant::now() + timeout;
     loop {
         fixture.dispatch();
         let mut buf = [0; 4096];
         match stream.read(&mut buf) {
             Ok(0) => return None,
             Ok(len) => response.extend_from_slice(&buf[..len]),
-            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(1));
+            }
             Err(error) => panic!("error reading IPC reply: {error}"),
         }
         if response.len() >= swayward_ipc::wire::HEADER_SIZE {
-            let payload_len = u32::from_ne_bytes(response[6..10].try_into().unwrap()) as usize;
+            let header: &[u8; swayward_ipc::wire::HEADER_SIZE] = response
+                [..swayward_ipc::wire::HEADER_SIZE]
+                .try_into()
+                .unwrap();
+            let (msg_type, payload_len) = swayward_ipc::wire::decode_header_raw(header).unwrap();
+            let payload_len = payload_len as usize;
             if response.len() >= swayward_ipc::wire::HEADER_SIZE + payload_len {
-                let msg_type = u32::from_ne_bytes(response[10..14].try_into().unwrap());
                 let payload = String::from_utf8(
                     response[swayward_ipc::wire::HEADER_SIZE..][..payload_len].to_vec(),
                 )
@@ -125,6 +115,26 @@ fn try_read_ipc_reply_with_remainder(
             return None;
         }
     }
+}
+
+fn read_ipc_bytes(fixture: &mut Fixture, stream: &mut UnixStream, expected_len: usize) -> Vec<u8> {
+    stream.set_nonblocking(true).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(1);
+    let mut bytes = Vec::new();
+    while bytes.len() < expected_len {
+        fixture.dispatch();
+        let mut buf = [0; 4096];
+        match stream.read(&mut buf) {
+            Ok(0) => panic!("IPC connection closed before a reply"),
+            Ok(len) => bytes.extend_from_slice(&buf[..len]),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            Err(error) => panic!("error reading IPC reply: {error}"),
+        }
+        assert!(Instant::now() < deadline, "timed out waiting for IPC reply");
+    }
+    bytes
 }
 
 /// Every workspace node in a GET_TREE reply, in tree order.

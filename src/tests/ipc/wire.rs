@@ -396,27 +396,16 @@ fn invalid_utf8_command_reply_is_byte_identical_to_sway() {
     frame[6..10].copy_from_slice(&1u32.to_ne_bytes());
     frame.push(0xff);
     stream.write_all(&frame).unwrap();
-    stream.set_nonblocking(true).unwrap();
 
     let payload = b"[ { \"success\": false, \"parse_error\": true, \"error\": \"Unknown\\/invalid command '\xff'\" } ]";
     let mut expected = b"i3-ipc".to_vec();
     expected.extend_from_slice(&(payload.len() as u32).to_ne_bytes());
     expected.extend_from_slice(&0u32.to_ne_bytes());
     expected.extend_from_slice(payload);
-    let mut actual = Vec::new();
-    let deadline = Instant::now() + Duration::from_secs(1);
-    while actual.len() < expected.len() {
-        fixture.dispatch();
-        let mut buf = [0; 4096];
-        match stream.read(&mut buf) {
-            Ok(0) => panic!("IPC connection closed before a reply"),
-            Ok(len) => actual.extend_from_slice(&buf[..len]),
-            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
-            Err(error) => panic!("error reading IPC reply: {error}"),
-        }
-        assert!(Instant::now() < deadline, "timed out waiting for IPC reply");
-    }
-    assert_eq!(actual, expected);
+    assert_eq!(
+        read_ipc_bytes(&mut fixture, &mut stream, expected.len()),
+        expected
+    );
 }
 
 #[test]
