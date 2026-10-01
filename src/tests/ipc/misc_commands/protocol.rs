@@ -132,7 +132,7 @@ fn every_message_type_replies_and_leaves_the_connection_usable() {
     let mut stream = UnixStream::connect(&socket).unwrap();
 
     let types: Vec<u32> = (0..=13)
-        .chain([99, 100, 101, 102, 1000, u32::MAX])
+        .chain([99, 100, 101, 102, 1000, 9999, u32::MAX])
         .collect();
     for raw_type in types {
         // SUBSCRIBE needs a JSON array; anything else would be a parse failure
@@ -150,12 +150,17 @@ fn every_message_type_replies_and_leaves_the_connection_usable() {
         let value: Value = serde_json::from_str(&reply)
             .unwrap_or_else(|e| panic!("type {raw_type} returned invalid JSON: {reply}: {e}"));
 
-        // Either a sway-shaped payload or a structured failure. Never a bare
-        // string, never empty, never a silent drop.
-        assert!(
-            value.is_object() || value.is_array(),
-            "type {raw_type} must reply with an object or array, got {reply}"
-        );
+        match raw_type {
+            0 | 1 | 3 | 5 | 6 | 8 | 100 | 101 => assert!(
+                value.is_array(),
+                "type {raw_type} must reply with an array, got {reply}"
+            ),
+            2 | 4 | 7 | 9 | 10 | 12 => assert!(
+                value.is_object(),
+                "type {raw_type} must reply with an object, got {reply}"
+            ),
+            _ => assert!(value.is_object(), "failure {raw_type} must be an object"),
+        }
         if raw_type == 11 {
             assert_eq!(
                 value,
@@ -163,10 +168,11 @@ fn every_message_type_replies_and_leaves_the_connection_usable() {
                 "IPC_SYNC must match sway's decline exactly"
             );
         }
-        if !matches!(raw_type, 0..=10 | 12 | 100 | 101) {
+        if !matches!(raw_type, 0..=12 | 100 | 101) {
             assert_eq!(
-                value["success"], false,
-                "unsupported type {raw_type} must report failure, got {reply}"
+                value,
+                serde_json::json!({"success": false, "error": "not implemented"}),
+                "unsupported type {raw_type} must report failure"
             );
         }
     }

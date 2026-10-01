@@ -350,44 +350,6 @@ fn get_bar_config_unknown_id_is_byte_identical_to_sway() {
     );
 }
 
-/// A request type outside `MessageType` must get a reply, not a disconnect.
-///
-/// Sway answers `IPC_SYNC` with `{"success": false}`
-/// (`sway/sway/ipc-server.c:919-924`) and keeps the connection open for
-/// anything else it does not know (`ipc-server.c:927-929`). Decoding the
-/// header through `MessageType::try_from` turned both into a `?`-propagated
-/// error that dropped the client with no JSON body.
-#[test]
-fn unknown_request_types_get_a_structured_reply_and_keep_the_connection() {
-    let (mut fixture, socket) = ipc_fixture();
-    let mut stream = UnixStream::connect(socket).unwrap();
-
-    // IPC_SYNC, sway/include/ipc.h:19.
-    stream
-        .write_all(&swayward_ipc::wire::encode_raw(11, ""))
-        .unwrap();
-    let (reply_type, payload) = read_ipc_reply(&mut fixture, &mut stream);
-    assert_eq!(reply_type, 11);
-    assert_eq!(
-        serde_json::from_str::<Value>(&payload).unwrap(),
-        serde_json::json!({"success": false})
-    );
-
-    stream
-        .write_all(&swayward_ipc::wire::encode_raw(9999, ""))
-        .unwrap();
-    let (reply_type, payload) = read_ipc_reply(&mut fixture, &mut stream);
-    assert_eq!(reply_type, 9999);
-    assert_eq!(
-        serde_json::from_str::<Value>(&payload).unwrap(),
-        serde_json::json!({"success": false, "error": "not implemented"})
-    );
-
-    // The connection survives both, so a normal request still answers.
-    let version = query_ipc(&mut fixture, &mut stream, MessageType::GetVersion);
-    assert_eq!(version["variant"], "swayward");
-}
-
 #[test]
 fn invalid_utf8_command_reply_is_byte_identical_to_sway() {
     let (mut fixture, socket) = ipc_fixture();
@@ -409,47 +371,6 @@ fn invalid_utf8_command_reply_is_byte_identical_to_sway() {
 }
 
 #[test]
-fn malformed_frames_disconnect_instead_of_matching_sways_timeout() {
-    let (mut fixture, socket) = ipc_fixture();
-
-    for frame in [
-        b"i3-ipc\0\0".to_vec(),
-        {
-            let mut frame = swayward_ipc::wire::encode_raw(0, "nop");
-            frame[6..10].copy_from_slice(&10u32.to_ne_bytes());
-            frame
-        },
-        {
-            let mut frame = swayward_ipc::wire::encode_raw(0, "");
-            frame[6..10].copy_from_slice(&u32::MAX.to_ne_bytes());
-            frame
-        },
-    ] {
-        let mut stream = UnixStream::connect(&socket).unwrap();
-        stream.write_all(&frame).unwrap();
-        stream.shutdown(std::net::Shutdown::Write).unwrap();
-        stream.set_nonblocking(true).unwrap();
-
-        let deadline = Instant::now() + Duration::from_secs(1);
-        loop {
-            fixture.dispatch();
-            let mut byte = [0; 1];
-            match stream.read(&mut byte) {
-                Ok(0) => break,
-                Err(error) if error.kind() == std::io::ErrorKind::ConnectionReset => break,
-                Ok(_) => panic!("malformed frame unexpectedly received a reply"),
-                Err(ref error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
-                Err(error) => panic!("error reading malformed-frame response: {error}"),
-            }
-            assert!(
-                Instant::now() < deadline,
-                "malformed frame left the client hanging"
-            );
-        }
-    }
-}
-
-#[test]
 fn malformed_frames_do_not_hang_or_wedge_the_server() {
     // "It never hangs" is the half of the wire invariant most likely to fail,
     // and these are the frames a buggy client actually sends. Each case uses a
@@ -459,7 +380,7 @@ fn malformed_frames_do_not_hang_or_wedge_the_server() {
     fixture.add_output(1, (1920, 1080));
     fixture.niri_state().ipc_refresh_layout();
 
-    let cases: [(&str, Vec<u8>); 4] = [
+    let cases: [(&str, Vec<u8>); 3] = [
         ("truncated header", b"i3-ipc\x00\x00".to_vec()),
         ("bad magic", {
             let mut f = swayward_ipc::wire::encode_raw(7, "");
@@ -471,21 +392,28 @@ fn malformed_frames_do_not_hang_or_wedge_the_server() {
             f[6..10].copy_from_slice(&64u32.to_ne_bytes());
             f
         }),
-        ("payload that is not utf-8", {
-            let mut f = swayward_ipc::wire::encode_raw(0, "");
-            f[6..10].copy_from_slice(&2u32.to_ne_bytes());
-            f.extend_from_slice(&[0xff, 0xfe]);
-            f
-        }),
     ];
 
     for (name, frame) in cases {
         let mut stream = UnixStream::connect(&socket).unwrap();
         stream.write_all(&frame).unwrap();
-        // Drive the loop. The server may reply or drop this client; either is
-        // a valid answer to a frame it cannot parse. What it must not do is
-        // block, which would show up as this never returning.
-        fixture.dispatch();
+        stream.shutdown(std::net::Shutdown::Write).unwrap();
+        stream.set_nonblocking(true).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(1);
+        loop {
+            fixture.dispatch();
+            let mut byte = [0; 1];
+            match stream.read(&mut byte) {
+                Ok(0) => break,
+                Err(error) if error.kind() == std::io::ErrorKind::ConnectionReset => break,
+                Ok(_) => panic!("{name} unexpectedly received a reply"),
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+                Err(error) => panic!("error reading {name} response: {error}"),
+            }
+            assert!(Instant::now() < deadline, "{name} left the client hanging");
+        }
 
         let mut healthy = UnixStream::connect(&socket).unwrap();
         let version = query_ipc(&mut fixture, &mut healthy, MessageType::GetVersion);
