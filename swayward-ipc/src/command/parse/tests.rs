@@ -434,6 +434,20 @@ mod gap_form_tests {
             }
         );
         assert!(parse_one("gaps inner 12em").is_err());
+        // Oracle: state/settings_gaps_amount_parse. strtol with no digits is
+        // 0 and leaves the whole input, so a bare `px` is accepted; a sign is
+        // allowed; past the long range strtol saturates, and the int
+        // conversion keeps the low 32 bits (`sway/sway/commands/gaps.c:55-58`).
+        for (input, amount) in [
+            ("gaps inner px", 0),
+            ("gaps outer +7PX", 7),
+            ("gaps inner 99999999999999999999", -1),
+        ] {
+            let Command::GapsDefaults { amount: parsed, .. } = parse_ok(input) else {
+                panic!("{input} did not parse as gaps defaults");
+            };
+            assert_eq!(parsed, amount, "{input}");
+        }
     }
 
     /// Sway names the expectation it was testing, and names both when the

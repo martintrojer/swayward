@@ -103,36 +103,52 @@ pub(super) fn parse_gaps_kind(kind: &str) -> Option<(bool, [bool; 4])> {
     })
 }
 
-/// C's `atoi`: optional leading whitespace and sign, then as many decimal
-/// digits as follow; anything else ends the number, and no digits give 0.
-/// Out-of-range values saturate, where C's behaviour is undefined.
-pub(super) fn atoi(raw: &str) -> i32 {
-    let raw = raw.trim_start_matches(|c: char| c.is_ascii_whitespace());
-    let (negative, digits) = match (raw.strip_prefix('-'), raw.strip_prefix('+')) {
+/// C's `strtol(raw, &end, 10)`: optional leading whitespace and sign, then
+/// as many decimal digits as follow, saturating at the `long` range as
+/// strtol does. Returns the value and the unparsed rest; with no digits the
+/// value is 0 and the rest is the whole input, as strtol leaves `end` at the
+/// start.
+fn strtol(raw: &str) -> (i64, &str) {
+    let trimmed = raw.trim_start_matches(|c: char| c.is_ascii_whitespace());
+    let (negative, unsigned) = match (trimmed.strip_prefix('-'), trimmed.strip_prefix('+')) {
         (Some(digits), _) => (true, digits),
         (None, Some(digits)) => (false, digits),
-        (None, None) => (false, raw),
+        (None, None) => (false, trimmed),
     };
-    let magnitude = digits
-        .bytes()
-        .take_while(u8::is_ascii_digit)
-        .fold(0i64, |value, digit| {
-            (value * 10 + i64::from(digit - b'0')).min(i64::from(i32::MAX) + 1)
-        });
-    let value = if negative { -magnitude } else { magnitude };
-    value.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
+    let digit_len = unsigned.bytes().take_while(u8::is_ascii_digit).count();
+    let Some((digits, rest)) = unsigned.split_at_checked(digit_len) else {
+        return (0, raw);
+    };
+    if digits.is_empty() {
+        return (0, raw);
+    }
+    let value = digits.bytes().fold(0i128, |value, digit| {
+        (value * 10 + i128::from(digit - b'0')).min(i128::from(i64::MAX) + 1)
+    });
+    let value = if negative { -value } else { value };
+    (
+        value.clamp(i128::from(i64::MIN), i128::from(i64::MAX)) as i64,
+        rest,
+    )
 }
 
-/// Sway parses with `strtol` and accepts a bare number or a `px` suffix,
-/// rejecting any other trailing text (`sway/sway/commands/gaps.c:55-58`).
+/// C's `atoi`: strtol's leading integer, and 0 when there are no digits.
+/// Out-of-range values saturate at the `int` range, where C's behaviour is
+/// undefined.
+pub(super) fn atoi(raw: &str) -> i32 {
+    strtol(raw)
+        .0
+        .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
+}
+
+/// Sway reads the amount with `strtol` into an int and rejects any trailing
+/// text other than a case-insensitive "px"
+/// (`sway/sway/commands/gaps.c:55-58, 194-198`). With no digits strtol gives
+/// 0 and leaves the whole input as the rest, so a bare `px` is 0. The long
+/// to int conversion keeps the low 32 bits, as it does on sway's platforms.
 pub(super) fn parse_gaps_amount(raw: &str) -> Option<i32> {
-    let digits = raw
-        .strip_suffix("px")
-        .or_else(|| raw.strip_suffix("PX"))
-        .or_else(|| raw.strip_suffix("Px"))
-        .or_else(|| raw.strip_suffix("pX"))
-        .unwrap_or(raw);
-    digits.parse::<i64>().ok().map(|amount| amount as i32)
+    let (amount, rest) = strtol(raw);
+    (rest.is_empty() || rest.eq_ignore_ascii_case("px")).then_some(amount as i32)
 }
 
 pub(super) fn parse_gaps(args: &[&str]) -> Result<Command, String> {
