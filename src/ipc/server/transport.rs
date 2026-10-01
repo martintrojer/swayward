@@ -1,6 +1,11 @@
 use directories::BaseDirs;
 
 use super::requests::dispatch;
+
+#[path = "transport/events.rs"]
+mod events;
+use events::{sway_event, SwayEventType};
+
 use super::*;
 
 struct EventStreamClient {
@@ -198,7 +203,7 @@ pub(super) async fn handle_client(
             if subscriptions.iter().any(|event| event == "tick") {
                 write
                     .write_all(&swayward_ipc::wire::encode_raw(
-                        (1 << 31) | 7,
+                        SwayEventType::Tick as u32,
                         r#"{"first":true,"payload":""}"#,
                     ))
                     .await
@@ -378,7 +383,7 @@ async fn handle_event_stream_client(client: EventStreamClient) -> anyhow::Result
                     queue_ipc_message(
                         &mut write_buffer,
                         &mut write_buffer_size,
-                        &encode_raw((1 << 31) | 7, r#"{"first":true,"payload":""}"#),
+                        &encode_raw(SwayEventType::Tick as u32, r#"{"first":true,"payload":""}"#),
                     )?;
                 }
                 continue;
@@ -388,114 +393,13 @@ async fn handle_event_stream_client(client: EventStreamClient) -> anyhow::Result
             }
             StreamInput::Event(event) => event,
         };
-        let (msg_type, payload) = match event {
-            Event::OutputChanged if subscriptions.contains("output") => {
-                ((1 << 31) | 1, serde_json::json!({"change":"unspecified"}))
-            }
-            Event::SwayInputChanged { change, input } if subscriptions.contains("input") => (
-                (1 << 31) | 21,
-                serde_json::json!({"change":change,"input":input}),
-            ),
-            Event::WorkspaceEmptied { current } if subscriptions.contains("workspace") => (
-                1 << 31,
-                serde_json::json!({"change":"empty","old":null,"current":current}),
-            ),
-            Event::WorkspaceReloaded if subscriptions.contains("workspace") => (
-                1 << 31,
-                serde_json::json!({"change":"reload","old":null,"current":null}),
-            ),
-            Event::WorkspaceInitialized { current } if subscriptions.contains("workspace") => (
-                1 << 31,
-                serde_json::json!({"change":"init","old":null,"current":current}),
-            ),
-            Event::WorkspaceRenamed { current } if subscriptions.contains("workspace") => (
-                1 << 31,
-                serde_json::json!({"change":"rename","old":null,"current":current}),
-            ),
-            Event::WorkspaceMoved { current } if subscriptions.contains("workspace") => (
-                1 << 31,
-                serde_json::json!({"change":"move","old":null,"current":current}),
-            ),
-            Event::WorkspaceUrgencyChanged { current, .. }
-                if subscriptions.contains("workspace") =>
-            {
-                (
-                    1 << 31,
-                    serde_json::json!({"change":"urgent","old":null,"current":current}),
-                )
-            }
-            Event::WorkspaceFocusChanged { old, current }
-                if subscriptions.contains("workspace") =>
-            {
-                (
-                    1 << 31,
-                    serde_json::json!({"change":"focus","old":old,"current":current}),
-                )
-            }
-            Event::WorkspaceActiveWindowChanged { .. }
-            | Event::WorkspacesChanged { .. }
-            | Event::WorkspaceActivated { .. } => continue,
-            Event::Shutdown { reason } if subscriptions.contains("shutdown") => {
-                ((1 << 31) | 6, serde_json::json!({"change":reason}))
-            }
-            Event::Tick { payload, first } if subscriptions.contains("tick") => (
-                (1 << 31) | 7,
-                serde_json::json!({"first":first,"payload":payload}),
-            ),
-            Event::BindingModeChanged { mode, pango_markup } if subscriptions.contains("mode") => (
-                (1 << 31) | 2,
-                serde_json::json!({"change":mode,"pango_markup":pango_markup}),
-            ),
-            Event::SwayBinding {
-                command,
-                event_state_mask,
-                input_codes,
-                input_code,
-                symbols,
-                symbol,
-                input_type,
-            } if subscriptions.contains("binding") => (
-                (1 << 31) | 5,
-                serde_json::json!({
-                    "change":"run",
-                    "binding": {
-                        "command": command,
-                        "event_state_mask": event_state_mask,
-                        "input_codes": input_codes,
-                        "input_code": input_code,
-                        "symbols": symbols,
-                        "symbol": symbol,
-                        "input_type": input_type,
-                    }
-                }),
-            ),
-            Event::SwayWindowChanged { change, container } if subscriptions.contains("window") => (
-                (1 << 31) | 3,
-                serde_json::json!({"change":change,"container":container}),
-            ),
-            Event::WindowMoved { id } if subscriptions.contains("window") => {
-                let container =
-                    serde_json::from_str::<serde_json::Value>(&query_state.borrow().tree)
-                        .ok()
-                        .and_then(|tree| find_node_by_id(&tree, id).cloned());
-                (
-                    (1 << 31) | 3,
-                    serde_json::json!({"change":"move","container":container}),
-                )
-            }
-            Event::WindowsChanged { .. }
-            | Event::WindowOpenedOrChanged { .. }
-            | Event::WindowClosed { .. }
-            | Event::WindowFocusTimestampChanged { .. }
-            | Event::WindowUrgencyChanged { .. }
-            | Event::WindowLayoutsChanged { .. }
-            | Event::WindowFocusChanged { .. }
-                if subscriptions.contains("window") =>
-            {
-                continue
-            }
-            _ => continue,
+        let Some((msg_type, payload)) = sway_event(event, &query_state.borrow()) else {
+            continue;
         };
+        if !subscriptions.contains(msg_type.subscription_name()) {
+            continue;
+        }
+        let msg_type = msg_type as u32;
         let payload = serde_json::to_string(&payload).context("error formatting event")?;
         let buf = swayward_ipc::wire::encode_raw(msg_type, &payload);
         queue_ipc_message(&mut write_buffer, &mut write_buffer_size, &buf)?;
