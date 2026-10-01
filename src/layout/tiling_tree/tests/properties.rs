@@ -96,6 +96,72 @@ fn sync_ids(tree: &TilingTree<TestWindow>, ids: &mut Vec<NodeId>) {
     ids.retain(|id| tree.windows().any(|(candidate, _)| candidate == *id));
 }
 
+/// Checks the GET_TREE snapshot: every node id appears once, a split's focus list is a
+/// permutation of its children, and split percents are finite and non-negative.
+///
+/// It deliberately does not bound the per-split percent sum. Sway's child extents add up to the
+/// parent box exactly (sway/tree/arrange.c:160-174, the last child takes the remainder), but
+/// swayward rounds the parent extent and the children's extent separately, so ordinary splits
+/// can sum just past 1. That is tracked as its own task and needs a pinned-sway row first.
+fn check_ipc(node: &IpcNode<usize>, seen: &mut HashSet<NodeId>) {
+    let id = match node {
+        IpcNode::Split { id, .. } | IpcNode::Leaf { id, .. } => *id,
+    };
+    assert!(seen.insert(id), "node {id:?} appears twice in the IPC tree");
+    let IpcNode::Split {
+        focus, children, ..
+    } = node
+    else {
+        return;
+    };
+    let child_ids = children
+        .iter()
+        .map(|child| match child {
+            IpcNode::Split { id, .. } | IpcNode::Leaf { id, .. } => *id,
+        })
+        .collect::<Vec<_>>();
+    let mut sorted_focus = focus.clone();
+    sorted_focus.sort_by_key(|id| id.0);
+    let mut sorted_children = child_ids.clone();
+    sorted_children.sort_by_key(|id| id.0);
+    assert_eq!(
+        sorted_focus, sorted_children,
+        "focus of {id:?} is not a permutation of its children"
+    );
+    let percents = children
+        .iter()
+        .map(|child| match child {
+            IpcNode::Split { percent, .. } | IpcNode::Leaf { percent, .. } => *percent,
+        })
+        .collect::<Vec<_>>();
+    for percent in percents.iter().flatten() {
+        assert!(
+            percent.is_finite() && *percent >= 0.,
+            "child of {id:?} has percent {percent}"
+        );
+    }
+    for child in children {
+        check_ipc(child, seen);
+    }
+}
+
+/// Under fullscreen only the fullscreen subtree is laid out, so containment and separation do
+/// not apply; every rect must still be finite and non-negative.
+fn check_rects_are_finite(tree: &TilingTree<TestWindow>) {
+    let geometry = tree.compute_geometry();
+    for (id, rect) in &geometry.ipc_nodes {
+        assert!(
+            rect.loc.x.is_finite()
+                && rect.loc.y.is_finite()
+                && rect.size.w.is_finite()
+                && rect.size.h.is_finite()
+                && rect.size.w >= 0.
+                && rect.size.h >= 0.,
+            "invalid geometry for {id:?}: {rect:?}"
+        );
+    }
+}
+
 fn check_geometry(tree: &TilingTree<TestWindow>) {
     let geometry = tree.compute_geometry();
     for (id, rect) in &geometry.ipc_nodes {
@@ -330,13 +396,13 @@ fn run_operations(ops: Vec<Op>) {
         sync_ids(&tree, &mut ids);
         tree.check_invariants();
         peer.check_invariants();
-        let _ = tree.ipc_tree();
-        let _ = peer.ipc_tree();
-        if tree.fullscreen_node().is_none() {
-            check_geometry(&tree);
-        }
-        if peer.fullscreen_node().is_none() {
-            check_geometry(&peer);
+        for tree in [&tree, &peer] {
+            check_ipc(&tree.ipc_tree(), &mut HashSet::new());
+            if tree.fullscreen_node().is_none() {
+                check_geometry(tree);
+            } else {
+                check_rects_are_finite(tree);
+            }
         }
     }
 }
@@ -407,6 +473,24 @@ fn regression_transfer_fullscreen_and_drop_sequence() {
         Op::ReorderIndex(25, 5),
         Op::Drop(6, ResizeEdge::TOP),
         Op::ToggleLayout(19),
+    ]);
+}
+
+#[test]
+fn regression_sub_pixel_last_child_reports_a_non_negative_percent() {
+    // Integrator batch 7 shrunk case (no `cc` line was saved): a resize leaves the last child
+    // of a split 0.23 px tall. Rounding the earlier children's shares up then left the last
+    // child -1 px, and GET_TREE reported a negative percent. The direct unit test is
+    // tests/geometry.rs a_sub_pixel_last_child_reports_a_non_negative_percent.
+    run_operations(vec![
+        Op::Remove(0),
+        Op::Add,
+        Op::Maximize(0, false),
+        Op::Split(0, Layout::Tabbed),
+        Op::Drop(0, ResizeEdge::TOP),
+        Op::Add,
+        Op::Resize(17, 15, 0.33303451250346383),
+        Op::Add,
     ]);
 }
 
