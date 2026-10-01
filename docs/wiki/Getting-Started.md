@@ -117,12 +117,13 @@ types.
 ## Desktop components
 
 For file pickers, secrets, and screen sharing, install
-`xdg-desktop-portal-gnome`, `xdg-desktop-portal-gtk`, `gnome-keyring`, and
-Nautilus for the GNOME 47 or later file chooser. Portals work only in a full
+`xdg-desktop-portal-gtk`, `xdg-desktop-portal-gnome`, and `gnome-keyring`.
+Portals work only in a full
 swayward session with `swayward-portals.conf` installed in
 `/usr/share/xdg-desktop-portal/`; starting a source build directly from another
-desktop does not set them up. Swayward defaults to the GNOME backend for its
-window picker and dynamic cast target. `xdg-desktop-portal-wlr` is an optional,
+desktop does not set them up. GTK provides general desktop portals, while the
+GNOME backend provides swayward's window picker and dynamic cast target.
+`xdg-desktop-portal-wlr` is an optional,
 less integrated ScreenCast and Screenshot fallback. The GNOME integration does
 not support remote control or input injection. See [Important
 software](./Important-Software.md).

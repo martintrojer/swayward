@@ -202,23 +202,23 @@ including bar outputs, fonts, colors, status commands, and tray settings.
 
 ## Desktop integration
 
-### GNOME portal backend by default
+### GNOME portal backend for capture
 
 **Deliberate.**
 
 Sway ships no portal policy of its own; wlroots sessions conventionally use
-`xdg-desktop-portal-wlr`. Swayward instead defaults to
-`xdg-desktop-portal-gnome` in `resources/swayward-portals.conf`. The inherited
+`xdg-desktop-portal-wlr`. Swayward uses `xdg-desktop-portal-gnome` for
+ScreenCast and Screenshot in `resources/swayward-portals.conf`. The inherited
 Mutter interfaces provide an integrated window and monitor picker, PipeWire
-streams, and swayward's dynamic cast target. These features are a product
-reason for retaining niri's compositor foundation, so protocol compatibility
-does not determine the portal backend choice.
+streams, and swayward's dynamic cast target. GTK provides file choosers,
+printing, settings, and the other general desktop portals. These features are a
+product reason for retaining niri's compositor foundation, so protocol
+compatibility does not determine the capture backend choice.
 
 `xdg-desktop-portal-wlr` remains an optional fallback. It uses swayward's
 `wlr-screencopy` support but does not provide the GNOME window picker or dynamic
-cast target. With `xdg-desktop-portal-gnome` 47 or later, Nautilus provides the
-FileChooser implementation. Install Nautilus, or route only FileChooser to the
-GTK backend as documented in [Important software](https://github.com/martintrojer/swayward/wiki/Important-Software).
+cast target. RemoteDesktop is disabled because swayward does not implement
+remote control or input injection.
 
 ## IPC requests and commands
 

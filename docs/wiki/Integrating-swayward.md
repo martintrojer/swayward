@@ -20,7 +20,7 @@ files or user units wanted by `graphical-session.target`.
 A usable session normally includes:
 
 - a notification daemon;
-- `xdg-desktop-portal-gnome` as the preferred backend, `xdg-desktop-portal-gtk` as its fallback, and Nautilus for the GNOME 47 or later FileChooser implementation;
+- `xdg-desktop-portal-gtk` for general desktop portals, `xdg-desktop-portal-gnome` for integrated capture, and `gnome-keyring` for the Secret portal;
 - an authentication agent;
 - a panel, launcher, wallpaper tool, and screen locker;
 - xwayland-satellite for X11 applications.

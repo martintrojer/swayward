@@ -1,6 +1,5 @@
 [[edit]]
 migrated = true
 paths = ["Cargo.toml", "resources/swayward-portals.conf"]
-what = "keep niri's GNOME-first portal policy as an intentional product deviation from sway: the Mutter integration provides the window picker and dynamic cast target, while xdg-desktop-portal-wlr remains an optional fallback; recommend the GNOME and GTK backends, gnome-keyring, and the Nautilus 47+ FileChooser implementation in package metadata."
+what = "keep niri's GNOME capture integration as an intentional product deviation from sway while routing general desktop portals through GTK, disabling unsupported RemoteDesktop, retaining xdg-desktop-portal-wlr as an optional fallback, and recommending the GTK, GNOME, and gnome-keyring backends in package metadata."
 why = ""
-

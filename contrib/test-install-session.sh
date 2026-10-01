@@ -31,12 +31,13 @@ printf 'output * bg /wallpaper fill\n' > "$HOME/.config/sway/config"
 converted=$(SWAYWARD_BUILD_DIR="$HOME/build" contrib/install-session.sh --debug --no-build --config sway)
 printf '%s\n' "$converted" | grep -q '1 directives need manual attention:'
 
-# Swayward deliberately defaults to the GNOME backend for its integrated
-# window picker and dynamic cast targets. wlr remains an optional fallback,
-# not the shipped policy.
-grep -qx 'default=gnome;gtk;' "$PORTAL"
+# GTK provides general desktop portals. GNOME is selected only for swayward's
+# integrated capture support, and unsupported remote input stays disabled.
+grep -qx 'default=gtk;' "$PORTAL"
 grep -qx 'org.freedesktop.impl.portal.ScreenCast=gnome;' "$PORTAL"
 grep -qx 'org.freedesktop.impl.portal.Screenshot=gnome;' "$PORTAL"
+grep -qx 'org.freedesktop.impl.portal.RemoteDesktop=none;' "$PORTAL"
+grep -qx 'org.freedesktop.impl.portal.Secret=gnome-keyring;' "$PORTAL"
 if grep -q '=wlr' "$PORTAL"; then
 	exit 1
 fi

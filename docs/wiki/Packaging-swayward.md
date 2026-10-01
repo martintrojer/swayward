@@ -59,9 +59,8 @@ Then, the following dependencies are optional, but strongly recommended.
 Set them as automatically-installed optional dependencies, if possible.
 
 - `xwayland-satellite`: required to run X11 applications (Steam, Discord, etc.).
-- `xdg-desktop-portal-gnome`: the preferred backend for the integrated window and monitor picker, PipeWire streams, and dynamic cast target.
-- `xdg-desktop-portal-gtk`: the fallback backend and the provider for Access and Notification in `swayward-portals.conf`.
-- `nautilus`: the FileChooser implementation used by `xdg-desktop-portal-gnome` 47 and later. Without Nautilus, explicitly route FileChooser to `gtk`.
+- `xdg-desktop-portal-gtk`: the default backend for file choosers, printing, settings, and other general desktop portals.
+- `xdg-desktop-portal-gnome`: the capture backend for the integrated window and monitor picker, PipeWire streams, and dynamic cast target.
 - `gnome-keyring`: the Secret portal provider in `swayward-portals.conf`.
 
 `xdg-desktop-portal-wlr` is an optional, less integrated fallback for ScreenCast and Screenshot. Do not make it the package default: swayward deliberately retains niri's GNOME portal integration for its window picker and dynamic cast target.

@@ -1,6 +1,5 @@
 [[edit]]
 migrated = true
 paths = ["flake.nix", "flake.lock"]
-what = "include the complete build and test inputs in the Nix source, provide the check-time interpreters, retain only the explicit EGL sandbox exclusions, install the swayward session and GNOME-first portal policy, and track current nixpkgs unstable."
+what = "include the complete build and test inputs in the Nix source, provide the check-time interpreters, retain only the explicit EGL sandbox exclusions, install the swayward session and its GTK-default portal policy with GNOME capture integration, and track current nixpkgs unstable."
 why = ""
-

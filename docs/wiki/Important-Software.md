@@ -10,22 +10,19 @@ These provide a cross-desktop API for apps to use for various things like file p
 
 Portals **require** [running swayward as a session](./Getting-Started.md), which means through the `swayward-session` script or from a display manager. You will want the following portals installed:
 
-* `xdg-desktop-portal-gnome`: the preferred backend for the integrated window and monitor picker, PipeWire streams, and dynamic cast target.
-* `xdg-desktop-portal-gtk`: the fallback backend and the provider for Access and Notification.
-* `nautilus`: provides the FileChooser implementation used by `xdg-desktop-portal-gnome` 47 and later.
+* `xdg-desktop-portal-gtk`: the default backend for file choosers, printing, settings, and other general desktop portals.
+* `xdg-desktop-portal-gnome`: the capture backend for the integrated window and monitor picker, PipeWire streams, and dynamic cast target.
 * `gnome-keyring`: implements the Secret portal, required for certain apps to work.
 
 Then systemd should start them on-demand automatically. These particular portals are configured in `swayward-portals.conf` which [must be installed](./Getting-Started.md#manual-installation) in the correct location.
 
-Since we're using `xdg-desktop-portal-gnome`, Flatpak apps will read the GNOME UI settings. For example, to enable the dark style, run:
+The GTK backend reads GNOME UI settings. For example, to enable the dark style, run:
 
 ```
 dconf write /org/gnome/desktop/interface/color-scheme '"prefer-dark"'
 ```
 
-With `resources/swayward-portals.conf`, install Nautilus if you use `xdg-desktop-portal-gnome` 47 or later. GNOME 47 moved its FileChooser implementation into Nautilus, so the dialog does not open when the GNOME backend is selected and Nautilus is absent.
-
-To avoid installing Nautilus, set `org.freedesktop.impl.portal.FileChooser=gtk;` in `swayward-portals.conf`. This keeps the GNOME ScreenCast and Screenshot interfaces while routing only file chooser dialogs to the GTK backend.
+`resources/swayward-portals.conf` routes general desktop portals to GTK and only ScreenCast and Screenshot to GNOME. It disables RemoteDesktop because swayward does not implement remote control or input injection. Nautilus is not required for portal file choosers.
 
 As a less integrated capture fallback, install `xdg-desktop-portal-wlr` and set both `org.freedesktop.impl.portal.ScreenCast=wlr;` and `org.freedesktop.impl.portal.Screenshot=wlr;`. The wlr backend does not provide swayward's GNOME window picker or dynamic cast target.
 

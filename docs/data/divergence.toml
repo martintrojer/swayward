@@ -106,7 +106,7 @@ why = ""
 [[edit]]
 migrated = true
 paths = ["flake.nix", "flake.lock"]
-what = "include the complete build and test inputs in the Nix source, provide the check-time interpreters, retain only the explicit EGL sandbox exclusions, install the swayward session and GNOME-first portal policy, and track current nixpkgs unstable."
+what = "include the complete build and test inputs in the Nix source, provide the check-time interpreters, retain only the explicit EGL sandbox exclusions, install the swayward session and its GTK-default portal policy with GNOME capture integration, and track current nixpkgs unstable."
 why = ""
 
 [[edit]]
@@ -1042,7 +1042,7 @@ why = ""
 [[edit]]
 migrated = true
 paths = ["Cargo.toml", "resources/swayward-portals.conf"]
-what = "keep niri's GNOME-first portal policy as an intentional product deviation from sway: the Mutter integration provides the window picker and dynamic cast target, while xdg-desktop-portal-wlr remains an optional fallback; recommend the GNOME and GTK backends, gnome-keyring, and the Nautilus 47+ FileChooser implementation in package metadata."
+what = "keep niri's GNOME capture integration as an intentional product deviation from sway while routing general desktop portals through GTK, disabling unsupported RemoteDesktop, retaining xdg-desktop-portal-wlr as an optional fallback, and recommending the GTK, GNOME, and gnome-keyring backends in package metadata."
 why = ""
 
 [[edit]]

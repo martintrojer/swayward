@@ -158,7 +158,7 @@ jobs:
             echo "              libcairo2 libpipewire-0.3-0"
             echo
             echo "  apt install xdg-desktop-portal-gnome xdg-desktop-portal-gtk \\"
-            echo "              gnome-keyring nautilus"
+            echo "              gnome-keyring"
             echo
             echo "xwayland-satellite is needed for X11 applications and is not packaged"
             echo "on Ubuntu 24.04; build it from source if you need Xwayland."
