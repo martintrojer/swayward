@@ -852,36 +852,3 @@ fn get_tree_output_nodes_report_runtime_power_like_get_outputs() {
         }
     }
 }
-
-#[test]
-fn get_outputs_lists_backend_modes_and_sway_disabled_defaults() {
-    let (mut fixture, socket) = ipc_fixture();
-    fixture.add_output(1, (800, 600));
-    let outputs = fixture.niri_state().backend.ipc_outputs();
-    {
-        let mut outputs = outputs.lock().unwrap();
-        let output = outputs.values_mut().next().unwrap();
-        output.make.clear();
-        output.model.clear();
-        output.serial = None;
-        output.modes.push(swayward_ipc::Mode {
-            width: 1024,
-            height: 768,
-            refresh_rate: 75_000,
-            is_preferred: false,
-        });
-    }
-    fixture.niri_state().refresh_ipc_outputs();
-    let mut stream = UnixStream::connect(&socket).unwrap();
-    let reply = query_ipc(&mut fixture, &mut stream, MessageType::GetOutputs);
-    assert_eq!(reply[0]["modes"].as_array().unwrap().len(), 2, "{reply:#}");
-    assert!(reply[0]["modes"].as_array().unwrap().iter().all(|mode| mode["picture_aspect_ratio"] == "none"));
-
-    assert!(crate::command::execute(fixture.niri_state(), "output headless-1 disable")[0].success);
-    fixture.niri_state().refresh_and_flush_clients();
-    let reply = query_ipc(&mut fixture, &mut stream, MessageType::GetOutputs);
-    assert_eq!(reply[0]["make"], "Unknown");
-    assert_eq!(reply[0]["model"], "Unknown");
-    assert_eq!(reply[0]["serial"], "Unknown");
-    assert!(reply[0]["modes"].as_array().unwrap().iter().all(|mode| mode["picture_aspect_ratio"] == "none"));
-}

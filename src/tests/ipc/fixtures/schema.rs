@@ -6,16 +6,8 @@ fn assert_same_shape(expected: &Value, actual: &Value, path: &str) {
     );
     match (expected, actual) {
         (Value::Object(expected), Value::Object(actual)) => {
-            let mut expected_keys = expected.keys().cloned().collect::<BTreeSet<_>>();
-            let actual_keys = actual.keys().cloned().collect::<BTreeSet<_>>();
-            // Older captures predate sway 1.12's picture_aspect_ratio mode
-            // field (`sway/ipc-json.c:143-157`). Source-schema validation and
-            // the focused output test pin it until the snapshot repin.
-            if (path.ends_with(".current_mode") || path.contains(".modes["))
-                && actual_keys.contains("picture_aspect_ratio")
-            {
-                expected_keys.insert("picture_aspect_ratio".into());
-            }
+            let expected_keys = expected.keys().collect::<BTreeSet<_>>();
+            let actual_keys = actual.keys().collect::<BTreeSet<_>>();
             assert_eq!(expected_keys, actual_keys, "keys at {path}");
             if let Some(expected_type) = expected.get("type") {
                 assert_eq!(

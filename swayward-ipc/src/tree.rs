@@ -189,15 +189,11 @@ pub struct Workspace {
 
 /// A mode advertised by an output.
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OutputMode {
     pub width: i32,
     pub height: i32,
     pub refresh: i32,
-    /// Sway's wl_output mode aspect ratio name; swayward backends do not
-    /// expose one, so synthetic and DRM modes report "none".
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub picture_aspect_ratio: Option<String>,
 }
 
 /// An output returned by `GET_OUTPUTS`.
