@@ -228,31 +228,32 @@ pub(super) fn parse(name: &str, rest: &[&str]) -> Result<Command, String> {
             _ => Err("Expected 'force_focus_wrapping <yes|no>'".into()),
         },
         "hide_edge_borders" => {
-            // `sway/sway/commands/hide_edge_borders.c` accepts an --i3 flag
-            // before the value; it selects i3's smart behaviour, which
-            // swayward expresses through smart_borders. Sway's arity check is
-            // only a minimum; trailing arguments are ignored.
-            let rest: Vec<&str> = rest.iter().copied().filter(|a| *a != "--i3").collect();
-            match rest.as_slice() {
-                [value, ..]
-                    if matches!(
-                        *value,
-                        "none" | "vertical" | "horizontal" | "both" | "smart" | "smart_no_gaps"
-                    ) =>
-                {
-                    // smart and smart_no_gaps are the smart-border toggle in
-                    // sway, not edge-border values.
-                    let option = match *value {
-                        "smart" => LayoutOption::SmartBorders("on".to_owned()),
-                        "smart_no_gaps" => LayoutOption::SmartBorders("no-gaps".to_owned()),
-                        other => LayoutOption::HideEdgeBorders(other.to_owned()),
-                    };
-                    Ok(Command::SetLayoutOption(option))
+            // `sway/sway/commands/hide_edge_borders.c:7-45`: an optional --i3
+            // only as argv[0], then a strcmp-matched value; later arguments
+            // are ignored. --i3 enables hide_lone_tab, which swayward's
+            // titlebar model cannot express, so it fails loudly rather than
+            // being accepted and dropped (docs/KNOWN_DEVIATIONS.md).
+            let usage = "Expected 'hide_edge_borders [--i3] \
+                         none|vertical|horizontal|both|smart|smart_no_gaps";
+            let (lone_tab, rest) = match rest {
+                ["--i3", rest @ ..] => (true, rest),
+                rest => (false, rest),
+            };
+            let option = match rest.first().copied() {
+                Some(value @ ("none" | "vertical" | "horizontal" | "both")) => {
+                    LayoutOption::HideEdgeBorders(value.to_owned())
                 }
-                _ => Err("Expected 'hide_edge_borders [--i3] \
-                          none|vertical|horizontal|both|smart|smart_no_gaps"
-                    .into()),
+                Some("smart") => LayoutOption::HideEdgeBordersSmart("on".to_owned()),
+                Some("smart_no_gaps") => LayoutOption::HideEdgeBordersSmart("no-gaps".to_owned()),
+                _ => return Err(usage.into()),
+            };
+            if lone_tab {
+                return Err(
+                    "hide_edge_borders --i3 is unsupported because swayward cannot hide a lone tab's title bar"
+                        .into(),
+                );
             }
+            Ok(Command::SetLayoutOption(option))
         }
         "smart_borders" => match rest {
             [value] => {

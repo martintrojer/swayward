@@ -574,7 +574,7 @@ probe = "hide_edge_borders none"
 parser = "accept"
 execution = "partial"
 state = "`Config.layout.hide_edge_borders`; `layout.update_config`"
-classification = "partial: `--i3` loses hide-lone-tab behavior and criteria targets are rejected"
+classification = "partial: `--i3` (hide_lone_tab) is refused and criteria targets are rejected"
 cost = "medium"
 
 [[command]]

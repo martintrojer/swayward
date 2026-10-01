@@ -128,6 +128,10 @@ pub enum LayoutOption {
     ForceFocusWrapping(String),
     HideEdgeBorders(String),
     SmartBorders(String),
+    /// `hide_edge_borders smart|smart_no_gaps`: sway sets the smart-border
+    /// mode and resets the edge mode to none in one command
+    /// (`sway/sway/commands/hide_edge_borders.c:34-39`).
+    HideEdgeBordersSmart(String),
     SmartGaps(String),
     ShowMarks(String),
     TitleAlignment(String),

@@ -36,8 +36,10 @@ fn layout_settings_apply_at_runtime_like_sway() {
         }),
         // sway folds smart and smart_no_gaps into the smart-border toggle
         // rather than treating them as edge-border values.
+        // and `smart` also resets the edge mode to none
+        // (`sway/sway/commands/hide_edge_borders.c:34-39`).
         ("hide_edge_borders smart", &|l| {
-            l.smart_borders == SmartBorders::On
+            l.smart_borders == SmartBorders::On && l.hide_edge_borders == HideEdgeBorders::None
         }),
         ("smart_borders no_gaps", &|l| {
             l.smart_borders == SmartBorders::NoGaps
@@ -82,6 +84,24 @@ fn layout_settings_apply_at_runtime_like_sway() {
     assert_eq!(f.swayward().config.borrow().input.tiling_drag_threshold, 17);
     assert!(crate::command::execute(f.niri_state(), "force_display_urgency_hint 700ms")[0].success);
     assert_eq!(f.swayward().config.borrow().urgent_timeout_ms, 700);
+    // Oracle: state/settings_hide_edge_borders_parse. --i3 counts only as
+    // the first argument, values are case-sensitive, and later arguments are
+    // ignored (`sway/sway/commands/hide_edge_borders.c:16-42`). Sway's --i3
+    // also enables hide_lone_tab, which swayward refuses rather than drops,
+    // once the rest of the command is one sway would accept.
+    let usage = "Expected 'hide_edge_borders [--i3] none|vertical|horizontal|both|smart|smart_no_gaps";
+    for (command, error) in [
+        ("hide_edge_borders NONE", usage),
+        ("hide_edge_borders --i3", usage),
+        ("hide_edge_borders --i3 --i3 none", usage),
+        ("hide_edge_borders --i3 none", "hide_edge_borders --i3 is unsupported because swayward cannot hide a lone tab's title bar"),
+    ] {
+        let outcome = &crate::command::execute(f.niri_state(), command)[0];
+        assert_eq!(outcome.error.as_deref(), Some(error), "{command}");
+    }
+    assert!(crate::command::execute(f.niri_state(), "hide_edge_borders vertical --i3")[0].success);
+    assert_eq!(layout(&mut f).hide_edge_borders, HideEdgeBorders::Vertical);
+
     // Oracle: state/settings_urgency_hint_parse. Only one "ms" suffix, and
     // a second argument must be "ms"; later ones are ignored
     // (`sway/sway/commands/force_display_urgency_hint.c:12-23`).

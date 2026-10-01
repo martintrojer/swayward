@@ -14,6 +14,7 @@ pub(super) fn criteria_global_setting(option: &swayward_ipc::command::LayoutOpti
             | LayoutOption::ForceFocusWrapping(..)
             | LayoutOption::PopupDuringFullscreen(..)
             | LayoutOption::SmartBorders(..)
+            | LayoutOption::HideEdgeBordersSmart(..)
             | LayoutOption::SmartGaps(..)
             | LayoutOption::ShowMarks(..)
             | LayoutOption::TitleAlignment(..)
@@ -93,6 +94,10 @@ pub(super) fn execute_global_setting(
             LayoutOption::HideEdgeBorders(value) => {
                 value.parse().map(|value| layout.hide_edge_borders = value)
             }
+            LayoutOption::HideEdgeBordersSmart(value) => value.parse().map(|value| {
+                layout.hide_edge_borders = swayward_config::HideEdgeBorders::None;
+                layout.smart_borders = value;
+            }),
             LayoutOption::SmartBorders(value) => {
                 if value == "toggle" {
                     layout.smart_borders =
