@@ -397,51 +397,8 @@ fn parse_command(lower: &str, name: &str, rest: &[&str], input: &str) -> Result<
             [value] if *value == "disable" => Ok(Command::ShortcutsInhibitor(false)),
             _ => Err(SHORTCUTS_INHIBITOR_USAGE.into()),
         },
-        // Session-wide layout settings from sway's shared `handlers` table,
-        // which serves both the config file and IPC
-        // (`sway/sway/commands.c:43-100,160-173`). swayward stores the same
-        // settings in KDL and re-applies the config after changing one.
-        // Accepted values and error strings follow sway's own command files.
-        // The config-only `config_handlers` (workspace_layout,
-        // default_orientation, primary_selection, xwayland, ...) are not
-        // searched at run time (commands.c:102-110,156-163), so they fall
-        // through to the unknown-command arm.
-        name if matches!(
-            name,
-            "client.focused"
-                | "client.focused_inactive"
-                | "client.focused_tab_title"
-                | "client.unfocused"
-                | "client.urgent"
-                | "focus_wrapping"
-                | "force_focus_wrapping"
-                | "hide_edge_borders"
-                | "smart_borders"
-                | "smart_gaps"
-                | "show_marks"
-                | "title_align"
-                | "tiling_drag"
-                | "tiling_drag_threshold"
-                | "force_display_urgency_hint"
-                | "focus_on_window_activation"
-                | "focus_follows_mouse"
-                | "workspace_auto_back_and_forth"
-                | "default_border"
-                | "default_floating_border"
-                | "new_window"
-                | "new_float"
-                | "popup_during_fullscreen"
-                | "floating_modifier"
-                | "mouse_warping"
-                | "font"
-                | "titlebar_border_thickness"
-                | "titlebar_padding"
-                | "floating_minimum_size"
-                | "floating_maximum_size"
-        ) =>
-        {
-            settings::parse(name, rest)
-        }
+        // Session-wide settings; see settings::SETTINGS.
+        name if settings::is_setting(name) => settings::parse(name, rest),
         "gaps" => parse_gaps(rest),
         "set" => parse_set(rest),
         "bindsym" => parse_bind_command(rest, false, false),

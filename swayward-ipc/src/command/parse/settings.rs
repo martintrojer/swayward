@@ -209,6 +209,51 @@ pub(super) const FOCUS_FOLLOWS_MOUSE_USAGE: &str = "Expected 'focus_follows_mous
 pub(super) const MOUSE_WARPING_USAGE: &str = "Expected 'mouse_warping output|container|none'";
 pub(super) const INVALID_SIZE: &str = "Invalid size specified";
 
+/// Session-wide settings from sway's shared `handlers` table, which serves
+/// both the config file and IPC (`sway/sway/commands.c:43-100,160-173`).
+/// swayward stores the same settings in KDL and re-applies the config after
+/// changing one. The config-only `config_handlers` (workspace_layout,
+/// default_orientation, primary_selection, xwayland, ...) are not searched
+/// at run time (commands.c:102-110,156-163), so they are not listed.
+pub(super) const SETTINGS: &[&str] = &[
+    "client.focused",
+    "client.focused_inactive",
+    "client.focused_tab_title",
+    "client.unfocused",
+    "client.urgent",
+    "focus_wrapping",
+    "force_focus_wrapping",
+    "hide_edge_borders",
+    "smart_borders",
+    "smart_gaps",
+    "show_marks",
+    "title_align",
+    "tiling_drag",
+    "tiling_drag_threshold",
+    "force_display_urgency_hint",
+    "focus_on_window_activation",
+    "focus_follows_mouse",
+    "workspace_auto_back_and_forth",
+    "default_border",
+    "default_floating_border",
+    "new_window",
+    "new_float",
+    "popup_during_fullscreen",
+    "floating_modifier",
+    "mouse_warping",
+    "font",
+    "titlebar_border_thickness",
+    "titlebar_padding",
+    "floating_minimum_size",
+    "floating_maximum_size",
+];
+
+pub(super) fn is_setting(name: &str) -> bool {
+    SETTINGS.contains(&name)
+}
+
+/// Parse one of the [`SETTINGS`]. Accepted values and error strings follow
+/// sway's own command files.
 pub(super) fn parse(name: &str, rest: &[&str]) -> Result<Command, String> {
     match name {
         name @ ("client.focused"

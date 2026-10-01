@@ -680,3 +680,24 @@ mod atoi_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod settings_table_tests {
+    use super::super::*;
+
+    /// Every listed setting has a parser arm: none falls through to the
+    /// unknown-command error, whatever its arguments.
+    #[test]
+    fn every_listed_setting_has_a_parser() {
+        for name in settings::SETTINGS {
+            for args in [&[][..], &["oracle"], &["oracle", "oracle", "oracle"]] {
+                if let Err(error) = settings::parse(name, args) {
+                    assert!(
+                        !error.starts_with("Unknown/invalid command"),
+                        "{name} {args:?}: {error}"
+                    );
+                }
+            }
+        }
+    }
+}
