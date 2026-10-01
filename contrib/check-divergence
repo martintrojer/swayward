@@ -31,12 +31,34 @@ def git(*args: str) -> str:
     )
 
 
+def load_ledger(root: Path) -> tuple[int | None, list[dict]]:
+    directory = root / "docs" / "data" / "divergence"
+    legacy = root / "docs" / "data" / "divergence.toml"
+    if not directory.is_dir():
+        with legacy.open("rb") as file:
+            data = tomllib.load(file)
+        return data.get("migrated_entries"), data.get("edit", [])
+
+    with (directory / "_meta.toml").open("rb") as file:
+        expected = tomllib.load(file).get("migrated_entries")
+    edits = []
+    for path in sorted(directory.glob("*.toml")):
+        if path.name == "_meta.toml":
+            continue
+        with path.open("rb") as file:
+            entries = tomllib.load(file).get("edit", [])
+        if len(entries) != 1:
+            relative = path.relative_to(root)
+            raise ValueError(f"{relative} must contain exactly one [[edit]], found {len(entries)}")
+        edits.extend(entries)
+    return expected, edits
+
+
 def main(argv: list[str]) -> int:
     global ROOT
     if len(argv) > 1:
         ROOT = Path(argv[1]).resolve()
     base_doc = ROOT / "docs" / "FORK-BASE.md"
-    ledger = ROOT / "docs" / "data" / "divergence.toml"
     base_match = re.search(r"commit ([0-9a-f]{40})", base_doc.read_text())
     if not base_match:
         print(f"check-divergence: no full base commit in {base_doc.relative_to(ROOT)}", file=sys.stderr)
@@ -49,11 +71,12 @@ def main(argv: list[str]) -> int:
         print(f"check-divergence: niri base {base} is not available", file=sys.stderr)
         return 2
 
-    with ledger.open("rb") as file:
-        data = tomllib.load(file)
-    edits = data.get("edit", [])
+    try:
+        expected, edits = load_ledger(ROOT)
+    except (OSError, tomllib.TOMLDecodeError, ValueError) as error:
+        print(f"check-divergence: {error}", file=sys.stderr)
+        return 2
     migrated = sum(edit.get("migrated") is True for edit in edits)
-    expected = data.get("migrated_entries")
     if expected != migrated:
         print(
             f"check-divergence: migrated_entries is {expected}, but found {migrated} migrated entries",

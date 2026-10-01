@@ -40,13 +40,17 @@ class CheckDivergenceTest(unittest.TestCase):
         self.directory.cleanup()
 
     def ledger(self, paths: list[str]):
-        entry = "" if not paths else (
+        directory = self.root / "docs" / "data" / "divergence"
+        directory.mkdir(exist_ok=True)
+        (directory / "_meta.toml").write_text("migrated_entries = 0\n")
+        entry = directory / "test.toml"
+        if not paths:
+            entry.unlink(missing_ok=True)
+            return
+        entry.write_text(
             "[[edit]]\nmigrated = false\npaths = ["
             + ", ".join(f'"{path}"' for path in paths)
             + ']\nwhat = "x"\nwhy = "y"\n'
-        )
-        (self.root / "docs" / "data" / "divergence.toml").write_text(
-            f"migrated_entries = 0\n\n{entry}"
         )
 
     def move_and_edit(self):
@@ -103,6 +107,14 @@ class CheckDivergenceTest(unittest.TestCase):
         self.ledger(["*"])
         result = self.check()
         self.assertEqual(result.returncode, 1)
+
+    def test_each_file_must_contain_exactly_one_entry(self):
+        self.ledger(["kept.rs"])
+        entry = self.root / "docs" / "data" / "divergence" / "test.toml"
+        entry.write_text(entry.read_text() * 2)
+        result = self.check()
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("must contain exactly one [[edit]], found 2", result.stderr)
 
 
 if __name__ == "__main__":
