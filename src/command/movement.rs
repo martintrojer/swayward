@@ -849,6 +849,152 @@ pub(super) fn move_target_to_mark(
     success()
 }
 
+pub(super) fn swap_focused(state: &mut State, target: SwapTarget) -> super::HandlerResult {
+    let Some(source) = super::targeted::focused_target(state) else {
+        return Err(failure("Can only swap with containers and views"));
+    };
+    super::handled_outcome(swap_target(state, source, &target))
+}
+
+pub(super) fn direction_focused(
+    state: &mut State,
+    direction: Direction,
+    pixels: Option<i32>,
+) -> super::HandlerResult {
+    let Some(workspace) = state.swayward.layout.active_workspace() else {
+        return Err(failure("Cannot move workspaces in a direction"));
+    };
+    let Some(target) = super::targeted::focused_target(state) else {
+        return Err(super::command_failure(
+            "Cannot move workspaces in a direction",
+        ));
+    };
+    if matches!(target, CommandTarget::Container(workspace, node)
+        if state.swayward.layout.is_tiling_root(workspace, node))
+    {
+        return Err(super::command_failure(
+            "Cannot move workspaces in a direction",
+        ));
+    }
+    let fullscreen_floating = workspace.active_floating_is_fullscreen();
+    if workspace.floating_is_active() || fullscreen_floating {
+        if fullscreen_floating {
+            return Err(failure("Cannot move fullscreen floating container"));
+        }
+        if state
+            .swayward
+            .layout
+            .focused_leaf_is_only_child_of_floating_tree_root()
+        {
+            return Err(success());
+        }
+        let pixels = f64::from(pixels.unwrap_or(10));
+        let (x, y) = match direction {
+            Direction::Left => (-pixels, 0.),
+            Direction::Right => (pixels, 0.),
+            Direction::Up => (0., -pixels),
+            Direction::Down => (0., pixels),
+        };
+        state.swayward.layout.move_floating_window(
+            None,
+            PositionChange::AdjustFixed(x),
+            PositionChange::AdjustFixed(y),
+            true,
+        );
+        state.swayward.queue_redraw_all();
+        Ok(None)
+    } else {
+        super::handled_outcome(super::targeted::move_direction(
+            state,
+            target,
+            direction,
+            pixels,
+            crate::layout::ActivateWindow::Smart,
+            true,
+        ))
+    }
+}
+
+pub(super) fn position_focused(state: &mut State, position: MovePosition) -> super::HandlerResult {
+    move_position(state, None, &position).map_err(failure)?;
+    state.swayward.queue_redraw_all();
+    Ok(None)
+}
+
+pub(super) fn to_workspace_focused(
+    state: &mut State,
+    target: WorkspaceTarget,
+    auto_back_and_forth: bool,
+) -> super::HandlerResult {
+    if state.swayward.layout.global_fullscreen_active()
+        && state
+            .swayward
+            .layout
+            .focused_window_is_fullscreen_or_child()
+    {
+        return Err(failure("Can't move fullscreen global container"));
+    }
+    let Some(focused) = super::targeted::focused_target(state) else {
+        return Err(super::command_failure("Can't move an empty workspace"));
+    };
+    let auto_back_and_forth = auto_back_and_forth
+        && state
+            .swayward
+            .config
+            .borrow()
+            .input
+            .workspace_auto_back_and_forth;
+    super::handled_outcome(move_target_to_workspace(
+        state,
+        focused,
+        target,
+        false,
+        auto_back_and_forth,
+    ))
+}
+
+pub(super) fn to_mark_focused(state: &mut State, mark: &str) -> super::HandlerResult {
+    let Some(source) = super::targeted::focused_target(state) else {
+        return Err(success());
+    };
+    super::handled_outcome(move_target_to_mark(state, source, mark))
+}
+
+pub(super) fn to_output_focused(state: &mut State, target: &OutputTarget) -> super::HandlerResult {
+    let focused_target = super::targeted::focused_target(state);
+    let focused = state
+        .swayward
+        .layout
+        .focus_with_output()
+        .map(|(window, output)| (window.window.clone(), output.clone()));
+    let reference = focused
+        .as_ref()
+        .and_then(|(window, _)| state.swayward.layout.window_center(window));
+    let reference_output = focused.as_ref().map(|(_, output)| output);
+    let output = output_target(state, target, reference_output, reference).map_err(failure)?;
+    if let Some(CommandTarget::Container(workspace, node)) = focused_target {
+        super::handled_outcome(move_tiling_subtree_to_output(
+            state, workspace, node, &output,
+        ))?;
+    } else {
+        state.swayward.layout.move_to_output(
+            None,
+            &output,
+            None,
+            crate::layout::ActivateWindow::No,
+        );
+    }
+    state.swayward.queue_redraw_all();
+    Ok(None)
+}
+
+pub(super) fn workspace_to_output_focused(
+    state: &mut State,
+    target: &OutputTarget,
+) -> super::HandlerResult {
+    super::handled_outcome(move_workspace_to_output(state, None, target))
+}
+
 #[cfg(test)]
 mod tests {
     use smithay::utils::{Point, Rectangle, Size};

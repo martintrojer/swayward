@@ -901,3 +901,33 @@ pub fn run_for_window(state: &mut State, id: crate::window::mapped::MappedId) {
         let _ = execute(state, &targeted);
     }
 }
+
+pub(super) fn mark_focused(
+    state: &mut State,
+    add: bool,
+    toggle: bool,
+    identifier: &str,
+) -> super::HandlerResult {
+    if state
+        .swayward
+        .layout
+        .active_workspace()
+        .is_some_and(|workspace| workspace.is_workspace_focused())
+    {
+        return Err(swayward_ipc::command::parse_error(
+            "Only containers can have marks",
+        ));
+    }
+    let Some(target) = focused_target(state) else {
+        return Err(swayward_ipc::command::parse_error(
+            "Only containers can have marks",
+        ));
+    };
+    mark_target(state, target, identifier, add, toggle);
+    Ok(None)
+}
+
+pub(super) fn unmark_focused(state: &mut State, identifier: Option<&str>) -> super::HandlerResult {
+    unmark_globally(state, identifier);
+    Ok(None)
+}

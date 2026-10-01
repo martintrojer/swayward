@@ -433,6 +433,224 @@ pub(super) fn resize(
     Ok(())
 }
 
+pub(super) fn opacity_focused(
+    state: &mut State,
+    value: f32,
+    relative: bool,
+) -> super::HandlerResult {
+    let Some(target) = super::targeted::focused_target(state) else {
+        return Err(failure("No current container"));
+    };
+    super::handled(opacity(state, target, value, relative))
+}
+
+pub(super) fn title_format_focused(state: &mut State, format: &str) -> super::HandlerResult {
+    let Some(target) = super::targeted::focused_target(state) else {
+        return Err(swayward_ipc::command::parse_error(
+            "Only valid containers can have a title_format",
+        ));
+    };
+    super::handled(title_format(state, target, format))
+}
+
+pub(super) fn shortcuts_inhibitor_focused(state: &mut State, enable: bool) -> super::HandlerResult {
+    let Some(target) = super::targeted::focused_target(state) else {
+        return Err(failure("Only views can have shortcuts inhibitors"));
+    };
+    super::handled(super::targeted::set_shortcuts_inhibitor(
+        state, target, enable,
+    ))
+}
+
+pub(super) fn sticky_focused(state: &mut State, value: &str) -> super::HandlerResult {
+    if state
+        .swayward
+        .layout
+        .active_workspace()
+        .is_some_and(|workspace| workspace.is_workspace_focused())
+    {
+        return Err(super::command_failure("No current container"));
+    }
+    let target = super::targeted::focused_target(state);
+    let container_window = match target {
+        Some(CommandTarget::Container(workspace, node)) => {
+            if state
+                .swayward
+                .layout
+                .set_split_sticky(workspace, node, value)
+            {
+                return Err(super::success());
+            }
+            state.swayward.layout.window_in_node(workspace, node)
+        }
+        _ => None,
+    };
+    let window = container_window.or_else(|| {
+        state
+            .swayward
+            .layout
+            .focus()
+            .map(|mapped| mapped.window.clone())
+    });
+    let Some(window) = window else {
+        return Err(super::command_failure("No current container"));
+    };
+    if state.swayward.layout.is_scratchpad_hidden(&window) {
+        return Err(super::success());
+    }
+    let applied = match target {
+        Some(CommandTarget::Container(workspace, node)) => state
+            .swayward
+            .layout
+            .set_floating_group_sticky(workspace, node, value),
+        _ => None,
+    };
+    if !applied.unwrap_or_else(|| state.swayward.layout.set_window_sticky(&window, value)) {
+        return Err(failure("Expected output to have a workspace"));
+    }
+    state.swayward.queue_redraw_all();
+    Ok(None)
+}
+
+pub(super) fn border_focused(state: &mut State, border: &Border) -> super::HandlerResult {
+    let Some(target) = super::targeted::focused_target(state) else {
+        return Err(failure("Only views can have borders"));
+    };
+    super::handled(self::border(state, target, border))
+}
+
+pub(super) fn floating_focused(state: &mut State, mode: Toggle) -> super::HandlerResult {
+    if let Some(CommandTarget::Container(workspace, node)) = super::targeted::focused_target(state)
+    {
+        let floating = match mode {
+            Toggle::Enable => true,
+            Toggle::Disable => false,
+            Toggle::Toggle => state
+                .swayward
+                .layout
+                .active_workspace()
+                .is_some_and(|workspace| workspace.contains_tiling_node(node)),
+        };
+        let Some(root) = state
+            .swayward
+            .layout
+            .set_container_floating(workspace, node, floating)
+        else {
+            return Err(failure("No matching node."));
+        };
+        state.ipc_refresh_layout();
+        if let Some(server) = &state.swayward.ipc_server {
+            let tree = serde_json::to_value(crate::ipc::tree::describe_tree(
+                &state.swayward.layout,
+                &state.swayward.global_space,
+                &state.swayward.marks_by_window,
+                &state.swayward.marks_by_container,
+            ))
+            .unwrap_or_default();
+            if let Some(mut container) =
+                crate::ipc::server::find_node_by_id(&tree, crate::ipc::tree::container_id(root))
+                    .cloned()
+            {
+                if floating {
+                    container["type"] = "floating_con".into();
+                    container["floating"] = "user_on".into();
+                }
+                server.send_event(swayward_ipc::legacy::Event::SwayWindowChanged {
+                    change: "floating".into(),
+                    container,
+                });
+            }
+        }
+        state.swayward.queue_redraw_all();
+        return Err(super::success());
+    }
+    let Some(window) = state
+        .swayward
+        .layout
+        .focus()
+        .map(|mapped| mapped.window.clone())
+    else {
+        return Err(swayward_ipc::command::parse_error(
+            "Can't float an empty workspace",
+        ));
+    };
+    match mode {
+        Toggle::Enable => state
+            .swayward
+            .layout
+            .set_window_floating(Some(&window), true),
+        Toggle::Disable => state
+            .swayward
+            .layout
+            .set_window_floating(Some(&window), false),
+        Toggle::Toggle => state.swayward.layout.toggle_window_floating(Some(&window)),
+    }
+    state.swayward.queue_redraw_all();
+    Ok(None)
+}
+
+pub(super) fn urgent_focused(state: &mut State, value: &str) -> super::HandlerResult {
+    let Some(target) = super::targeted::focused_target(state) else {
+        return Err(failure("No current container"));
+    };
+    super::handled(urgent(state, target, value))
+}
+
+pub(super) fn kill_focused(state: &mut State) -> super::HandlerResult {
+    let workspace_windows = state
+        .swayward
+        .layout
+        .active_workspace()
+        .and_then(|workspace| {
+            workspace.is_workspace_focused().then(|| {
+                workspace
+                    .windows()
+                    .map(|window| window.id().get())
+                    .collect::<Vec<_>>()
+            })
+        });
+    if let Some(windows) = workspace_windows {
+        for window in windows {
+            state.do_action(Action::CloseWindowById(window), false);
+        }
+    } else if let Some(target) = super::targeted::focused_target(state) {
+        kill(state, target)?;
+    }
+    Ok(None)
+}
+
+pub(super) fn resize_set_focused(
+    state: &mut State,
+    width: Option<ResizeAmount>,
+    height: Option<ResizeAmount>,
+) -> super::HandlerResult {
+    let Some(target) = super::targeted::focused_target(state) else {
+        return Err(swayward_ipc::command::parse_error("Cannot resize nothing"));
+    };
+    super::handled(resize_set(state, target, width, height))
+}
+
+pub(super) fn resize_focused(
+    state: &mut State,
+    grow: bool,
+    axis: ResizeAxis,
+    first: ResizeAmount,
+    second: Option<ResizeAmount>,
+) -> super::HandlerResult {
+    if state
+        .swayward
+        .layout
+        .active_workspace()
+        .is_some_and(|workspace| workspace.is_workspace_focused())
+    {
+        return Err(swayward_ipc::command::parse_error("Cannot resize nothing"));
+    }
+    let Some(target) = super::targeted::focused_target(state) else {
+        return Err(swayward_ipc::command::parse_error("Cannot resize nothing"));
+    };
+    super::handled(resize(state, target, grow, axis, first, second))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

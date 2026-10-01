@@ -8,18 +8,22 @@ use swayward_ipc::CommandOutcome;
 mod bindings;
 mod dispatch;
 mod focus;
+mod gaps;
 mod layout;
 mod movement;
+mod output;
+mod rules;
 mod scratchpad;
+mod session;
 mod settings;
 mod targeted;
 mod window;
+mod workspace;
 
 pub use dispatch::execute;
 use movement::output_target_by_name_or_direction;
 #[cfg(test)]
 pub(crate) use settings::{global_setting_executions, reset_global_setting_executions};
-use swayward_ipc::legacy::PositionChange;
 pub use targeted::run_for_window;
 use targeted::tiling_target;
 
@@ -30,6 +34,25 @@ enum CommandTarget {
         crate::layout::workspace::WorkspaceId,
         crate::layout::tiling_tree::NodeId,
     ),
+}
+
+/// Result from a focused command handler.
+///
+/// `Ok` continues through the shared action/layout-refresh epilogue. `Err`
+/// returns the outcome immediately, including the few successful outcomes
+/// that intentionally skip that epilogue.
+type HandlerResult = Result<Option<swayward_config::Action>, CommandOutcome>;
+
+fn handled(result: Result<(), CommandOutcome>) -> HandlerResult {
+    result.map(|()| None)
+}
+
+fn handled_outcome(outcome: CommandOutcome) -> HandlerResult {
+    if outcome.success {
+        Ok(None)
+    } else {
+        Err(outcome)
+    }
 }
 
 pub(crate) fn create_output(

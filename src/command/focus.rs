@@ -246,3 +246,12 @@ pub(super) fn targeted_direction(
     );
     Ok(())
 }
+
+pub(super) fn mode_toggle(state: &mut State) -> Result<Action, CommandOutcome> {
+    let floating = state
+        .swayward
+        .layout
+        .active_workspace()
+        .is_some_and(|workspace| workspace.floating_is_active());
+    mode(state, !floating)
+}

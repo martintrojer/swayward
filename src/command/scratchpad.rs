@@ -111,3 +111,67 @@ fn target_window(
             .ok_or_else(|| failure("No matching node.")),
     }
 }
+
+pub(super) fn move_focused(state: &mut State) -> super::HandlerResult {
+    let floating_root = state
+        .swayward
+        .layout
+        .active_workspace()
+        .and_then(crate::layout::workspace::Workspace::focused_floating_tree_root);
+    let Some(target) = super::targeted::focused_target(state) else {
+        return Err(swayward_ipc::command::parse_error(
+            "Can't move an empty workspace to the scratchpad",
+        ));
+    };
+    let window = match target {
+        CommandTarget::Container(workspace, node) => {
+            let window = state.swayward.layout.window_in_node(workspace, node);
+            if state
+                .swayward
+                .layout
+                .set_container_floating(workspace, node, true)
+                .is_none()
+            {
+                return Err(failure("No matching node."));
+            }
+            window
+        }
+        CommandTarget::Window(_) => None,
+    };
+    state.ipc_order_scratchpad_events(crate::ipc::server::ScratchpadEventOrder::Hide);
+    state.swayward.layout.move_to_scratchpad(window.as_ref());
+    if let Some(root) = floating_root {
+        state.ipc_refresh_layout();
+        if let Some(server) = &state.swayward.ipc_server {
+            let tree = serde_json::to_value(crate::ipc::tree::describe_tree(
+                &state.swayward.layout,
+                &state.swayward.global_space,
+                &state.swayward.marks_by_window,
+                &state.swayward.marks_by_container,
+            ))
+            .unwrap_or_default();
+            if let Some(mut container) =
+                crate::ipc::server::find_node_by_id(&tree, crate::ipc::tree::container_id(root))
+                    .cloned()
+            {
+                if let Some(container) = container.as_object_mut() {
+                    container.remove("visible");
+                }
+                server.send_event(swayward_ipc::legacy::Event::SwayWindowChanged {
+                    change: "move".into(),
+                    container,
+                });
+            }
+        }
+    }
+    state.swayward.queue_redraw_all();
+    Ok(None)
+}
+
+pub(super) fn show_focused(state: &mut State) -> super::HandlerResult {
+    if state.swayward.layout.scratchpad_is_empty() {
+        return Err(swayward_ipc::command::parse_error("Scratchpad is empty"));
+    }
+    show(state);
+    Ok(None)
+}
