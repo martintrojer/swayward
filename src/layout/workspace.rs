@@ -2343,31 +2343,27 @@ impl<W: LayoutElement> Workspace<W> {
             return;
         };
 
-        // Sway sizes a tiled window from the workspace box when it first enters
-        // the scratchpad (sway/tree/container.c:913-932).
+        // Sway sizes a tiled view from the workspace box when it first enters
+        // the scratchpad, and sizes its content, not the decorated container:
+        // container_floating_set_default_size sets content_width/height and
+        // derives the geometry from them (sway/tree/container.c:896-918).
         let (minimum, maximum) = super::floating_tree::floating_constraints(
             self.options.layout.floating_minimum_size,
             self.options.layout.floating_maximum_size,
             automatic_maximum.to_f64(),
         );
-        let tile_width = (self.working_area.size.w * 0.5)
+        let content_width = (self.working_area.size.w * 0.5)
             .min(maximum.w)
             .max(minimum.w);
-        let tile_height = (self.working_area.size.h * 0.75)
+        let content_height = (self.working_area.size.h * 0.75)
             .min(maximum.h)
             .max(minimum.h);
         let min_size = tile.window().min_size();
         let max_size = tile.window().max_size();
-        let window_width = ensure_min_max_size(
-            tile.window_width_for_tile_width(tile_width).round() as i32,
-            min_size.w,
-            max_size.w,
-        );
-        let window_height = ensure_min_max_size(
-            tile.window_height_for_tile_height(tile_height).round() as i32,
-            min_size.h,
-            max_size.h,
-        );
+        let window_width =
+            ensure_min_max_size(content_width.round() as i32, min_size.w, max_size.w);
+        let window_height =
+            ensure_min_max_size(content_height.round() as i32, min_size.h, max_size.h);
         tile.floating_window_size = Some(Size::from((window_width.max(1), window_height.max(1))));
 
         let tile_size = Size::from((

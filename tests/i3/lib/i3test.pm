@@ -232,6 +232,12 @@ sub is ($$;$) {
         $tester->skip('sway preserves an existing global mark when mark is run without a container');
         return;
     }
+    if (($ENV{SWAYWARD_I3_TEST} // '') eq '202-scratchpad-criteria.t'
+        && (($name // '') eq 'scratch width is 50%'
+            || ($name // '') eq 'scratch height is 75%')) {
+        $tester->skip('sway sizes the scratchpad view content, not the decorated rect');
+        return;
+    }
     if (($ENV{SWAYWARD_I3_TEST} // '') eq '285-sticky.t'
         && (($name // '') eq 'sticky container has focus'
             || ($name // '') eq 'the sticky container has focus')) {

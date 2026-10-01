@@ -2667,8 +2667,21 @@ file_skip = { reason = "The harness emits a file-level skip because the file exe
 [files."202-scratchpad-criteria.t"]
 assertions = 27
 tap_plan = 27
-pass = 27
-note = "Fresh measurement reaches `1..27` and every assertion passes. The adapter now searches the full sway tree for synthetic workspace `__i3_scratch` instead of assuming i3's top-level placement, allowing the unchanged cleanup helper and all later scratchpad-criteria checks to run. The three rejected commands are expected negative cases whose assertions verify no state change (`sway/sway/commands/scratchpad.c:81-109`; `sway/sway/ipc-json.c:459-499`)."
+pass = 25
+reason = "i3_only_semantics"
+reason_verified = true
+note = "Fresh measurement reaches `1..27`: 25 pass and 2 documented skips. The adapter now searches the full sway tree for synthetic workspace `__i3_scratch` instead of assuming i3's top-level placement, allowing the unchanged cleanup helper and all later scratchpad-criteria checks to run. The three rejected commands are expected negative cases whose assertions verify no state change (`sway/sway/commands/scratchpad.c:81-109`; `sway/sway/ipc-json.c:459-499`)."
+
+[[files."202-scratchpad-criteria.t".skip]]
+n = 3
+desc = "scratch width is 50%"
+reason = "i3 sizes the decorated scratchpad container to half the output. Sway sizes the view's content to half the workspace box and derives the container from it, so the outer rect is wider by the side borders. Pinned sway 1.12 fails this assertion too (oracle i3/results/sway-1.12.toml: fail_assertions = [3, 4, 6])."
+citation = "sway/sway/tree/container.c:896-918"
+[[files."202-scratchpad-criteria.t".skip]]
+n = 4
+desc = "scratch height is 75%"
+reason = "i3 sizes the decorated scratchpad container to three quarters of the output. Sway sizes the view's content to three quarters of the workspace box and derives the container from it, so the outer rect differs by the decorations. Pinned sway 1.12 fails this assertion too (oracle i3/results/sway-1.12.toml: fail_assertions = [3, 4, 6])."
+citation = "sway/sway/tree/container.c:896-918"
 
 [files."203-regress-assign-and-move.t"]
 assertions = 2

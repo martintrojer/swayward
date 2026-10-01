@@ -1560,6 +1560,36 @@ fn tiled_window_gets_sway_default_size_when_first_moved_to_scratchpad() {
     assert_eq!(pos.tile_pos_in_workspace_view, Some((320., 90.)));
 }
 
+/// Sway sizes the view's content, not the decorated container, when a tiled
+/// view first enters the scratchpad: container_floating_set_default_size sets
+/// content_width/height to half and three quarters of the workspace box and
+/// derives the geometry from the content (sway/tree/container.c:896-918).
+#[test]
+fn tiled_window_scratchpad_default_size_is_the_content_size_with_borders() {
+    let mut options = Options::default();
+    options.layout.border.off = false;
+    options.layout.border.width = 2.;
+    let mut layout = check_ops_with_options(
+        options,
+        [
+            Op::AddOutput(1),
+            Op::AddWindow {
+                params: TestWindowParams::new(1),
+            },
+        ],
+    );
+
+    layout.move_to_scratchpad(Some(&1));
+    layout.show_scratchpad(Some(&1));
+
+    let window = layout
+        .windows()
+        .find(|(_, window)| window.id() == &1)
+        .unwrap()
+        .1;
+    assert_eq!(window.0.requested_size.get(), Some(Size::from((640, 540))));
+}
+
 // sway/tree/container.c:990-994: every return to tiling removes the
 // container from the scratchpad, including a drag toggled to tiling.
 #[test]
