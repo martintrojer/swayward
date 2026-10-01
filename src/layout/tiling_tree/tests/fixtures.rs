@@ -172,3 +172,24 @@ impl LayoutElement for TestWindow {
         false
     }
 }
+
+/// The `deco_rect` GET_TREE reports for `window`: the IPC leaf's, from the
+/// same snapshot the wire serialises.
+pub(super) fn ipc_deco_rect(
+    t: &TilingTree<TestWindow>,
+    window: usize,
+) -> Option<Rectangle<f64, Logical>> {
+    fn find(node: &IpcNode<usize>, window: usize) -> Option<Option<Rectangle<f64, Logical>>> {
+        match node {
+            IpcNode::Leaf {
+                window: id,
+                deco_rect,
+                ..
+            } => (*id == window).then_some(*deco_rect),
+            IpcNode::Split { children, .. } => {
+                children.iter().find_map(|child| find(child, window))
+            }
+        }
+    }
+    find(&t.ipc_tree(), window).unwrap_or_else(|| panic!("window {window} not in the IPC tree"))
+}

@@ -9,19 +9,6 @@ impl<W: LayoutElement> TilingTree<W> {
         self.compute_geometry().leaf_boxes.remove(&id)
     }
 
-    pub fn ipc_decoration_rect(&self, window: &W::Id) -> Option<Rectangle<f64, Logical>> {
-        let id = self.node_for_window(window)?;
-        let mut geometry = self.compute_geometry();
-        if let Some(bar) = geometry.titlebars.remove(&id) {
-            return Some(bar.ipc_rect);
-        }
-        geometry
-            .titlebars
-            .into_iter()
-            .find(|(titlebar_id, _)| geometry.titlebar_leaves.get(titlebar_id) == Some(&id))
-            .map(|(_, bar)| bar.ipc_rect)
-    }
-
     #[cfg(test)]
     pub fn titlebar_titles(&self) -> Vec<String> {
         self.compute_geometry()

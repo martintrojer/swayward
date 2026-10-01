@@ -140,8 +140,8 @@ fn tabbed_split_only_exposes_the_focused_branch() {
     let titlebar_height = titlebar::height(1., &swayward_config::Titlebar::default());
     assert!(t.geometry(first).unwrap().loc.y > 0.);
     assert!(t.geometry(first).unwrap().size.h < 800.);
-    let first_bar = t.ipc_decoration_rect(&1).unwrap();
-    let second_bar = t.ipc_decoration_rect(&2).unwrap();
+    let first_bar = ipc_deco_rect(&t, 1).unwrap();
+    let second_bar = ipc_deco_rect(&t, 2).unwrap();
     assert_eq!(first_bar.size, second_bar.size);
     assert_eq!(first_bar.size.h, titlebar_height);
     assert_eq!(first_bar.loc.y, 0.);
@@ -182,8 +182,8 @@ fn stacked_split_reserves_one_titlebar_row_per_child() {
     t.split(first, Layout::Stacked);
     t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
 
-    let first_bar = t.ipc_decoration_rect(&1).unwrap();
-    let second_bar = t.ipc_decoration_rect(&2).unwrap();
+    let first_bar = ipc_deco_rect(&t, 1).unwrap();
+    let second_bar = ipc_deco_rect(&t, 2).unwrap();
     assert_eq!(first_bar.size.w, 1000.);
     assert_eq!(second_bar.loc.y, first_bar.loc.y + first_bar.size.h);
     assert_eq!(t.geometry(first).unwrap().loc.y, first_bar.size.h * 2.);

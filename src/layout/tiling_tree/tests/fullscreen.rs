@@ -12,7 +12,7 @@ fn mapping_under_fullscreen_preserves_focus_and_sibling_percents() {
     assert_eq!(t.focus(), Some(fullscreen));
     let first_geometry = t.geometry(first).unwrap();
     assert_eq!(first_geometry.size.w, t.view_size().w / 2.);
-    assert_eq!(t.ipc_decoration_rect(&3), None);
+    assert_eq!(ipc_deco_rect(&t, 3), None);
     let TreeNode::Split { percents, .. } = &t.nodes[&t.root].value else {
         panic!("root must be a split");
     };
@@ -318,13 +318,15 @@ fn stacked_siblings_keep_their_geometry_while_one_is_fullscreen() {
     );
 }
 
+/// Sway zeroes a fullscreen container's deco_rect (`get_deco_rect`,
+/// sway/sway/ipc-json.c:543-553); swayward reports no titlebar box.
 #[test]
 fn fullscreen_suppresses_titlebar() {
     let mut t = tree((1000., 800.), 0.);
     let id = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
-    assert!(t.ipc_decoration_rect(&1).is_some());
+    assert!(ipc_deco_rect(&t, 1).is_some());
     assert!(t.set_fullscreen(&1, true));
-    assert!(t.ipc_decoration_rect(&1).is_none());
+    assert!(ipc_deco_rect(&t, 1).is_none());
     assert_eq!(t.geometry(id).unwrap().loc.y, 0.);
 }
 
