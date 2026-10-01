@@ -1,3 +1,32 @@
+struct ScratchDir(std::path::PathBuf);
+
+impl ScratchDir {
+    fn new(tag: &str) -> Self {
+        let path = std::env::var_os("SWAYWARD_TEST_TMPDIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from("/var/tmp"))
+            .join(format!(
+                "swayward-{tag}.{}.{}",
+                std::process::id(),
+                NEXT_TEST_SCRATCH.fetch_add(1, Ordering::Relaxed),
+            ));
+        std::fs::create_dir_all(&path).unwrap();
+        Self(path)
+    }
+
+    fn join(&self, path: impl AsRef<std::path::Path>) -> std::path::PathBuf {
+        self.0.join(path)
+    }
+}
+
+impl Drop for ScratchDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+static NEXT_TEST_SCRATCH: AtomicU64 = AtomicU64::new(0);
+
 fn read_ipc_reply(fixture: &mut Fixture, stream: &mut UnixStream) -> (u32, String) {
     let (reply, _) = read_ipc_reply_with_remainder(fixture, stream, Vec::new());
     reply
@@ -148,6 +177,11 @@ fn two_ipc_fixtures_get_distinct_live_sockets() {
         assert!(
             !socket.starts_with("/run/user"),
             "{} must not sit in the swept runtime directory",
+            socket.display()
+        );
+        assert!(
+            !socket.starts_with(std::env::temp_dir()),
+            "{} must not sit on tmpfs",
             socket.display()
         );
     }

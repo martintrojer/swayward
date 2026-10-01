@@ -52,14 +52,13 @@ fn get_config_reports_not_implemented_rather_than_returning_kdl() {
     // serve (`sway/sway/ipc-server.c:919-925`, IPC_SYNC).
     let (mut fixture, socket) = ipc_fixture();
     let mut stream = UnixStream::connect(socket).unwrap();
-    let root = std::env::temp_dir().join(format!("swayward-get-config-{}", std::process::id()));
-    std::fs::create_dir_all(&root).unwrap();
+    let scratch = ScratchDir::new("get-config");
+    let root = &scratch.0;
     std::fs::write(root.join("included.kdl"), "layout { gaps 7; }\n").unwrap();
     let source = "include \"included.kdl\"\n";
     let config = swayward_config::Config::parse(&root.join("config.kdl"), source)
         .config
         .unwrap();
-    std::fs::remove_dir_all(root).unwrap();
     fixture.niri_state().reload_config(Ok(config));
 
     let reply = query_ipc(&mut fixture, &mut stream, MessageType::GetConfig);

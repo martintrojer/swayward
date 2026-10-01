@@ -89,8 +89,6 @@ fn tiled_window_rects_on(fixture: &mut Fixture, workspace: &str) -> Vec<Value> {
 
 #[test]
 fn reloaded_gap_defaults_do_not_change_an_existing_workspace() {
-    static NEXT_CONFIG: AtomicU64 = AtomicU64::new(0);
-
     let initial = swayward_config::Config::parse_mem(
         r#"layout {
             gaps 10
@@ -107,11 +105,8 @@ fn reloaded_gap_defaults_do_not_change_an_existing_workspace() {
     assert_eq!(before[0]["y"], 8);
     assert_eq!(before[1]["y"], 8);
 
-    let path = std::env::temp_dir().join(format!(
-        "swayward-gap-reload-test-{}-{}.kdl",
-        std::process::id(),
-        NEXT_CONFIG.fetch_add(1, Ordering::Relaxed)
-    ));
+    let scratch = ScratchDir::new("gap-reload");
+    let path = scratch.join("config.kdl");
     std::fs::write(
         &path,
         r#"layout {
@@ -145,7 +140,6 @@ fn reloaded_gap_defaults_do_not_change_an_existing_workspace() {
     assert_eq!(fixture.swayward().config.borrow().layout.gaps, 16.);
     assert_eq!(tiled_window_rects(&mut fixture), before);
 
-    std::fs::remove_file(path).unwrap();
 }
 
 #[test]

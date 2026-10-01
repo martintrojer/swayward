@@ -230,7 +230,8 @@ fn get_inputs_and_seats_return_sway_schema_and_values() {
 #[test]
 fn exec_does_not_inherit_the_ipc_listener() {
     let (mut fixture, _socket) = ipc_fixture();
-    let output = std::env::temp_dir().join(format!("swayward-exec-fds-{}", std::process::id()));
+    let scratch = ScratchDir::new("exec-fds");
+    let output = scratch.join("listing");
     let temporary = output.with_extension("pending");
     let command = format!(
         "exec sh -c 'ls -l /proc/self/fd > {} && mv {} {}'",
@@ -246,7 +247,6 @@ fn exec_does_not_inherit_the_ipc_listener() {
         std::thread::sleep(Duration::from_millis(10));
     }
     let inherited = std::fs::read_to_string(&output).unwrap();
-    std::fs::remove_file(output).unwrap();
     assert!(
         !inherited.lines().any(|line| line.contains(" -> socket:[")),
         "exec inherited a socket: {inherited}"
@@ -256,15 +256,11 @@ fn exec_does_not_inherit_the_ipc_listener() {
 #[test]
 fn exec_no_startup_id_suppresses_only_the_desktop_token() {
     let (mut fixture, _socket) = ipc_fixture();
-    let directory = std::env::temp_dir();
-    let suffix = std::process::id();
-    let plain = directory.join(format!("swayward-exec-env-plain-{suffix}"));
-    let suppressed = directory.join(format!("swayward-exec-env-suppressed-{suffix}"));
-    let plain_pending = plain.with_extension("pending");
-    let suppressed_pending = suppressed.with_extension("pending");
-    for path in [&plain, &suppressed, &plain_pending, &suppressed_pending] {
-        let _ = std::fs::remove_file(path);
-    }
+    let scratch = ScratchDir::new("exec-env");
+    let plain = scratch.join("plain");
+    let suppressed = scratch.join("suppressed");
+    let plain_pending = scratch.join("plain.pending");
+    let suppressed_pending = scratch.join("suppressed.pending");
 
     // Redirect creates its target before `env` writes anything. Write to a
     // private path and rename it last, so the observed path means that the
@@ -312,8 +308,6 @@ fn exec_no_startup_id_suppresses_only_the_desktop_token() {
     };
     let plain_env = read(&plain);
     let suppressed_env = read(&suppressed);
-    std::fs::remove_file(plain).unwrap();
-    std::fs::remove_file(suppressed).unwrap();
 
     let plain_xdg = plain_env.get("XDG_ACTIVATION_TOKEN").unwrap();
     assert!(!plain_xdg.is_empty());

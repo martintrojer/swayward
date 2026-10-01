@@ -1,14 +1,9 @@
 #[test]
 fn reload_rereads_config_and_emits_the_sway_workspace_event() {
-    static NEXT_CONFIG: AtomicU64 = AtomicU64::new(0);
-
     let (mut fixture, socket) = ipc_fixture();
     fixture.add_output(1, (1920, 1080));
-    let path = std::env::temp_dir().join(format!(
-        "swayward-reload-test-{}-{}.kdl",
-        std::process::id(),
-        NEXT_CONFIG.fetch_add(1, Ordering::Relaxed)
-    ));
+    let scratch = ScratchDir::new("reload");
+    let path = scratch.join("config.kdl");
     std::fs::write(&path, "layout { gaps 7; }").unwrap();
     crate::utils::watcher::setup(
         fixture.niri_state(),
@@ -40,19 +35,13 @@ fn reload_rereads_config_and_emits_the_sway_workspace_event() {
         Err(error) if error.kind() == std::io::ErrorKind::WouldBlock
     ));
 
-    std::fs::remove_file(path).unwrap();
 }
 
 #[test]
 fn reload_reports_malformed_config_in_the_command_reply() {
-    static NEXT_CONFIG: AtomicU64 = AtomicU64::new(0);
-
     let mut fixture = Fixture::new();
-    let path = std::env::temp_dir().join(format!(
-        "swayward-bad-reload-test-{}-{}.kdl",
-        std::process::id(),
-        NEXT_CONFIG.fetch_add(1, Ordering::Relaxed)
-    ));
+    let scratch = ScratchDir::new("bad-reload");
+    let path = scratch.join("config.kdl");
     std::fs::write(&path, "binds { Mod+H { command; }; }").unwrap();
     crate::utils::watcher::setup(
         fixture.niri_state(),
@@ -70,7 +59,6 @@ fn reload_reports_malformed_config_in_the_command_reply() {
         }]
     );
 
-    std::fs::remove_file(path).unwrap();
 }
 
 #[test]
@@ -358,15 +346,10 @@ fn translated_for_window_nop_has_no_observable_window_effect() {
 /// It then re-applies output configs and emits one output::unspecified.
 #[test]
 fn reload_from_a_non_default_mode_resets_it_without_a_mode_event() {
-    static NEXT_CONFIG: AtomicU64 = AtomicU64::new(0);
-
     let (mut fixture, socket) = ipc_fixture();
     fixture.add_output(1, (1920, 1080));
-    let path = std::env::temp_dir().join(format!(
-        "swayward-reload-mode-test-{}-{}.kdl",
-        std::process::id(),
-        NEXT_CONFIG.fetch_add(1, Ordering::Relaxed)
-    ));
+    let scratch = ScratchDir::new("reload-mode");
+    let path = scratch.join("config.kdl");
     std::fs::write(&path, r#"mode "resize" { Escape { command "mode default"; }; }"#).unwrap();
     crate::utils::watcher::setup(
         fixture.niri_state(),
@@ -415,5 +398,4 @@ fn reload_from_a_non_default_mode_resets_it_without_a_mode_event() {
         "reload must emit nothing after output::unspecified, in particular no mode event"
     );
 
-    std::fs::remove_file(path).unwrap();
 }
