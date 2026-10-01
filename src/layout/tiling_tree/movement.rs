@@ -224,7 +224,7 @@ impl<W: LayoutElement> TilingTree<W> {
         let boundary_root = self.resident_root().unwrap_or(self.root);
         if self.windows().nth(1).is_none() {
             if boundary_root == self.root {
-                self.move_only_window(id, wanted_layout);
+                self.move_only_window(id, direction, wanted_layout);
             }
             return false;
         }
@@ -327,7 +327,7 @@ impl<W: LayoutElement> TilingTree<W> {
         true
     }
 
-    fn move_only_window(&mut self, id: NodeId, wanted_layout: Layout) {
+    fn move_only_window(&mut self, id: NodeId, direction: Direction, wanted_layout: Layout) {
         let Some(&TreeNode::Split {
             layout: root_layout,
             ..
@@ -358,33 +358,69 @@ impl<W: LayoutElement> TilingTree<W> {
             return;
         }
         // A same-axis command cannot move the only window out of the
-        // workspace, but sway still promotes a window nested two or more
-        // levels deep to workspace level, reaps the emptied wrappers and
-        // squashes the workspace (`container_move_in_direction`,
-        // sway/commands/move.c:394-412). A window whose parent is a singleton
-        // workspace child is treated as already at workspace level and stays
-        // put (sway/commands/move.c:387-393).
+        // workspace, but sway still walks up to the first ancestor whose
+        // parent lays out along the move axis and promotes the window beside
+        // that ancestor, then reaps the emptied wrappers and squashes the
+        // workspace (`container_move_in_direction`, sway/commands/move.c:322-412).
+        // A window whose parent is a singleton workspace child counts as
+        // already at workspace level and stays put
+        // (sway/commands/move.c:387-393).
         let Some(leaf) = self.windows().next().map(|(leaf, _)| leaf) else {
             return;
         };
-        let parent = self
-            .nodes
-            .get(&leaf)
-            .and_then(|node| node.parent)
-            .filter(|parent| *parent != self.root)
-            .filter(|parent| {
-                self.nodes
-                    .get(parent)
-                    .and_then(|node| node.parent)
-                    .is_some_and(|grandparent| grandparent != self.root)
-            });
-        if let Some(parent) = parent {
-            self.detach_subtree_only(leaf);
-            self.insert_child_at(self.root, leaf, 0);
-            self.reap_empty_from(parent);
-            self.compact_tree();
-            self.finish_directional_move(leaf);
+        let Some(old_parent) = self.nodes.get(&leaf).and_then(|node| node.parent) else {
+            return;
+        };
+        if old_parent == self.root {
+            return;
         }
+        // Sway's ancestor walk: climb while the parent's layout is not along
+        // the move axis; at a parallel parent, the window itself escapes
+        // (it has no sibling in the move direction), and any other node is
+        // the ancestor to promote beside (sway/commands/move.c:322-380).
+        let mut current = leaf;
+        let ancestor = loop {
+            let Some(parent) = self.nodes.get(&current).and_then(|node| node.parent) else {
+                return;
+            };
+            let Some(&TreeNode::Split { layout, .. }) =
+                self.nodes.get(&parent).map(|node| &node.value)
+            else {
+                return;
+            };
+            if !Self::layouts_parallel(layout, wanted_layout) || current == leaf {
+                if parent == self.root {
+                    // Reached workspace level without a parallel ancestor:
+                    // the window is already as far out as it can go.
+                    return;
+                }
+                current = parent;
+                continue;
+            }
+            break current;
+        };
+        if old_parent != self.root
+            && self.nodes.get(&old_parent).and_then(|node| node.parent) == Some(self.root)
+            && self.split_len(old_parent) == Some(1)
+        {
+            // Treat a singleton workspace child as workspace level, like i3
+            // (sway/commands/move.c:387-393).
+            return;
+        }
+        let Some(destination) = self.nodes.get(&ancestor).and_then(|node| node.parent) else {
+            return;
+        };
+        let Some(index) = self.child_index(destination, ancestor) else {
+            return;
+        };
+        let forwards = matches!(direction, Direction::Right | Direction::Down);
+        self.detach_subtree_only(leaf);
+        // `container_insert_child(ancestor->parent, container, index + (offs < 0 ? 0 : 1))`
+        // (sway/commands/move.c:394-412).
+        self.insert_child_at(destination, leaf, index + usize::from(forwards));
+        self.reap_empty_from(old_parent);
+        self.compact_tree();
+        self.finish_directional_move(leaf);
     }
 
     fn move_into_directional_destination(

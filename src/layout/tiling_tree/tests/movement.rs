@@ -448,3 +448,35 @@ fn directional_move_reaps_nested_wrappers_around_the_only_window() {
     );
     t.check_invariants();
 }
+
+// random seed 7 step 15 (sway-1.12-random): the only window, inside a split
+// inside a tabbed container, moves along the tabbed axis. Sway walks up to
+// the tabbed container (the first ancestor whose parent is parallel to the
+// move), promotes the window beside it, and reaps the emptied split.
+#[test]
+fn lone_window_same_axis_move_promotes_beside_the_parallel_ancestor() {
+    let mut t = tree((1200., 800.), 0.);
+    let window = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let split = t.wrap_node(window, Layout::SplitV);
+    t.wrap_node(split, Layout::Tabbed);
+
+    t.move_direction(window, Direction::Right);
+
+    let tree = t.ipc_tree();
+    assert!(
+        matches!(
+            tree,
+            IpcNode::Split {
+                layout: Layout::SplitH,
+                ref children,
+                ..
+            } if matches!(
+                &children[..],
+                [IpcNode::Split { layout: Layout::Tabbed, children: tabs, .. }]
+                    if matches!(&tabs[..], [IpcNode::Leaf { id, .. }] if *id == window)
+            )
+        ),
+        "{tree:?}"
+    );
+    t.check_invariants();
+}
