@@ -17,20 +17,6 @@ fn window_id(f: &mut Fixture, surface: &WlSurface) -> smithay::desktop::Window {
         .clone()
 }
 
-fn map_window(f: &mut Fixture, client: client::ClientId, title: &str) -> WlSurface {
-    let window = f.client(client).create_window();
-    let surface = window.surface.clone();
-    window.set_title(title);
-    window.commit();
-    f.roundtrip(client);
-    let window = f.client(client).window(&surface);
-    window.attach_new_buffer();
-    window.set_size(200, 100);
-    window.ack_last_and_commit();
-    f.double_roundtrip(client);
-    surface
-}
-
 fn last_states(
     f: &mut Fixture,
     client: client::ClientId,
@@ -62,8 +48,16 @@ fn activate_focuses_the_window() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));
     let client = f.add_client();
-    let first = map_window(&mut f, client, "first");
-    map_window(&mut f, client, "second");
+    let first = windows::map_window(
+        &mut f,
+        client,
+        windows::WindowSpec::titled_size("first", 200, 100),
+    );
+    windows::map_window(
+        &mut f,
+        client,
+        windows::WindowSpec::titled_size("second", 200, 100),
+    );
     let seat = f.client(client).state.seat.clone().unwrap();
     let first_window = window_id(&mut f, &first);
     assert_ne!(f.swayward().layout.focus().unwrap().window, first_window);
@@ -83,7 +77,11 @@ fn fullscreen_and_fullscreen_on_output_follow_sway() {
     f.add_output(1, (1920, 1080));
     f.add_output(2, (1280, 720));
     let client = f.add_client();
-    let surface = map_window(&mut f, client, "window");
+    let surface = windows::map_window(
+        &mut f,
+        client,
+        windows::WindowSpec::titled_size("window", 200, 100),
+    );
     let window = window_id(&mut f, &surface);
     let handle = f.client(client).foreign_toplevel("window").handle.clone();
 
@@ -107,8 +105,16 @@ fn close_sends_xdg_close() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));
     let client = f.add_client();
-    let first = map_window(&mut f, client, "first");
-    let second = map_window(&mut f, client, "second");
+    let first = windows::map_window(
+        &mut f,
+        client,
+        windows::WindowSpec::titled_size("first", 200, 100),
+    );
+    let second = windows::map_window(
+        &mut f,
+        client,
+        windows::WindowSpec::titled_size("second", 200, 100),
+    );
 
     f.client(client).foreign_toplevel("second").handle.close();
     f.double_roundtrip(client);
@@ -126,7 +132,11 @@ fn maximize_request_maximizes_unlike_sway() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));
     let client = f.add_client();
-    let surface = map_window(&mut f, client, "window");
+    let surface = windows::map_window(
+        &mut f,
+        client,
+        windows::WindowSpec::titled_size("window", 200, 100),
+    );
     let handle = f.client(client).foreign_toplevel("window").handle.clone();
 
     handle.set_maximized();
@@ -146,7 +156,11 @@ fn minimize_request_hides_in_scratchpad_unlike_sway() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));
     let client = f.add_client();
-    let surface = map_window(&mut f, client, "window");
+    let surface = windows::map_window(
+        &mut f,
+        client,
+        windows::WindowSpec::titled_size("window", 200, 100),
+    );
     let window = window_id(&mut f, &surface);
     let handle = f.client(client).foreign_toplevel("window").handle.clone();
 
@@ -168,7 +182,11 @@ fn activate_shows_a_scratchpad_hidden_window() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));
     let client = f.add_client();
-    let surface = map_window(&mut f, client, "window");
+    let surface = windows::map_window(
+        &mut f,
+        client,
+        windows::WindowSpec::titled_size("window", 200, 100),
+    );
     let window = window_id(&mut f, &surface);
     let seat = f.client(client).state.seat.clone().unwrap();
     let handle = f.client(client).foreign_toplevel("window").handle.clone();
@@ -189,7 +207,11 @@ fn closed_window_and_removed_output_requests_are_safe() {
     f.add_output(1, (1920, 1080));
     f.add_output(2, (1280, 720));
     let client = f.add_client();
-    let surface = map_window(&mut f, client, "window");
+    let surface = windows::map_window(
+        &mut f,
+        client,
+        windows::WindowSpec::titled_size("window", 200, 100),
+    );
     let handle = f.client(client).foreign_toplevel("window").handle.clone();
     let seat = f.client(client).state.seat.clone().unwrap();
     let removed_output = f.client(client).output("headless-2");

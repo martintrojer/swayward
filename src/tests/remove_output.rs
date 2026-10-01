@@ -1,15 +1,7 @@
 use super::*;
 
 fn map_window(f: &mut Fixture, client: client::ClientId) -> smithay::desktop::Window {
-    let window = f.client(client).create_window();
-    let surface = window.surface.clone();
-    window.commit();
-    f.roundtrip(client);
-    let window = f.client(client).window(&surface);
-    window.attach_new_buffer();
-    window.set_size(100, 100);
-    window.ack_last_and_commit();
-    f.double_roundtrip(client);
+    windows::map_window(f, client, windows::WindowSpec::sized(100, 100));
     f.swayward().layout.focus().unwrap().window.clone()
 }
 

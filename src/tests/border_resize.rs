@@ -49,20 +49,6 @@ fn config_from(extra: &str) -> Config {
     Config::parse_mem(&format!("animations {{ off; }}\n{extra}")).unwrap()
 }
 
-fn map_window(f: &mut Fixture, id: ClientId) -> WlSurface {
-    let window = f.client(id).create_window();
-    let surface = window.surface.clone();
-    window.commit();
-    f.roundtrip(id);
-
-    let window = f.client(id).window(&surface);
-    window.attach_new_buffer();
-    window.set_size(100, 100);
-    window.ack_last_and_commit();
-    f.double_roundtrip(id);
-    surface
-}
-
 fn commit_configured(f: &mut Fixture, id: ClientId, surface: &WlSurface) {
     let window = f.client(id).window(surface);
     let (serial, configure) = window.configures_received.last().unwrap();
@@ -100,8 +86,8 @@ fn setup_with(config: Config, widths: [f64; 2]) -> Setup {
     let mut f = Fixture::with_config(config);
     f.add_output(1, OUTPUT);
     let id = f.add_client();
-    let left = map_window(&mut f, id);
-    let right = map_window(&mut f, id);
+    let left = windows::map_window(&mut f, id, windows::WindowSpec::sized(100, 100));
+    let right = windows::map_window(&mut f, id, windows::WindowSpec::sized(100, 100));
     commit_configured(&mut f, id, &left);
     commit_configured(&mut f, id, &right);
     assert_eq!(tile_widths(&mut f), widths);
@@ -220,7 +206,7 @@ fn tabbed_setup(visible: &str) -> (Setup, [WlSurface; 3]) {
     f.client(id).window(&c).set_title("C");
     assert!(f.swayward().layout.focus_left());
     assert!(crate::command::execute(f.niri_state(), "splith")[0].success);
-    let b = map_window(f, id);
+    let b = windows::map_window(f, id, windows::WindowSpec::sized(100, 100));
     f.client(id).window(&b).set_title("B");
     assert!(crate::command::execute(f.niri_state(), "layout tabbed")[0].success);
     if visible == "A" {

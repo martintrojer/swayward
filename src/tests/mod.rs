@@ -21,4 +21,5 @@ mod session_lock;
 mod tiling_clip;
 mod virtual_pointer;
 mod window_opening;
+mod windows;
 mod xdg_shell;

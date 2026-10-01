@@ -1,22 +1,7 @@
 use smithay::reexports::wayland_server::Resource as _;
-use wayland_client::protocol::wl_surface::WlSurface;
 use wayland_client::Proxy as _;
 
 use super::*;
-
-fn map_window(f: &mut Fixture, client: client::ClientId, title: &str) -> WlSurface {
-    let window = f.client(client).create_window();
-    let surface = window.surface.clone();
-    window.set_title(title);
-    window.commit();
-    f.roundtrip(client);
-    let window = f.client(client).window(&surface);
-    window.attach_new_buffer();
-    window.set_size(200, 100);
-    window.ack_last_and_commit();
-    f.double_roundtrip(client);
-    surface
-}
 
 fn workspace(f: &mut Fixture, client: client::ClientId, name: &str) -> super::client::ExtWorkspace {
     let workspace = f
@@ -75,7 +60,11 @@ fn mapping_a_window_does_not_create_an_extra_workspace() {
         Some("1")
     );
 
-    map_window(&mut f, client, "window");
+    windows::map_window(
+        &mut f,
+        client,
+        windows::WindowSpec::titled_size("window", 200, 100),
+    );
     assert_eq!(
         f.client(client)
             .state
@@ -106,10 +95,18 @@ fn activate_uses_the_existing_cross_output_workspace_focus_path() {
     let client = f.add_client();
     f.niri_focus_output(1);
     assert!(crate::command::execute(f.niri_state(), "workspace source")[0].success);
-    map_window(&mut f, client, "first");
+    windows::map_window(
+        &mut f,
+        client,
+        windows::WindowSpec::titled_size("first", 200, 100),
+    );
     f.niri_focus_output(2);
     assert!(crate::command::execute(f.niri_state(), "workspace destination")[0].success);
-    map_window(&mut f, client, "second");
+    windows::map_window(
+        &mut f,
+        client,
+        windows::WindowSpec::titled_size("second", 200, 100),
+    );
     f.double_roundtrip(client);
 
     let source = workspace(&mut f, client, "source").handle;
@@ -140,7 +137,11 @@ fn activate_workspace_with_a_hidden_scratchpad_window_keeps_it_hidden() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));
     let client = f.add_client();
-    let surface = map_window(&mut f, client, "window");
+    let surface = windows::map_window(
+        &mut f,
+        client,
+        windows::WindowSpec::titled_size("window", 200, 100),
+    );
     let window = f
         .swayward()
         .layout
@@ -177,7 +178,11 @@ fn assignment_leaves_the_old_group_before_entering_the_new_group() {
     let client = f.add_client();
     f.niri_focus_output(1);
     assert!(crate::command::execute(f.niri_state(), "workspace source")[0].success);
-    map_window(&mut f, client, "window");
+    windows::map_window(
+        &mut f,
+        client,
+        windows::WindowSpec::titled_size("window", 200, 100),
+    );
     f.double_roundtrip(client);
 
     let workspace = workspace(&mut f, client, "source").handle;
@@ -233,7 +238,11 @@ fn assignment_to_a_removed_group_is_ignored() {
     let client = f.add_client();
     f.niri_focus_output(1);
     assert!(crate::command::execute(f.niri_state(), "workspace source")[0].success);
-    map_window(&mut f, client, "window");
+    windows::map_window(
+        &mut f,
+        client,
+        windows::WindowSpec::titled_size("window", 200, 100),
+    );
     f.double_roundtrip(client);
 
     let workspace = workspace(&mut f, client, "source").handle;

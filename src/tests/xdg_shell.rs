@@ -267,23 +267,6 @@ fn request_resize(fixture: &mut Fixture) -> bool {
     is_resize
 }
 
-fn map_window(
-    f: &mut Fixture,
-    client: ClientId,
-    title: &str,
-) -> wayland_client::protocol::wl_surface::WlSurface {
-    let window = f.client(client).create_window();
-    window.set_title(title);
-    let surface = window.surface.clone();
-    window.commit();
-    f.roundtrip(client);
-    let window = f.client(client).window(&surface);
-    window.attach_new_buffer();
-    window.ack_last_and_commit();
-    f.double_roundtrip(client);
-    surface
-}
-
 fn tree_shape(node: &IpcNode<smithay::desktop::Window>) -> String {
     match node {
         IpcNode::Split {
@@ -311,8 +294,8 @@ fn remap_replaces_the_tree_entry_and_focuses_the_same_toplevel_once() {
     let mut f = Fixture::new();
     f.add_output(1, (800, 600));
     let client = f.add_client();
-    let _first = map_window(&mut f, client, "first");
-    let second = map_window(&mut f, client, "second");
+    let _first = windows::map_window(&mut f, client, windows::WindowSpec::titled("first"));
+    let second = windows::map_window(&mut f, client, windows::WindowSpec::titled("second"));
 
     f.client(client).window(&second).attach_null();
     f.client(client).window(&second).commit();
@@ -349,9 +332,9 @@ fn fullscreen_round_trip_restores_the_original_nested_tree_position() {
     let mut f = Fixture::new();
     f.add_output(1, (800, 600));
     let client = f.add_client();
-    let _first = map_window(&mut f, client, "first");
-    let second = map_window(&mut f, client, "second");
-    let _third = map_window(&mut f, client, "third");
+    let _first = windows::map_window(&mut f, client, windows::WindowSpec::titled("first"));
+    let second = windows::map_window(&mut f, client, windows::WindowSpec::titled("second"));
+    let _third = windows::map_window(&mut f, client, windows::WindowSpec::titled("third"));
     f.swayward().layout.nest_or_unnest_window_left(None);
     let before = tree_shape(
         &f.swayward()
@@ -404,7 +387,7 @@ fn stale_configure_ack_is_rejected_by_the_xdg_protocol() {
     let mut f = Fixture::new();
     f.add_output(1, (800, 600));
     let client = f.add_client();
-    let surface = map_window(&mut f, client, "window");
+    let surface = windows::map_window(&mut f, client, windows::WindowSpec::titled("window"));
     let stale_serial = f.client(client).window(&surface).configures_received[0].0;
 
     f.client(client).window(&surface).set_fullscreen(None);
