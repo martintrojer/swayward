@@ -314,15 +314,24 @@ pub(super) fn parse(name: &str, rest: &[&str]) -> Result<Command, String> {
             _ => Err("Expected 'tiling_drag_threshold <threshold>'".into()),
         },
         "force_display_urgency_hint" => {
-            let value = match rest {
-                [value, ..] => value.trim_end_matches("ms"),
-                _ => return Err("Expected 'force_display_urgency_hint <timeout> [ms]'".into()),
+            // `sway/sway/commands/force_display_urgency_hint.c:12-23`: strtol
+            // with nothing after the number but an optional "ms", then an
+            // optional argv[1] that must be "ms"; later arguments are
+            // ignored. strtol reads a long that sway casts to int, and a
+            // negative timeout is stored as 0.
+            let [value, rest @ ..] = rest else {
+                return Err("Expected 'force_display_urgency_hint <timeout> [ms]'".into());
             };
-            let value: i64 = value
-                .parse()
-                .map_err(|_| "timeout integer invalid".to_owned())?;
+            let value = value
+                .strip_suffix("ms")
+                .unwrap_or(value)
+                .parse::<i64>()
+                .map_err(|_| "timeout integer invalid".to_owned())? as i32;
+            if rest.first().is_some_and(|unit| *unit != "ms") {
+                return Err("Expected 'force_display_urgency_hint <timeout> [ms]'".into());
+            }
             Ok(Command::SetLayoutOption(
-                LayoutOption::ForceDisplayUrgencyHint(value.max(0).min(i64::from(u32::MAX)) as u32),
+                LayoutOption::ForceDisplayUrgencyHint(value.max(0) as u32),
             ))
         }
         "focus_on_window_activation" => match rest {

@@ -82,6 +82,28 @@ fn layout_settings_apply_at_runtime_like_sway() {
     assert_eq!(f.swayward().config.borrow().input.tiling_drag_threshold, 17);
     assert!(crate::command::execute(f.niri_state(), "force_display_urgency_hint 700ms")[0].success);
     assert_eq!(f.swayward().config.borrow().urgent_timeout_ms, 700);
+    // Oracle: state/settings_urgency_hint_parse. Only one "ms" suffix, and
+    // a second argument must be "ms"; later ones are ignored
+    // (`sway/sway/commands/force_display_urgency_hint.c:12-23`).
+    for (command, error) in [
+        ("force_display_urgency_hint 5msms", "timeout integer invalid"),
+        (
+            "force_display_urgency_hint 500 extra",
+            "Expected 'force_display_urgency_hint <timeout> [ms]'",
+        ),
+    ] {
+        let outcome = &crate::command::execute(f.niri_state(), command)[0];
+        assert_eq!(outcome.error.as_deref(), Some(error), "{command}");
+        assert_eq!(outcome.parse_error, Some(true), "{command}");
+    }
+    assert_eq!(f.swayward().config.borrow().urgent_timeout_ms, 700);
+    for command in [
+        "force_display_urgency_hint 500 ms",
+        "force_display_urgency_hint 500 ms extra",
+    ] {
+        assert!(crate::command::execute(f.niri_state(), command)[0].success, "{command}");
+    }
+    assert_eq!(f.swayward().config.borrow().urgent_timeout_ms, 500);
 
     assert!(crate::command::execute(f.niri_state(), "focus_on_window_activation none")[0].success);
     assert_eq!(
