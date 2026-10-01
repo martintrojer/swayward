@@ -65,11 +65,13 @@ fn output_properties(
             width: 0,
             height: 0,
             refresh: 0,
+            picture_aspect_ratio: Some("none".into()),
         },
         |mode| OutputMode {
             width: mode.size.w,
             height: mode.size.h,
             refresh: mode.refresh,
+            picture_aspect_ratio: Some("none".into()),
         },
     );
     let powered = output_power
@@ -125,6 +127,7 @@ fn output_properties(
                 width: mode.size.w,
                 height: mode.size.h,
                 refresh: mode.refresh,
+                picture_aspect_ratio: Some("none".into()),
             })
             .collect(),
         name: monitor.output_name().clone(),

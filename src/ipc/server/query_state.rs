@@ -338,6 +338,33 @@ pub(super) fn refresh_query_state(
     ))
     .unwrap_or_default();
     if let Some(outputs) = outputs.as_array_mut() {
+        // Backend state owns the complete advertised mode list. The layout
+        // output exposes only the current smithay mode.
+        for output in outputs.iter_mut() {
+            let Some(name) = output["name"].as_str() else {
+                continue;
+            };
+            let Some(backend) = ipc_outputs
+                .values()
+                .find(|candidate| candidate.name == name)
+            else {
+                continue;
+            };
+            output["modes"] = serde_json::Value::Array(
+                backend
+                    .modes
+                    .iter()
+                    .map(|mode| {
+                        serde_json::json!({
+                            "width": mode.width,
+                            "height": mode.height,
+                            "refresh": mode.refresh_rate,
+                            "picture_aspect_ratio": "none",
+                        })
+                    })
+                    .collect(),
+            );
+        }
         outputs.extend(
             ipc_outputs
                 .values()
@@ -348,12 +375,13 @@ pub(super) fn refresh_query_state(
                         "current_workspace": null,
                         "dpms": false,
                         "features": { "adaptive_sync": false, "hdr": false },
-                        "make": output.make,
-                        "model": output.model,
+                        "make": if output.make.is_empty() { "Unknown" } else { &output.make },
+                        "model": if output.model.is_empty() { "Unknown" } else { &output.model },
                         "modes": output.modes.iter().map(|mode| serde_json::json!({
                             "width": mode.width,
                             "height": mode.height,
                             "refresh": mode.refresh_rate,
+                            "picture_aspect_ratio": "none",
                         })).collect::<Vec<_>>(),
                         "name": output.name,
                         "non_desktop": false,
@@ -361,7 +389,7 @@ pub(super) fn refresh_query_state(
                         "power": false,
                         "primary": false,
                         "rect": swayward_ipc::Rect::default(),
-                        "serial": output.serial,
+                        "serial": output.serial.as_deref().unwrap_or("Unknown"),
                         "type": "output",
                     })
                 }),

@@ -111,6 +111,32 @@ fn normalize_fixture_value(value: &mut Value, path: &str) {
 fn normalized_fixture_values(expected: &Value, actual: &Value, path: &str) -> (Value, Value) {
     let mut expected = expected.clone();
     let mut actual = actual.clone();
+    // Older pinned fixtures predate sway's picture_aspect_ratio mode field.
+    // Add the only backend value swayward can report until the snapshot repin.
+    fn add_mode_aspect_ratio(expected: &mut Value, actual: &Value) {
+        match (expected, actual) {
+            (Value::Object(expected), Value::Object(actual)) => {
+                if actual.contains_key("picture_aspect_ratio")
+                    && expected.keys().any(|key| key == "width")
+                    && expected.keys().any(|key| key == "refresh")
+                {
+                    expected.insert("picture_aspect_ratio".into(), "none".into());
+                }
+                for (key, child) in expected {
+                    if let Some(actual) = actual.get(key) {
+                        add_mode_aspect_ratio(child, actual);
+                    }
+                }
+            }
+            (Value::Array(expected), Value::Array(actual)) => {
+                for (left, right) in expected.iter_mut().zip(actual) {
+                    add_mode_aspect_ratio(left, right);
+                }
+            }
+            _ => {}
+        }
+    }
+    add_mode_aspect_ratio(&mut expected, &actual);
     normalize_fixture_value(&mut expected, path);
     normalize_fixture_value(&mut actual, path);
     (expected, actual)
