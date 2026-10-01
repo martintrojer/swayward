@@ -4941,8 +4941,8 @@ fn singleton_move_after_floating_close_keeps_the_parent_live() {
     // CI 36310511080 shrank `random_operations_dont_panic` to this sequence
     // (proptest cc 16b75ae3). A directional move of the only window read a
     // parent node that an earlier layout change had already removed. The
-    // seed was never committed and the run's artifact has expired, so this
-    // named sequence is the only record.
+    // seed is in proptest-regressions/layout/tests.txt, recovered from the
+    // run log after the artifact expired.
     let mut floating = TestWindowParams::new(5);
     floating.is_floating = true;
     let mut options = Options::default();
