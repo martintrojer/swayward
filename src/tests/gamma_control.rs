@@ -81,6 +81,11 @@ fn exact_ramp_length_is_accepted_and_destroy_releases_exclusivity() {
     f.client(first_client).connection.flush().unwrap();
     f.roundtrip(first_client);
     assert!(!f.client(first_client).state.gamma_controls[0].failed);
+    let output = f.niri_output(1);
+    assert_eq!(
+        f.niri_state().backend.headless().gamma_ramp(&output),
+        Some(&Some(vec![0; 6]))
+    );
 
     first.destroy();
     f.client(first_client).connection.flush().unwrap();

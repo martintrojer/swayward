@@ -10,8 +10,6 @@ use std::{env, io, process};
 use anyhow::Context;
 use async_channel::{Receiver, Sender};
 use calloop::io::Async;
-#[cfg(not(test))]
-use directories::BaseDirs;
 use futures_util::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use futures_util::{select_biased, AsyncWrite, FutureExt as _};
 use smithay::reexports::calloop::channel::{self, Event as ChannelEvent};
@@ -43,16 +41,13 @@ pub(crate) use event_bridge::ScratchpadEventOrder;
 use event_bridge::WorkspaceEventTransaction;
 pub(crate) use query_state::{find_node_by_id, ipc_outputs_snapshot, keyboard_layouts};
 use query_state::{refresh_all_query_state, QueryState};
-#[cfg(not(test))]
-use transport::socket_dir;
 use transport::{
-    bind_listener, default_socket_path, on_new_ipc_client, select_socket_path, ClientCtx,
-    CommandRequest, EventStreamSender, RequestKind,
+    bind_listener, default_socket_path, on_new_ipc_client, select_socket_path, socket_dir,
+    ClientCtx, CommandRequest, EventStreamSender, RequestKind,
 };
 
 const INITIAL_WRITE_BUFFER_SIZE: usize = 128;
 const MAX_WRITE_BUFFER_SIZE: usize = 4_000_000;
-#[cfg(not(test))]
 static IPC_SOCKET_ID: AtomicU64 = AtomicU64::new(0);
 #[cfg(test)]
 static TEST_SOCKET_ID: AtomicU64 = AtomicU64::new(0);
@@ -83,7 +78,6 @@ pub struct IpcServer {
 }
 
 impl IpcServer {
-    #[cfg(not(test))]
     pub fn start(
         event_loop: &LoopHandle<'static, State>,
         wayland_socket_name: Option<&OsStr>,

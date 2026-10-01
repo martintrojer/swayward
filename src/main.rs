@@ -230,9 +230,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         event_loop.handle(),
         event_loop.get_signal(),
         display,
-        headless_outputs.is_some(),
-        true,
-        cli.session,
+        swayward::swayward::StartupOptions {
+            headless: headless_outputs.is_some(),
+            create_wayland_socket: true,
+            ipc_mode: swayward::swayward::IpcMode::Ambient,
+            is_session_instance: cli.session,
+        },
     )?;
 
     if let Some(count) = headless_outputs {

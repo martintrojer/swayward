@@ -1,3 +1,5 @@
+use directories::BaseDirs;
+
 use super::requests::dispatch;
 use super::*;
 
@@ -57,7 +59,6 @@ pub(super) enum RequestKind {
     RefreshEventState,
 }
 
-#[cfg(not(test))]
 pub(super) fn socket_dir() -> PathBuf {
     socket_dir_from(BaseDirs::new().and_then(|dirs| dirs.runtime_dir().map(PathBuf::from)))
 }

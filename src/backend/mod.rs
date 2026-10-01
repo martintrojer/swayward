@@ -96,6 +96,26 @@ impl Backend {
         }
     }
 
+    pub fn supports_gamma(&self) -> bool {
+        matches!(self, Backend::Tty(_) | Backend::Headless(_))
+    }
+
+    pub fn get_gamma_size(&self, output: &Output) -> Option<u32> {
+        match self {
+            Backend::Tty(tty) => tty.get_gamma_size(output).ok().filter(|&size| size != 0),
+            Backend::Headless(headless) => headless.gamma_size(output),
+            Backend::Winit(_) => None,
+        }
+    }
+
+    pub fn set_gamma(&mut self, output: &Output, ramp: Option<Vec<u16>>) -> Option<()> {
+        match self {
+            Backend::Tty(tty) => tty.set_gamma(output, ramp).ok(),
+            Backend::Headless(headless) => headless.set_gamma(output, ramp),
+            Backend::Winit(_) => None,
+        }
+    }
+
     pub fn mod_key(&self, config: &Config) -> ModKey {
         match self {
             Backend::Winit(_) => config.input.mod_key_nested.unwrap_or({

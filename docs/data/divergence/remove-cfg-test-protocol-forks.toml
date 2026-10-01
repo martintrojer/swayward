@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/backend/headless.rs", "src/backend/mod.rs", "src/handlers/mod.rs", "src/ipc/server.rs", "src/ipc/server/transport.rs", "src/main.rs", "src/swayward.rs"]
+what = "replace cfg(test)-selected gamma and IPC production paths with backend capability dispatch and explicit IpcMode construction; headless stores a two-entry fake gamma ramp in every build, main selects ambient IPC, and tests select IPC off."
+why = "Tests must execute the same protocol code as the shipped binary. Explicit IPC mode also preserves the rule that test fixtures never inspect or adopt the interactive session's ambient SWAYSOCK."

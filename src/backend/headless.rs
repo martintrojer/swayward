@@ -3,7 +3,7 @@
 //! This can eventually grow into a more complete backend if needed, but for now it's missing some
 //! crucial parts like dmabufs.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::mem;
 use std::sync::{Arc, Mutex};
 
@@ -31,6 +31,7 @@ pub struct Headless {
     ipc_outputs: Arc<Mutex<IpcOutputMap>>,
     outputs: Vec<Output>,
     disabled_outputs: HashSet<String>,
+    gamma_ramps: HashMap<String, Option<Vec<u16>>>,
     last_output_number: u8,
     #[cfg(test)]
     skip_next_render: bool,
@@ -43,6 +44,7 @@ impl Headless {
             ipc_outputs: Default::default(),
             outputs: Vec::new(),
             disabled_outputs: HashSet::new(),
+            gamma_ramps: HashMap::new(),
             last_output_number: 0,
             #[cfg(test)]
             skip_next_render: false,
@@ -50,6 +52,21 @@ impl Headless {
     }
 
     pub fn init(&mut self, _niri: &mut Swayward) {}
+
+    pub fn gamma_size(&self, output: &Output) -> Option<u32> {
+        self.outputs.contains(output).then_some(2)
+    }
+
+    pub fn set_gamma(&mut self, output: &Output, ramp: Option<Vec<u16>>) -> Option<()> {
+        self.outputs.contains(output).then(|| {
+            self.gamma_ramps.insert(output.name(), ramp);
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn gamma_ramp(&self, output: &Output) -> Option<&Option<Vec<u16>>> {
+        self.gamma_ramps.get(&output.name())
+    }
 
     pub fn add_renderer(&mut self) -> anyhow::Result<()> {
         if self.renderer.is_some() {

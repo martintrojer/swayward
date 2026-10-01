@@ -4,7 +4,7 @@ use calloop::EventLoop;
 use smithay::reexports::wayland_server::Display;
 use swayward_config::Config;
 
-use crate::swayward::State;
+use crate::swayward::{IpcMode, StartupOptions, State};
 
 pub struct Server {
     pub event_loop: EventLoop<'static, State>,
@@ -21,9 +21,12 @@ impl Server {
             handle.clone(),
             event_loop.get_signal(),
             display,
-            true,
-            false,
-            false,
+            StartupOptions {
+                headless: true,
+                create_wayland_socket: false,
+                ipc_mode: IpcMode::Off,
+                is_session_instance: false,
+            },
         )
         .unwrap();
 

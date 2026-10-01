@@ -816,37 +816,11 @@ impl GammaControlHandler for State {
     }
 
     fn get_gamma_size(&mut self, output: &Output) -> Option<u32> {
-        #[cfg(test)]
-        if self.backend.tty_checked().is_none() {
-            return Some(2);
-        }
-
-        match self.backend.tty().get_gamma_size(output) {
-            Ok(0) => None, // Setting gamma is not supported.
-            Ok(size) => Some(size),
-            Err(err) => {
-                warn!(
-                    "error getting gamma size for output {}: {err:?}",
-                    output.name()
-                );
-                None
-            }
-        }
+        self.backend.get_gamma_size(output)
     }
 
     fn set_gamma(&mut self, output: &Output, ramp: Option<Vec<u16>>) -> Option<()> {
-        #[cfg(test)]
-        if self.backend.tty_checked().is_none() {
-            return self.swayward.output_exists(output).then_some(());
-        }
-
-        match self.backend.tty().set_gamma(output, ramp) {
-            Ok(()) => Some(()),
-            Err(err) => {
-                warn!("error setting gamma for output {}: {err:?}", output.name());
-                None
-            }
-        }
+        self.backend.set_gamma(output, ramp)
     }
 }
 

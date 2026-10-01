@@ -782,6 +782,19 @@ impl KeyboardFocus {
 pub(crate) static LIVE_STATE_COUNT: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(0);
 
+pub enum IpcMode {
+    Ambient,
+    At(PathBuf),
+    Off,
+}
+
+pub struct StartupOptions {
+    pub headless: bool,
+    pub create_wayland_socket: bool,
+    pub ipc_mode: IpcMode,
+    pub is_session_instance: bool,
+}
+
 pub struct State {
     pub backend: Backend,
     pub swayward: Swayward,
@@ -800,9 +813,7 @@ impl State {
         event_loop: LoopHandle<'static, State>,
         stop_signal: LoopSignal,
         display: Display<State>,
-        headless: bool,
-        create_wayland_socket: bool,
-        is_session_instance: bool,
+        options: StartupOptions,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let _span = tracy_client::span!("State::new");
 
@@ -812,7 +823,7 @@ impl State {
             || env::var_os("WAYLAND_SOCKET").is_some()
             || env::var_os("DISPLAY").is_some();
 
-        let mut backend = if headless {
+        let mut backend = if options.headless {
             let headless = Headless::new();
             Backend::Headless(headless)
         } else if has_display {
@@ -830,8 +841,7 @@ impl State {
             stop_signal,
             display,
             &backend,
-            create_wayland_socket,
-            is_session_instance,
+            &options,
         )?;
         backend.init(&mut swayward);
 
@@ -1592,8 +1602,7 @@ impl Swayward {
         stop_signal: LoopSignal,
         display: Display<State>,
         backend: &Backend,
-        create_wayland_socket: bool,
-        is_session_instance: bool,
+        options: &StartupOptions,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let _span = tracy_client::span!("Swayward::new");
 
@@ -1707,10 +1716,10 @@ impl Swayward {
         let background_effect_state = BackgroundEffectState::new::<State>(&display_handle);
         let xdg_foreign_state = XdgForeignState::new::<State>(&display_handle);
 
-        let is_tty = matches!(backend, Backend::Tty(_));
+        let supports_gamma = backend.supports_gamma();
         let gamma_control_manager_state =
             GammaControlManagerState::new::<State, _>(&display_handle, move |client| {
-                (is_tty || cfg!(test)) && !client.get_data::<ClientState>().unwrap().restricted
+                supports_gamma && !client.get_data::<ClientState>().unwrap().restricted
             });
         let activation_state = XdgActivationState::new::<State>(&display_handle);
         event_loop
@@ -1806,7 +1815,7 @@ impl Swayward {
             )
             .unwrap();
 
-        let socket_name = if create_wayland_socket {
+        let socket_name = if options.create_wayland_socket {
             let socket_source =
                 ListeningSocketSource::new_auto().context("unable to open Wayland socket")?;
             let socket_name = socket_source.socket_name().to_os_string();
@@ -1825,14 +1834,13 @@ impl Swayward {
             None
         };
 
-        #[cfg(not(test))]
-        let ipc_server = if socket_name.is_some() {
-            Some(IpcServer::start(&event_loop, socket_name.as_deref())?)
-        } else {
-            None
+        let ipc_server = match &options.ipc_mode {
+            IpcMode::Ambient if socket_name.is_some() => {
+                Some(IpcServer::start(&event_loop, socket_name.as_deref())?)
+            }
+            IpcMode::At(path) => Some(IpcServer::start_at(&event_loop, Some(path.clone()))?),
+            IpcMode::Ambient | IpcMode::Off => None,
         };
-        #[cfg(test)]
-        let ipc_server = None;
 
         #[cfg(feature = "xdp-gnome-screencast")]
         let screencasting = Screencasting::new(&event_loop);
@@ -1877,7 +1885,7 @@ impl Swayward {
             lock_deadline: Duration::from_millis(1000),
             socket_name,
             display_handle,
-            is_session_instance,
+            is_session_instance: options.is_session_instance,
             start_time: Instant::now(),
             is_at_startup: true,
             clock: animation_clock,
