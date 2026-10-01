@@ -346,7 +346,10 @@ fn moving_a_window_out_of_a_fullscreen_container_leaves_fullscreen_behind() {
         "splith",
         "move container to workspace 2",
     ] {
-        assert!(crate::command::execute(f.niri_state(), command)[0].success, "{command}");
+        assert!(
+            crate::command::execute(f.niri_state(), command)[0].success,
+            "{command}"
+        );
     }
 
     let swayward = f.swayward();
@@ -357,7 +360,10 @@ fn moving_a_window_out_of_a_fullscreen_container_leaves_fullscreen_behind() {
         &swayward.marks_by_container,
     ))
     .unwrap();
-    assert_eq!(find_json_node_with_app_id(&tree, "moved").unwrap()["fullscreen_mode"], 0);
+    assert_eq!(
+        find_json_node_with_app_id(&tree, "moved").unwrap()["fullscreen_mode"],
+        0
+    );
 }
 
 #[test]
