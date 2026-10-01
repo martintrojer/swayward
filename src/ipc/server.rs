@@ -180,36 +180,7 @@ impl IpcServer {
     }
 
     fn send_event_now(&self, event: Event) {
-        let event_type = match &event {
-            Event::WorkspacesChanged { .. } => "workspaces_changed",
-            Event::WorkspaceEmptied { .. } => "workspace_empty",
-            Event::WorkspaceReloaded => "workspace_reload",
-            Event::WorkspaceInitialized { .. } => "workspace_init",
-            Event::WorkspaceRenamed { .. } => "workspace_rename",
-            Event::WorkspaceFocusChanged { .. } => "workspace_focus",
-            Event::WorkspaceMoved { .. } => "workspace_move",
-            Event::WorkspaceUrgencyChanged { .. } => "workspace_urgent",
-            Event::WorkspaceActivated { .. } => "workspace_activated",
-            Event::WorkspaceActiveWindowChanged { .. } => "workspace_active_window",
-            Event::WindowsChanged { .. } => "windows_changed",
-            Event::WindowOpenedOrChanged { .. } => "window_opened_or_changed",
-            Event::SwayWindowChanged { .. } => "sway_window",
-            Event::WindowMoved { .. } => "window_move",
-            Event::WindowClosed { .. } => "window_close",
-            Event::WindowFocusChanged { .. } => "window_focus",
-            Event::WindowFocusTimestampChanged { .. } => "window_focus_timestamp",
-            Event::WindowUrgencyChanged { .. } => "window_urgent",
-            Event::WindowLayoutsChanged { .. } => "window_layout",
-            Event::KeyboardLayoutsChanged { .. } => "keyboard_layouts",
-            Event::KeyboardLayoutSwitched { .. } => "keyboard_layout_switch",
-            Event::SwayInputChanged { .. } => "sway_input",
-            Event::OutputChanged => "output",
-            Event::Shutdown { .. } => "shutdown",
-            Event::Tick { .. } => "tick",
-            Event::SwayBinding { .. } => "binding",
-            Event::BindingModeChanged { .. } => "binding_mode",
-        };
-        trace!(event_type, "emitting IPC event");
+        trace!(event_type = event.kind(), "emitting IPC event");
         let mut streams = self.event_streams.borrow_mut();
         let mut to_remove = Vec::new();
         for (idx, stream) in streams.iter_mut().enumerate() {

@@ -186,3 +186,38 @@ pub enum Event {
         pango_markup: bool,
     },
 }
+
+impl Event {
+    /// A short name for logs.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::WorkspacesChanged { .. } => "workspaces_changed",
+            Self::WorkspaceEmptied { .. } => "workspace_empty",
+            Self::WorkspaceReloaded => "workspace_reload",
+            Self::WorkspaceInitialized { .. } => "workspace_init",
+            Self::WorkspaceRenamed { .. } => "workspace_rename",
+            Self::WorkspaceFocusChanged { .. } => "workspace_focus",
+            Self::WorkspaceMoved { .. } => "workspace_move",
+            Self::WorkspaceUrgencyChanged { .. } => "workspace_urgent",
+            Self::WorkspaceActivated { .. } => "workspace_activated",
+            Self::WorkspaceActiveWindowChanged { .. } => "workspace_active_window",
+            Self::WindowsChanged { .. } => "windows_changed",
+            Self::WindowOpenedOrChanged { .. } => "window_opened_or_changed",
+            Self::SwayWindowChanged { .. } => "sway_window",
+            Self::WindowMoved { .. } => "window_move",
+            Self::WindowClosed { .. } => "window_close",
+            Self::WindowFocusChanged { .. } => "window_focus",
+            Self::WindowFocusTimestampChanged { .. } => "window_focus_timestamp",
+            Self::WindowUrgencyChanged { .. } => "window_urgent",
+            Self::WindowLayoutsChanged { .. } => "window_layout",
+            Self::KeyboardLayoutsChanged { .. } => "keyboard_layouts",
+            Self::KeyboardLayoutSwitched { .. } => "keyboard_layout_switch",
+            Self::SwayInputChanged { .. } => "sway_input",
+            Self::OutputChanged => "output",
+            Self::Shutdown { .. } => "shutdown",
+            Self::Tick { .. } => "tick",
+            Self::SwayBinding { .. } => "binding",
+            Self::BindingModeChanged { .. } => "binding_mode",
+        }
+    }
+}
