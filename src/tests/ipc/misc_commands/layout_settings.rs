@@ -51,10 +51,8 @@ fn config_only_directives_are_unknown_at_runtime_like_sway() {
 /// however it comes to exist. Sway reads the workspace config inside
 /// `workspace_create` (`sway/sway/tree/workspace.c:224-243`), so this holds for
 /// a workspace created on demand, not only one created eagerly at startup.
-///
-/// Regression test: workspaces carrying an output assignment skip eager
-/// creation (`src/swayward.rs:1549-1552`), and the lazy creation path used to
-/// drop the per-name layout entirely.
+/// Workspaces carrying an output assignment are created lazily, so both eager
+/// and lazy creation must apply the per-name layout.
 #[test]
 fn configured_workspace_layout_applies_however_the_workspace_is_created() {
     for assignment in ["", "sway-output-assignment \"fake-1\""] {

@@ -331,9 +331,8 @@ fn get_bar_config_distinguishes_no_bars_from_an_unknown_id() {
 
 /// Sway writes this reply as a C string literal rather than serialising it
 /// (`sway/sway/ipc-server.c:870`), so it carries spaces a JSON encoder would
-/// not produce. The comparison above parses both sides and so cannot see
-/// that; SWAY_COMPATIBILITY.md nonetheless called the reply byte-identical,
-/// while swayward was sending the compact form.
+/// not produce. A parsed JSON comparison cannot establish byte identity, so
+/// this test compares the raw payload.
 #[test]
 fn get_bar_config_unknown_id_is_byte_identical_to_sway() {
     let (mut fixture, socket) = ipc_fixture();

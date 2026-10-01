@@ -52,10 +52,8 @@ fn get_tree_hides_windows_on_background_workspaces() {
 
 #[test]
 fn overview_keys_work_with_num_lock_on() {
-    // Num Lock is a state, not a chord. hardcoded_overview_bind used to
-    // require the modifier set to be completely empty, so a keyboard with Num
-    // Lock on -- which `input { keyboard { numlock } }` makes the default --
-    // rejected every overview key while the mouse still worked.
+    // Num Lock is state, not part of the overview chord, so overview keys must
+    // still match when `input { keyboard { numlock } }` enables it by default.
     let config = swayward_config::Config::parse_mem(
         r#"input { keyboard { numlock; }; }
 workspace "1" {}
@@ -122,9 +120,8 @@ workspace "2" {}"#,
 #[test]
 fn every_message_type_replies_and_leaves_the_connection_usable() {
     // AGENTS.md: every SWAYSOCK reply is sway-shaped or a structured failure,
-    // and it never hangs. docs/IPC_ORACLE_COVERAGE.md recorded that this was
-    // asserted but not enumerated, so nothing proved it for the numbers a
-    // buggy or future client actually sends.
+    // and it never hangs. Enumerate boundary and unknown request numbers, not
+    // only the currently named MessageType variants.
     //
     // Sway's own range is 0..=12 plus 100 and 101 (sway/include/ipc.h:8-24). 11 is
     // IPC_SYNC, which sway declines with {"success": false} rather than

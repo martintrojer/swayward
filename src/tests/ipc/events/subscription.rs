@@ -42,11 +42,9 @@ fn get_config_reports_not_implemented_rather_than_returning_kdl() {
     // `config->current_config`; `sway/sway/ipc-server.c:908-917` returns it
     // unaltered). swayward's config is KDL, so there is nothing sway-shaped
     // to return.
-    //
-    // Serving KDL inside sway's single-field envelope was worse than serving
-    // nothing: the reply is well-formed, so a client parses it as sway syntax
-    // and fails with no error to attribute it to. A wire deviation is either
-    // fully compliant or not implemented.
+    // swayward cannot put KDL in sway's config envelope: a client would parse
+    // the well-formed reply as sway syntax. The request is therefore explicitly
+    // unsupported rather than approximately implemented.
     //
     // `{"success": false}` is sway's own answer for a request it declines to
     // serve (`sway/sway/ipc-server.c:919-925`, IPC_SYNC).

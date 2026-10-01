@@ -733,8 +733,7 @@ fn nested_for_window_command_keeps_the_outer_scratchpad_event_order() {
 }
 
 /// Two independent windows moved by one criteria command must retain their
-/// own container ids in every floating/move event. The transaction used to
-/// copy the first visible/hidden snapshot onto every event.
+/// own container ids in every floating/move event.
 #[test]
 fn criteria_scratchpad_events_keep_each_windows_container_id() {
     let (mut fixture, socket) = ipc_fixture();

@@ -271,13 +271,8 @@ fn move_absolute_position_is_verbatim_under_a_bar_and_gaps() {
     // (`sway/sway/commands/move.c:913-916`) and then calls
     // container_floating_move_to, which performs no bounds check
     // (`sway/sway/tree/container.c:1113-1145`).
-    //
-    // swayward routed the coordinate through floating_pos, whose setter adds
-    // working_area.loc back (`src/layout/floating.rs:120-129`), so a request
-    // that already accounted for the bar gained the bar and the gaps a second
-    // time. Only a preset with no slack revealed it: a full-workspace-height
-    // window at the workspace origin overflowed the bottom edge, while shorter
-    // presets absorbed the shift invisibly.
+    // A full-workspace-height window leaves no slack for an accidental second
+    // application of the bar or gap offset.
     let mut config = swayward_config::Config::default();
     config.animations.off = true;
     config.layout.gaps = 4.;

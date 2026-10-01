@@ -182,10 +182,9 @@ fn query_ipc_with_payload(
     serde_json::from_str(&payload).unwrap()
 }
 
-/// Two fixtures must get distinct, live sockets, and those sockets must sit
-/// outside `$XDG_RUNTIME_DIR` so the nested-compositor cleanup glob cannot
-/// delete them mid-test. That glob is what made the conformance runner fail
-/// one file per run for a whole session.
+/// Two fixtures must get distinct, live sockets outside `$XDG_RUNTIME_DIR`,
+/// where nested-compositor cleanup may remove sockets. See AGENTS.md,
+/// "Never let a test adopt the ambient SWAYSOCK".
 #[test]
 fn two_ipc_fixtures_get_distinct_live_sockets() {
     no_test_server_adopts_the_ambient_swaysock();
@@ -254,13 +253,11 @@ fn no_test_server_adopts_the_ambient_swaysock() {
 /// operator's interactive `SWAYSOCK`, so if anything has unlinked that path
 /// while their compositor still holds the bound listener, the test binds a
 /// second listener on the name and steals every new connection from the live
-/// session: `swaymsg` stops reaching the real compositor for as long as the
-/// session lasts, which took an operator's display down.
+/// session. See AGENTS.md for the operational consequences and recovery.
 ///
-/// The temp directory also keeps these sockets clear of the
-/// `/run/user/$UID/swayward-ipc.*.sock` cleanup glob that nested-compositor
-/// scripts run, which used to delete a live socket mid-test and surface as an
-/// intermittent ENOENT somewhere unrelated.
+/// Keep test sockets clear of the `/run/user/$UID/swayward-ipc.*.sock`
+/// cleanup glob used by nested-compositor scripts. See the matching AGENTS.md
+/// safety section.
 fn test_socket_path() -> std::path::PathBuf {
     crate::ipc::server::test_socket_path("ipc-test.sock")
 }
