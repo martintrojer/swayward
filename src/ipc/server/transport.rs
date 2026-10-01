@@ -103,17 +103,6 @@ pub(super) fn bind_listener(path: &std::path::Path) -> anyhow::Result<UnixListen
 }
 
 pub(super) fn on_new_ipc_client(state: &mut State, stream: UnixStream) {
-    let stream = match state.swayward.event_loop.adapt_io(stream) {
-        Ok(stream) => stream,
-        Err(err) => {
-            warn!("error making IPC stream async: {err:?}");
-            return;
-        }
-    };
-
-    if state.swayward.ipc_server.is_none() {
-        return;
-    }
     let Some(server) = &state.swayward.ipc_server else {
         return;
     };
@@ -122,6 +111,13 @@ pub(super) fn on_new_ipc_client(state: &mut State, stream: UnixStream) {
         event_streams: server.event_streams.clone(),
         next_event_stream_id: server.next_event_stream_id.clone(),
         commands: server.commands.clone(),
+    };
+    let stream = match state.swayward.event_loop.adapt_io(stream) {
+        Ok(stream) => stream,
+        Err(err) => {
+            warn!("error making IPC stream async: {err:?}");
+            return;
+        }
     };
     let future = async move {
         if let Err(err) = handle_client(ctx, stream).await {
