@@ -15,4 +15,4 @@ with open("docs/data/divergence.toml", "rb") as file:
 PY
 ```
 
-Run `./contrib/check-divergence` after editing the ledger. The check reads the niri base from [`docs/FORK-BASE.md`](https://github.com/martintrojer/swayward/blob/main/docs/FORK-BASE.md) and rejects an inherited file that differs from that base without a matching entry.
+Run `./contrib/check-divergence` after editing the ledger. The check reads the niri base from [`docs/FORK-BASE.md`](https://github.com/martintrojer/swayward/blob/main/docs/FORK-BASE.md) and rejects an inherited file that differs from that base without a matching entry. A file moved from its niri path and also edited counts as inherited: git pairs it with its base file at 50% similarity or more, and the ledger may name either path. An entry ending in `/` covers every file under that directory.

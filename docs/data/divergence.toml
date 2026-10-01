@@ -1936,3 +1936,39 @@ migrated = false
 paths = ["src/input/backend_ext.rs", "src/tests/ipc/wire.rs"]
 what = "serialize GET_INPUTS libinput objects with every field sway's describe_libinput_device emits (tap, tap_button_map, tap_drag, tap_drag_lock, click_method, clickfinger_button_map, dwt, dwtp, calibration_matrix), with sway's guards and value names, from raw libinput enum values."
 why = "Touchpads answered with sway's field names but without about ten of sway's fields (sway/sway/ipc-json.c:900-1137). Raw values let unknown enum values print 'unknown' as sway does instead of panicking in the input crate's typed getters. No pinned sway touchpad capture yet: oracle row pending hardware capture."
+
+[[edit]]
+migrated = false
+paths = ["src/tests/snapshots/"]
+what = "rename niri's insta snapshots with the crate (niri__tests__* to swayward__tests__*) and re-record their configure sizes and bounds for swayward's zero default gaps and i3 tree placement."
+why = "insta names snapshots after the crate, and the recorded sizes are niri's scrolling-column geometry with 16px gaps, which swayward's tiling tree does not produce."
+
+[[edit]]
+migrated = false
+paths = ["resources/dinit/swayward", "resources/swayward-shutdown.target", "swayward.spec.rpkg"]
+what = "rename the dinit, systemd and RPM packaging files with the binary; the spec describes the i3-tree compositor, ships the sway-to-kdl script with its python3 dependency, suggests sway for swaymsg, and recommends foot."
+why = "The packaged binary, session and IPC sockets are swayward's, and a session teardown must clear the sockets sway clients read."
+
+[[edit]]
+migrated = false
+paths = ["swayward-config/src/layer_rule.rs", "swayward-config/tests/wiki-parses.rs", "swayward-visual-tests/Cargo.toml", "swayward-visual-tests/src/cases/gradient_angle.rs", "swayward-visual-tests/src/cases/gradient_area.rs", "swayward-visual-tests/src/cases/gradient_oklab.rs", "swayward-visual-tests/src/cases/gradient_oklab_alpha.rs", "swayward-visual-tests/src/cases/gradient_oklch_alpha.rs", "swayward-visual-tests/src/cases/gradient_oklch_decreasing.rs", "swayward-visual-tests/src/cases/gradient_oklch_increasing.rs", "swayward-visual-tests/src/cases/gradient_oklch_longer.rs", "swayward-visual-tests/src/cases/gradient_oklch_shorter.rs", "swayward-visual-tests/src/cases/gradient_srgb.rs", "swayward-visual-tests/src/cases/gradient_srgb_alpha.rs", "swayward-visual-tests/src/cases/gradient_srgblinear.rs", "swayward-visual-tests/src/cases/gradient_srgblinear_alpha.rs", "swayward-visual-tests/src/cases/tile.rs", "swayward-visual-tests/src/cases/window.rs", "swayward-visual-tests/src/smithay_view.rs"]
+what = "move with the niri-config and niri-visual-tests crate renames; the only edits are the crate and type renames and the import reordering rustfmt applies to them."
+why = "The crates are published under swayward's names. Listed so check-divergence's rename pass sees that these moves carry no behaviour change."
+
+[[edit]]
+migrated = false
+paths = ["swayward-visual-tests/src/main.rs", "swayward-visual-tests/src/cases/mod.rs", "swayward-visual-tests/src/cases/layout.rs", "swayward-visual-tests/src/test_window.rs"]
+what = "move with the niri-visual-tests crate rename and add tiling-tree, tabbed-title, asymmetric-strut and hotkey-overlay cases; layout cases build from a full Config through `with_config` rather than hand-built niri Options, and the test window carries a title and window rules."
+why = "The visual tests must render swayward's i3 tree and titlebars; niri's scrolling-column cases no longer describe the layout."
+
+[[edit]]
+migrated = false
+paths = ["swayward-config/src/workspace.rs"]
+what = "move with the niri-config crate rename, add `sway-output-assignment` for sway's ordered workspace output fallbacks beside niri's pre-creating `open-on-output`, and stop treating `empty-workspace-above-first` as a reserved workspace name."
+why = "Sway's `workspace <name> output <outputs...>` assigns without creating the workspace (sway/sway/commands/workspace.c:130-160 records `wsc->outputs` only), and swayward retired `empty-workspace-above-first` with the scrolling strip."
+
+[[edit]]
+migrated = false
+paths = ["swayward-ipc/Cargo.toml", "swayward-ipc/src/socket.rs"]
+what = "move with the niri-ipc crate rename; depend on pcre2 for sway's criteria regexes, document `Socket` as the legacy `$SWAYWARD_SOCKET` client beside `sway_socket::SwaySocket`, import legacy event types from `legacy`, and return a request serialization failure as an I/O error instead of unwrapping."
+why = "Sway matches criteria with PCRE2 (sway/sway/criteria.c:49-53), so its regex dialect and error messages need the same engine. The IPC crate parses untrusted input and must not panic (AGENTS.md)."
