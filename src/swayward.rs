@@ -260,13 +260,7 @@ pub struct Swayward {
 
     pub marks: HashMap<String, MappedId>,
     pub marks_by_window: HashMap<MappedId, Vec<String>>,
-    pub marks_by_container: HashMap<
-        (
-            crate::layout::workspace::WorkspaceId,
-            crate::layout::tiling_tree::NodeId,
-        ),
-        Vec<String>,
-    >,
+    pub marks_by_container: HashMap<crate::layout::tiling_tree::NodeId, Vec<String>>,
     pub runtime_window_rules: Vec<RuntimeWindowRule>,
     pub for_window: Vec<(String, String, crate::criteria::Criteria)>,
     /// Runtime `for_window` criteria added since the last successful reload.
@@ -2059,6 +2053,33 @@ impl Swayward {
                 .entry(window)
                 .or_default()
                 .push(mark.to_owned());
+        }
+    }
+
+    /// Move container marks to the node ids a tree transfer assigned.
+    ///
+    /// Node ids are unique across every tree, so marks are keyed by node
+    /// alone and follow a container wherever it lives, including a hidden
+    /// scratchpad group. All entries are lifted before any is re-inserted, so
+    /// a swap whose two halves exchange ids cannot clobber either half.
+    pub fn remap_container_marks(
+        &mut self,
+        remapped: impl IntoIterator<
+            Item = (
+                crate::layout::tiling_tree::NodeId,
+                crate::layout::tiling_tree::NodeId,
+            ),
+        >,
+    ) {
+        let moved = remapped
+            .into_iter()
+            .filter_map(|(old, new)| Some((new, self.marks_by_container.remove(&old)?)))
+            .collect::<Vec<_>>();
+        for (new, marks) in moved {
+            self.marks_by_container
+                .entry(new)
+                .or_default()
+                .extend(marks);
         }
     }
 

@@ -4525,6 +4525,23 @@ impl<W: LayoutElement> Layout<W> {
             .map(|removed| (removed.ipc_tree(), removed.is_sticky()))
     }
 
+    /// Every node of each hidden scratchpad group, with one of its windows.
+    ///
+    /// Sway's criteria and GET_MARKS walk hidden scratchpad containers too
+    /// (`sway/sway/tree/root.c:250-257`), so a mark on a hidden group still
+    /// finds it. The window is the group's representative for commands such
+    /// as `scratchpad show`, which act on the whole group.
+    pub fn scratchpad_tree_nodes(&self) -> impl Iterator<Item = (NodeId, &W::Id)> + '_ {
+        self.scratchpad_trees.iter().flat_map(|removed| {
+            let window = removed.window_ids().first();
+            removed
+                .ipc_tree()
+                .nodes()
+                .into_iter()
+                .filter_map(move |(node, _)| Some((node, window?)))
+        })
+    }
+
     pub fn scratchpad_is_empty(&self) -> bool {
         self.scratchpad_windows.is_empty()
     }
@@ -4738,6 +4755,13 @@ impl<W: LayoutElement> Layout<W> {
         self.workspaces_mut()
             .find(|workspace| workspace.id() == workspace_id)?
             .set_container_floating(node, floating)
+    }
+
+    /// The workspace whose tiling tree or floating groups hold `node`.
+    pub fn workspace_containing_node(&self, node: NodeId) -> Option<WorkspaceId> {
+        self.workspaces()
+            .find(|(_, _, workspace)| workspace.contains_swap_node(node))
+            .map(|(_, _, workspace)| workspace.id())
     }
 
     pub fn window_in_node(&self, workspace_id: WorkspaceId, node: NodeId) -> Option<W::Id> {

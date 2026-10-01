@@ -8,7 +8,8 @@ pub(super) struct WorkspaceNodeContext<'a> {
     pub(super) rect: Rect,
     pub(super) output_origin: Rect,
     pub(super) marks: &'a std::collections::HashMap<MappedId, Vec<String>>,
-    pub(super) container_marks: &'a std::collections::HashMap<(WorkspaceId, NodeId), Vec<String>>,
+    pub(super) container_marks:
+        &'a std::collections::HashMap<crate::layout::tiling_tree::NodeId, Vec<String>>,
 }
 
 pub fn describe_workspaces(
@@ -27,7 +28,7 @@ pub(crate) fn describe_workspaces_with_marks(
     layout: &Layout<Mapped>,
     global_space: &Space<Window>,
     marks: &std::collections::HashMap<MappedId, Vec<String>>,
-    container_marks: &std::collections::HashMap<(WorkspaceId, NodeId), Vec<String>>,
+    container_marks: &std::collections::HashMap<crate::layout::tiling_tree::NodeId, Vec<String>>,
 ) -> Vec<Workspace> {
     layout
         .monitors()
@@ -138,7 +139,6 @@ pub(super) fn describe_workspace_node(context: WorkspaceNodeContext<'_>) -> Node
         output_origin,
         marks,
         container_marks,
-        workspace.id(),
     )
     .unwrap_or_else(|| empty_tiling_node(rect));
     let workspace_focused = compositor_layout
@@ -181,7 +181,6 @@ pub(super) fn describe_workspace_node(context: WorkspaceNodeContext<'_>) -> Node
                 output_origin,
                 marks,
                 container_marks,
-                workspace.id(),
             )?;
             node.node_type = NodeType::FloatingCon;
             node.floating = Some("user_on".into());

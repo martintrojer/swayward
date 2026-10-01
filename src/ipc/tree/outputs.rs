@@ -187,7 +187,7 @@ pub(super) fn describe_output_node(
     output_power: &std::collections::HashMap<String, bool>,
     root_rect: Rect,
     marks: &std::collections::HashMap<MappedId, Vec<String>>,
-    container_marks: &std::collections::HashMap<(WorkspaceId, NodeId), Vec<String>>,
+    container_marks: &std::collections::HashMap<crate::layout::tiling_tree::NodeId, Vec<String>>,
 ) -> Node {
     let rect = output_rect(global_space, monitor.output());
     // A workspace covers the usable area, not the whole output: sway subtracts

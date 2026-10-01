@@ -30,8 +30,7 @@ pub(crate) fn describe_tiling<'a, I>(
     find_window: &impl Fn(&I) -> Option<&'a Mapped>,
     workspace_rect: Rect,
     marks: &std::collections::HashMap<MappedId, Vec<String>>,
-    container_marks: &std::collections::HashMap<(WorkspaceId, NodeId), Vec<String>>,
-    workspace_id: WorkspaceId,
+    container_marks: &std::collections::HashMap<crate::layout::tiling_tree::NodeId, Vec<String>>,
 ) -> Option<Node> {
     match node {
         IpcNode::Split {
@@ -52,15 +51,8 @@ pub(crate) fn describe_tiling<'a, I>(
                     let id = match &child {
                         IpcNode::Split { id, .. } | IpcNode::Leaf { id, .. } => *id,
                     };
-                    describe_tiling(
-                        child,
-                        find_window,
-                        workspace_rect,
-                        marks,
-                        container_marks,
-                        workspace_id,
-                    )
-                    .map(|node| (id, node))
+                    describe_tiling(child, find_window, workspace_rect, marks, container_marks)
+                        .map(|node| (id, node))
                 })
                 .collect::<Vec<_>>();
             let focus = focus
@@ -90,10 +82,7 @@ pub(crate) fn describe_tiling<'a, I>(
             node.scratchpad_state = Some("none".into());
             node.fullscreen_mode = fullscreen_mode;
             node.sticky = sticky;
-            node.marks = container_marks
-                .get(&(workspace_id, id))
-                .cloned()
-                .unwrap_or_default();
+            node.marks = container_marks.get(&id).cloned().unwrap_or_default();
             Some(node)
         }
         IpcNode::Leaf {

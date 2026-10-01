@@ -48,7 +48,7 @@ pub fn describe_tree(
     layout: &Layout<Mapped>,
     global_space: &Space<Window>,
     marks: &std::collections::HashMap<MappedId, Vec<String>>,
-    container_marks: &std::collections::HashMap<(WorkspaceId, NodeId), Vec<String>>,
+    container_marks: &std::collections::HashMap<crate::layout::tiling_tree::NodeId, Vec<String>>,
 ) -> Node {
     describe_tree_with_power(
         layout,
@@ -65,7 +65,7 @@ pub fn describe_tree_with_power(
     layout: &Layout<Mapped>,
     global_space: &Space<Window>,
     marks: &std::collections::HashMap<MappedId, Vec<String>>,
-    container_marks: &std::collections::HashMap<(WorkspaceId, NodeId), Vec<String>>,
+    container_marks: &std::collections::HashMap<crate::layout::tiling_tree::NodeId, Vec<String>>,
     output_power: &std::collections::HashMap<String, bool>,
 ) -> Node {
     let outputs: Vec<_> = layout.monitors().collect();
@@ -75,7 +75,7 @@ pub fn describe_tree_with_power(
         .reduce(|a, b| a.merge(b))
         .map(rect_from_rectangle)
         .unwrap_or_default();
-    let mut nodes = vec![scratch_output(layout, root_rect, marks)];
+    let mut nodes = vec![scratch_output(layout, root_rect, marks, container_marks)];
     nodes.extend(outputs.iter().map(|monitor| {
         describe_output_node(
             layout,
@@ -123,6 +123,7 @@ fn scratch_output(
     layout: &Layout<Mapped>,
     rect: Rect,
     marks: &std::collections::HashMap<MappedId, Vec<String>>,
+    container_marks: &std::collections::HashMap<NodeId, Vec<String>>,
 ) -> Node {
     let mut floating_nodes = layout
         .scratchpad_trees()
@@ -137,8 +138,10 @@ fn scratch_output(
                 },
                 Rect::default(),
                 marks,
-                &Default::default(),
-                crate::layout::workspace::WorkspaceId::specific(0),
+                // A hidden group keeps its marks, as sway's GET_TREE and
+                // GET_MARKS walk hidden scratchpad containers
+                // (`sway/sway/tree/root.c:250-257`).
+                container_marks,
             )?;
             node.node_type = NodeType::FloatingCon;
             node.floating = Some("user_on".into());

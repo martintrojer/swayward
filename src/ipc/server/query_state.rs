@@ -313,13 +313,7 @@ pub(super) fn refresh_query_state(
     output_power: &std::collections::HashMap<String, bool>,
     ipc_outputs: &crate::backend::IpcOutputMap,
     marks: &std::collections::HashMap<crate::window::mapped::MappedId, Vec<String>>,
-    container_marks: &std::collections::HashMap<
-        (
-            crate::layout::workspace::WorkspaceId,
-            crate::layout::tiling_tree::NodeId,
-        ),
-        Vec<String>,
-    >,
+    container_marks: &std::collections::HashMap<crate::layout::tiling_tree::NodeId, Vec<String>>,
     state: &mut QueryState,
 ) {
     let tree = describe_tree_with_power(layout, global_space, marks, container_marks, output_power);

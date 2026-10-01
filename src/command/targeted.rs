@@ -535,10 +535,10 @@ pub(super) fn mark_target(
             .marks_by_window
             .get(&window)
             .is_some_and(|marks| marks.iter().any(|existing| existing == mark)),
-        CommandTarget::Container(workspace, node) => state
+        CommandTarget::Container(_, node) => state
             .swayward
             .marks_by_container
-            .get(&(workspace, node))
+            .get(&node)
             .is_some_and(|marks| marks.iter().any(|existing| existing == mark)),
     };
     if !add {
@@ -567,10 +567,10 @@ pub(super) fn mark_target(
     if !toggle || !had_mark {
         match target {
             CommandTarget::Window(window) => state.swayward.set_mark(window, mark, true, false),
-            CommandTarget::Container(workspace, node) => state
+            CommandTarget::Container(_, node) => state
                 .swayward
                 .marks_by_container
-                .entry((workspace, node))
+                .entry(node)
                 .or_default()
                 .push(mark.to_owned()),
         }
@@ -622,17 +622,13 @@ fn refresh_titlebar_marks(state: &mut State) {
 pub(super) fn unmark_target(state: &mut State, target: CommandTarget, mark: Option<&str>) {
     match target {
         CommandTarget::Window(window) => state.swayward.unmark(Some(window), mark),
-        CommandTarget::Container(workspace, node) => {
+        CommandTarget::Container(_, node) => {
             if let Some(mark) = mark {
-                if let Some(marks) = state
-                    .swayward
-                    .marks_by_container
-                    .get_mut(&(workspace, node))
-                {
+                if let Some(marks) = state.swayward.marks_by_container.get_mut(&node) {
                     marks.retain(|existing| existing != mark);
                 }
             } else {
-                state.swayward.marks_by_container.remove(&(workspace, node));
+                state.swayward.marks_by_container.remove(&node);
             }
         }
     }
@@ -827,7 +823,7 @@ pub(super) fn matching_targets(state: &State, criteria: &criteria::Criteria) -> 
                     let marks = state
                         .swayward
                         .marks_by_container
-                        .get(&(workspace.id(), node))
+                        .get(&node)
                         .map(Vec::as_slice)
                         .unwrap_or(&[]);
                     if criteria
@@ -835,6 +831,31 @@ pub(super) fn matching_targets(state: &State, criteria: &criteria::Criteria) -> 
                     {
                         targets.push(CommandTarget::Container(workspace.id(), node));
                     }
+                }
+            }
+        }
+    }
+    // A hidden scratchpad group's containers stay matchable, as in sway's
+    // criteria walk (`sway/sway/tree/root.c:250-257`). The group has no
+    // workspace, so a match targets the group through one of its windows;
+    // the scratchpad commands act on the whole group from any of them.
+    for (node, window) in state.swayward.layout.scratchpad_tree_nodes() {
+        let marks = state
+            .swayward
+            .marks_by_container
+            .get(&node)
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
+        if criteria.matches_container(crate::ipc::tree::container_id(node) as u64, marks) {
+            if let Some(mapped) = state
+                .swayward
+                .layout
+                .windows()
+                .find_map(|(_, mapped)| (mapped.window == *window).then(|| mapped.id()))
+            {
+                let target = CommandTarget::Window(mapped);
+                if !targets.contains(&target) {
+                    targets.push(target);
                 }
             }
         }

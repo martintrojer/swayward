@@ -260,7 +260,6 @@ fn stale_tree_leaf_is_omitted_without_panicking() {
         Default::default(),
         &Default::default(),
         &Default::default(),
-        crate::layout::workspace::WorkspaceId::specific(1)
     )
     .is_none());
 
@@ -294,7 +293,6 @@ fn stale_tree_leaf_is_omitted_without_panicking() {
         Default::default(),
         &Default::default(),
         &Default::default(),
-        crate::layout::workspace::WorkspaceId::specific(1),
     )
     .unwrap();
     assert!(node.nodes.is_empty());

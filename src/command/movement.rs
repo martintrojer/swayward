@@ -488,25 +488,17 @@ pub(super) fn move_target_to_workspace(
                 .map(|_| ())
         }
         CommandTarget::Container(workspace, node) => {
-            let (target_workspace, remapped) =
-                match state.swayward.layout.move_tiling_subtree_to_sway_workspace(
-                    workspace,
-                    node,
-                    workspace_target,
-                    preserve_empty_workspace,
-                    auto_back_and_forth,
-                ) {
-                    Ok(moved) => moved,
-                    Err(error) => return failure(error),
-                };
-            for (old, new) in remapped {
-                if let Some(marks) = state.swayward.marks_by_container.remove(&(workspace, old)) {
-                    state
-                        .swayward
-                        .marks_by_container
-                        .insert((target_workspace, new), marks);
-                }
-            }
+            let (_, remapped) = match state.swayward.layout.move_tiling_subtree_to_sway_workspace(
+                workspace,
+                node,
+                workspace_target,
+                preserve_empty_workspace,
+                auto_back_and_forth,
+            ) {
+                Ok(moved) => moved,
+                Err(error) => return failure(error),
+            };
+            state.swayward.remap_container_marks(remapped);
             Ok(())
         }
     };
@@ -611,27 +603,6 @@ fn resolve_swap_endpoint(
     }
 }
 
-fn remap_container_marks(
-    state: &mut State,
-    source: crate::layout::workspace::WorkspaceId,
-    destination: crate::layout::workspace::WorkspaceId,
-    remapped: impl IntoIterator<
-        Item = (
-            crate::layout::tiling_tree::NodeId,
-            crate::layout::tiling_tree::NodeId,
-        ),
-    >,
-) {
-    for (old, new) in remapped {
-        if let Some(marks) = state.swayward.marks_by_container.remove(&(source, old)) {
-            state
-                .swayward
-                .marks_by_container
-                .insert((destination, new), marks);
-        }
-    }
-}
-
 pub(super) fn swap_target(
     state: &mut State,
     source: CommandTarget,
@@ -690,18 +661,9 @@ pub(super) fn swap_target(
             Ok(remapped) => remapped,
             Err(error) => return failure(error),
         };
-        remap_container_marks(
-            state,
-            source_workspace,
-            destination_workspace,
-            remapped.first,
-        );
-        remap_container_marks(
-            state,
-            destination_workspace,
-            source_workspace,
-            remapped.second,
-        );
+        state
+            .swayward
+            .remap_container_marks(remapped.first.into_iter().chain(remapped.second));
     } else if let Err(error) =
         state
             .swayward
@@ -731,11 +693,15 @@ fn marked_target(state: &State, mark: &str) -> Option<CommandTarget> {
                 .swayward
                 .marks_by_container
                 .iter()
-                .find_map(|(&(workspace, node), marks)| {
+                .find_map(|(&node, marks)| {
                     marks
                         .iter()
                         .any(|existing| existing == mark)
-                        .then_some(CommandTarget::Container(workspace, node))
+                        .then_some(node)
+                })
+                .and_then(|node| {
+                    let workspace = state.swayward.layout.workspace_containing_node(node)?;
+                    Some(CommandTarget::Container(workspace, node))
                 })
         })
 }
@@ -878,7 +844,7 @@ pub(super) fn move_target_to_mark(
         Ok(remapped) => remapped,
         Err(error) => return failure(error),
     };
-    remap_container_marks(state, source.0, destination.0, remapped);
+    state.swayward.remap_container_marks(remapped);
     state.swayward.queue_redraw_all();
     success()
 }

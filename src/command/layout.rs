@@ -6,18 +6,8 @@ use crate::layout::workspace::WorkspaceId;
 use crate::swayward::State;
 
 fn remap_marks(state: &mut State, remapped: Option<(WorkspaceId, Vec<(NodeId, NodeId)>)>) {
-    let Some((workspace, remapped)) = remapped else {
-        return;
-    };
-    for (old, new) in remapped {
-        if let Some(marks) = state.swayward.marks_by_container.remove(&(workspace, old)) {
-            state
-                .swayward
-                .marks_by_container
-                .entry((workspace, new))
-                .or_default()
-                .extend(marks);
-        }
+    if let Some((_, remapped)) = remapped {
+        state.swayward.remap_container_marks(remapped);
     }
 }
 
