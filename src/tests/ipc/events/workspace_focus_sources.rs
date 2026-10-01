@@ -1,10 +1,11 @@
-/// Waybar tracks the focused workspace from the `workspace` event stream, not
-/// by polling GET_WORKSPACES. Jumping to a workspace from the overview changes
+/// The overview is swayward's only active-workspace switch path that does not
+/// dispatch a command. Waybar tracks focus from workspace events, not by
+/// polling GET_WORKSPACES. Jumping to a workspace from the overview changes
 /// the active workspace through `toggle_overview_to_workspace`, which is not a
 /// command dispatch, so nothing on that path told the event stream anything
 /// had happened and every bar kept highlighting the workspace the user left.
 #[test]
-fn overview_workspace_jump_emits_a_workspace_focus_event() {
+fn workspace_focus_event_fires_for_a_non_command_workspace_switch() {
     let config = swayward_config::Config::parse_mem(
         r#"workspace "1" {}
 workspace "2" {}"#,
@@ -143,7 +144,7 @@ workspace "2" {}"#,
 /// is still open. A bar must track that immediately, not only once the
 /// overview closes.
 #[test]
-fn overview_arrow_emits_focus_event_before_the_overview_closes() {
+fn workspace_focus_event_precedes_closing_the_non_command_switch_ui() {
     let config = swayward_config::Config::parse_mem(
         r#"workspace "1" {}
 workspace "2" {}"#,
@@ -215,7 +216,7 @@ workspace "2" {}"#,
 /// workspace, then Escape to leave. A bar must end up highlighting the
 /// workspace the user landed on.
 #[test]
-fn overview_arrow_then_escape_emits_workspace_focus_events() {
+fn workspace_focus_events_cover_switch_and_restore_from_non_command_ui() {
     let config = swayward_config::Config::parse_mem(
         r#"workspace "1" {}
 workspace "2" {}"#,
@@ -337,7 +338,7 @@ workspace "2" {}"#,
 }
 
 #[test]
-fn overview_arrow_keys_move_between_workspaces() {
+fn non_command_workspace_navigation_moves_between_workspaces() {
     let config = swayward_config::Config::parse_mem(
         r#"workspace "1" {}
 workspace "2" {}"#,
@@ -392,7 +393,7 @@ workspace "2" {}"#,
 }
 
 #[test]
-fn overview_arrow_keys_wrap_at_the_ends() {
+fn non_command_workspace_navigation_wraps_at_the_ends() {
     // The overview shows the whole stack at once, so an arrow that stops dead
     // at the last workspace reads as a broken key rather than as an edge. With
     // only two workspaces one of the two arrows always looked dead, which is
