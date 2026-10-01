@@ -114,7 +114,7 @@ fn workspace_rejects_ambiguous_or_empty_output_assignments() {
 
 #[test]
 fn urgent_timeout_defaults_to_sway_value() {
-    assert_eq!(Config::parse_mem("").unwrap().urgent_timeout_ms, 500);
+    assert_eq!(Config::parse_mem("").unwrap().urgent_timeout_ms.0, 500);
 }
 
 #[test]
@@ -122,7 +122,7 @@ fn urgent_timeout_parses_milliseconds() {
     let config = Config::parse(Path::new("test.kdl"), "urgent-timeout-ms 500")
         .config
         .unwrap();
-    assert_eq!(config.urgent_timeout_ms, 500);
+    assert_eq!(config.urgent_timeout_ms.0, 500);
 }
 
 #[test]

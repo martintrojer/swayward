@@ -136,7 +136,7 @@ fn urgent_criteria_selects_windows_by_urgency_timestamp() {
 #[test]
 fn cross_workspace_focus_delays_urgency_clear_without_restarting_timer() {
     let config = swayward_config::Config {
-        urgent_timeout_ms: 60_000,
+        urgent_timeout_ms: swayward_config::UrgentTimeout(60_000),
         ..Default::default()
     };
     let mut f = Fixture::with_config(config);
@@ -175,7 +175,7 @@ fn cross_workspace_focus_delays_urgency_clear_without_restarting_timer() {
 #[test]
 fn closing_a_window_cancels_its_pending_urgency_timer() {
     let config = swayward_config::Config {
-        urgent_timeout_ms: 60_000,
+        urgent_timeout_ms: swayward_config::UrgentTimeout(60_000),
         ..Default::default()
     };
     let mut f = Fixture::with_config(config);

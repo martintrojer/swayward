@@ -37,7 +37,7 @@ fn input_policy_settings_apply_at_runtime_like_sway() {
     assert!(crate::command::execute(f.niri_state(), "tiling_drag_threshold 17")[0].success);
     assert_eq!(f.swayward().config.borrow().input.tiling_drag_threshold, 17);
     assert!(crate::command::execute(f.niri_state(), "force_display_urgency_hint 700ms")[0].success);
-    assert_eq!(f.swayward().config.borrow().urgent_timeout_ms, 700);
+    assert_eq!(f.swayward().config.borrow().urgent_timeout_ms.0, 700);
     // Oracle: state/settings_urgency_hint_parse
     // (`sway/sway/commands/force_display_urgency_hint.c:12-23`).
     for (command, error) in [
@@ -63,7 +63,7 @@ fn input_policy_settings_apply_at_runtime_like_sway() {
             "{command}"
         );
     }
-    assert_eq!(f.swayward().config.borrow().urgent_timeout_ms, 500);
+    assert_eq!(f.swayward().config.borrow().urgent_timeout_ms.0, 500);
 
     assert!(crate::command::execute(f.niri_state(), "focus_on_window_activation none")[0].success);
     assert_eq!(

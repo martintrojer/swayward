@@ -57,7 +57,7 @@ mod config;
 mod decode;
 mod loader;
 
-pub use config::Config;
+pub use config::{Config, UrgentTimeout};
 pub use loader::ConfigPath;
 
 #[cfg(test)]

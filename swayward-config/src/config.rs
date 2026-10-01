@@ -4,7 +4,7 @@ use crate::*;
 ///
 /// Use [`Config::load`] or [`ConfigPath::load`] instead of constructing this type when includes
 /// and source diagnostics matter.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Default, PartialEq)]
 pub struct Config {
     /// Input-device settings.
     pub input: Input,
@@ -23,7 +23,7 @@ pub struct Config {
     /// How activation requests affect focus.
     pub focus_on_window_activation: FocusOnWindowActivation,
     /// Time in milliseconds before an urgent window loses urgency automatically.
-    pub urgent_timeout_ms: u32,
+    pub urgent_timeout_ms: UrgentTimeout,
     /// Cursor appearance and visibility settings.
     pub cursor: Cursor,
     /// Expanded screenshot path template.
@@ -64,37 +64,18 @@ pub struct Config {
     pub recent_windows: RecentWindows,
 }
 
-impl Default for Config {
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub struct UrgentTimeout(pub u32);
+
+impl std::fmt::Debug for UrgentTimeout {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl Default for UrgentTimeout {
     fn default() -> Self {
-        Self {
-            input: Default::default(),
-            outputs: Default::default(),
-            spawn_at_startup: Default::default(),
-            spawn_sh_at_startup: Default::default(),
-            layout: Default::default(),
-            prefer_no_csd: Default::default(),
-            popup_during_fullscreen: Default::default(),
-            focus_on_window_activation: Default::default(),
-            urgent_timeout_ms: 500,
-            cursor: Default::default(),
-            screenshot_path: Default::default(),
-            clipboard: Default::default(),
-            hotkey_overlay: Default::default(),
-            config_notification: Default::default(),
-            animations: Default::default(),
-            blur: Default::default(),
-            gestures: Default::default(),
-            overview: Default::default(),
-            environment: Default::default(),
-            xwayland_satellite: Default::default(),
-            window_rules: Default::default(),
-            layer_rules: Default::default(),
-            binds: Default::default(),
-            binding_modes: Default::default(),
-            switch_events: Default::default(),
-            debug: Default::default(),
-            workspaces: Default::default(),
-            recent_windows: Default::default(),
-        }
+        // Sway initializes config->urgent_timeout to 500 ms.
+        Self(500)
     }
 }

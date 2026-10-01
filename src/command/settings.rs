@@ -212,7 +212,7 @@ fn apply_input(config: &mut Config, option: &LayoutOption) -> Applied {
             Ok(())
         }
         LayoutOption::ForceDisplayUrgencyHint(value) => {
-            config.urgent_timeout_ms = *value;
+            config.urgent_timeout_ms = swayward_config::UrgentTimeout(*value);
             Ok(())
         }
         LayoutOption::FocusOnWindowActivation(value) => value

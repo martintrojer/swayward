@@ -10,7 +10,7 @@ impl Swayward {
         }
 
         let id = mapped.id();
-        let timeout_ms = self.config.borrow().urgent_timeout_ms;
+        let timeout_ms = self.config.borrow().urgent_timeout_ms.0;
         if !changed_workspace || timeout_ms == 0 {
             mapped.set_urgent(false);
             return;

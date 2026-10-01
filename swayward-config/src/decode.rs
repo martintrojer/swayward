@@ -150,7 +150,7 @@ where
 
                 "urgent-timeout-ms" => {
                     config.borrow_mut().urgent_timeout_ms =
-                        parse_arg_node("urgent-timeout-ms", node, ctx)?
+                        UrgentTimeout(parse_arg_node("urgent-timeout-ms", node, ctx)?)
                 }
 
                 "screenshot-path" => {
