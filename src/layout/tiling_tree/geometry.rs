@@ -73,71 +73,28 @@ pub(crate) struct GeometryInput<'a, W: LayoutElement> {
 }
 
 pub(crate) fn compute<W: LayoutElement>(input: GeometryInput<'_, W>) -> Geometry<W::Id> {
-    let GeometryInput {
-        nodes,
-        title_formats,
-        root,
-        view_size,
-        parent_area,
-        scale,
-        struts,
-        gaps,
-        outer_gaps_configured,
-        gaps_to_edge,
-        titlebar_height,
-        fullscreen,
-        mapped_under_fullscreen,
-        hide_edge_borders,
-        smart_borders,
-        visible_leaves,
-        draw_uncovered_top_border,
-    } = input;
-    let only_visible_view = visible_leaves.len() == 1;
-    let mut result = Geometry {
-        leaf_boxes: HashMap::new(),
-        leaf_contents: HashMap::new(),
-        leaf_ipc_rects: HashMap::new(),
-        ipc_nodes: HashMap::new(),
-        tiled_ipc_nodes: HashMap::new(),
-        titlebars: HashMap::new(),
-        titlebar_leaves: HashMap::new(),
-        titlebar_attached: HashSet::new(),
-        titlebar_owned_by_parent: HashSet::new(),
-        border_edges: HashMap::new(),
-        border_visible: HashSet::new(),
-        border_corners: HashMap::new(),
-        titlebar_corners: HashMap::new(),
-        uncovered_top_borders: HashMap::new(),
-    };
-    let gaps = gaps.max(0.);
-    let mut area = apply_struts(parent_area, scale, struts);
-    if !outer_gaps_configured {
-        area.loc.x += gaps;
-        area.loc.y += gaps;
-        area.size.w = (area.size.w - gaps * 2.).max(0.);
-        area.size.h = (area.size.h - gaps * 2.).max(0.);
-    }
-    let fullscreen_root = fullscreen.iter().copied().next();
-    let workspace_area = area;
+    let gaps = input.gaps.max(0.);
+    let workspace_area = workspace_area(&input, gaps);
     let mut context = AssignContext {
-        nodes,
-        title_formats,
+        nodes: input.nodes,
+        title_formats: input.title_formats,
         gaps,
-        titlebar_height,
+        titlebar_height: input.titlebar_height,
         fullscreen: &HashSet::new(),
-        mapped_under_fullscreen,
+        mapped_under_fullscreen: input.mapped_under_fullscreen,
         workspace_area,
-        gaps_to_edge,
-        hide_edge_borders,
-        smart_borders,
-        only_visible_view,
-        draw_uncovered_top_border,
+        gaps_to_edge: input.gaps_to_edge,
+        hide_edge_borders: input.hide_edge_borders,
+        smart_borders: input.smart_borders,
+        only_visible_view: input.visible_leaves.len() == 1,
+        draw_uncovered_top_border: input.draw_uncovered_top_border,
     };
+    let mut result = Geometry::default();
     assign(
         &context,
         Assignment {
-            id: root,
-            rect: area,
+            id: input.root,
+            rect: workspace_area,
             covering_titlebar: None,
             decorated_by_parent: false,
             decorated_corners: DecoratedCorners::ALL,
@@ -147,55 +104,85 @@ pub(crate) fn compute<W: LayoutElement>(input: GeometryInput<'_, W>) -> Geometry
         &mut result,
     );
     result.tiled_ipc_nodes = result.ipc_nodes.clone();
-    if let Some(fullscreen_root) = fullscreen_root {
-        context.fullscreen = fullscreen;
-        assign(
-            &context,
-            Assignment {
-                id: fullscreen_root,
-                rect: Rectangle::from_size(view_size),
-                covering_titlebar: None,
-                decorated_by_parent: false,
-                decorated_corners: DecoratedCorners::NONE,
-                suppress_gaps: false,
-                ipc_origin: Point::default(),
-            },
-            &mut result,
-        );
-        result.titlebars.retain(|id, _| !fullscreen.contains(id));
-        result
-            .titlebar_attached
-            .retain(|id| !fullscreen.contains(id));
-        result
-            .titlebar_owned_by_parent
-            .retain(|id| !fullscreen.contains(id));
+    if let Some(fullscreen_root) = input.fullscreen.iter().copied().next() {
+        context.fullscreen = input.fullscreen;
+        apply_fullscreen_pass(&context, fullscreen_root, input.view_size, &mut result);
     }
-    for id in mapped_under_fullscreen {
-        result.titlebars.remove(id);
-        result.titlebar_leaves.remove(id);
-        result.titlebar_attached.remove(id);
-        result.titlebar_owned_by_parent.remove(id);
-    }
+    result.drop_titlebars(|id| input.mapped_under_fullscreen.contains(&id));
     result.border_visible.extend(
         result
             .leaf_boxes
             .keys()
-            .filter(|id| visible_leaves.contains(id)),
+            .filter(|id| input.visible_leaves.contains(id)),
     );
     result
         .uncovered_top_borders
-        .retain(|id, _| visible_leaves.contains(id));
-    // A tabbed or stacked container shows only its active child; sway sends
-    // the rest to disable_container, which hides the whole subtree, strips
-    // included (sway/desktop/transaction.c:316-321). Titlebars are emitted for
-    // every strip in the tree, so hide those whose branch is not shown. A
-    // branch is shown exactly when it holds a visible leaf, because
-    // visible_leaves already walks only the active child of each tab level.
-    //
-    // A strip entry belongs to the container that draws the strip, so it is
-    // shown when that container is: an inactive tab keeps its title in a
-    // visible strip even though its own subtree is hidden. A leaf's own
-    // titlebar belongs to the leaf.
+        .retain(|id, _| input.visible_leaves.contains(id));
+    hide_invisible_strips(input.nodes, input.visible_leaves, &mut result);
+    result
+}
+
+/// The tiled area: the parent area less struts, inset by the inner gap on every side unless
+/// outer gaps were configured separately.
+fn workspace_area<W: LayoutElement>(
+    input: &GeometryInput<'_, W>,
+    gaps: f64,
+) -> Rectangle<f64, Logical> {
+    let mut area = apply_struts(input.parent_area, input.scale, input.struts);
+    if !input.outer_gaps_configured {
+        area.loc.x += gaps;
+        area.loc.y += gaps;
+        area.size.w = (area.size.w - gaps * 2.).max(0.);
+        area.size.h = (area.size.h - gaps * 2.).max(0.);
+    }
+    area
+}
+
+/// Lays the fullscreen subtree out over the whole output on top of the tiled pass. Titlebars
+/// inside it are not drawn.
+fn apply_fullscreen_pass<W: LayoutElement>(
+    context: &AssignContext<'_, W>,
+    fullscreen_root: NodeId,
+    view_size: Size<f64, Logical>,
+    result: &mut Geometry<W::Id>,
+) {
+    assign(
+        context,
+        Assignment {
+            id: fullscreen_root,
+            rect: Rectangle::from_size(view_size),
+            covering_titlebar: None,
+            decorated_by_parent: false,
+            decorated_corners: DecoratedCorners::NONE,
+            suppress_gaps: false,
+            ipc_origin: Point::default(),
+        },
+        result,
+    );
+    let fullscreen = context.fullscreen;
+    result.titlebars.retain(|id, _| !fullscreen.contains(id));
+    result
+        .titlebar_attached
+        .retain(|id| !fullscreen.contains(id));
+    result
+        .titlebar_owned_by_parent
+        .retain(|id| !fullscreen.contains(id));
+}
+
+/// A tabbed or stacked container shows only its active child; sway sends the rest to
+/// disable_container, which hides the whole subtree, strips included
+/// (sway/desktop/transaction.c:316-321). Titlebars are emitted for every strip in the tree, so
+/// hide those whose branch is not shown. A branch is shown exactly when it holds a visible
+/// leaf, because visible_leaves already walks only the active child of each tab level.
+///
+/// A strip entry belongs to the container that draws the strip, so it is shown when that
+/// container is: an inactive tab keeps its title in a visible strip even though its own
+/// subtree is hidden. A leaf's own titlebar belongs to the leaf.
+fn hide_invisible_strips<W: LayoutElement>(
+    nodes: &HashMap<NodeId, Node<W>>,
+    visible_leaves: &HashSet<NodeId>,
+    result: &mut Geometry<W::Id>,
+) {
     for (id, titlebar) in &mut result.titlebars {
         let owner = if is_strip_entry(nodes, *id) {
             nodes.get(id).and_then(|node| node.parent).unwrap_or(*id)
@@ -206,7 +193,39 @@ pub(crate) fn compute<W: LayoutElement>(input: GeometryInput<'_, W>) -> Geometry
             titlebar.visible = false;
         }
     }
-    result
+}
+
+// Written out because `#[derive(Default)]` would require `I: Default`.
+impl<I> Default for Geometry<I> {
+    fn default() -> Self {
+        Self {
+            leaf_boxes: HashMap::new(),
+            leaf_contents: HashMap::new(),
+            leaf_ipc_rects: HashMap::new(),
+            ipc_nodes: HashMap::new(),
+            tiled_ipc_nodes: HashMap::new(),
+            titlebars: HashMap::new(),
+            titlebar_leaves: HashMap::new(),
+            titlebar_attached: HashSet::new(),
+            titlebar_owned_by_parent: HashSet::new(),
+            border_edges: HashMap::new(),
+            border_visible: HashSet::new(),
+            border_corners: HashMap::new(),
+            titlebar_corners: HashMap::new(),
+            uncovered_top_borders: HashMap::new(),
+        }
+    }
+}
+
+impl<I> Geometry<I> {
+    /// Removes the titlebars of `drop` from every titlebar map together, so the maps stay
+    /// consistent with each other.
+    fn drop_titlebars(&mut self, drop: impl Fn(NodeId) -> bool) {
+        self.titlebars.retain(|id, _| !drop(*id));
+        self.titlebar_leaves.retain(|id, _| !drop(*id));
+        self.titlebar_attached.retain(|id| !drop(*id));
+        self.titlebar_owned_by_parent.retain(|id| !drop(*id));
+    }
 }
 
 /// Whether `id` is a child of a tabbed or stacked container, i.e. its titlebar
@@ -275,50 +294,16 @@ fn assign_leaf<W: LayoutElement>(
 ) {
     let Assignment {
         id,
-        mut rect,
+        rect,
         covering_titlebar,
         decorated_by_parent,
         decorated_corners,
         ipc_origin,
         ..
     } = assignment;
-    let &AssignContext {
-        titlebar_height,
-        fullscreen,
-        workspace_area,
-        gaps_to_edge,
-        hide_edge_borders,
-        smart_borders,
-        only_visible_view,
-        draw_uncovered_top_border,
-        ..
-    } = context;
-    let mut edges = ResizeEdge::all();
-    if matches!(
-        hide_edge_borders,
-        HideEdgeBorders::Vertical | HideEdgeBorders::Both
-    ) {
-        edges.set(ResizeEdge::LEFT, rect.loc.x != workspace_area.loc.x);
-        edges.set(
-            ResizeEdge::RIGHT,
-            rect.loc.x + rect.size.w != workspace_area.loc.x + workspace_area.size.w,
-        );
-    }
-    if matches!(
-        hide_edge_borders,
-        HideEdgeBorders::Horizontal | HideEdgeBorders::Both
-    ) {
-        edges.set(ResizeEdge::TOP, rect.loc.y != workspace_area.loc.y);
-        edges.set(
-            ResizeEdge::BOTTOM,
-            rect.loc.y + rect.size.h != workspace_area.loc.y + workspace_area.size.h,
-        );
-    }
-    let smart =
-        smart_borders == SmartBorders::On || smart_borders == SmartBorders::NoGaps && !gaps_to_edge;
-    if smart && only_visible_view {
-        edges = ResizeEdge::empty();
-    }
+    let titlebar_height = context.titlebar_height;
+    let fullscreen = context.fullscreen;
+    let edges = border_edges(context, rect);
     result.border_edges.insert(id, edges);
     // Keep one outer box for rendering, hit testing, movement, sizing, and IPC. Sway's
     // arrange_container() likewise derives the content and each border from the container
@@ -333,68 +318,36 @@ fn assign_leaf<W: LayoutElement>(
     let has_titlebar =
         !decorated_by_parent && !fullscreen.contains(&id) && tile.has_sway_titlebar();
     if has_titlebar {
-        let titlebar = Rectangle::new(rect.loc, (rect.size.w, titlebar_height).into());
-        result.titlebar_leaves.insert(id, id);
-        result.titlebar_corners.insert(
+        emit_leaf_titlebar(
+            context,
+            tile,
             id,
-            DecoratedCorners {
-                top_left: decorated_corners.top_left,
-                top_right: decorated_corners.top_right,
-                ..DecoratedCorners::NONE
-            },
+            rect,
+            decorated_corners,
+            ipc_origin,
+            result,
         );
-        result.titlebars.insert(
-            id,
-            Titlebar {
-                target: tile.window().id().clone(),
-                rect: titlebar,
-                ipc_rect: Rectangle::new(titlebar.loc - ipc_origin, titlebar.size),
-                title: tile.window().title(),
-                marks: tile.window().marks(),
-                state: TitlebarState::Unfocused,
-                visible: true,
-            },
-        );
-        result.titlebar_attached.insert(id);
     }
-
-    let border_corners = if has_titlebar {
-        DecoratedCorners {
-            top_left: false,
-            top_right: false,
-            ..decorated_corners
-        }
-    } else {
-        decorated_corners
-    };
-    result.border_corners.insert(id, border_corners);
-
+    // A titlebar takes over the box's top corners; IPC reports the view below it.
+    let mut border_corners = decorated_corners;
     let mut ipc_rect = rect;
     if has_titlebar {
+        border_corners.top_left = false;
+        border_corners.top_right = false;
         ipc_rect.loc.y += titlebar_height;
         ipc_rect.size.h = (ipc_rect.size.h - titlebar_height).max(0.);
     }
+    result.border_corners.insert(id, border_corners);
     result.leaf_ipc_rects.insert(id, ipc_rect);
 
-    // The titlebar occupies the top slot, while side borders begin below it, matching
-    // arrange_container() (sway/desktop/transaction.c:409-440).
     let width = tile.configured_border_width();
-    if draw_uncovered_top_border
+    if context.draw_uncovered_top_border
         && decorated_by_parent
         && edges.contains(ResizeEdge::TOP)
         && width > 0.
     {
-        let top = Rectangle::new(
-            rect.loc - Point::from((0., width)),
-            Size::from((rect.size.w, width)),
-        );
-        let uncovered = subtract_horizontal(top, covering_titlebar);
-        if !uncovered.is_empty() {
-            result.uncovered_top_borders.insert(id, uncovered);
-        }
+        record_uncovered_top_border(id, rect, width, covering_titlebar, result);
     }
-    let left = width * f64::from(edges.contains(ResizeEdge::LEFT));
-    let right = width * f64::from(edges.contains(ResizeEdge::RIGHT));
     let top = if has_titlebar {
         titlebar_height
     } else if decorated_by_parent {
@@ -402,11 +355,175 @@ fn assign_leaf<W: LayoutElement>(
     } else {
         width * f64::from(edges.contains(ResizeEdge::TOP))
     };
+    result
+        .leaf_contents
+        .insert(id, content_rect(rect, edges, width, top));
+}
+
+/// The border edges a leaf draws. `hide_edge_borders` drops the edges that touch the
+/// workspace's outer edge on the chosen axes, and `smart_borders` drops every edge when only
+/// one view is visible (with `no_gaps`, only when gaps do not reach the edge), as sway's
+/// view_autoconfigure does (sway/tree/view.c).
+fn border_edges<W: LayoutElement>(
+    context: &AssignContext<'_, W>,
+    rect: Rectangle<f64, Logical>,
+) -> ResizeEdge {
+    let workspace_area = context.workspace_area;
+    let mut edges = ResizeEdge::all();
+    if matches!(
+        context.hide_edge_borders,
+        HideEdgeBorders::Vertical | HideEdgeBorders::Both
+    ) {
+        edges.set(ResizeEdge::LEFT, rect.loc.x != workspace_area.loc.x);
+        edges.set(
+            ResizeEdge::RIGHT,
+            rect.loc.x + rect.size.w != workspace_area.loc.x + workspace_area.size.w,
+        );
+    }
+    if matches!(
+        context.hide_edge_borders,
+        HideEdgeBorders::Horizontal | HideEdgeBorders::Both
+    ) {
+        edges.set(ResizeEdge::TOP, rect.loc.y != workspace_area.loc.y);
+        edges.set(
+            ResizeEdge::BOTTOM,
+            rect.loc.y + rect.size.h != workspace_area.loc.y + workspace_area.size.h,
+        );
+    }
+    let smart = context.smart_borders == SmartBorders::On
+        || context.smart_borders == SmartBorders::NoGaps && !context.gaps_to_edge;
+    if smart && context.only_visible_view {
+        edges = ResizeEdge::empty();
+    }
+    edges
+}
+
+/// The part of a tab or stack child's top border that the parent's strip does not cover.
+fn record_uncovered_top_border<I>(
+    id: NodeId,
+    rect: Rectangle<f64, Logical>,
+    width: f64,
+    covering_titlebar: Option<Rectangle<f64, Logical>>,
+    result: &mut Geometry<I>,
+) {
+    let top = Rectangle::new(
+        rect.loc - Point::from((0., width)),
+        Size::from((rect.size.w, width)),
+    );
+    let uncovered = subtract_horizontal(top, covering_titlebar);
+    if !uncovered.is_empty() {
+        result.uncovered_top_borders.insert(id, uncovered);
+    }
+}
+
+/// Records a leaf's own titlebar across the top of its box.
+fn emit_leaf_titlebar<W: LayoutElement>(
+    context: &AssignContext<'_, W>,
+    tile: &crate::layout::tile::Tile<W>,
+    id: NodeId,
+    rect: Rectangle<f64, Logical>,
+    decorated_corners: DecoratedCorners,
+    ipc_origin: Point<f64, Logical>,
+    result: &mut Geometry<W::Id>,
+) {
+    let titlebar = Rectangle::new(rect.loc, (rect.size.w, context.titlebar_height).into());
+    result.titlebar_leaves.insert(id, id);
+    result.titlebar_corners.insert(
+        id,
+        DecoratedCorners {
+            top_left: decorated_corners.top_left,
+            top_right: decorated_corners.top_right,
+            ..DecoratedCorners::NONE
+        },
+    );
+    result.titlebars.insert(
+        id,
+        Titlebar {
+            target: tile.window().id().clone(),
+            rect: titlebar,
+            ipc_rect: Rectangle::new(titlebar.loc - ipc_origin, titlebar.size),
+            title: tile.window().title(),
+            marks: tile.window().marks(),
+            state: TitlebarState::Unfocused,
+            visible: true,
+        },
+    );
+    result.titlebar_attached.insert(id);
+}
+
+/// A leaf's content inside its borders. The titlebar occupies the top slot and the side
+/// borders begin below it, matching arrange_container() (sway/desktop/transaction.c:409-440).
+fn content_rect(
+    mut rect: Rectangle<f64, Logical>,
+    edges: ResizeEdge,
+    width: f64,
+    top: f64,
+) -> Rectangle<f64, Logical> {
+    let left = width * f64::from(edges.contains(ResizeEdge::LEFT));
+    let right = width * f64::from(edges.contains(ResizeEdge::RIGHT));
     let bottom = width * f64::from(edges.contains(ResizeEdge::BOTTOM));
     rect.loc += Point::from((left, top));
     rect.size.w = (rect.size.w - left - right).max(0.);
     rect.size.h = (rect.size.h - top - bottom).max(0.);
-    result.leaf_contents.insert(id, rect);
+    rect
+}
+
+/// Each child's share of a linear split. Children hidden under a fullscreen view get none and
+/// the others are renormalised over the visible ones.
+fn visible_shares(
+    mapped_under_fullscreen: &HashSet<NodeId>,
+    children: &[NodeId],
+    percents: &[f64],
+) -> Vec<f64> {
+    if mapped_under_fullscreen.is_empty() {
+        return percents.to_vec();
+    }
+    let visible_total = children
+        .iter()
+        .zip(percents)
+        .filter(|(child, _)| !mapped_under_fullscreen.contains(child))
+        .map(|(_, percent)| percent)
+        .sum::<f64>();
+    children
+        .iter()
+        .zip(percents)
+        .map(|(child, percent)| {
+            if mapped_under_fullscreen.contains(child) {
+                0.
+            } else {
+                *percent / visible_total
+            }
+        })
+        .collect()
+}
+
+/// The rounded corners a linear split's child may draw. With gaps every child is separate and
+/// draws all four; without, only the corners on the split's outer edge stay rounded.
+fn child_corners(
+    parent: DecoratedCorners,
+    index: usize,
+    len: usize,
+    layout: Layout,
+    suppress_gaps: bool,
+) -> DecoratedCorners {
+    if !suppress_gaps {
+        return DecoratedCorners::ALL;
+    }
+    let mut corners = parent;
+    let first = index == 0;
+    let last = index + 1 == len;
+    if layout == Layout::SplitH {
+        corners.top_left &= first;
+        corners.bottom_left &= first;
+        corners.top_right &= last;
+        corners.bottom_right &= last;
+    } else {
+        corners.top_left &= first;
+        corners.top_right &= first;
+        corners.bottom_left &= last;
+        corners.bottom_right &= last;
+    }
+    corners
 }
 
 /// A horizontal or vertical split container being laid out.
@@ -442,19 +559,12 @@ fn assign_linear_split<W: LayoutElement>(
         suppress_gaps,
         ..
     } = assignment;
-    let gaps = context.gaps;
-    let mapped_under_fullscreen = context.mapped_under_fullscreen;
-
-    let extent = match layout {
-        Layout::SplitH => rect.size.w,
-        Layout::SplitV => rect.size.h,
-        _ => unreachable!(),
-    };
+    let extent = axis_extent(layout, rect);
     let gap = if suppress_gaps {
         0.
     } else {
         split_gap(
-            gaps,
+            context.gaps,
             extent,
             children.len(),
             if layout == Layout::SplitH { 100. } else { 60. },
@@ -466,20 +576,8 @@ fn assign_linear_split<W: LayoutElement>(
         Layout::SplitV => rect.loc.y,
         _ => unreachable!(),
     };
-    let visible_total = children
-        .iter()
-        .zip(percents)
-        .filter(|(child, _)| !mapped_under_fullscreen.contains(child))
-        .map(|(_, percent)| percent)
-        .sum::<f64>();
-    for (index, (child, percent)) in children.iter().zip(percents).enumerate() {
-        let percent = if mapped_under_fullscreen.contains(child) {
-            0.
-        } else if mapped_under_fullscreen.is_empty() {
-            *percent
-        } else {
-            *percent / visible_total
-        };
+    let shares = visible_shares(context.mapped_under_fullscreen, children, percents);
+    for (index, (child, percent)) in children.iter().zip(shares).enumerate() {
         let extent = available.max(0.) * percent;
         let child_rect = match layout {
             Layout::SplitH => Rectangle::new(
@@ -492,22 +590,13 @@ fn assign_linear_split<W: LayoutElement>(
             ),
             _ => unreachable!(),
         };
-        let mut child_corners = if suppress_gaps {
-            decorated_corners
-        } else {
-            DecoratedCorners::ALL
-        };
-        if suppress_gaps && layout == Layout::SplitH {
-            child_corners.top_left &= index == 0;
-            child_corners.bottom_left &= index == 0;
-            child_corners.top_right &= index + 1 == children.len();
-            child_corners.bottom_right &= index + 1 == children.len();
-        } else if suppress_gaps {
-            child_corners.top_left &= index == 0;
-            child_corners.top_right &= index == 0;
-            child_corners.bottom_left &= index + 1 == children.len();
-            child_corners.bottom_right &= index + 1 == children.len();
-        }
+        let child_corners = child_corners(
+            decorated_corners,
+            index,
+            children.len(),
+            layout,
+            suppress_gaps,
+        );
         assign(
             context,
             Assignment {
@@ -550,52 +639,19 @@ fn assign_strip<W: LayoutElement>(
     content.loc.y += total_height;
     content.size.h = (content.size.h - total_height).max(0.);
     for (index, child) in children.iter().enumerate() {
-        if let Some((leaf, target, title)) = first_window(nodes, title_formats, *child) {
-            let title_rect = if layout == Layout::Tabbed {
-                let width = rect.size.w / count.max(1) as f64;
-                Rectangle::new(
-                    Point::from((rect.loc.x + width * index as f64, rect.loc.y)),
-                    Size::from((width, titlebar_height)),
-                )
-            } else {
-                Rectangle::new(
-                    Point::from((rect.loc.x, rect.loc.y + titlebar_height * index as f64)),
-                    Size::from((rect.size.w, titlebar_height)),
-                )
-            };
-            let titlebar_corners = match layout {
-                Layout::Tabbed => DecoratedCorners {
-                    top_left: index == 0 && decorated_corners.top_left,
-                    top_right: index + 1 == count && decorated_corners.top_right,
-                    ..DecoratedCorners::NONE
+        if let Some(entry) = first_window(nodes, title_formats, *child) {
+            emit_strip_titlebar(
+                context,
+                layout,
+                rect,
+                StripSlot {
+                    child: *child,
+                    index,
+                    count,
                 },
-                Layout::Stacked if index == 0 => DecoratedCorners {
-                    top_left: decorated_corners.top_left,
-                    top_right: decorated_corners.top_right,
-                    ..DecoratedCorners::NONE
-                },
-                Layout::Stacked => DecoratedCorners::NONE,
-                _ => unreachable!(),
-            };
-            result.titlebar_leaves.insert(*child, leaf);
-            result.titlebar_corners.insert(*child, titlebar_corners);
-            result.titlebars.insert(
-                *child,
-                Titlebar {
-                    target,
-                    rect: title_rect,
-                    ipc_rect: Rectangle::new(title_rect.loc - rect.loc, title_rect.size),
-                    title,
-                    marks: nodes
-                        .get(&leaf)
-                        .and_then(|node| match &node.value {
-                            TreeNode::Leaf { tile } => Some(tile.window().marks()),
-                            TreeNode::Split { .. } => None,
-                        })
-                        .unwrap_or_default(),
-                    state: TitlebarState::Unfocused,
-                    visible: fullscreen.is_empty(),
-                },
+                entry,
+                decorated_corners,
+                result,
             );
         }
         assign(
@@ -616,6 +672,79 @@ fn assign_strip<W: LayoutElement>(
             result,
         );
     }
+}
+
+/// One entry's position in a tabbed or stacked strip.
+struct StripSlot {
+    child: NodeId,
+    index: usize,
+    count: usize,
+}
+
+/// Records a strip entry: tabs share the strip's width, stacked entries take one row each, and
+/// only the strip's outer top corners stay rounded.
+fn emit_strip_titlebar<W: LayoutElement>(
+    context: &AssignContext<'_, W>,
+    layout: Layout,
+    rect: Rectangle<f64, Logical>,
+    slot: StripSlot,
+    (leaf, target, title): (NodeId, W::Id, String),
+    decorated_corners: DecoratedCorners,
+    result: &mut Geometry<W::Id>,
+) {
+    let StripSlot {
+        child,
+        index,
+        count,
+    } = slot;
+    let titlebar_height = context.titlebar_height;
+    let title_rect = if layout == Layout::Tabbed {
+        let width = rect.size.w / count.max(1) as f64;
+        Rectangle::new(
+            Point::from((rect.loc.x + width * index as f64, rect.loc.y)),
+            Size::from((width, titlebar_height)),
+        )
+    } else {
+        Rectangle::new(
+            Point::from((rect.loc.x, rect.loc.y + titlebar_height * index as f64)),
+            Size::from((rect.size.w, titlebar_height)),
+        )
+    };
+    let titlebar_corners = match layout {
+        Layout::Tabbed => DecoratedCorners {
+            top_left: index == 0 && decorated_corners.top_left,
+            top_right: index + 1 == count && decorated_corners.top_right,
+            ..DecoratedCorners::NONE
+        },
+        Layout::Stacked if index == 0 => DecoratedCorners {
+            top_left: decorated_corners.top_left,
+            top_right: decorated_corners.top_right,
+            ..DecoratedCorners::NONE
+        },
+        Layout::Stacked => DecoratedCorners::NONE,
+        Layout::SplitH | Layout::SplitV => unreachable!("only tabbed and stacked draw strips"),
+    };
+    result.titlebar_leaves.insert(child, leaf);
+    result.titlebar_corners.insert(child, titlebar_corners);
+    result.titlebars.insert(
+        child,
+        Titlebar {
+            target,
+            rect: title_rect,
+            ipc_rect: Rectangle::new(title_rect.loc - rect.loc, title_rect.size),
+            title,
+            marks: context
+                .nodes
+                .get(&leaf)
+                .and_then(|node| match &node.value {
+                    TreeNode::Leaf { tile } => Some(tile.window().marks()),
+                    TreeNode::Split { .. } => None,
+                })
+                .unwrap_or_default(),
+            state: TitlebarState::Unfocused,
+            visible: context.fullscreen.is_empty(),
+        },
+    );
 }
 
 fn assign<W: LayoutElement>(
