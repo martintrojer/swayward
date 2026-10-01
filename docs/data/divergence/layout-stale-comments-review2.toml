@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/mod.rs", "src/layout/monitor.rs", "src/layout/floating_tree.rs", "src/layout/floating_tree/rendering.rs"]
+what = "rewrite stale layout comments: drop history about niri's trailing placeholder workspace, replace plan-step language on FloatingLayout, correct doc comments that named a missing `tiles` field or claimed clamping that recompute_logical_pos does not do, and point the closing-window FIXME at its task."
+why = "The comments described removed niri mechanics or contradicted the code, which misleads readers of swayward-owned layout code."

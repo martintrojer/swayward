@@ -333,8 +333,7 @@ impl<W: LayoutElement> Monitor<W> {
         }
 
         // A monitor always needs one workspace to be active on, but only one:
-        // sway creates further workspaces on demand, and niri's always-empty
-        // trailing placeholder is an affordance of its scrolling strip.
+        // sway creates further workspaces on demand.
         if workspaces.is_empty() {
             let mut ws = Workspace::new(output.clone(), clock.clone(), options.clone());
             // Sway creates each output's initial workspace before applying the

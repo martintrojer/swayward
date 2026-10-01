@@ -933,8 +933,7 @@ impl<W: LayoutElement> Layout<W> {
                 monitor.overview_open = self.overview_open;
                 monitor.set_overview_progress(self.overview_progress.as_ref());
                 // Monitor::new adopts workspaces reclaimed from the primary
-                // monitor, which can include one holding windows, so the new
-                // monitor need not end in an empty placeholder.
+                // monitor; drop any that are empty and inactive.
                 monitor.reap_empty_workspaces();
                 monitors.push(monitor);
                 if restores_focused_workspace {
@@ -1506,8 +1505,6 @@ impl<W: LayoutElement> Layout<W> {
 
     pub fn find_workspace_by_number(&self, number: &str) -> Option<(usize, &Workspace<W>)> {
         // Prefer a named workspace when duplicate numeric identities exist.
-        // This preserves the resolution order established before the trailing
-        // placeholder workspace was removed.
         let mut candidates = self
             .workspaces()
             .filter(|(_, _, workspace)| {

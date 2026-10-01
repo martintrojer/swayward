@@ -89,13 +89,13 @@ pub(super) fn apply_position_change(
     }
 }
 
-/// Ordered floating roots. Step 1 stores one window in each root.
+/// The floating layer: single-window roots and nested container roots.
 #[derive(Debug)]
 pub struct FloatingLayout<W: LayoutElement> {
     /// Single-window root entries in top-to-bottom order.
     entries: Vec<FloatingEntry<W>>,
 
-    /// Nested container roots. Commands keep these internal until IPC serialization is complete.
+    /// Nested container roots, created by `floating enable` on a container.
     tree_entries: Vec<FloatingTreeEntry<W>>,
 
     /// Id of the active window.
@@ -103,7 +103,8 @@ pub struct FloatingLayout<W: LayoutElement> {
     /// The active window is not necessarily the topmost window. Focus-follows-mouse should
     /// activate a window, but not bring it to the top, because that's very annoying.
     ///
-    /// This is always set to `Some()` when `tiles` isn't empty.
+    /// Removing the active window hands activation to another floating window, so this is
+    /// `Some()` while `entries` or `tree_entries` holds a window.
     active_window_id: Option<W::Id>,
 
     /// Ongoing interactive resize.
@@ -308,7 +309,6 @@ impl Data {
     pub fn set_logical_pos(&mut self, logical_pos: Point<f64, Logical>) {
         self.pos = Self::logical_to_size_frac_in_working_area(self.working_area, logical_pos);
 
-        // This will clamp the logical position to the current working area.
         self.recompute_logical_pos();
     }
 

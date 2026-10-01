@@ -14,7 +14,8 @@ impl<W: LayoutElement> FloatingLayout<W> {
 
         // Draw the closing windows on top of the other windows.
         //
-        // FIXME: I guess this should rather preserve the stacking order when the window is closed.
+        // Preserving the stacking order instead is tracked by mu task
+        // layout-closing-window-stack-order.
         if layer.is_normal() {
             for closing in self.closing_windows.iter().rev() {
                 let elem = closing.render(ctx.as_gles(), view_rect, scale);
