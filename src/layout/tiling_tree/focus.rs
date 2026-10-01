@@ -224,7 +224,7 @@ impl<W: LayoutElement> TilingTree<W> {
                 )
             );
             if matching_axis {
-                let branch = if matches!(dir, Direction::Left | Direction::Up) {
+                let branch = if dir.is_backwards() {
                     children.last()
                 } else {
                     children.first()
@@ -367,11 +367,8 @@ impl<W: LayoutElement> TilingTree<W> {
     fn directional_focus_target(&self, dir: Direction, allow_wrap: bool) -> Option<NodeId> {
         let mut current = self.focus?;
         let barrier = self.fullscreen_node();
-        let direction_layout = match dir {
-            Direction::Left | Direction::Right => Layout::SplitH,
-            Direction::Up | Direction::Down => Layout::SplitV,
-        };
-        let backwards = matches!(dir, Direction::Left | Direction::Up);
+        let direction_layout = dir.axis();
+        let backwards = dir.is_backwards();
         let mut wrap = None;
 
         while let Some(parent) = self.nodes.get(&current).and_then(|node| node.parent) {

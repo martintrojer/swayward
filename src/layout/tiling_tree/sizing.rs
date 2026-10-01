@@ -326,10 +326,7 @@ impl<W: LayoutElement> TilingTree<W> {
                         geometries.titlebar_attached.contains(id),
                         geometries.titlebar_owned_by_parent.contains(id),
                     );
-                    let mode = self.pending_modes.get(id).copied().unwrap_or(PendingMode {
-                        fullscreen: None,
-                        maximized: false,
-                    });
+                    let mode = self.pending_modes.get(id).copied().unwrap_or_default();
                     if mode.fullscreen.is_some() {
                         tile.request_fullscreen(animate, transaction);
                     } else if mode.maximized {

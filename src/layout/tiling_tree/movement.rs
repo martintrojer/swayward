@@ -97,17 +97,7 @@ impl<W: LayoutElement> TilingTree<W> {
             .get(&second)
             .and_then(|mode| mode.fullscreen);
         for (id, fullscreen) in [(first, second_fullscreen), (second, first_fullscreen)] {
-            if let Some(mode) = self.pending_modes.get_mut(&id) {
-                mode.fullscreen = fullscreen;
-            } else if let Some(fullscreen) = fullscreen {
-                self.pending_modes.insert(
-                    id,
-                    PendingMode {
-                        fullscreen: Some(fullscreen),
-                        maximized: false,
-                    },
-                );
-            }
+            self.set_pending_fullscreen(id, fullscreen);
         }
     }
 
@@ -158,22 +148,10 @@ impl<W: LayoutElement> TilingTree<W> {
         self.insert_child(parent, id, after);
         self.reap_empty_from(old_parent);
         self.compact_tree();
-        self.restore_moved_focus_history(moved);
+        self.reinsert_focus_history(moved, usize::from(self.focus.is_some()));
         self.animate_geometry_changes(old, None);
         self.request_window_sizes();
         true
-    }
-
-    fn restore_moved_focus_history(&mut self, moved: Vec<W::Id>) {
-        let insertion = usize::from(self.focus.is_some());
-        for window in moved.into_iter().rev() {
-            let Some(leaf) = self.node_for_window(&window) else {
-                continue;
-            };
-            self.focus_history.retain(|candidate| *candidate != leaf);
-            self.focus_history
-                .insert(insertion.min(self.focus_history.len()), leaf);
-        }
     }
 
     pub fn move_direction(&mut self, id: NodeId, direction: Direction) -> bool {
@@ -236,10 +214,7 @@ impl<W: LayoutElement> TilingTree<W> {
             return false;
         }
         self.interactive_resize = None;
-        let wanted_layout = match direction {
-            Direction::Left | Direction::Right => Layout::SplitH,
-            Direction::Up | Direction::Down => Layout::SplitV,
-        };
+        let wanted_layout = direction.axis();
         let boundary_root = self.resident_root().unwrap_or(self.root);
         if self.windows().nth(1).is_none() {
             if boundary_root == self.root {
@@ -251,7 +226,7 @@ impl<W: LayoutElement> TilingTree<W> {
             self.set_layout(self.root, wanted_layout);
             return false;
         }
-        let backwards = matches!(direction, Direction::Left | Direction::Up);
+        let backwards = direction.is_backwards();
         let mut branch = id;
         let mut parent = self.nodes.get(&id).and_then(|node| node.parent);
         let mut exhausted_axis = false;
@@ -403,11 +378,8 @@ impl<W: LayoutElement> TilingTree<W> {
         direction: Direction,
         descended_perpendicularly: bool,
     ) -> bool {
-        let wanted_layout = match direction {
-            Direction::Left | Direction::Right => Layout::SplitH,
-            Direction::Up | Direction::Down => Layout::SplitV,
-        };
-        let backwards = matches!(direction, Direction::Left | Direction::Up);
+        let wanted_layout = direction.axis();
+        let backwards = direction.is_backwards();
         match self.nodes.get(&destination).map(|node| &node.value) {
             Some(TreeNode::Leaf { .. }) => {
                 let Some(parent) = self.nodes.get(&destination).and_then(|node| node.parent) else {

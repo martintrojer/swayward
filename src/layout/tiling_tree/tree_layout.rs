@@ -99,16 +99,8 @@ impl<W: LayoutElement> TilingTree<W> {
                 *current = layout;
             }
         } else {
-            self.wrap_split_child(id, parent, layout);
+            self.wrap_node(id, layout);
         }
-    }
-
-    fn wrap_split_child(&mut self, id: NodeId, parent: NodeId, layout: Layout) {
-        debug_assert_eq!(
-            self.nodes.get(&id).and_then(|node| node.parent),
-            Some(parent)
-        );
-        self.wrap_node(id, layout);
     }
 
     pub fn set_layout(&mut self, id: NodeId, layout: Layout) {
@@ -219,13 +211,7 @@ impl<W: LayoutElement> TilingTree<W> {
             .get(&parent)
             .and_then(|mode| mode.fullscreen)
         {
-            self.pending_modes
-                .entry(id)
-                .or_insert(PendingMode {
-                    fullscreen: None,
-                    maximized: false,
-                })
-                .fullscreen = Some(fullscreen);
+            self.set_pending_fullscreen(id, Some(fullscreen));
         }
         if self.focus == Some(parent) {
             self.set_focus_id(Some(id));
@@ -447,13 +433,7 @@ impl<W: LayoutElement> TilingTree<W> {
             .get_mut(&id)
             .and_then(|mode| mode.fullscreen.take())
         {
-            self.pending_modes
-                .entry(wrapper)
-                .or_insert(PendingMode {
-                    fullscreen: None,
-                    maximized: false,
-                })
-                .fullscreen = Some(fullscreen);
+            self.set_pending_fullscreen(wrapper, Some(fullscreen));
         }
         wrapper
     }

@@ -160,8 +160,8 @@ impl<W: LayoutElement> TilingTree<W> {
             self.pending_modes.insert(
                 id,
                 PendingMode {
-                    fullscreen: None,
                     maximized: true,
+                    ..PendingMode::default()
                 },
             );
         }
@@ -580,10 +580,7 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub(super) fn wrap_root_for_direction(&mut self, id: NodeId, direction: Direction) {
-        let layout = match direction {
-            Direction::Left | Direction::Right => Layout::SplitH,
-            Direction::Up | Direction::Down => Layout::SplitV,
-        };
+        let layout = direction.axis();
         let old_value = std::mem::replace(
             &mut self
                 .nodes
@@ -617,7 +614,7 @@ impl<W: LayoutElement> TilingTree<W> {
             .get_mut(&old)
             .expect("invariant: the freshly allocated old root remains in the arena")
             .parent = Some(self.root);
-        let moving_first = matches!(direction, Direction::Left | Direction::Up);
+        let moving_first = direction.is_backwards();
         let (children, percents) = if moving_first {
             (vec![id, old], vec![0.5, 0.5])
         } else {
@@ -761,13 +758,7 @@ impl<W: LayoutElement> TilingTree<W> {
                 .expect("invariant: a split's only child is present in the arena")
                 .parent = Some(parent);
             if let Some(fullscreen) = self.pending_modes.get(&id).and_then(|mode| mode.fullscreen) {
-                self.pending_modes
-                    .entry(child)
-                    .or_insert(PendingMode {
-                        fullscreen: None,
-                        maximized: false,
-                    })
-                    .fullscreen = Some(fullscreen);
+                self.set_pending_fullscreen(child, Some(fullscreen));
             }
             if self.focus == Some(id) {
                 self.set_focus_id(Some(child));
@@ -893,13 +884,7 @@ impl<W: LayoutElement> TilingTree<W> {
             .into_iter()
             .find_map(|id| self.pending_modes.get(&id).and_then(|mode| mode.fullscreen))
         {
-            self.pending_modes
-                .entry(parent)
-                .or_insert(PendingMode {
-                    fullscreen: None,
-                    maximized: false,
-                })
-                .fullscreen = Some(fullscreen);
+            self.set_pending_fullscreen(parent, Some(fullscreen));
         }
         if self.focus == Some(id) || self.focus == Some(child) {
             self.set_focus_id(Some(replacement));

@@ -1,5 +1,19 @@
 use super::*;
 
+/// The layout a new or emptied workspace root takes: the configured orientation, or for `auto`
+/// SplitV on a portrait output and SplitH otherwise.
+fn default_layout(
+    orientation: swayward_config::DefaultOrientation,
+    view_size: Size<f64, Logical>,
+) -> Layout {
+    match orientation {
+        swayward_config::DefaultOrientation::Horizontal => Layout::SplitH,
+        swayward_config::DefaultOrientation::Vertical => Layout::SplitV,
+        swayward_config::DefaultOrientation::Auto if view_size.h > view_size.w => Layout::SplitV,
+        swayward_config::DefaultOrientation::Auto => Layout::SplitH,
+    }
+}
+
 impl<W: LayoutElement> TilingTree<W> {
     pub fn new(
         view_size: Size<f64, Logical>,
@@ -10,14 +24,7 @@ impl<W: LayoutElement> TilingTree<W> {
         options: Rc<Options>,
     ) -> Self {
         let root = NodeId(NODE_ID_COUNTER.next());
-        let root_layout = match options.layout.default_orientation {
-            swayward_config::DefaultOrientation::Horizontal => Layout::SplitH,
-            swayward_config::DefaultOrientation::Vertical => Layout::SplitV,
-            swayward_config::DefaultOrientation::Auto if view_size.h > view_size.w => {
-                Layout::SplitV
-            }
-            swayward_config::DefaultOrientation::Auto => Layout::SplitH,
-        };
+        let root_layout = default_layout(options.layout.default_orientation, view_size);
         let nodes = HashMap::from([(
             root,
             Node {
@@ -136,16 +143,7 @@ impl<W: LayoutElement> TilingTree<W> {
         assert!(self.is_empty());
         let layout = match self.preserved_auto_layout {
             Some(layout) => layout,
-            None => match self.options.layout.default_orientation {
-                swayward_config::DefaultOrientation::Horizontal => Layout::SplitH,
-                swayward_config::DefaultOrientation::Vertical => Layout::SplitV,
-                swayward_config::DefaultOrientation::Auto
-                    if self.view_size.h > self.view_size.w =>
-                {
-                    Layout::SplitV
-                }
-                swayward_config::DefaultOrientation::Auto => Layout::SplitH,
-            },
+            None => default_layout(self.options.layout.default_orientation, self.view_size),
         };
         self.set_layout(self.root, layout);
         self.empty_representation_layout = Some(layout);
@@ -176,16 +174,9 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub(super) fn update_empty_auto_layout(&mut self, view_size: Size<f64, Logical>) {
-        let old_auto_layout = if self.view_size.h > self.view_size.w {
-            Layout::SplitV
-        } else {
-            Layout::SplitH
-        };
-        let new_auto_layout = if view_size.h > view_size.w {
-            Layout::SplitV
-        } else {
-            Layout::SplitH
-        };
+        let auto = swayward_config::DefaultOrientation::Auto;
+        let old_auto_layout = default_layout(auto, self.view_size);
+        let new_auto_layout = default_layout(auto, view_size);
         if self.preserved_auto_layout.is_none()
             && self.is_empty()
             && self.options.layout.default_orientation == swayward_config::DefaultOrientation::Auto

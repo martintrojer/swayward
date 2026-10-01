@@ -69,13 +69,7 @@ impl<W: LayoutElement> TilingTree<W> {
             .get_mut(&id)
             .expect("invariant: a freshly inserted detached node remains in the arena")
             .parent = Some(slot.parent);
-        for window in subtree.focus_history.into_iter().rev() {
-            if let Some(leaf) = self.node_for_window(&window) {
-                self.focus_history.retain(|candidate| *candidate != leaf);
-                self.focus_history
-                    .insert(slot.focus_rank.min(self.focus_history.len()), leaf);
-            }
-        }
+        self.reinsert_focus_history(subtree.focus_history, slot.focus_rank);
         if slot.focused || self.focus.is_none() {
             self.set_focus_id(self.focused_leaf_in(id));
         }
@@ -333,15 +327,20 @@ impl<W: LayoutElement> TilingTree<W> {
         self.request_window_sizes();
     }
 
-    pub(super) fn restore_transferred_focus(&mut self, focus_history: Vec<W::Id>) {
-        let insertion = usize::from(self.focus.is_some());
-        for window in focus_history.into_iter().rev() {
+    /// Moves the leaves of `windows` to focus-history rank `rank`, keeping their relative
+    /// order; windows without a leaf in this tree are skipped.
+    pub(super) fn reinsert_focus_history(&mut self, windows: Vec<W::Id>, rank: usize) {
+        for window in windows.into_iter().rev() {
             if let Some(leaf) = self.node_for_window(&window) {
                 self.focus_history.retain(|candidate| *candidate != leaf);
                 self.focus_history
-                    .insert(insertion.min(self.focus_history.len()), leaf);
+                    .insert(rank.min(self.focus_history.len()), leaf);
             }
         }
+    }
+
+    pub(super) fn restore_transferred_focus(&mut self, focus_history: Vec<W::Id>) {
+        self.reinsert_focus_history(focus_history, usize::from(self.focus.is_some()));
         if self.focus.is_none() {
             self.set_focus_id(self.focused_leaf_in(self.root));
         }

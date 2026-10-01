@@ -117,18 +117,33 @@ enum DetachedNode<W: LayoutElement> {
 }
 
 impl<W: LayoutElement> DetachedNode<W> {
-    fn has_fullscreen(&self) -> bool {
+    fn pending_mode(&self) -> Option<PendingMode> {
         match self {
-            Self::Split {
-                children,
-                pending_mode,
-                ..
-            } => {
-                pending_mode.is_some_and(|mode| mode.fullscreen.is_some())
-                    || children.iter().any(Self::has_fullscreen)
-            }
-            Self::Leaf { pending_mode, .. } => {
-                pending_mode.is_some_and(|mode| mode.fullscreen.is_some())
+            Self::Split { pending_mode, .. } | Self::Leaf { pending_mode, .. } => *pending_mode,
+        }
+    }
+
+    fn pending_mode_mut(&mut self) -> &mut Option<PendingMode> {
+        match self {
+            Self::Split { pending_mode, .. } | Self::Leaf { pending_mode, .. } => pending_mode,
+        }
+    }
+
+    fn fullscreen(&self) -> Option<FullscreenMode> {
+        self.pending_mode().and_then(|mode| mode.fullscreen)
+    }
+
+    fn has_fullscreen(&self) -> bool {
+        self.fullscreen().is_some()
+            || matches!(self, Self::Split { children, .. } if children.iter().any(Self::has_fullscreen))
+    }
+
+    /// Calls `f` on this node and then on every descendant, depth first.
+    fn walk_mut(&mut self, f: &mut impl FnMut(&mut Self)) {
+        f(self);
+        if let Self::Split { children, .. } = self {
+            for child in children {
+                child.walk_mut(f);
             }
         }
     }
@@ -168,59 +183,26 @@ impl<W: LayoutElement> DetachedSubtree<W> {
         self.node.has_fullscreen()
     }
 
+    /// Swaps which subtree root holds fullscreen, clearing fullscreen everywhere below the roots.
     pub fn swap_fullscreen_position(&mut self, other: &mut Self) {
-        fn root_fullscreen<W: LayoutElement>(node: &DetachedNode<W>) -> Option<FullscreenMode> {
-            match node {
-                DetachedNode::Split { pending_mode, .. }
-                | DetachedNode::Leaf { pending_mode, .. } => {
-                    pending_mode.and_then(|mode| mode.fullscreen)
+        let first = self.node.fullscreen();
+        let second = other.node.fullscreen();
+        for node in [&mut self.node, &mut other.node] {
+            node.walk_mut(&mut |node| {
+                if let Some(mode) = node.pending_mode_mut() {
+                    mode.fullscreen = None;
                 }
-            }
+            });
         }
-        fn set_root_fullscreen<W: LayoutElement>(
-            node: &mut DetachedNode<W>,
-            fullscreen: Option<FullscreenMode>,
-        ) {
-            match node {
-                DetachedNode::Split { pending_mode, .. }
-                | DetachedNode::Leaf { pending_mode, .. } => {
-                    pending_mode
-                        .get_or_insert(PendingMode {
-                            fullscreen: None,
-                            maximized: false,
-                        })
-                        .fullscreen = fullscreen;
-                }
-            }
-        }
-        fn clear_fullscreen<W: LayoutElement>(node: &mut DetachedNode<W>) {
-            match node {
-                DetachedNode::Split {
-                    children,
-                    pending_mode,
-                    ..
-                } => {
-                    if let Some(mode) = pending_mode {
-                        mode.fullscreen = None;
-                    }
-                    for child in children {
-                        clear_fullscreen(child);
-                    }
-                }
-                DetachedNode::Leaf { pending_mode, .. } => {
-                    if let Some(mode) = pending_mode {
-                        mode.fullscreen = None;
-                    }
-                }
-            }
-        }
-
-        let first = root_fullscreen(&self.node);
-        let second = root_fullscreen(&other.node);
-        clear_fullscreen(&mut self.node);
-        clear_fullscreen(&mut other.node);
-        set_root_fullscreen(&mut self.node, second);
-        set_root_fullscreen(&mut other.node, first);
+        self.node
+            .pending_mode_mut()
+            .get_or_insert_default()
+            .fullscreen = second;
+        other
+            .node
+            .pending_mode_mut()
+            .get_or_insert_default()
+            .fullscreen = first;
     }
 }
 
@@ -298,13 +280,28 @@ pub enum Direction {
     Down,
 }
 
+impl Direction {
+    /// The split layout whose children are ordered along this direction.
+    pub(super) fn axis(self) -> Layout {
+        match self {
+            Direction::Left | Direction::Right => Layout::SplitH,
+            Direction::Up | Direction::Down => Layout::SplitV,
+        }
+    }
+
+    /// Whether this direction points toward lower child indices.
+    pub(super) fn is_backwards(self) -> bool {
+        matches!(self, Direction::Left | Direction::Up)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FullscreenMode {
     Workspace = 1,
     Global = 2,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct PendingMode {
     fullscreen: Option<FullscreenMode>,
     maximized: bool,
