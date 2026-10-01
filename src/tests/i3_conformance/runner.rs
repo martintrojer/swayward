@@ -154,46 +154,18 @@ fn run_i3_file(test: &str) -> I3Run {
     fixture.add_output(1, (1280, 800));
     let client = fixture.add_client();
 
+    let scratch = I3Scratch::new();
     let handle = fixture.swayward().event_loop.clone();
-    let ipc_dir = socket_path("ipc");
-    std::fs::create_dir(&ipc_dir).unwrap();
-    let ipc_socket = ipc_dir.join("ipc.sock");
+    let ipc_socket = scratch.path("ipc.sock");
     let ipc_server =
         crate::ipc::server::IpcServer::start_at(&handle, Some(ipc_socket.clone())).unwrap();
     fixture.swayward().ipc_server = Some(ipc_server);
     fixture.niri_state().ipc_keyboard_layouts_changed();
     fixture.niri_state().ipc_refresh_layout();
 
-    let control_path = socket_path("control");
+    let control_path = scratch.path("control.sock");
     let control = UnixListener::bind(&control_path).unwrap();
     control.set_nonblocking(true).unwrap();
-    // Remove the socket even when a test panics or times out. Without this the
-    // whole suite leaks one file per conformance test per run, and a run left
-    // over 7000 of them in the temp directory. Unix socket paths are limited to
-    // about 108 bytes, so an accumulating temp directory eventually makes bind
-    // fail in whichever file happens to run next.
-    struct Scratch {
-        files: Vec<PathBuf>,
-        dirs: Vec<PathBuf>,
-    }
-    impl Drop for Scratch {
-        fn drop(&mut self) {
-            for path in &self.files {
-                let _ = std::fs::remove_file(path);
-            }
-            // remove_dir_all: the IPC server's socket still sits inside the
-            // directory when this runs, so a plain remove_dir fails and every
-            // conformance test left one directory behind (about 16,000 after
-            // a day of gate runs).
-            for path in &self.dirs {
-                let _ = std::fs::remove_dir_all(path);
-            }
-        }
-    }
-    let mut scratch = Scratch {
-        files: vec![control_path.clone()],
-        dirs: vec![ipc_dir],
-    };
 
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let oracle = oracle_i3_dir();
@@ -229,7 +201,7 @@ fn run_i3_file(test: &str) -> I3Run {
         test,
         client,
         loaded_config_source: None,
-        scratch: &mut scratch.files,
+        scratch: &scratch,
         initially_floating: HashSet::new(),
     };
     loop {

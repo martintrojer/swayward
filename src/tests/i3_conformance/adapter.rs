@@ -1,19 +1,38 @@
-fn socket_path(kind: &str) -> PathBuf {
-    std::env::temp_dir().join(format!(
-        "swayward-i3-{kind}-{}-{}.sock",
-        std::process::id(),
-        NEXT_SOCKET.fetch_add(1, Ordering::Relaxed)
-    ))
+struct I3Scratch {
+    path: PathBuf,
 }
 
-/// A uniquely named scratch file. Callers are responsible for removing it; the
-/// translated config outlives its creator because the reload watcher reads it.
-fn scratch_path(kind: &str, extension: &str) -> PathBuf {
-    std::env::temp_dir().join(format!(
-        "swayward-i3-{kind}-{}-{}.{extension}",
-        std::process::id(),
-        NEXT_SOCKET.fetch_add(1, Ordering::Relaxed)
-    ))
+impl I3Scratch {
+    fn new() -> Self {
+        let root = std::env::var_os("SWAYWARD_TEST_TMPDIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("/var/tmp"));
+        let path = root.join(format!(
+            "swayward-i3.{}.{}",
+            std::process::id(),
+            NEXT_SOCKET.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir(&path).unwrap();
+        Self { path }
+    }
+
+    fn path(&self, name: &str) -> PathBuf {
+        self.path.join(name)
+    }
+
+    fn unique_path(&self, kind: &str, extension: &str) -> PathBuf {
+        self.path.join(format!(
+            "{kind}.{}.{extension}",
+            NEXT_SOCKET.fetch_add(1, Ordering::Relaxed)
+        ))
+    }
+}
+
+impl Drop for I3Scratch {
+    fn drop(&mut self) {
+        // The IPC server socket can still be present when the fixture drops.
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
 }
 
 fn requested_size(request: &Value) -> Option<(u16, u16)> {
@@ -309,9 +328,10 @@ fn only_ignorable_translation_warnings(test: &str, stderr: &str) -> bool {
 fn translate_config_file(
     test: &str,
     config: &str,
+    scratch: &I3Scratch,
 ) -> Result<(PathBuf, swayward_config::Config), String> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = scratch_path("config", "kdl");
+    let path = scratch.unique_path("config", "kdl");
     let config = config
         .lines()
         .filter(|line| {
@@ -339,7 +359,7 @@ fn translate_config_file(
         return Err(format!("i3 config translation was incomplete:\n{stderr}"));
     }
     let translated = String::from_utf8(output.stdout).map_err(|error| error.to_string())?;
-    let path = scratch_path("translated-config", "kdl");
+    let path = scratch.unique_path("translated-config", "kdl");
     std::fs::write(&path, translated).map_err(|error| error.to_string())?;
     let config = match swayward_config::Config::load(&path).config {
         Ok(config) => config,
@@ -353,9 +373,8 @@ fn translate_config_file(
 }
 
 fn translate_config(test: &str, config: &str) -> Result<swayward_config::Config, String> {
-    let (path, config) = translate_config_file(test, config)?;
-    let _ = std::fs::remove_file(path);
-    Ok(config)
+    let scratch = I3Scratch::new();
+    translate_config_file(test, config, &scratch).map(|(_, config)| config)
 }
 
 fn configure_client_state_oracle(config: &mut swayward_config::Config, test: &str) {
@@ -438,20 +457,19 @@ struct Session<'a> {
     test: &'a str,
     client: super::client::ClientId,
     loaded_config_source: Option<String>,
-    scratch: &'a mut Vec<PathBuf>,
+    scratch: &'a I3Scratch,
     initially_floating: HashSet<u32>,
 }
 
 fn load_config(fixture: &mut Fixture, session: &mut Session, request: &Value) -> Value {
     let source = request["config"].as_str().unwrap();
     let (outputs, path, mut config) =
-        match (fake_outputs(source), translate_config_file(session.test, source)) {
+        match (fake_outputs(source), translate_config_file(session.test, source, session.scratch)) {
             (Ok(outputs), Ok((path, config))) => (outputs, path, config),
             (Err(error), _) | (_, Err(error)) => {
                 return json!({ "success": false, "error": error })
             }
         };
-    session.scratch.push(path.clone());
     if let Some(server) = &fixture.swayward().ipc_server {
         server.set_loaded_config_file_name(path.to_string_lossy().into_owned());
     }

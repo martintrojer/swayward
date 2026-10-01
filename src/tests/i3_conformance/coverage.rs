@@ -314,12 +314,12 @@ fn a_file_loaded_config_keeps_its_per_file_overrides() {
     let mut fixture = Fixture::new();
     fixture.add_output(1, (1280, 800));
     let client = fixture.add_client();
-    let mut scratch = Vec::new();
+    let scratch = I3Scratch::new();
     let mut session = Session {
         test: "257-keypress-group1-fallback.t",
         client,
         loaded_config_source: None,
-        scratch: &mut scratch,
+        scratch: &scratch,
         initially_floating: HashSet::new(),
     };
     let reply = load_config(
@@ -341,9 +341,6 @@ fn a_file_loaded_config_keeps_its_per_file_overrides() {
     let layout = fixture.swayward().config.borrow().input.keyboard.xkb.layout.clone();
     assert_eq!(layout, "us,ru");
 
-    for path in scratch {
-        let _ = std::fs::remove_file(path);
-    }
 }
 
 #[test]
@@ -621,3 +618,15 @@ fn per_file_harness_branch_count_matches_the_audit() {
     );
 }
 
+
+#[test]
+fn i3_scratch_defaults_off_tmpfs_and_removes_its_whole_directory() {
+    let path = {
+        let scratch = I3Scratch::new();
+        let path = scratch.path.clone();
+        assert!(path.starts_with("/var/tmp"));
+        std::fs::write(scratch.path("still-open.sock"), b"socket stand-in").unwrap();
+        path
+    };
+    assert!(!path.exists());
+}
