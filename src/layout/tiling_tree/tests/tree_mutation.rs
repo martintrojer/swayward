@@ -367,7 +367,7 @@ fn removing_a_tile_for_floating_preserves_its_parent_for_reinsertion() {
     let parent = t.nodes[&third].parent.unwrap();
 
     assert_eq!(t.non_root_parent_for_window(&2), Some(parent));
-    let removed = t.remove_tile_preserving_parent(&2).unwrap();
+    let removed = t.remove_tile_without_transaction(&2).unwrap();
     assert!(t.contains(parent));
     let restored = t.add_tile_to_existing_parent(removed, parent, false);
 
@@ -377,7 +377,7 @@ fn removing_a_tile_for_floating_preserves_its_parent_for_reinsertion() {
 
     t.set_focus(restored);
     let parent = t.non_root_parent_for_window(&2).unwrap();
-    let removed = t.remove_tile_preserving_parent(&2).unwrap();
+    let removed = t.remove_tile_without_transaction(&2).unwrap();
     let restored = t.add_tile_to_existing_parent(removed, parent, true);
     assert_eq!(t.focus(), Some(restored));
     assert_eq!(t.nodes[&restored].parent, Some(parent));
@@ -392,7 +392,7 @@ fn removing_last_tile_while_preserving_parent_reaps_empty_split() {
     t.split(first, Layout::SplitV);
     let parent = t.nodes[&first].parent.unwrap();
 
-    t.remove_tile_preserving_parent(&1).unwrap();
+    t.remove_tile_without_transaction(&1).unwrap();
 
     assert!(!t.contains(parent));
     t.check_invariants();

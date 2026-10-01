@@ -230,10 +230,6 @@ impl<W: LayoutElement> TilingTree<W> {
         Some(*tile)
     }
 
-    pub(super) fn remove_tile_node_preserving_parent(&mut self, id: NodeId) -> Option<Tile<W>> {
-        self.remove_tile_node(id)
-    }
-
     pub(super) fn remove_node(&mut self, id: NodeId) -> Option<Node<W>> {
         let node = self.nodes.remove(&id)?;
         self.previous_split_layouts.remove(&id);
@@ -341,9 +337,11 @@ impl<W: LayoutElement> TilingTree<W> {
         Some(tile)
     }
 
-    pub fn remove_tile_preserving_parent(&mut self, window: &W::Id) -> Option<Tile<W>> {
+    /// As `remove_tile`, but resizes the remaining windows without a transaction or an
+    /// animation. Emptied parents are reaped either way.
+    pub fn remove_tile_without_transaction(&mut self, window: &W::Id) -> Option<Tile<W>> {
         let id = self.node_for_window(window)?;
-        let tile = self.remove_tile_node_preserving_parent(id)?;
+        let tile = self.remove_tile_node(id)?;
         self.request_window_sizes();
         Some(tile)
     }

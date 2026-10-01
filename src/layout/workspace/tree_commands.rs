@@ -579,7 +579,7 @@ impl<W: LayoutElement> Workspace<W> {
         if self.floating_is_active.get() {
             return;
         }
-        self.tiling.expand_focused_to_available_width();
+        self.tiling.toggle_full_width();
     }
 
     pub(in crate::layout) fn focus_workspace_node(&mut self) {

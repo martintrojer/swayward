@@ -1,10 +1,6 @@
 use super::*;
 
 impl<W: LayoutElement> TilingTree<W> {
-    pub fn verify_invariants(&self) {
-        self.check_invariants();
-    }
-
     /// Deliberately does NOT assert that the tree holds no squashable split
     /// pair. Sway tolerates one: `cmd_layout` flattens a singleton ancestor and
     /// applies the layout, but never calls `workspace_squash`

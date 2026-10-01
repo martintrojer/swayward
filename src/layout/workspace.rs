@@ -1222,7 +1222,7 @@ impl<W: LayoutElement> Workspace<W> {
         if self.floating_is_active.get() {
             self.floating.toggle_window_width(None, forwards);
         } else {
-            self.tiling.toggle_width(forwards);
+            self.tiling.toggle_window_width(None, forwards);
         }
     }
 
@@ -1475,7 +1475,7 @@ impl<W: LayoutElement> Workspace<W> {
             let rank = self.tiling.focus_rank_for_window(&id);
             let parent = self.tiling.non_root_parent_for_window(&id);
             let mut tile = if parent.is_some() {
-                self.tiling.remove_tile_preserving_parent(&id).unwrap()
+                self.tiling.remove_tile_without_transaction(&id).unwrap()
             } else {
                 self.tiling.remove_tile(&id, Transaction::new()).unwrap()
             };
@@ -2168,7 +2168,7 @@ impl<W: LayoutElement> Workspace<W> {
         assert_eq!(self.working_area, self.tiling.parent_area());
         assert_eq!(&self.clock, self.tiling.clock());
         assert!(Rc::ptr_eq(&self.options, self.tiling.options()));
-        self.tiling.verify_invariants();
+        self.tiling.check_invariants();
 
         assert_eq!(self.view_size, self.floating.view_size());
         assert_eq!(self.working_area, self.floating.working_area());

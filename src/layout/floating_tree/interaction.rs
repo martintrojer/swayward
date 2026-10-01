@@ -290,7 +290,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
                 "floating tree entry must not be empty"
             );
             assert!(entry.tree.contains(entry.root));
-            entry.tree.verify_invariants();
+            entry.tree.check_invariants();
         }
         let mut node_ids = std::collections::HashSet::new();
         for entry in &self.tree_entries {

@@ -59,10 +59,6 @@ impl<W: LayoutElement> TilingTree<W> {
         true
     }
 
-    pub fn toggle_width(&mut self, forwards: bool) {
-        self.toggle_window_width(None, forwards);
-    }
-
     pub fn toggle_full_width(&mut self) {
         let Some(id) = self.focus else { return };
         let Some(rect) = self.geometry(id) else {
@@ -116,15 +112,6 @@ impl<W: LayoutElement> TilingTree<W> {
         self.set_node_size_sway(id, width, height);
     }
 
-    pub fn resize_node_dimension_command(
-        &mut self,
-        id: NodeId,
-        width: bool,
-        change: SizeChange,
-    ) -> bool {
-        self.resize_node_dimension(id, width, change)
-    }
-
     pub fn resize_node_edge_command(
         &mut self,
         id: NodeId,
@@ -167,10 +154,10 @@ impl<W: LayoutElement> TilingTree<W> {
         height: Option<SizeChange>,
     ) {
         if let Some(change) = width {
-            self.resize_node_dimension_sway(id, true, change);
+            self.resize_node_dimension(id, true, change);
         }
         if let Some(change) = height {
-            self.resize_node_dimension_sway(id, false, change);
+            self.resize_node_dimension(id, false, change);
         }
     }
 
@@ -215,10 +202,6 @@ impl<W: LayoutElement> TilingTree<W> {
 
     pub fn toggle_window_height(&mut self, window: Option<&W::Id>, forwards: bool) {
         self.toggle_preset(window, false, forwards);
-    }
-
-    pub fn expand_focused_to_available_width(&mut self) {
-        self.toggle_full_width();
     }
 
     pub fn interactive_resize_begin(&mut self, window: W::Id, edges: ResizeEdge) -> bool {
@@ -415,7 +398,7 @@ impl<W: LayoutElement> TilingTree<W> {
         }
     }
 
-    fn resize_node_dimension(&mut self, id: NodeId, width: bool, change: SizeChange) -> bool {
+    pub fn resize_node_dimension(&mut self, id: NodeId, width: bool, change: SizeChange) -> bool {
         let wanted = if width {
             Layout::SplitH
         } else {
@@ -469,10 +452,6 @@ impl<W: LayoutElement> TilingTree<W> {
             parent = *grandparent;
         }
         false
-    }
-
-    fn resize_node_dimension_sway(&mut self, id: NodeId, width: bool, change: SizeChange) {
-        self.resize_node_dimension(id, width, change);
     }
 
     /// Grows or shrinks `target` by taking the change evenly from all its siblings, refusing

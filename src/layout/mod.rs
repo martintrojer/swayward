@@ -3511,7 +3511,7 @@ impl<W: LayoutElement> Layout<W> {
         self.workspace_mut(workspace_id).map(|workspace| {
             workspace
                 .tiling_mut()
-                .resize_node_dimension_command(node, width, change)
+                .resize_node_dimension(node, width, change)
         })
     }
 
