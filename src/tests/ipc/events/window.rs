@@ -674,3 +674,50 @@ fn closing_the_focused_window_emits_close_before_restored_focus() {
     assert_eq!(focus["container"]["app_id"], "first");
 }
 
+
+/// Oracle: events/for_window_during_scratchpad. A `mark` whose runtime
+/// `for_window` rule matches re-enters the command executor in the middle of
+/// the list. The outer transaction must still order `move scratchpad` as sway
+/// does: floating while visible, then move with the hidden state.
+#[test]
+fn nested_for_window_command_keeps_the_outer_scratchpad_event_order() {
+    let (mut fixture, socket) = ipc_fixture();
+    fixture.add_output(1, (1920, 1080));
+    let client = fixture.add_client();
+    map_test_window(&mut fixture, client, "for-window-scratchpad");
+    assert!(
+        crate::command::execute(fixture.niri_state(), "for_window [con_mark=\"oracle\"] nop")[0]
+            .success
+    );
+    fixture.niri_state().ipc_refresh_layout();
+    let mut subscriber = subscribe_to_window_events(&mut fixture, &socket);
+
+    let outcome = crate::command::execute(fixture.niri_state(), "mark oracle, move scratchpad");
+    assert!(outcome.iter().all(|outcome| outcome.success), "{outcome:?}");
+    fixture.niri_state().ipc_refresh_layout();
+
+    let mut events = Vec::new();
+    let mut remainder = Vec::new();
+    while let Some(((_, payload), rest)) =
+        try_read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder.clone())
+    {
+        remainder = rest;
+        let event = serde_json::from_str::<Value>(&payload).unwrap();
+        events.push((
+            event["change"].as_str().unwrap().to_owned(),
+            event["container"]["scratchpad_state"]
+                .as_str()
+                .unwrap()
+                .to_owned(),
+        ));
+    }
+    assert_eq!(
+        events,
+        [
+            ("mark".to_owned(), "none".to_owned()),
+            ("mark".to_owned(), "none".to_owned()),
+            ("floating".to_owned(), "none".to_owned()),
+            ("move".to_owned(), "fresh".to_owned()),
+        ]
+    );
+}

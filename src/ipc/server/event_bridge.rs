@@ -146,10 +146,19 @@ impl State {
         self.ipc_initialize_event_state();
     }
 
+    /// Open an event transaction, or join the one an outer command opened.
+    ///
+    /// Sway buffers nothing here: a nested `for_window` command runs inside the
+    /// outer command's handler and its events interleave there. Joining keeps
+    /// the outer command's reordering and suppression in force until the
+    /// outermost commit.
     pub(crate) fn ipc_begin_workspace_transaction(&mut self) {
         let Some(server) = &self.swayward.ipc_server else {
             return;
         };
+        server
+            .workspace_event_depth
+            .set(server.workspace_event_depth.get().saturating_add(1));
         if server.has_event_streams() && server.workspace_events.borrow().is_none() {
             *server.workspace_events.borrow_mut() = Some(WorkspaceEventTransaction::default());
         }
@@ -177,6 +186,11 @@ impl State {
         let Some(server) = &self.swayward.ipc_server else {
             return;
         };
+        let depth = server.workspace_event_depth.get().saturating_sub(1);
+        server.workspace_event_depth.set(depth);
+        if depth > 0 {
+            return;
+        }
         let Some(transaction) = server.workspace_events.borrow_mut().take() else {
             return;
         };

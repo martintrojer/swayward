@@ -76,6 +76,9 @@ pub struct IpcServer {
     event_stream_state: Rc<RefCell<EventStreamState>>,
     query_state: Rc<RefCell<QueryState>>,
     workspace_events: RefCell<Option<WorkspaceEventTransaction>>,
+    /// Open `execute` calls. A runtime `for_window` rule re-enters the
+    /// executor mid-command; only the outermost commit flushes.
+    workspace_event_depth: Cell<u32>,
     commands: channel::Sender<CommandRequest>,
 }
 
@@ -148,6 +151,7 @@ impl IpcServer {
             event_stream_state: Rc::new(RefCell::new(EventStreamState::default())),
             query_state: Rc::new(RefCell::new(QueryState::default())),
             workspace_events: RefCell::new(None),
+            workspace_event_depth: Cell::new(0),
             commands,
         })
     }
