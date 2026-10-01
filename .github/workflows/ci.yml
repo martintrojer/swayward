@@ -132,6 +132,7 @@ jobs:
         with:
           components: rustfmt
       - run: cargo fmt --all -- --check
+      - run: ./contrib/check-rustfmt-fragments
 
   internal-links:
     name: public docs do not link to docs/internal
