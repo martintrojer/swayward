@@ -4082,18 +4082,8 @@ impl<W: LayoutElement> Layout<W> {
         old_output: Option<Output>,
         new_output: &Output,
     ) -> bool {
-        // Name the replacement workspace the way a newly enabled output would
-        // be named, so an output vacated by this move gets back the workspace
-        // its `workspace <name> output <output>` assignment claims rather than
-        // a bare free number. Sway re-runs workspace_next_name for the same
-        // reason when a workspace leaves an output.
-        let replacement_identity = old_output
-            .as_ref()
-            .and_then(|output| self.next_initial_workspace_name_for_output(Some(output)))
-            .map(sway_identity_from_name)
-            .unwrap_or_else(|| self.next_free_workspace_identity_for_output(old_output.as_ref()));
-        let replacement_layout_config =
-            self.workspace_layout_config(replacement_identity.0.as_deref());
+        let (replacement_identity, replacement_layout_config) =
+            self.replacement_identity_for(old_output.as_ref());
         let MonitorSet::Normal {
             monitors,
             active_monitor_idx,
@@ -4139,29 +4129,11 @@ impl<W: LayoutElement> Layout<W> {
                 .count()
                 == 1
         {
-            let (name, number) = replacement_identity;
-            Some(
-                if let Some(workspace) =
-                    monitors[current_idx]
-                        .workspaces
-                        .iter_mut()
-                        .find(|workspace| {
-                            workspace.id() != workspace_id
-                                && !workspace.has_sway_identity()
-                                && !workspace.has_windows()
-                        })
-                {
-                    workspace.set_sway_identity(name, number);
-                    workspace.id()
-                } else {
-                    monitors[current_idx].add_sway_workspace_at(
-                        1,
-                        name,
-                        number,
-                        replacement_layout_config,
-                    )
-                },
-            )
+            Some(monitors[current_idx].ensure_replacement_workspace(
+                workspace_id,
+                replacement_identity,
+                replacement_layout_config,
+            ))
         } else {
             None
         };
@@ -4932,43 +4904,14 @@ impl<W: LayoutElement> Layout<W> {
                         );
                     }
                     InsertPosition::SwapWith(target) => {
-                        // Sway swaps a centre drop with the container under the pointer
-                        // (seatop_move_tiling.c:365-388).
-                        let ws_id = mon.workspaces[ws_idx].id();
-                        let target_window = mon.workspaces[ws_idx]
-                            .tiling()
-                            .window_for_node(target)
-                            .map(|window| window.id().clone());
-                        let moved_window = move_.tile.window().id().clone();
-                        if move_.source_workspace != ws_id {
-                            if let Some(target_window) = &target_window {
-                                displaced = Some(
-                                    mon.workspaces[ws_idx]
-                                        .remove_tile(target_window, Transaction::new()),
-                                );
-                            }
-                        }
-                        mon.add_tile(
+                        displaced = Self::drop_tile_swapping_with(
+                            mon,
+                            ws_idx,
+                            target,
                             move_.tile,
-                            MonitorAddWindowTarget::Workspace {
-                                id: ws_id,
-                                column_idx: None,
-                            },
-                            ActivateWindow::Yes,
+                            move_.source_workspace,
                             allow_to_activate_workspace,
-                            false,
                         );
-                        if move_.source_workspace == ws_id {
-                            if let Some(target_window) = target_window {
-                                let workspace = &mut mon.workspaces[ws_idx];
-                                if let (Some(first), Some(second)) = (
-                                    workspace.tiling().node_for_window(&moved_window),
-                                    workspace.tiling().node_for_window(&target_window),
-                                ) {
-                                    let _ = workspace.swap_tiling_nodes(first, second);
-                                }
-                            }
-                        }
                     }
                     InsertPosition::InsertAt(target, edge) => {
                         mon.add_tile_at_drop(

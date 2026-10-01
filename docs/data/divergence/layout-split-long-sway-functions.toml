@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/mod.rs", "src/layout/monitor.rs"]
+what = "split long swayward functions into named helpers without changing behaviour: the swap-drop arm of `interactive_move_end` (`drop_tile_swapping_with`), the replacement-workspace identity and reuse in `move_workspace_to_output_by_id` (`replacement_identity_for`, `Monitor::ensure_replacement_workspace`), and the floating-tree path and shared animation tail of `Monitor::move_to_workspace`/`move_focused_to_workspace` (in the swayward-owned `monitor/workspace_moves.rs`)."
+why = "Refactor only: shorter swayward-grown functions in inherited files, with the swayward bodies moved to swayward-owned modules."

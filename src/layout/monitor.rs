@@ -1078,33 +1078,7 @@ impl<W: LayoutElement> Monitor<W> {
             window.is_none_or(|win| self.active_window().map(|win| win.id()) == Some(win))
         });
 
-        let tree_root = window
-            .and_then(|window| {
-                self.workspaces[source_workspace_idx].floating_tree_root_for_window(window)
-            })
-            .or_else(|| {
-                window
-                    .is_none()
-                    .then(|| {
-                        self.workspaces[source_workspace_idx]
-                            .active_window()
-                            .and_then(|window| {
-                                self.workspaces[source_workspace_idx]
-                                    .floating_tree_root_for_window(window.id())
-                            })
-                    })
-                    .flatten()
-            });
-        if let Some(root) = tree_root {
-            let Some(removed) = self.workspaces[source_workspace_idx].remove_floating_tree(root)
-            else {
-                warn!("move_to_workspace: floating tree root reported for the window is gone");
-                return;
-            };
-            self.workspaces[new_idx].add_floating_tree(removed, false);
-            if self.workspace_switch.is_none() {
-                self.consider_destroy_workspace(source_id);
-            }
+        if self.move_floating_tree_to_workspace(window, source_workspace_idx, new_idx) {
             return;
         }
 
@@ -1180,13 +1154,7 @@ impl<W: LayoutElement> Monitor<W> {
                 self.workspace_size_with_gap(1.).h * (source_workspace_idx as f64 - new_idx as f64);
         }
 
-        if let Some((tile, new_render_pos)) = self.workspaces[new_idx]
-            .tiles_with_render_positions_mut(false)
-            .find(|(tile, _)| tile.window().id() == &window)
-        {
-            tile.animate_move_from_with_config(old_render_pos - new_render_pos, config);
-            tile.set_anim_y_between_workspaces();
-        }
+        self.animate_moved_tile(new_idx, &window, old_render_pos, config);
     }
 
     pub fn move_focused_to_workspace(&mut self, target: WorkspaceId, activate: bool) {
@@ -1242,13 +1210,7 @@ impl<W: LayoutElement> Monitor<W> {
             warn!("move_focused_to_workspace: target workspace vanished after the move");
             return;
         };
-        if let Some((tile, new_render_pos)) = self.workspaces[target_idx]
-            .tiles_with_render_positions_mut(false)
-            .find(|(tile, _)| tile.window().id() == &window)
-        {
-            tile.animate_move_from_with_config(old_render_pos - new_render_pos, config);
-            tile.set_anim_y_between_workspaces();
-        }
+        self.animate_moved_tile(target_idx, &window, old_render_pos, config);
     }
 
     pub fn switch_workspace_up(&mut self) {
@@ -2014,6 +1976,7 @@ impl<W: LayoutElement> Monitor<W> {
 }
 
 mod rendering;
+mod workspace_moves;
 
 impl<W: LayoutElement> Monitor<W> {
     pub fn dnd_scroll_gesture_begin(&mut self) {

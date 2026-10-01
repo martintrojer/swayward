@@ -116,14 +116,7 @@ impl<W: LayoutElement> Layout<W> {
                     .filter(|_| !self.scratchpad_trees.is_empty())
             });
         if let Some(index) = target_tree {
-            let active_workspace = self.active_workspace()?.id();
-            for workspace in self.workspaces_mut() {
-                let disables_fullscreen = workspace.id() == active_workspace
-                    || workspace.fullscreen_mode() == Some(tiling_tree::FullscreenMode::Global);
-                if disables_fullscreen {
-                    workspace.disable_fullscreen();
-                }
-            }
+            let active_workspace = self.prepare_active_workspace_for_scratchpad_show()?;
             return self.show_scratchpad_tree(index, active_workspace);
         }
         let mut target_index = window.and_then(|window| {
@@ -167,6 +160,14 @@ impl<W: LayoutElement> Layout<W> {
 
         let index = target_index.unwrap_or(0);
         self.scratchpad.get(index)?;
+        let active_workspace = self.prepare_active_workspace_for_scratchpad_show()?;
+        self.show_scratchpad_tile(index, active_workspace)
+    }
+
+    /// Clears fullscreen on the active workspace and any global fullscreen
+    /// before a scratchpad window appears, as sway's `root_scratchpad_show`
+    /// does (sway/sway/tree/root.c:157-173). Returns the active workspace.
+    fn prepare_active_workspace_for_scratchpad_show(&mut self) -> Option<WorkspaceId> {
         let active_workspace = self.active_workspace()?.id();
         for workspace in self.workspaces_mut() {
             let disables_fullscreen = workspace.id() == active_workspace
@@ -175,7 +176,16 @@ impl<W: LayoutElement> Layout<W> {
                 workspace.disable_fullscreen();
             }
         }
+        Some(active_workspace)
+    }
 
+    /// Shows the hidden scratchpad window at `index` floating on
+    /// `active_workspace`, focused.
+    fn show_scratchpad_tile(
+        &mut self,
+        index: usize,
+        active_workspace: WorkspaceId,
+    ) -> Option<W::Id> {
         // Find the destination before taking the window out of the scratchpad,
         // so a missing workspace leaves it hidden rather than dropping it.
         if !self

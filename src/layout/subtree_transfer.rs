@@ -203,18 +203,9 @@ impl<W: LayoutElement> Layout<W> {
         preserve_empty_workspace: bool,
         auto_back_and_forth: bool,
     ) -> Result<(WorkspaceId, Vec<(tiling_tree::NodeId, tiling_tree::NodeId)>), String> {
-        let floating_group_window = self.workspace(source_workspace).and_then(|workspace| {
-            let floating = workspace.floating();
-            floating.tree(node)?;
-            floating.window_in_node(node).cloned()
-        });
-        if let Some(window) = floating_group_window {
-            self.move_window_to_sway_workspace(&window, target, auto_back_and_forth)?;
-            let target_workspace = self
-                .workspaces()
-                .find(|(_, _, workspace)| workspace.has_window(&window))
-                .map(|(_, _, workspace)| workspace.id())
-                .ok_or_else(|| "No matching node.".to_owned())?;
+        if let Some(window) = self.floating_group_window(source_workspace, node) {
+            let target_workspace =
+                self.move_floating_group_to_sway_workspace(&window, target, auto_back_and_forth)?;
             return Ok((target_workspace, Vec::new()));
         }
         let (floating, empty_root) = self
@@ -278,6 +269,56 @@ impl<W: LayoutElement> Layout<W> {
             return Ok((target_workspace, remapped));
         }
 
+        let remapped = Self::move_tiling_subtree_between_monitors(
+            monitors,
+            (source_monitor, source_workspace),
+            (target_monitor, target_workspace),
+            node,
+            preserve_empty_workspace || !floating.is_empty(),
+        )?;
+        for window in floating {
+            self.move_window_to_sway_workspace(&window, floating_target.clone(), false)?;
+        }
+        Ok((target_workspace, remapped))
+    }
+    /// The window of `node` when it is a floating group root on
+    /// `source_workspace`.
+    fn floating_group_window(
+        &self,
+        source_workspace: WorkspaceId,
+        node: tiling_tree::NodeId,
+    ) -> Option<W::Id> {
+        self.workspace(source_workspace).and_then(|workspace| {
+            let floating = workspace.floating();
+            floating.tree(node)?;
+            floating.window_in_node(node).cloned()
+        })
+    }
+
+    /// Moves the floating group holding `window` and returns the workspace it
+    /// landed on.
+    fn move_floating_group_to_sway_workspace(
+        &mut self,
+        window: &W::Id,
+        target: crate::command::WorkspaceTarget,
+        auto_back_and_forth: bool,
+    ) -> Result<WorkspaceId, String> {
+        self.move_window_to_sway_workspace(window, target, auto_back_and_forth)?;
+        self.workspaces()
+            .find(|(_, _, workspace)| workspace.has_window(window))
+            .map(|(_, _, workspace)| workspace.id())
+            .ok_or_else(|| "No matching node.".to_owned())
+    }
+
+    /// Moves the tiling subtree at `node` between workspaces on two different
+    /// monitors, cleaning up the source monitor unless `preserve_source`.
+    fn move_tiling_subtree_between_monitors(
+        monitors: &mut [Monitor<W>],
+        (source_monitor, source_workspace): (usize, WorkspaceId),
+        (target_monitor, target_workspace): (usize, WorkspaceId),
+        node: tiling_tree::NodeId,
+        preserve_source: bool,
+    ) -> Result<Vec<(tiling_tree::NodeId, tiling_tree::NodeId)>, String> {
         let (source, target) = if source_monitor < target_monitor {
             let (before_target, target_and_after) = monitors.split_at_mut(target_monitor);
             (&mut before_target[source_monitor], &mut target_and_after[0])
@@ -300,12 +341,58 @@ impl<W: LayoutElement> Layout<W> {
         source.workspaces[source_idx]
             .tiling_mut()
             .finish_subtree_detach(old_parent);
-        if !preserve_empty_workspace && floating.is_empty() && source.workspace_switch.is_none() {
+        if !preserve_source && source.workspace_switch.is_none() {
             source.clean_up_workspaces();
         }
-        for window in floating {
-            self.move_window_to_sway_workspace(&window, floating_target.clone(), false)?;
+        Ok(remapped)
+    }
+    /// Drops an interactively moved tile onto `target`, swapping the two.
+    ///
+    /// Sway swaps a centre drop with the container under the pointer
+    /// (seatop_move_tiling.c:365-388). Returns the displaced tile when it must
+    /// go back to `source_workspace` on another workspace.
+    pub(super) fn drop_tile_swapping_with(
+        mon: &mut Monitor<W>,
+        ws_idx: usize,
+        target: tiling_tree::NodeId,
+        tile: Tile<W>,
+        source_workspace: WorkspaceId,
+        allow_to_activate_workspace: bool,
+    ) -> Option<RemovedTile<W>> {
+        let mut displaced = None;
+        let ws_id = mon.workspaces[ws_idx].id();
+        let target_window = mon.workspaces[ws_idx]
+            .tiling()
+            .window_for_node(target)
+            .map(|window| window.id().clone());
+        let moved_window = tile.window().id().clone();
+        if source_workspace != ws_id {
+            if let Some(target_window) = &target_window {
+                displaced =
+                    Some(mon.workspaces[ws_idx].remove_tile(target_window, Transaction::new()));
+            }
         }
-        Ok((target_workspace, remapped))
+        mon.add_tile(
+            tile,
+            MonitorAddWindowTarget::Workspace {
+                id: ws_id,
+                column_idx: None,
+            },
+            ActivateWindow::Yes,
+            allow_to_activate_workspace,
+            false,
+        );
+        if source_workspace == ws_id {
+            if let Some(target_window) = target_window {
+                let workspace = &mut mon.workspaces[ws_idx];
+                if let (Some(first), Some(second)) = (
+                    workspace.tiling().node_for_window(&moved_window),
+                    workspace.tiling().node_for_window(&target_window),
+                ) {
+                    let _ = workspace.swap_tiling_nodes(first, second);
+                }
+            }
+        }
+        displaced
     }
 }

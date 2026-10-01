@@ -289,41 +289,7 @@ impl<W: LayoutElement> Layout<W> {
         ) {
             return Err(format!("Cannot use special workspace name '{new_name}'"));
         }
-        // Destroy a workspace sway would already have destroyed. Sway
-        // destroys an empty, non-visible workspace no seat retains, and does so
-        // when focus LEAVES it (seat_set_focus, sway/sway/input/seat.c:1244),
-        // so by the time a rename runs the name is free. We can still hold
-        // such a workspace, and skipping it without removing it let the rename
-        // produce two workspaces with one name.
-        if let MonitorSet::Normal { monitors, .. } = &mut self.monitor_set {
-            for monitor in monitors
-                .iter_mut()
-                .filter(|monitor| monitor.workspace_switch.is_none())
-            {
-                let stale = monitor
-                    .workspaces
-                    .iter()
-                    .enumerate()
-                    .filter(|(index, workspace)| {
-                        // Sway also retains the workspace a seat's
-                        // focus-inactive points at (workspace_consider_destroy,
-                        // sway/sway/tree/workspace.c:322-329), which is the one
-                        // we would return to via back_and_forth.
-                        workspace.id() != id
-                            && !workspace.has_windows()
-                            && *index != monitor.active_workspace_idx()
-                            && monitor.previous_workspace_id() != Some(workspace.id())
-                            && workspace
-                                .sway_name()
-                                .is_some_and(|name| name.eq_ignore_ascii_case(&new_name))
-                    })
-                    .map(|(_, workspace)| workspace.id())
-                    .collect::<Vec<_>>();
-                for stale in stale {
-                    monitor.consider_destroy_workspace(stale);
-                }
-            }
-        }
+        self.destroy_stale_workspaces_named(&new_name, id);
         // Whatever survived (a persistent or still-visible workspace) is live,
         // and sway refuses to rename onto a live name
         // (sway/sway/commands/rename.c:84-91).
@@ -363,6 +329,69 @@ impl<W: LayoutElement> Layout<W> {
         Ok(())
     }
 
+    /// Destroys the empty, non-visible workspaces named `new_name` other than
+    /// `keep`, freeing the name for a rename.
+    fn destroy_stale_workspaces_named(&mut self, new_name: &str, keep: WorkspaceId) {
+        // Destroy a workspace sway would already have destroyed. Sway
+        // destroys an empty, non-visible workspace no seat retains, and does so
+        // when focus LEAVES it (seat_set_focus, sway/sway/input/seat.c:1244),
+        // so by the time a rename runs the name is free. We can still hold
+        // such a workspace, and skipping it without removing it let the rename
+        // produce two workspaces with one name.
+        if let MonitorSet::Normal { monitors, .. } = &mut self.monitor_set {
+            for monitor in monitors
+                .iter_mut()
+                .filter(|monitor| monitor.workspace_switch.is_none())
+            {
+                let stale = monitor
+                    .workspaces
+                    .iter()
+                    .enumerate()
+                    .filter(|(index, workspace)| {
+                        // Sway also retains the workspace a seat's
+                        // focus-inactive points at (workspace_consider_destroy,
+                        // sway/sway/tree/workspace.c:322-329), which is the one
+                        // we would return to via back_and_forth.
+                        workspace.id() != keep
+                            && !workspace.has_windows()
+                            && *index != monitor.active_workspace_idx()
+                            && monitor.previous_workspace_id() != Some(workspace.id())
+                            && workspace
+                                .sway_name()
+                                .is_some_and(|name| name.eq_ignore_ascii_case(new_name))
+                    })
+                    .map(|(_, workspace)| workspace.id())
+                    .collect::<Vec<_>>();
+                for stale in stale {
+                    monitor.consider_destroy_workspace(stale);
+                }
+            }
+        }
+    }
+
+    /// The identity and layout for the workspace that replaces one leaving
+    /// `old_output`.
+    ///
+    /// Name the replacement workspace the way a newly enabled output would
+    /// be named, so an output vacated by this move gets back the workspace
+    /// its `workspace <name> output <output>` assignment claims rather than
+    /// a bare free number. Sway re-runs workspace_next_name for the same
+    /// reason when a workspace leaves an output.
+    pub(super) fn replacement_identity_for(
+        &self,
+        old_output: Option<&Output>,
+    ) -> (
+        (Option<String>, Option<i32>),
+        Option<swayward_config::LayoutPart>,
+    ) {
+        let identity = old_output
+            .and_then(|output| self.next_initial_workspace_name_for_output(Some(output)))
+            .map(sway_identity_from_name)
+            .unwrap_or_else(|| self.next_free_workspace_identity_for_output(old_output));
+        let layout_config = self.workspace_layout_config(identity.0.as_deref());
+        (identity, layout_config)
+    }
+
     fn activate_relative_sway_workspace(&mut self, next: bool) -> Result<(), String> {
         let Some((output, workspace)) = self.relative_sway_workspace_position(next) else {
             return Err("cannot switch workspaces without an output".into());
@@ -385,82 +414,30 @@ impl<W: LayoutElement> Layout<W> {
                     || workspace.has_sway_identity()
                     || workspace.id() == active_id
             })
-            .map(|(monitor, index, workspace)| {
-                (
-                    monitor.map(|monitor| monitor.output().clone()),
-                    index,
-                    workspace.id(),
-                    workspace.number(),
-                )
+            .map(|(monitor, index, workspace)| WorkspacePosition {
+                output: monitor.map(|monitor| monitor.output().clone()),
+                index,
+                id: workspace.id(),
+                number: workspace.number(),
             })
             .collect::<Vec<_>>();
         let current = positions
             .iter()
-            .position(|(_, _, id, _)| *id == active.id())?;
+            .position(|position| position.id == active_id)?;
         let mut order = (0..positions.len()).collect::<Vec<_>>();
         if !next {
             order.reverse();
         }
-        let ordered = || order.iter().map(|index| (*index, &positions[*index]));
 
         // Sway scans outputs and each output's stored workspace list forwards
         // for next and backwards for prev. Numeric comparison chooses the next
         // distinct number, but scan order breaks ties between names with the
         // same numeric prefix (sway/sway/tree/workspace.c:548-677).
-        let target = if let Some(number) = current_number {
-            let relative = ordered()
-                .filter(|(_, (_, _, _, candidate))| {
-                    candidate.is_some_and(|candidate| {
-                        if next {
-                            candidate > number
-                        } else {
-                            candidate < number
-                        }
-                    })
-                })
-                .min_by_key(|(_, (_, _, _, candidate))| {
-                    candidate.map(|candidate| candidate.abs_diff(number))
-                })
-                .map(|(_, position)| position);
-            relative.or_else(|| {
-                ordered()
-                    .find(|(_, (_, _, _, candidate))| candidate.is_none())
-                    .map(|(_, position)| position)
-                    .or_else(|| {
-                        ordered()
-                            .filter(|(_, (_, _, _, candidate))| candidate.is_some())
-                            .min_by_key(|(_, (_, _, _, candidate))| {
-                                candidate.map(|candidate| if next { candidate } else { -candidate })
-                            })
-                            .map(|(_, position)| position)
-                    })
-            })
-        } else {
-            ordered()
-                .find(|(index, (_, _, _, number))| {
-                    number.is_none()
-                        && if next {
-                            *index > current
-                        } else {
-                            *index < current
-                        }
-                })
-                .map(|(_, position)| position)
-                .or_else(|| {
-                    ordered()
-                        .filter(|(_, (_, _, _, number))| number.is_some())
-                        .min_by_key(|(_, (_, _, _, number))| {
-                            number.map(|number| if next { number } else { -number })
-                        })
-                        .map(|(_, position)| position)
-                })
-                .or_else(|| {
-                    ordered()
-                        .find(|(_, (_, _, _, number))| number.is_none())
-                        .map(|(_, position)| position)
-                })
+        let target = match current_number {
+            Some(number) => next_numbered(&positions, &order, number, next),
+            None => next_unnumbered(&positions, &order, current, next),
         }?;
-        Some((target.0.clone(), target.1))
+        Some((target.output.clone(), target.index))
     }
 
     fn relative_sway_workspace_position_on_output(
@@ -710,4 +687,96 @@ impl<W: LayoutElement> Layout<W> {
     pub fn workspace_mut(&mut self, id: WorkspaceId) -> Option<&mut Workspace<W>> {
         self.workspaces_mut().find(|workspace| workspace.id() == id)
     }
+}
+
+/// A workspace considered by `workspace next`/`prev`, in sway's scan order.
+struct WorkspacePosition {
+    output: Option<Output>,
+    index: usize,
+    id: WorkspaceId,
+    number: Option<i32>,
+}
+
+/// `positions` in scan order: forwards for next, backwards for prev.
+fn scan<'a>(
+    positions: &'a [WorkspacePosition],
+    order: &'a [usize],
+) -> impl Iterator<Item = (usize, &'a WorkspacePosition)> + 'a {
+    order.iter().map(|index| (*index, &positions[*index]))
+}
+
+/// The least numbered workspace for next, the greatest for prev.
+fn extreme_numbered<'a>(
+    positions: &'a [WorkspacePosition],
+    order: &'a [usize],
+    next: bool,
+) -> Option<&'a WorkspacePosition> {
+    scan(positions, order)
+        .filter(|(_, position)| position.number.is_some())
+        .min_by_key(|(_, position)| {
+            position
+                .number
+                .map(|number| if next { number } else { -number })
+        })
+        .map(|(_, position)| position)
+}
+
+/// The first named (unnumbered) workspace in scan order.
+fn first_unnumbered<'a>(
+    positions: &'a [WorkspacePosition],
+    order: &'a [usize],
+) -> Option<&'a WorkspacePosition> {
+    scan(positions, order)
+        .find(|(_, position)| position.number.is_none())
+        .map(|(_, position)| position)
+}
+
+/// From a numbered workspace: the closest number beyond `number`, else the
+/// first named workspace, else the extreme number. Mirrors the numbered
+/// branches of `workspace_next`/`workspace_prev`
+/// (sway/sway/tree/workspace.c:577-604, 641-668).
+fn next_numbered<'a>(
+    positions: &'a [WorkspacePosition],
+    order: &'a [usize],
+    number: i32,
+    next: bool,
+) -> Option<&'a WorkspacePosition> {
+    scan(positions, order)
+        .filter(|(_, position)| {
+            position.number.is_some_and(|candidate| {
+                if next {
+                    candidate > number
+                } else {
+                    candidate < number
+                }
+            })
+        })
+        .min_by_key(|(_, position)| position.number.map(|candidate| candidate.abs_diff(number)))
+        .map(|(_, position)| position)
+        .or_else(|| first_unnumbered(positions, order))
+        .or_else(|| extreme_numbered(positions, order, next))
+}
+
+/// From a named workspace: the next named workspace in scan order, else the
+/// extreme number, else the first named workspace. Mirrors the named
+/// branches of `workspace_next`/`workspace_prev`
+/// (sway/sway/tree/workspace.c:552-576, 617-640).
+fn next_unnumbered<'a>(
+    positions: &'a [WorkspacePosition],
+    order: &'a [usize],
+    current: usize,
+    next: bool,
+) -> Option<&'a WorkspacePosition> {
+    scan(positions, order)
+        .find(|(index, position)| {
+            position.number.is_none()
+                && if next {
+                    *index > current
+                } else {
+                    *index < current
+                }
+        })
+        .map(|(_, position)| position)
+        .or_else(|| extreme_numbered(positions, order, next))
+        .or_else(|| first_unnumbered(positions, order))
 }
