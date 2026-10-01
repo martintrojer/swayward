@@ -376,7 +376,9 @@ fn reload_from_a_non_default_mode_resets_it_without_a_mode_event() {
     // The watcher applies the reload on the event loop, whose refresh then
     // emits the output event; both can arrive in one read.
     let mut remainder = Vec::new();
-    for (expected_type, expected_change) in [(EVENT_WORKSPACE, "reload"), (EVENT_OUTPUT, "unspecified")] {
+    for (expected_type, expected_change) in
+        [(EVENT_WORKSPACE, "reload"), (EVENT_OUTPUT, "unspecified")]
+    {
         let ((event_type, payload), rest) =
             read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder);
         remainder = rest;

@@ -828,7 +828,10 @@ fn criteria_commands_apply_to_matches_in_sways_walk_order() {
     run(&mut f, "mark m-parent");
     run(&mut f, "[con_mark=\"^m-\"] mark n");
     let tree = ipc_tree(&mut f);
-    assert_eq!(marks_of(&tree, Some("fixture-3")), [&serde_json::json!(["n"])]);
+    assert_eq!(
+        marks_of(&tree, Some("fixture-3")),
+        [&serde_json::json!(["n"])]
+    );
     assert_eq!(marks_of(&tree, None), [&serde_json::json!([])]);
 
     let mut f = Fixture::new();
@@ -841,6 +844,9 @@ fn criteria_commands_apply_to_matches_in_sways_walk_order() {
     run(&mut f, "mark m-b");
     run(&mut f, "[con_mark=\"^m-\"] mark n");
     let tree = ipc_tree(&mut f);
-    assert_eq!(marks_of(&tree, Some("fixture-1")), [&serde_json::json!(["n"])]);
+    assert_eq!(
+        marks_of(&tree, Some("fixture-1")),
+        [&serde_json::json!(["n"])]
+    );
     assert_eq!(marks_of(&tree, Some("fixture-2")), [&serde_json::json!([])]);
 }
