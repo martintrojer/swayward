@@ -170,9 +170,9 @@ fn describe_workspace(
     let mut floating_nodes = floating_part(&context, &state);
     let mut focus = std::mem::take(&mut tiled.focus);
     order_focus(workspace, &mut focus, &tiled.nodes, &floating_nodes);
-    let representation = workspace.tiling_has_had_window().then(|| {
+    let representation = workspace.tiling().has_had_tile().then(|| {
         tree_representation(
-            ipc_layout(workspace.tiling_representation_layout()),
+            ipc_layout(workspace.tiling().representation_layout()),
             &tiled.nodes,
         )
     });
@@ -336,7 +336,8 @@ fn order_focus(
         .into_iter()
         .filter_map(|(id, _)| {
             workspace
-                .tiling_ipc_focus_is_stale(id)
+                .tiling()
+                .ipc_focus_is_stale(id)
                 .then_some(container_id(id))
         })
         .collect::<std::collections::HashSet<_>>();

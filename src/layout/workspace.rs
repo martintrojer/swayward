@@ -20,7 +20,7 @@ use super::floating_tree::{
 use super::shadow::Shadow;
 use super::tile::{Tile, TileRenderSnapshot};
 use super::tiling_tree::{
-    DetachedSubtree, Direction, InsertTarget, Layout, NodeId, TilingTree, TilingTreeRenderElement,
+    DetachedSubtree, Direction, InsertTarget, NodeId, TilingTree, TilingTreeRenderElement,
 };
 use super::{
     ActivateWindow, HitType, InsertPosition, InteractiveResizeData, LayoutElement, Options,
@@ -659,14 +659,6 @@ impl<W: LayoutElement> Workspace<W> {
         self.tiles().map(Tile::window)
     }
 
-    pub fn tiling_has_had_window(&self) -> bool {
-        self.tiling.has_had_tile()
-    }
-
-    pub fn tiling_representation_layout(&self) -> Layout {
-        self.tiling.representation_layout()
-    }
-
     pub(super) fn reset_empty_tiling_layout(&mut self) {
         assert!(!self.has_windows());
         self.tiling.reset_empty_layout();
@@ -803,10 +795,6 @@ impl<W: LayoutElement> Workspace<W> {
         self.tiling.set_node_fullscreen(id, mode)
     }
 
-    pub(super) fn mark_tiling_fullscreen_arrived(&mut self) {
-        self.tiling.mark_fullscreen_arrived();
-    }
-
     pub fn disable_fullscreen(&mut self) {
         if let Some(fullscreen) = self.tiling.fullscreen_node() {
             self.tiling.set_node_fullscreen(fullscreen, None);
@@ -833,14 +821,6 @@ impl<W: LayoutElement> Workspace<W> {
             return false;
         };
         self.tiling.set_node_fullscreen(id, mode)
-    }
-
-    pub fn preserve_empty_auto_layout(&mut self) {
-        self.tiling.preserve_empty_auto_layout();
-    }
-
-    pub fn track_empty_auto_layout(&mut self) {
-        self.tiling.track_empty_auto_layout();
     }
 
     pub fn set_output(&mut self, output: Option<Output>) {
@@ -1214,10 +1194,6 @@ impl<W: LayoutElement> Workspace<W> {
         self.attach_tiling_subtree_at(subtree, None)
     }
 
-    pub fn move_tiling_subtree_to_node(&mut self, source: NodeId, target: NodeId) -> bool {
-        self.tiling.move_subtree_to_node(source, target)
-    }
-
     pub fn swap_tiling_nodes(&mut self, first: NodeId, second: NodeId) -> Result<(), &'static str> {
         if self.tiling.contains(first) && self.tiling.contains(second) {
             return self.tiling.swap_nodes(first, second);
@@ -1249,10 +1225,6 @@ impl<W: LayoutElement> Workspace<W> {
         self.tiling.attach_subtree_for_swap(subtree, slot)
     }
 
-    pub fn sort_tiling_focus_by_timestamp(&mut self) {
-        self.tiling.sort_focus_history_by_timestamp();
-    }
-
     pub fn attach_tiling_subtree_at(
         &mut self,
         subtree: DetachedSubtree<W>,
@@ -1267,10 +1239,6 @@ impl<W: LayoutElement> Workspace<W> {
         }
         self.floating_is_active = FloatingActive::No;
         self.tiling.attach_subtree_at(subtree, target)
-    }
-
-    pub fn finish_tiling_subtree_detach(&mut self, old_parent: Option<NodeId>) {
-        self.tiling.finish_subtree_detach(old_parent);
     }
 
     pub fn clear_floating_tree_fullscreen(&mut self, root: NodeId) {
@@ -1497,22 +1465,6 @@ impl<W: LayoutElement> Workspace<W> {
         !self.floating_is_active.get() && self.tiling.root_is_focused()
     }
 
-    pub fn set_tiling_node_layout(
-        &mut self,
-        id: crate::layout::tiling_tree::NodeId,
-        layout: crate::layout::tiling_tree::Layout,
-    ) {
-        self.tiling.set_layout(id, layout);
-    }
-
-    pub fn set_tiling_target_layout(
-        &mut self,
-        id: crate::layout::tiling_tree::NodeId,
-        layout: crate::layout::tiling_tree::Layout,
-    ) -> bool {
-        self.tiling.set_target_layout(id, layout)
-    }
-
     pub fn toggle_tiling_target_layout(
         &mut self,
         id: crate::layout::tiling_tree::NodeId,
@@ -1536,14 +1488,6 @@ impl<W: LayoutElement> Workspace<W> {
         } else {
             self.tiling.restore_target_layout(id)
         }
-    }
-
-    pub fn set_tiling_node_title_format(
-        &mut self,
-        id: crate::layout::tiling_tree::NodeId,
-        format: String,
-    ) -> bool {
-        self.tiling.set_title_format(id, format)
     }
 
     pub fn tiling_node_windows(
@@ -1801,10 +1745,6 @@ impl<W: LayoutElement> Workspace<W> {
         }
     }
 
-    pub fn move_tiling_node_in_direction(&mut self, node: NodeId, direction: Direction) -> bool {
-        self.tiling.move_node_direction(node, direction)
-    }
-
     pub fn move_focused_root_child_to_first(&mut self) {
         if self.floating_is_active.get() {
             return;
@@ -1929,22 +1869,6 @@ impl<W: LayoutElement> Workspace<W> {
             .and_then(|focus| self.tiling.flatten_parent(focus))
     }
 
-    pub fn flatten_tiling_node_parent(&mut self, id: NodeId) -> Option<(NodeId, NodeId)> {
-        self.tiling.flatten_parent(id)
-    }
-
-    pub fn split_tiling_node(
-        &mut self,
-        id: crate::layout::tiling_tree::NodeId,
-        layout: crate::layout::tiling_tree::Layout,
-    ) {
-        self.tiling.split(id, layout);
-    }
-
-    pub fn toggle_tiling_node_split(&mut self, id: crate::layout::tiling_tree::NodeId) {
-        self.tiling.toggle_split(id);
-    }
-
     pub fn toggle_focused_layout(
         &mut self,
         toggle: &swayward_ipc::command::LayoutToggle,
@@ -2041,34 +1965,6 @@ impl<W: LayoutElement> Workspace<W> {
         } else {
             self.tiling.set_window_width(window, change)
         }
-    }
-
-    pub fn resize_tiling_node(
-        &mut self,
-        node: crate::layout::tiling_tree::NodeId,
-        width: bool,
-        change: SizeChange,
-    ) -> bool {
-        self.tiling
-            .resize_node_dimension_command(node, width, change)
-    }
-
-    pub fn resize_tiling_node_edge(
-        &mut self,
-        node: crate::layout::tiling_tree::NodeId,
-        edge: ResizeEdge,
-        change: SizeChange,
-    ) -> bool {
-        self.tiling.resize_node_edge_command(node, edge, change)
-    }
-
-    pub fn set_tiling_node_size_sway(
-        &mut self,
-        node: crate::layout::tiling_tree::NodeId,
-        width: Option<SizeChange>,
-        height: Option<SizeChange>,
-    ) {
-        self.tiling.set_node_size_sway(node, width, height);
     }
 
     pub fn set_window_size_sway(
@@ -2708,19 +2604,8 @@ impl<W: LayoutElement> Workspace<W> {
         floating.chain(scrolling)
     }
 
-    pub fn contains_tiling_node(&self, id: crate::layout::tiling_tree::NodeId) -> bool {
-        self.tiling.contains(id)
-    }
-
     pub fn contains_swap_node(&self, id: crate::layout::tiling_tree::NodeId) -> bool {
         self.tiling.contains(id) || self.floating.tree_root_for_node(id).is_some()
-    }
-
-    pub fn tiling_node_for_window(
-        &self,
-        window: &W::Id,
-    ) -> Option<crate::layout::tiling_tree::NodeId> {
-        self.tiling.node_for_window(window)
     }
 
     pub fn swap_node_for_window(
@@ -2733,10 +2618,6 @@ impl<W: LayoutElement> Workspace<W> {
         })
     }
 
-    pub fn tiling_window_for_node(&self, node: NodeId) -> Option<&W> {
-        self.tiling.window_for_node(node)
-    }
-
     pub fn is_tiling_split(&self, id: crate::layout::tiling_tree::NodeId) -> bool {
         self.tiling.is_split(id)
             || self
@@ -2744,14 +2625,6 @@ impl<W: LayoutElement> Workspace<W> {
                 .tree_root_for_node(id)
                 .and_then(|root| self.floating.tree(root))
                 .is_some_and(|tree| tree.is_split(id))
-    }
-
-    pub fn tab_indicator_focus_target(&self, window: &W::Id) -> Option<&W> {
-        self.tiling.tab_indicator_focus_target(window)
-    }
-
-    pub fn tiling_ipc_focus_is_stale(&self, id: NodeId) -> bool {
-        self.tiling.ipc_focus_is_stale(id)
     }
 
     pub fn ipc_tiling_tree(&self) -> super::tiling_tree::IpcNode<W::Id> {
@@ -2764,10 +2637,6 @@ impl<W: LayoutElement> Workspace<W> {
         &self,
     ) -> impl Iterator<Item = (NodeId, super::tiling_tree::IpcNode<W::Id>, bool)> + '_ {
         self.floating.ipc_trees()
-    }
-
-    pub fn ipc_decoration_rect(&self, window: &W::Id) -> Option<Rectangle<f64, Logical>> {
-        self.tiling.ipc_decoration_rect(window)
     }
 
     pub fn set_container_floating(&mut self, node: NodeId, floating: bool) -> Option<NodeId> {
@@ -2793,7 +2662,7 @@ impl<W: LayoutElement> Workspace<W> {
             return self.tiling.contains(node).then_some(node);
         }
         let (subtree, old_parent) = self.detach_tiling_subtree(node)?;
-        self.finish_tiling_subtree_detach(old_parent);
+        self.tiling.finish_subtree_detach(old_parent);
         let size = Size::from((
             self.working_area.size.w * 0.5,
             self.working_area.size.h * 0.75,
@@ -3252,6 +3121,12 @@ impl<W: LayoutElement> Workspace<W> {
         &self.tiling
     }
 
+    /// Direct access to the tiling tree.
+    ///
+    /// Call tree operations through this rather than adding a `Workspace`
+    /// forwarder. Keep a `Workspace` wrapper only when it also maintains
+    /// workspace state: `floating_is_active`, output enter/leave for moved
+    /// windows, or option refreshes such as smart gaps.
     pub fn tiling_mut(&mut self) -> &mut TilingTree<W> {
         &mut self.tiling
     }

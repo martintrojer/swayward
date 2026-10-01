@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/workspace.rs", "src/layout/mod.rs", "src/layout/monitor.rs", "src/ipc/tree/workspaces.rs", "src/command/window.rs"]
+what = "delete 24 swayward-added `Workspace` methods that only forwarded to `self.tiling`, and call the tiling tree through `Workspace::tiling()`/`tiling_mut()`; document at `tiling_mut()` that a wrapper is kept only when it maintains workspace state."
+why = "Refactor only: shrinks the swayward surface of inherited workspace.rs and stops each new tree command from adding a one-line forwarder there."

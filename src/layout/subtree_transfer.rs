@@ -20,7 +20,7 @@ impl<W: LayoutElement> Layout<W> {
         node: tiling_tree::NodeId,
     ) -> bool {
         self.workspace(workspace)
-            .is_some_and(|candidate| candidate.contains_tiling_node(node))
+            .is_some_and(|candidate| candidate.tiling().contains(node))
     }
 
     pub fn swap_tiling_nodes(
@@ -76,8 +76,8 @@ impl<W: LayoutElement> Layout<W> {
         let first_remapped = second_ws
             .attach_tiling_subtree_for_swap(first_subtree, second_slot)
             .1;
-        first_ws.finish_tiling_subtree_detach(None);
-        second_ws.finish_tiling_subtree_detach(None);
+        first_ws.tiling_mut().finish_subtree_detach(None);
+        second_ws.tiling_mut().finish_subtree_detach(None);
         Ok(SwapRemap {
             first: first_remapped,
             second: second_remapped,
@@ -144,10 +144,10 @@ impl<W: LayoutElement> Layout<W> {
             let workspace = self
                 .workspace_mut(source_workspace)
                 .ok_or_else(|| "No matching node.".to_owned())?;
-            if !workspace.contains_tiling_node(source) || !workspace.contains_tiling_node(target) {
+            if !workspace.tiling().contains(source) || !workspace.tiling().contains(target) {
                 return Err("No matching node.".to_owned());
             }
-            workspace.move_tiling_subtree_to_node(source, target);
+            workspace.tiling_mut().move_subtree_to_node(source, target);
             Ok(Vec::new())
         } else {
             let MonitorSet::Normal { monitors, .. } = &mut self.monitor_set else {
@@ -164,7 +164,7 @@ impl<W: LayoutElement> Layout<W> {
                 .detach_tiling_subtree(source)
                 .ok_or_else(|| "No matching node.".to_owned())?;
             let remapped = target_ws.attach_tiling_subtree_at(subtree, Some(target)).1;
-            source_ws.finish_tiling_subtree_detach(old_parent);
+            source_ws.tiling_mut().finish_subtree_detach(old_parent);
             if monitors[source_monitor].workspace_switch.is_none() {
                 monitors[source_monitor].clean_up_workspaces();
             }
@@ -178,7 +178,8 @@ impl<W: LayoutElement> Layout<W> {
     ) -> Option<(WorkspaceId, tiling_tree::NodeId)> {
         self.workspaces().find_map(|(_, _, workspace)| {
             workspace
-                .tiling_node_for_window(window)
+                .tiling()
+                .node_for_window(window)
                 .map(|node| (workspace.id(), node))
         })
     }
@@ -296,7 +297,9 @@ impl<W: LayoutElement> Layout<W> {
         let remapped = target.workspaces[target_idx]
             .attach_tiling_subtree(subtree)
             .1;
-        source.workspaces[source_idx].finish_tiling_subtree_detach(old_parent);
+        source.workspaces[source_idx]
+            .tiling_mut()
+            .finish_subtree_detach(old_parent);
         if !preserve_empty_workspace && floating.is_empty() && source.workspace_switch.is_none() {
             source.clean_up_workspaces();
         }

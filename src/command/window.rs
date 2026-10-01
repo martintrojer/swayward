@@ -189,7 +189,7 @@ fn set_container_floating(
             .swayward
             .layout
             .active_workspace()
-            .is_some_and(|workspace| workspace.contains_tiling_node(node)),
+            .is_some_and(|workspace| workspace.tiling().contains(node)),
     };
     let Some(root) = state
         .swayward

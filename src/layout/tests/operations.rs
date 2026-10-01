@@ -985,7 +985,7 @@ impl Op {
                 let target = layout.active_workspace().and_then(|workspace| {
                     workspace
                         .focused_container_node()
-                        .map(|node| (workspace.id(), node, workspace.contains_tiling_node(node)))
+                        .map(|node| (workspace.id(), node, workspace.tiling().contains(node)))
                 });
                 if let Some((workspace, node, floating)) = target {
                     layout.set_container_floating(workspace, node, floating);

@@ -201,10 +201,11 @@ impl<W: LayoutElement> Layout<W> {
         node: NodeId,
     ) -> Option<(WorkspaceId, Vec<(NodeId, NodeId)>)> {
         let workspace = self.workspaces_mut().find(|workspace| {
-            workspace.id() == workspace_id && workspace.contains_tiling_node(node)
+            workspace.id() == workspace_id && workspace.tiling().contains(node)
         })?;
         workspace
-            .flatten_tiling_node_parent(node)
+            .tiling_mut()
+            .flatten_parent(node)
             .map(|remapped| (workspace_id, vec![remapped]))
     }
 
@@ -214,22 +215,24 @@ impl<W: LayoutElement> Layout<W> {
         node: NodeId,
         layout: tiling_tree::Layout,
     ) -> bool {
-        let Some(workspace) = self.workspaces_mut().find(|workspace| {
-            workspace.id() == workspace_id && workspace.contains_tiling_node(node)
-        }) else {
+        let Some(workspace) = self
+            .workspaces_mut()
+            .find(|workspace| workspace.id() == workspace_id && workspace.tiling().contains(node))
+        else {
             return false;
         };
-        workspace.split_tiling_node(node, layout);
+        workspace.tiling_mut().split(node, layout);
         true
     }
 
     pub fn toggle_tiling_node_split(&mut self, workspace_id: WorkspaceId, node: NodeId) -> bool {
-        let Some(workspace) = self.workspaces_mut().find(|workspace| {
-            workspace.id() == workspace_id && workspace.contains_tiling_node(node)
-        }) else {
+        let Some(workspace) = self
+            .workspaces_mut()
+            .find(|workspace| workspace.id() == workspace_id && workspace.tiling().contains(node))
+        else {
             return false;
         };
-        workspace.toggle_tiling_node_split(node);
+        workspace.tiling_mut().toggle_split(node);
         true
     }
 
@@ -239,12 +242,13 @@ impl<W: LayoutElement> Layout<W> {
         node: NodeId,
         layout: tiling_tree::Layout,
     ) -> bool {
-        let Some(workspace) = self.workspaces_mut().find(|workspace| {
-            workspace.id() == workspace_id && workspace.contains_tiling_node(node)
-        }) else {
+        let Some(workspace) = self
+            .workspaces_mut()
+            .find(|workspace| workspace.id() == workspace_id && workspace.tiling().contains(node))
+        else {
             return false;
         };
-        workspace.set_tiling_node_layout(node, layout);
+        workspace.tiling_mut().set_layout(node, layout);
         true
     }
 
@@ -255,7 +259,7 @@ impl<W: LayoutElement> Layout<W> {
         layout: tiling_tree::Layout,
     ) -> bool {
         self.workspace_mut(workspace_id)
-            .is_some_and(|workspace| workspace.set_tiling_target_layout(node, layout))
+            .is_some_and(|workspace| workspace.tiling_mut().set_target_layout(node, layout))
     }
 
     pub fn toggle_tiling_target_layout(
@@ -286,7 +290,7 @@ impl<W: LayoutElement> Layout<W> {
         format: String,
     ) -> bool {
         self.workspace_mut(workspace_id)
-            .is_some_and(|workspace| workspace.set_tiling_node_title_format(node, format))
+            .is_some_and(|workspace| workspace.tiling_mut().set_title_format(node, format))
     }
 
     pub fn set_container_floating(

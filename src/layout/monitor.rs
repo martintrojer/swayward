@@ -337,7 +337,7 @@ impl<W: LayoutElement> Monitor<W> {
 
         for (idx, ws) in workspaces.iter_mut().enumerate() {
             if preserve_initial_auto_layout {
-                ws.preserve_empty_auto_layout();
+                ws.tiling_mut().preserve_empty_auto_layout();
             }
             ws.set_output(Some(output.clone()));
             ws.update_config(options.clone());
@@ -354,7 +354,7 @@ impl<W: LayoutElement> Monitor<W> {
             let mut ws = Workspace::new(output.clone(), clock.clone(), options.clone());
             // Sway creates each output's initial workspace before applying the
             // configured mode, then keeps that workspace's original split.
-            ws.preserve_empty_auto_layout();
+            ws.tiling_mut().preserve_empty_auto_layout();
             if let Some(name) = initial_workspace_name {
                 let (name, number) = super::sway_identity_from_name(name);
                 ws.set_sway_identity(name, number);
@@ -440,7 +440,7 @@ impl<W: LayoutElement> Monitor<W> {
     }
 
     pub fn refresh_empty_auto_layout(&mut self, idx: usize) {
-        self.workspaces[idx].track_empty_auto_layout();
+        self.workspaces[idx].tiling_mut().track_empty_auto_layout();
     }
 
     pub fn idx_of_ws(&self, id: WorkspaceId) -> Option<usize> {
@@ -1028,7 +1028,9 @@ impl<W: LayoutElement> Monitor<W> {
         let target_idx = self.idx_of_ws(target_workspace)?;
         let (subtree, old_parent) = self.workspaces[source_idx].detach_tiling_subtree(node)?;
         let remapped = self.workspaces[target_idx].attach_tiling_subtree(subtree).1;
-        self.workspaces[source_idx].finish_tiling_subtree_detach(old_parent);
+        self.workspaces[source_idx]
+            .tiling_mut()
+            .finish_subtree_detach(old_parent);
         if !preserve_empty_workspace && self.workspace_switch.is_none() {
             self.consider_destroy_workspace(source_workspace);
         }
@@ -1152,7 +1154,9 @@ impl<W: LayoutElement> Monitor<W> {
         if let (Some(fullscreen), Some(fullscreen_window)) = (fullscreen, fullscreen_window) {
             self.workspaces[new_idx].set_window_fullscreen(&fullscreen_window, Some(fullscreen));
             if fullscreen_window == window {
-                self.workspaces[new_idx].mark_tiling_fullscreen_arrived();
+                self.workspaces[new_idx]
+                    .tiling_mut()
+                    .mark_fullscreen_arrived();
             }
         }
 

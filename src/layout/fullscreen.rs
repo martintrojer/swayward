@@ -57,7 +57,8 @@ impl<W: LayoutElement> Layout<W> {
     ) -> Option<Option<tiling_tree::FullscreenMode>> {
         let workspace = self.workspace(workspace_id)?;
         workspace
-            .contains_tiling_node(node)
+            .tiling()
+            .contains(node)
             .then(|| workspace.tiling().fullscreen_mode(node))
     }
 

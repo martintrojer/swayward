@@ -338,7 +338,7 @@ impl<W: LayoutElement> Layout<W> {
         };
         let monitor = &mut monitors[monitor_idx];
         let index = monitor.workspaces_len().saturating_sub(1);
-        if monitor.workspaces_len() == 1 && !monitor.active_workspace_ref().tiling_has_had_window()
+        if monitor.workspaces_len() == 1 && !monitor.active_workspace_ref().tiling().has_had_tile()
         {
             monitor.refresh_empty_auto_layout(0);
         }

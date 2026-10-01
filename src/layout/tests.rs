@@ -1475,7 +1475,7 @@ fn sticky_floating_tree_follows_workspace_focus() {
     let focused = workspace.tiling().node_for_window(&1).unwrap();
     workspace.tiling_mut().set_focus(focused);
     let (subtree, old_parent) = workspace.detach_tiling_subtree(root).unwrap();
-    workspace.finish_tiling_subtree_detach(old_parent);
+    workspace.tiling_mut().finish_subtree_detach(old_parent);
     let (root, _) = workspace.floating_mut().add_tree(
         subtree,
         Rectangle::new((100., 120.).into(), (600., 450.).into()),
@@ -2673,7 +2673,7 @@ fn floating_tree_entry_routes_geometry_focus_hit_testing_and_lifecycle() {
     let tiling_root = workspace.tiling().focus().unwrap();
     workspace.tiling_mut().set_focus(first);
     let (subtree, old_parent) = workspace.detach_tiling_subtree(tiling_root).unwrap();
-    workspace.finish_tiling_subtree_detach(old_parent);
+    workspace.tiling_mut().finish_subtree_detach(old_parent);
     let rect = Rectangle::new((100., 120.).into(), (600., 450.).into());
 
     let (root, remapped) = workspace.floating_mut().add_tree(subtree, rect);
@@ -2880,7 +2880,7 @@ fn removing_a_floating_tree_leaf_uses_the_resident_tree() {
     workspace.tiling_mut().focus_root();
     let root = workspace.tiling().focus().unwrap();
     let (subtree, old_parent) = workspace.detach_tiling_subtree(root).unwrap();
-    workspace.finish_tiling_subtree_detach(old_parent);
+    workspace.tiling_mut().finish_subtree_detach(old_parent);
     workspace.floating_mut().add_tree(
         subtree,
         Rectangle::new((100., 120.).into(), (600., 450.).into()),
@@ -2940,7 +2940,7 @@ fn floating_tree_root_tracks_output_geometry_changes() {
     workspace.tiling_mut().focus_root();
     let root = workspace.tiling().focus().unwrap();
     let (subtree, old_parent) = workspace.detach_tiling_subtree(root).unwrap();
-    workspace.finish_tiling_subtree_detach(old_parent);
+    workspace.tiling_mut().finish_subtree_detach(old_parent);
     let (root, _) = workspace.floating_mut().add_tree(
         subtree,
         Rectangle::new((100., 120.).into(), (600., 450.).into()),
@@ -3005,7 +3005,7 @@ fn floating_group_workspace() -> (Workspace<TestWindow>, tiling_tree::NodeId) {
     workspace.tiling_mut().focus_root();
     let root = workspace.tiling().focus().unwrap();
     let (subtree, old_parent) = workspace.detach_tiling_subtree(root).unwrap();
-    workspace.finish_tiling_subtree_detach(old_parent);
+    workspace.tiling_mut().finish_subtree_detach(old_parent);
     let (root, _) = workspace.floating_mut().add_tree(
         subtree,
         Rectangle::new((100., 120.).into(), (600., 450.).into()),
@@ -3094,7 +3094,7 @@ fn fullscreen_targets_a_node_inside_a_floating_tree() {
     workspace.tiling_mut().focus_root();
     let root = workspace.tiling().focus().unwrap();
     let (subtree, old_parent) = workspace.detach_tiling_subtree(root).unwrap();
-    workspace.finish_tiling_subtree_detach(old_parent);
+    workspace.tiling_mut().finish_subtree_detach(old_parent);
     let (root, _) = workspace.floating_mut().add_tree(
         subtree,
         Rectangle::new((100., 120.).into(), (600., 450.).into()),
@@ -3190,7 +3190,7 @@ fn floating_tree_root_survives_workspace_and_output_moves() {
     let root = source.tiling().focus().unwrap();
     source.tiling_mut().set_focus(first);
     let (subtree, old_parent) = source.detach_tiling_subtree(root).unwrap();
-    source.finish_tiling_subtree_detach(old_parent);
+    source.tiling_mut().finish_subtree_detach(old_parent);
     let old_rect = Rectangle::new((100., 120.).into(), (600., 450.).into());
     let (root, _) = source.floating_mut().add_tree(subtree, old_rect);
     source
@@ -3276,7 +3276,7 @@ fn directional_focus_descends_into_a_floating_tree() {
     let first = workspace.tiling().node_for_window(&1).unwrap();
     workspace.tiling_mut().set_focus(first);
     let (subtree, old_parent) = workspace.detach_tiling_subtree(root).unwrap();
-    workspace.finish_tiling_subtree_detach(old_parent);
+    workspace.tiling_mut().finish_subtree_detach(old_parent);
     workspace.floating_mut().add_tree(
         subtree,
         Rectangle::new((100., 120.).into(), (600., 450.).into()),
@@ -3302,7 +3302,7 @@ fn floating_tree_scratchpad_moves_the_whole_root() {
     let focused = workspace.tiling().node_for_window(&1).unwrap();
     workspace.tiling_mut().set_focus(focused);
     let (subtree, old_parent) = workspace.detach_tiling_subtree(root).unwrap();
-    workspace.finish_tiling_subtree_detach(old_parent);
+    workspace.tiling_mut().finish_subtree_detach(old_parent);
     let rect = Rectangle::new((100., 120.).into(), (600., 450.).into());
     let (root, _) = workspace.floating_mut().add_tree(subtree, rect);
 
@@ -4562,7 +4562,7 @@ fn drop_on_a_tile_centre_across_outputs_exchanges_windows() {
         .monitor_for_output(&outputs[1])
         .unwrap()
         .active_workspace_ref();
-    let target_node = target_workspace_ref.tiling_node_for_window(&1).unwrap();
+    let target_node = target_workspace_ref.tiling().node_for_window(&1).unwrap();
     let target_rect = target_workspace_ref
         .tiling()
         .node_geometry(target_node)
@@ -4610,7 +4610,7 @@ fn drop_on_a_tile_centre_swaps_instead_of_inserting() {
     let output = layout.outputs().next().unwrap().clone();
     let monitor = layout.monitor_for_output(&output).unwrap();
     let workspace = monitor.active_workspace_ref();
-    let target = workspace.tiling_node_for_window(&0).unwrap();
+    let target = workspace.tiling().node_for_window(&0).unwrap();
     let target_rect = workspace.tiling().node_geometry(target).unwrap();
     let geo = (target_rect.loc, target_rect.size);
 

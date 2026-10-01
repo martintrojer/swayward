@@ -221,7 +221,7 @@ impl<W: LayoutElement> Layout<W> {
             if let Some(output) = output.as_ref() {
                 let monitor = self.monitor_for_output_mut(output).unwrap();
                 if index != monitor.active_workspace_idx()
-                    && !monitor.workspaces[index].tiling_has_had_window()
+                    && !monitor.workspaces[index].tiling().has_had_tile()
                 {
                     monitor.refresh_empty_auto_layout(index);
                 }

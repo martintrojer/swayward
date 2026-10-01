@@ -1780,7 +1780,7 @@ impl<W: LayoutElement> Layout<W> {
 
     pub fn tab_indicator_focus_target(&self, window: &W::Id) -> Option<&W> {
         self.workspaces()
-            .find_map(|(_, _, workspace)| workspace.tab_indicator_focus_target(window))
+            .find_map(|(_, _, workspace)| workspace.tiling().tab_indicator_focus_target(window))
     }
 
     pub fn should_trigger_focus_follows_mouse_on(&self, window: &W::Id) -> bool {
@@ -2160,7 +2160,7 @@ impl<W: LayoutElement> Layout<W> {
         direction: tiling_tree::Direction,
     ) -> bool {
         self.workspace_mut(workspace_id)
-            .is_some_and(|workspace| workspace.move_tiling_node_in_direction(node, direction))
+            .is_some_and(|workspace| workspace.tiling_mut().move_node_direction(node, direction))
     }
 
     pub fn move_focused_root_child_to_first(&mut self) {
@@ -2324,9 +2324,9 @@ impl<W: LayoutElement> Layout<W> {
     pub fn set_tiling_node_layout(&mut self, id: tiling_tree::NodeId, layout: tiling_tree::Layout) {
         if let Some(workspace) = self
             .workspaces_mut()
-            .find(|workspace| workspace.contains_tiling_node(id))
+            .find(|workspace| workspace.tiling().contains(id))
         {
-            workspace.set_tiling_node_layout(id, layout);
+            workspace.tiling_mut().set_layout(id, layout);
         }
     }
 
@@ -3508,8 +3508,11 @@ impl<W: LayoutElement> Layout<W> {
         width: bool,
         change: SizeChange,
     ) -> Option<bool> {
-        self.workspace_mut(workspace_id)
-            .map(|workspace| workspace.resize_tiling_node(node, width, change))
+        self.workspace_mut(workspace_id).map(|workspace| {
+            workspace
+                .tiling_mut()
+                .resize_node_dimension_command(node, width, change)
+        })
     }
 
     pub fn resize_tiling_node_edge(
@@ -3519,8 +3522,11 @@ impl<W: LayoutElement> Layout<W> {
         edge: ResizeEdge,
         change: SizeChange,
     ) -> Option<bool> {
-        self.workspace_mut(workspace_id)
-            .map(|workspace| workspace.resize_tiling_node_edge(node, edge, change))
+        self.workspace_mut(workspace_id).map(|workspace| {
+            workspace
+                .tiling_mut()
+                .resize_node_edge_command(node, edge, change)
+        })
     }
 
     pub fn set_tiling_node_size_sway(
@@ -3531,7 +3537,9 @@ impl<W: LayoutElement> Layout<W> {
         height: Option<SizeChange>,
     ) {
         if let Some(workspace) = self.workspace_mut(workspace_id) {
-            workspace.set_tiling_node_size_sway(node, width, height);
+            workspace
+                .tiling_mut()
+                .set_node_size_sway(node, width, height);
         }
     }
 
@@ -3950,7 +3958,9 @@ impl<W: LayoutElement> Layout<W> {
                 monitors[mon_idx].clean_up_workspaces();
             }
             if let Some(workspace_idx) = monitors[new_idx].idx_of_ws(ws_id) {
-                monitors[new_idx].workspaces[workspace_idx].sort_tiling_focus_by_timestamp();
+                monitors[new_idx].workspaces[workspace_idx]
+                    .tiling_mut()
+                    .sort_focus_history_by_timestamp();
             }
         }
     }
@@ -4926,7 +4936,8 @@ impl<W: LayoutElement> Layout<W> {
                         // (seatop_move_tiling.c:365-388).
                         let ws_id = mon.workspaces[ws_idx].id();
                         let target_window = mon.workspaces[ws_idx]
-                            .tiling_window_for_node(target)
+                            .tiling()
+                            .window_for_node(target)
                             .map(|window| window.id().clone());
                         let moved_window = move_.tile.window().id().clone();
                         if move_.source_workspace != ws_id {
@@ -4951,8 +4962,8 @@ impl<W: LayoutElement> Layout<W> {
                             if let Some(target_window) = target_window {
                                 let workspace = &mut mon.workspaces[ws_idx];
                                 if let (Some(first), Some(second)) = (
-                                    workspace.tiling_node_for_window(&moved_window),
-                                    workspace.tiling_node_for_window(&target_window),
+                                    workspace.tiling().node_for_window(&moved_window),
+                                    workspace.tiling().node_for_window(&target_window),
                                 ) {
                                     let _ = workspace.swap_tiling_nodes(first, second);
                                 }
