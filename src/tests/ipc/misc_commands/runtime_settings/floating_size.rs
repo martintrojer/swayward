@@ -31,6 +31,4 @@ fn floating_size_settings_apply_at_runtime_like_sway() {
         assert!(!outcome[0].success, "{bad} should have failed");
         assert_eq!(outcome[0].error.as_deref(), Some(expected));
     }
-
-
 }

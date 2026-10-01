@@ -7,8 +7,6 @@
 /// disagreed about the green count more than once, and each had its own
 /// invariant asserting it against the other.
 const COVERAGE: &str = include_str!("../../../tests/i3/coverage.toml");
-const COVERAGE_README: &str = include_str!("../../../tests/i3/README.md");
-const PROJECT_README: &str = include_str!("../../../README.md");
 
 #[test]
 fn child_is_reaped_when_the_control_loop_panics() {
@@ -394,155 +392,33 @@ fn workspace_layout_config_wraps_new_windows() {
     );
 }
 
-/// One entry from `coverage.toml`: the file name and the fields this runner
-/// needs. Parsed with a small reader rather than a TOML crate, because the
-/// document is flat and adding a runtime dependency for four integers is worse
-/// than twenty lines of parsing.
-struct Coverage {
-    file: &'static str,
-    assertions: usize,
-    passing: usize,
-    failing: usize,
-    unreached: usize,
-    documented_skip_count: usize,
-    plan_unknown: bool,
+fn coverage_report() -> &'static Value {
+    static REPORT: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
+    REPORT.get_or_init(|| {
+        let output =
+            Command::new(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("contrib/coverage-report"))
+                .arg("--json")
+                .output()
+                .expect("run contrib/coverage-report --json");
+        assert!(
+            output.status.success(),
+            "coverage-report failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        serde_json::from_slice(&output.stdout).expect("coverage-report emits JSON")
+    })
 }
 
-fn coverage_entries() -> Vec<Coverage> {
-    let mut entries = Vec::new();
-    let mut current: Option<Coverage> = None;
-    for line in COVERAGE.lines() {
-        let line = line.trim();
-        if let Some(rest) = line.strip_prefix("[files.\"") {
-            if let Some(done) = current.take() {
-                entries.push(done);
-            }
-            let file = rest
-                .split_once("\"]")
-                .expect("a files entry names its file")
-                .0;
-            current = Some(Coverage {
-                file,
-                assertions: 0,
-                passing: 0,
-                failing: 0,
-                unreached: 0,
-                documented_skip_count: 0,
-                plan_unknown: false,
-            });
-            continue;
-        }
-        let Some(entry) = current.as_mut() else {
-            continue;
-        };
-        // Values are bare integers or `true`; notes may contain anything, so
-        // only read the keys this runner uses.
-        let read = |value: &str| -> usize {
-            value
-                .split(|c: char| !c.is_ascii_digit())
-                .find(|part| !part.is_empty())
-                .unwrap_or("0")
-                .parse()
-                .unwrap_or(0)
-        };
-        if let Some(value) = line.strip_prefix("assertions = ") {
-            entry.assertions = read(value);
-        } else if let Some(value) = line.strip_prefix("pass = ") {
-            entry.passing = read(value);
-        } else if let Some(value) = line.strip_prefix("fail = ") {
-            entry.failing = read(value);
-        } else if let Some(value) = line.strip_prefix("unreached = ") {
-            entry.unreached = read(value);
-        } else if line.starts_with("plan_unknown = true") {
-            entry.plan_unknown = true;
-        } else if line.starts_with("{ n = ") {
-            // Inline skips have one item per line. Table-array skips have one
-            // heading per assertion. Count both spellings so the README census
-            // follows the same source as contrib/coverage-report.
-            entry.documented_skip_count += 1;
-        } else if line.starts_with(&format!("[[files.\"{}\".skip]]", entry.file)) {
-            entry.documented_skip_count += 1;
-        }
-    }
-    if let Some(done) = current {
-        entries.push(done);
-    }
-    entries
-}
-
-/// The files that pass every declared assertion.
-///
-/// A file with no TAP plan cannot be green: `plan_unknown` means it aborted
-/// before declaring how many assertions it has, so "all of them pass" is not a
-/// statement anyone can make. Treating the reached count as the plan silently
-/// credited fourteen files with a plan they do not have. A zero-assertion file
-/// is likewise not green; it offers no evidence either way.
-fn passing_tests() -> impl Iterator<Item = &'static str> {
-    coverage_entries()
-        .into_iter()
-        .filter(|entry| {
-            entry.assertions > 0 && !entry.plan_unknown && entry.passing == entry.assertions
-        })
-        .map(|entry| entry.file)
-        .collect::<Vec<_>>()
-        .into_iter()
-}
-
-/// Keep the public in-process census tied to coverage.toml. Publishing passes
-/// alone hid the documented skips, failures, and assertions that the harness
-/// never reached, so the README must state all four figures together.
-#[test]
-fn project_readme_census_figures_match_the_manifest() {
-    let entries = coverage_entries();
-    let pass = entries.iter().map(|entry| entry.passing).sum::<usize>();
-    let skip = entries
+fn report_file_list(key: &str) -> impl Iterator<Item = &'static str> {
+    coverage_report()[key]
+        .as_array()
+        .unwrap_or_else(|| panic!("coverage-report has no {key} list"))
         .iter()
-        .map(|entry| entry.documented_skip_count)
-        .sum::<usize>();
-    let fail = entries.iter().map(|entry| entry.failing).sum::<usize>();
-    let unreached = entries.iter().map(|entry| entry.unreached).sum::<usize>();
-    let count = |n: usize| {
-        if n < 1_000 {
-            n.to_string()
-        } else {
-            format!("{},{:03}", n / 1_000, n % 1_000)
-        }
-    };
-    let claim = format!(
-        "**{} passes, {} documented skips,\n{} failures, and {} unreached assertions**",
-        count(pass),
-        count(skip),
-        count(fail),
-        count(unreached),
-    );
-    assert_eq!(
-        PROJECT_README.matches(&claim).count(),
-        1,
-        "README.md must state the coverage.toml pass/skip/fail/unreached census exactly once"
-    );
+        .map(|value| value.as_str().expect("coverage file name is a string"))
 }
 
-/// The files that are not green and carry no documented skip: every one of
-/// their non-passing assertions is swayward's own backlog, so closing it would
-/// make the file green.
-///
-/// This is the only honest definition of the ceiling's second term, and it has
-/// to be derived. The gap-only set was maintained by hand for a while and
-/// listed four files that could never be green: three carried permanent
-/// documented skips and one had no captured TAP plan. The arithmetic around
-/// them was self-consistent, so every check passed while the published ceiling
-/// was wrong in both directions at once.
-fn gap_only_tests() -> Vec<&'static str> {
-    coverage_entries()
-        .into_iter()
-        .filter(|entry| {
-            entry.assertions > 0
-                && !entry.plan_unknown
-                && entry.passing != entry.assertions
-                && entry.documented_skip_count == 0
-        })
-        .map(|entry| entry.file)
-        .collect()
+fn passing_tests() -> impl Iterator<Item = &'static str> {
+    report_file_list("green_file_names")
 }
 
 /// The manifest is read by the runner and reviewed by hand, and concurrent
@@ -563,55 +439,6 @@ fn passing_manifest_is_sorted_and_unique() {
     }
 }
 
-/// A green file's coverage row must not read as a failing one. `297-scroll-tabbed.t`
-/// passed 14/14 while its row led with `diagnostic: 4 pass; 10 fail`, which
-/// described a superseded reduced run rather than the file. The number is only
-/// safe to quote when the leading result belongs to the manifest entry.
-#[test]
-fn green_coverage_rows_do_not_lead_with_a_failing_result() {
-    let green = passing_tests().collect::<std::collections::HashSet<_>>();
-    for line in COVERAGE_README.lines() {
-        let Some(rest) = line.strip_prefix("| `") else {
-            continue;
-        };
-        let Some((file, rest)) = rest.split_once("` |") else {
-            continue;
-        };
-        if !green.contains(file) {
-            continue;
-        }
-        // The result cell is a terse measurement, not prose: it is the first
-        // cell whose words are only counts and verdicts. Matching any cell
-        // containing "fail" instead picks up citation prose such as "returns
-        // sway's `No matching node.` failure".
-        let Some(result) = rest.split('|').find(|cell| {
-            let head = cell.split('(').next().unwrap_or(cell).trim();
-            // A bare assertion count such as "14" occupies an earlier cell and
-            // would always look clean, so require a verdict word too.
-            head.split_whitespace()
-                .any(|word| matches!(word.trim_end_matches([';', ',']), "pass" | "fail" | "skip"))
-                && head.split_whitespace().all(|word| {
-                    let word = word.trim_end_matches([';', ',']);
-                    word.chars().all(|c| c.is_ascii_digit())
-                        || matches!(
-                            word,
-                            "pass" | "fail" | "skip" | "finished:" | "reached" | "diagnostic:"
-                        )
-                })
-        }) else {
-            continue;
-        };
-        let (verdict, aside) = result.split_once('(').unwrap_or((result, ""));
-        assert!(
-            !verdict.contains("fail") && !verdict.contains("skip"),
-            "{file} derives as green but its coverage row reports \
-             {verdict:?} outside any parenthetical aside ({aside:?}); a green \
-             file's leading result must be its own"
-        );
-    }
-}
-
-/// The harness adjusts its behaviour per test file, and an audit found those
 #[test]
 fn i3_scratch_defaults_off_tmpfs_and_removes_its_whole_directory() {
     let path = {
@@ -624,7 +451,6 @@ fn i3_scratch_defaults_off_tmpfs_and_removes_its_whole_directory() {
     assert!(!path.exists());
 }
 
-
 fn coverage_adaptations(test: &str) -> Value {
     let header = format!(r#"[files."{test}"]"#);
     let mut in_file = false;
@@ -634,9 +460,13 @@ fn coverage_adaptations(test: &str) -> Value {
             continue;
         }
         if in_file {
-            if let Some(flags) = line.strip_prefix("adapt = [").and_then(|s| s.strip_suffix(']')) {
+            if let Some(flags) = line
+                .strip_prefix("adapt = [")
+                .and_then(|s| s.strip_suffix(']'))
+            {
                 return Value::Array(
-                    flags.split(',')
+                    flags
+                        .split(',')
                         .map(str::trim)
                         .filter_map(|flag| flag.strip_prefix('"').and_then(|s| s.strip_suffix('"')))
                         .map(|flag| Value::String(flag.to_owned()))
@@ -666,9 +496,11 @@ fn coverage_skip_adaptations(test: &str) -> Value {
             current_number = None;
         } else if let Some(number) = line.strip_prefix("n = ") {
             current_number = number.parse::<usize>().ok();
-        } else if let (Some(number), Some(reason)) =
-            (current_number, line.strip_prefix("reason = \"").and_then(|s| s.strip_suffix('"')))
-        {
+        } else if let (Some(number), Some(reason)) = (
+            current_number,
+            line.strip_prefix("reason = \"")
+                .and_then(|s| s.strip_suffix('"')),
+        ) {
             skips.insert(number.to_string(), Value::String(reason.to_owned()));
         }
     }
@@ -705,7 +537,10 @@ fn every_harness_adaptation_has_a_sway_citation() {
             file = rest.split_once("\"]").map(|(file, _)| file);
             adaptations.clear();
             citation = None;
-        } else if let Some(flags) = line.strip_prefix("adapt = [").and_then(|s| s.strip_suffix(']')) {
+        } else if let Some(flags) = line
+            .strip_prefix("adapt = [")
+            .and_then(|s| s.strip_suffix(']'))
+        {
             adaptations = flags
                 .split(',')
                 .map(str::trim)

@@ -37,8 +37,7 @@ fn focus_border_and_smart_gap_settings_apply_at_runtime_like_sway() {
         // and smart resets the edge mode to none
         // (`sway/sway/commands/hide_edge_borders.c:34-39`).
         ("hide_edge_borders smart", &|l| {
-            l.smart_borders == SmartBorders::On
-                && l.hide_edge_borders == HideEdgeBorders::None
+            l.smart_borders == SmartBorders::On && l.hide_edge_borders == HideEdgeBorders::None
         }),
         ("smart_borders no_gaps", &|l| {
             l.smart_borders == SmartBorders::NoGaps
@@ -55,7 +54,8 @@ fn focus_border_and_smart_gap_settings_apply_at_runtime_like_sway() {
     // Oracle: state/settings_hide_edge_borders_parse. --i3 counts only as
     // the first argument, values are case-sensitive, and later arguments are
     // ignored (`sway/sway/commands/hide_edge_borders.c:16-42`).
-    let usage = "Expected 'hide_edge_borders [--i3] none|vertical|horizontal|both|smart|smart_no_gaps";
+    let usage =
+        "Expected 'hide_edge_borders [--i3] none|vertical|horizontal|both|smart|smart_no_gaps";
     for (command, error) in [
         ("hide_edge_borders NONE", usage),
         ("hide_edge_borders --i3", usage),

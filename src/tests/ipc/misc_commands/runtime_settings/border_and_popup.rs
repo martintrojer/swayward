@@ -45,9 +45,19 @@ fn border_and_popup_settings_apply_at_runtime_like_sway() {
         outcome[0].error.as_deref(),
         Some("Expected 'default_floating_border <none|normal|pixel>' or 'default_floating_border <normal|pixel> <px>'")
     );
-    for (command, width) in [("default_border pixel wide", 0), ("default_border pixel 7px", 7)] {
-        assert!(crate::command::execute(f.niri_state(), command)[0].success, "{command}");
-        assert_eq!(layout(&mut f).default_border.width, Some(width), "{command}");
+    for (command, width) in [
+        ("default_border pixel wide", 0),
+        ("default_border pixel 7px", 7),
+    ] {
+        assert!(
+            crate::command::execute(f.niri_state(), command)[0].success,
+            "{command}"
+        );
+        assert_eq!(
+            layout(&mut f).default_border.width,
+            Some(width),
+            "{command}"
+        );
     }
 
     // popup_during_fullscreen shares its accepted values and error string
@@ -63,6 +73,4 @@ fn border_and_popup_settings_apply_at_runtime_like_sway() {
         outcome[0].error.as_deref(),
         Some("Expected 'popup_during_fullscreen smart|ignore|leave_fullscreen'")
     );
-
-
 }

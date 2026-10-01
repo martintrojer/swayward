@@ -36,4 +36,3 @@ fn mouse_warping_settings_apply_at_runtime_like_sway() {
     );
     assert!(crate::command::execute(f.niri_state(), "mouse_warping none")[0].success);
 }
-

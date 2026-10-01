@@ -6,7 +6,10 @@ fn input_policy_settings_apply_at_runtime_like_sway() {
 
     // Values sway rejects must fail here too, with sway's message.
     let outcome = crate::command::execute(f.niri_state(), "focus_follows_mouse maybe");
-    assert!(!outcome[0].success, "invalid focus_follows_mouse should have failed");
+    assert!(
+        !outcome[0].success,
+        "invalid focus_follows_mouse should have failed"
+    );
     assert_eq!(
         outcome[0].error.as_deref(),
         Some("Expected 'focus_follows_mouse no|yes|always'")
@@ -38,8 +41,14 @@ fn input_policy_settings_apply_at_runtime_like_sway() {
     // Oracle: state/settings_urgency_hint_parse
     // (`sway/sway/commands/force_display_urgency_hint.c:12-23`).
     for (command, error) in [
-        ("force_display_urgency_hint 5msms", "timeout integer invalid"),
-        ("force_display_urgency_hint 500 extra", "Expected 'force_display_urgency_hint <timeout> [ms]'"),
+        (
+            "force_display_urgency_hint 5msms",
+            "timeout integer invalid",
+        ),
+        (
+            "force_display_urgency_hint 500 extra",
+            "Expected 'force_display_urgency_hint <timeout> [ms]'",
+        ),
     ] {
         let outcome = &crate::command::execute(f.niri_state(), command)[0];
         assert_eq!(outcome.error.as_deref(), Some(error), "{command}");
@@ -49,7 +58,10 @@ fn input_policy_settings_apply_at_runtime_like_sway() {
         "force_display_urgency_hint 500 ms",
         "force_display_urgency_hint 500 ms extra",
     ] {
-        assert!(crate::command::execute(f.niri_state(), command)[0].success, "{command}");
+        assert!(
+            crate::command::execute(f.niri_state(), command)[0].success,
+            "{command}"
+        );
     }
     assert_eq!(f.swayward().config.borrow().urgent_timeout_ms, 500);
 
@@ -101,6 +113,4 @@ fn input_policy_settings_apply_at_runtime_like_sway() {
             .input
             .workspace_auto_back_and_forth
     );
-
-
 }

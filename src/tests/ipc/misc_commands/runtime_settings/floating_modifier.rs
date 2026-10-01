@@ -77,6 +77,4 @@ fn floating_modifier_settings_apply_at_runtime_like_sway() {
         assert!(!outcome[0].success, "{command} should have failed");
         assert_eq!(outcome[0].error.as_deref(), Some(expected), "{command}");
     }
-
-
 }

@@ -134,6 +134,4 @@ fn titlebar_settings_apply_at_runtime_like_sway() {
         assert_eq!(outcome[0].error.as_deref(), Some(expected));
         assert_eq!(layout(&mut f).titlebar.focused, before);
     }
-
-
 }

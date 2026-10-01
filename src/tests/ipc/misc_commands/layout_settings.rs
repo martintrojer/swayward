@@ -114,4 +114,3 @@ fn windows_on_workspaces(fixture: &mut Fixture, plan: &[(&str, &str)]) {
         fixture.double_roundtrip(client);
     }
 }
-

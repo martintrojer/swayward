@@ -910,7 +910,10 @@ fn moving_a_window_under_fullscreen_keeps_its_border() {
     let moved = find_json_node_with_app_id(&tree, "moved").unwrap();
     let fullscreen = find_json_node_with_app_id(&tree, "fullscreen").unwrap();
     assert_eq!(moved["border"], "normal");
-    assert_eq!(moved["current_border_width"], fullscreen["current_border_width"]);
+    assert_eq!(
+        moved["current_border_width"],
+        fullscreen["current_border_width"]
+    );
     assert_eq!(moved["percent"], 0.0);
     assert_eq!(fullscreen["percent"], 1.0);
     let titlebar = moved["deco_rect"]["height"].as_i64().unwrap();

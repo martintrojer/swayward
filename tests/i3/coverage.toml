@@ -1491,6 +1491,7 @@ reason_verified = true
 note = "Fresh measurement reaches 1..7 with all assertions passing. Mapped windows retain their initial xdg-shell geometry as sway's natural size (`sway/sway/desktop/xdg_shell.c:481-482`), and first-time floating restores that size through sway's floating constraints (`sway/sway/tree/container.c:847-862`) instead of reusing the later tiled configure."
 
 [files."154-regress-multiple-dock.t"]
+unreached_premise = "Fresh measurement reaches only assertion 1 and emits no plan: the empty-dock baseline is supplied by the adapter's hardcoded-empty helper, then open_window fails loud on the first unsupported X11 window_type. The native equivalent is covered by `exclusive_zone_is_released_when_a_layer_unmaps`."
 plan_unknown = true
 assertions = 2
 tap_plan = "none"
@@ -1567,6 +1568,7 @@ reason = "The assertion requires preserving a client and its border state across
 citation = "tests/i3/t/161-regress-borders-restart.t:41-46; src/tests/i3_conformance.rs:871-891; src/tests/fixture.rs:15-50"
 
 [files."162-regress-dock-urgent.t"]
+unreached_premise = "Fresh measurement after removing assertion interception: 1 pass, 2 documented skip, 1 unreached. Raw TAP runs the real comparisons; each retained skip has an assertion-level sway citation below."
 assertions = 4
 tap_plan = 4
 pass = 1
@@ -2063,6 +2065,7 @@ skip = [
 ]
 
 [files."182-regress-focus-dock.t"]
+unreached_premise = "Fresh measurement reaches no assertions: open_window fails loud on the unsupported X11 window_type before the title criterion or liveness check. Native behavior is covered by `criteria_do_not_match_layer_surfaces`, which proves a container criterion cannot target a real layer-shell surface."
 assertions = 1
 tap_plan = 1
 pass = 0
@@ -2751,6 +2754,7 @@ citation = "sway/sway/commands/mark.c:46-58"
 note = "Test-side Wayland identity translation proves assertions 7–13 and 16. Assertions 14, 15, and 17 fail because they expect i3 to reject one mark applied to several matches. Sway instead runs the command for each match and moves the duplicate mark to the last container (`sway/sway/commands.c:301-326`; `sway/sway/commands/mark.c:46-58`). The translated `instance` criterion and node identity expose tha"
 
 [files."211-regress-urgency-assign.t"]
+unreached_premise = "Fresh measurement after removing assertion interception: 1 pass, 2 unreached. Raw TAP runs the real comparisons; each retained skip has an assertion-level sway citation below."
 assertions = 3
 tap_plan = 3
 pass = 1
@@ -3028,6 +3032,7 @@ reason = "The assertion sets _NET_WM_WINDOW_TYPE_UTILITY before map. Sway uses t
 citation = "sway/sway/desktop/xwayland.c:310-339"
 
 [files."231-ipc-floating-event.t"]
+unreached_premise = "Fresh measurement after removing assertion interception: 1 pass, 1 fail, 4 unreached. Raw TAP runs the real comparisons; each retained skip has an assertion-level sway citation below."
 assertions = 6
 tap_plan = 6
 pass = 1
@@ -3038,6 +3043,7 @@ reason_verified = true
 note = "Fresh measurement after removing assertion interception: 1 pass, 1 fail, 4 unreached. Raw TAP runs the real comparisons; each retained skip has an assertion-level sway citation below."
 
 [files."232-cmd-move-criteria.t"]
+unreached_premise = "The two portable `id` movement and focus-preservation assertions pass. The adapter then aborts before emitting a plan because a native Wayland client cannot set the first requested X11 `_NET_WM_WINDOW_TYPE_*` property. The ten `window_type` movement assertions remain documented skips, while their ten following focus assertions are unreachable in the unchanged file. Sway evaluates `window_type` only in its Xwayland criteria branch (`sway/sway/criteria.c:355-410`)."
 plan_unknown = true
 assertions = 22
 tap_plan = "none"
@@ -3579,6 +3585,7 @@ reason = "The assertion requires an in-place compositor restart. Replacing the i
 citation = "tests/i3/t/267-regress-mark-restart.t:21-28; src/tests/i3_conformance.rs:871-891; src/tests/fixture.rs:15-50"
 
 [files."268-ipc-config.t"]
+unreached_premise = "Fresh measurement reaches only assertion 1 and emits no TAP plan. Its temporary-path nonexistence check runs before the unavailable separate-compositor launch and cannot test GET_CONFIG or socket configuration. Assertion 2 remains unreached."
 assertions = 2
 tap_plan = 2
 pass = 0
@@ -3647,6 +3654,7 @@ skip = [
 ]
 
 [files."272-regress-focus-assign.t"]
+unreached_premise = "Fresh measurement reaches and passes assertions 1-5, then the adapter aborts before emitting a plan because a native Wayland client cannot set the requested X11 utility window type. Assertion 7 remains a documented skip; assertions 6 and 8 are unreachable in the unchanged file."
 plan_unknown = true
 assertions = 8
 tap_plan = "none"
@@ -3854,6 +3862,7 @@ reason = "i3 uses -1 as sentinel metadata on its internal container. Sway serial
 citation = "sway/sway/ipc-json.c:746-751"
 
 [files."289-ipc-shutdown-event.t"]
+unreached_premise = "Fresh measurement after removing assertion interception: 0 pass, 4 unreached. Raw TAP runs the real comparisons; each retained skip has an assertion-level sway citation below."
 citation = "sway/sway/ipc-server.c:723-729"
 adapt = ["shutdown_in_process"]
 assertions = 4
@@ -4834,6 +4843,7 @@ citation = "sway/sway/commands/focus.c:78-130"
 note = "Swayward applies sway's destination-entry rule: fullscreen first; otherwise the direction-facing direct child for horizontal/tabbed or vertical/stacked roots, with MRU fallback on the perpendicular axis (`sway/commands/focus.c:78-130`). Assertions 1, 2, and 4–10 pass. Assertion 3 and assertions 11–19 expect i3's MRU selection where sway chooses the direction-facing branch; a real sway 1.11 two-out"
 
 [files."511-scratchpad-configure-request.t"]
+unreached_premise = "Fresh measurement after removing assertion interception: 0 pass, 2 unreached. Raw TAP runs the real comparisons; each retained skip has an assertion-level sway citation below."
 assertions = 2
 tap_plan = 2
 pass = 0
@@ -5037,6 +5047,7 @@ reason = "Layer-shell chooses an output when the surface is created; geometry re
 citation = "sway/sway/desktop/layer_shell.c:192-215"
 
 [files."527-focus-fallback.t"]
+unreached_premise = "Fresh measurement after removing assertion interception: 1 pass, 1 unreached. Raw TAP runs the real comparisons; each retained skip has an assertion-level sway citation below."
 assertions = 2
 tap_plan = 2
 pass = 1
@@ -5219,6 +5230,7 @@ reason_verified = true
 note = "For this file's exact `before_map => fullscreen` callback, the adapter sends a real `xdg_toplevel.set_fullscreen(output)` request before the first surface commit, choosing `fake-0` or `fake-1` from the supplied full-output rectangle. Both windows span the requested real output and retain `fullscreen_mode: 1`. This is the native protocol path sway consumes at map time (`sway/desktop/xdg_shell.c:475"
 
 [files."534-dont-warp.t"]
+unreached_premise = "Fresh measurement after removing assertion interception: 0 pass, 2 unreached. Raw TAP runs the real comparisons; each retained skip has an assertion-level sway citation below."
 citation = "sway/sway/input/seat.c:1526-1547"
 adapt = ["no_pointer_warp"]
 assertions = 2
@@ -5978,6 +5990,7 @@ reason = "For a singleton H/V parent, sway changes the existing parent or worksp
 citation = "sway/sway/tree/container.c:1565-1585"
 
 [files."551-net-wm-state-maximized.t"]
+unreached_premise = "Fresh measurement after removing assertion interception: 3 pass, 11 documented skip, 21 unreached. Raw TAP runs the real comparisons; each retained skip has an assertion-level sway citation below."
 adapt = ["maximized_state"]
 assertions = 35
 tap_plan = 35
@@ -6043,6 +6056,7 @@ reason = "The assertion reads _NET_WM_STATE_MAXIMIZED_VERT or _HORZ. Sway report
 citation = "sway/sway/desktop/xdg_shell.c:195-212"
 
 [files."553-popup_during_fullscreen.t"]
+unreached_premise = "Fresh measurement after removing assertion interception: 15 pass, 4 unreached. Raw TAP runs the real comparisons; each retained skip has an assertion-level sway citation below."
 assertions = 19
 tap_plan = 19
 pass = 15

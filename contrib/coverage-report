@@ -173,6 +173,8 @@ def validate(doc):
         reason = entry.get("reason")
         if (entry.get("fail") or entry.get("unreached") or skips) and not reason:
             bad.append(f"{name}: has non-passing assertions but states no reason")
+        if entry.get("unreached") and not entry.get("unreached_premise"):
+            bad.append(f"{name}: unreached assertions need unreached_premise")
         if reason and reason not in families and len(reason) < 40:
             bad.append(f"{name}: reason {reason!r} is not a known family")
         # Every reason in this file was first inferred by regex over the old
@@ -202,6 +204,21 @@ def census(doc):
 
     documented = tally("skip")
     undocumented = tally("skip_undocumented")
+    green = sorted(
+        name
+        for name, entry in files.items()
+        if entry.get("assertions", 0) > 0
+        and not entry.get("plan_unknown")
+        and entry.get("pass", 0) == entry["assertions"]
+    )
+    gap_only = sorted(
+        name
+        for name, entry in files.items()
+        if entry.get("assertions", 0) > 0
+        and not entry.get("plan_unknown")
+        and entry.get("pass", 0) != entry["assertions"]
+        and not entry.get("skip")
+    )
     return {
         "files": len(files),
         "assertions": sum(e.get("assertions", 0) for e in files.values()),
@@ -213,13 +230,14 @@ def census(doc):
         # The work queue: everything that is neither a pass nor a finished,
         # documented skip.
         "backlog": tally("fail") + tally("unreached") + undocumented,
-        "green_files": sum(
-            1
-            for e in files.values()
-            if e.get("assertions", 0) > 0
-            and not e.get("plan_unknown")
-            and e.get("pass", 0) == e["assertions"]
-        ),
+        "green_files": len(green),
+        "green_file_names": green,
+        "gap_only": gap_only,
+        "non_green_passes": {
+            name: entry.get("pass", 0)
+            for name, entry in sorted(files.items())
+            if entry.get("pass", 0) > 0 and name not in green
+        },
         "skip_structural": sum(
             len(e.get("skip", []))
             for e in files.values()
