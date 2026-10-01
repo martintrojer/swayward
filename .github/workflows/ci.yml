@@ -149,6 +149,7 @@ jobs:
       - run: ./contrib/test-session-environment.sh
       - run: ./contrib/check-internal-links
       - run: python3 contrib/test-check-divergence.py
+      - run: python3 contrib/test-tap-count.py
       - run: ./contrib/check-divergence
       - run: ./contrib/fetch-oracle
       - run: ./contrib/command-census --check

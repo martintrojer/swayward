@@ -22,14 +22,32 @@ import re
 import sys
 
 PLAN = re.compile(r"^1\.\.(\d+)(?:\s+#\s*SKIP\b.*)?$", re.IGNORECASE)
+# Anchored at column 0: Test::More indents a subtest's own results, and only
+# the outer line that summarises the subtest belongs to the file's stream.
 RESULT = re.compile(r"^(not ok|ok) (\d+)(.*)$")
+DIRECTIVE = re.compile(r"^\s*(skip|todo)\b", re.IGNORECASE)
+
+
+def directive(trailer: str) -> str | None:
+    """Return "skip" or "todo" when the result line carries that directive.
+
+    A directive starts at the first `#` not escaped with a backslash.
+    Test::More escapes a `#` inside a description as `\\#`, so a description
+    that mentions "# skip" is not a skip.
+    """
+    match = re.search(r"(?<!\\)#", trailer)
+    if not match:
+        return None
+    found = DIRECTIVE.match(trailer[match.end():])
+    return found.group(1).lower() if found else None
 
 
 def split_streams(lines: list[str]) -> list[list[tuple[str, int]]]:
     """Group results into streams, starting a new one when numbering restarts.
 
     TAP reports a skip as `ok N # skip reason`, so counting `ok` lines alone
-    overstates the passes. Classify those separately.
+    overstates the passes. Classify those separately. A `# TODO` result is
+    neither a pass nor a failure under TAP, whichever way it went.
     """
     streams: list[list[tuple[str, int]]] = []
     current: list[tuple[str, int]] = []
@@ -39,7 +57,10 @@ def split_streams(lines: list[str]) -> list[list[tuple[str, int]]]:
         if not match:
             continue
         status, number, trailer = match.group(1), int(match.group(2)), match.group(3)
-        if status == "ok" and re.search(r"#\s*skip", trailer, re.IGNORECASE):
+        kind = directive(trailer)
+        if kind == "todo":
+            status = "todo"
+        elif kind == "skip" and status == "ok":
             status = "skip"
         if number <= previous and current:
             streams.append(current)
@@ -73,25 +94,29 @@ def main() -> int:
         print("no TAP results found")
         return 1
 
-    def tally(stream: list[tuple[str, int]]) -> tuple[int, int, int]:
+    def tally(stream: list[tuple[str, int]]) -> tuple[int, int, int, int]:
         passed = sum(1 for status, _ in stream if status == "ok")
         skipped = sum(1 for status, _ in stream if status == "skip")
-        return passed, skipped, len(stream) - passed - skipped
+        todo = sum(1 for status, _ in stream if status == "todo")
+        return passed, skipped, todo, len(stream) - passed - skipped - todo
 
     for index, stream in enumerate(streams):
-        passed, skipped, failed = tally(stream)
+        passed, skipped, todo, failed = tally(stream)
         label = "authoritative" if index == 0 else "panic echo, ignore"
         skips = f", {skipped} skip" if skipped else ""
+        skips += f", {todo} todo" if todo else ""
         print(
             f"stream {index + 1}: {len(stream)} checks, {passed} ok{skips}, "
             f"{failed} not ok  ({label})"
         )
 
     first = streams[0]
-    passed, skipped, failed = tally(first)
+    passed, skipped, todo, failed = tally(first)
     parts = [f"{passed} pass"]
     if skipped:
         parts.append(f"{skipped} skip")
+    if todo:
+        parts.append(f"{todo} todo")
     if failed:
         parts.append(f"{failed} fail")
     verdict = "; ".join(parts)
