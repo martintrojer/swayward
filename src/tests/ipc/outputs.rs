@@ -576,7 +576,7 @@ fn an_ipc_event_burst_does_not_delay_session_lock_confirmation() {
             .unwrap()
             .send_event(swayward_ipc::legacy::Event::Tick {
                 first: false,
-                payload: sequence.to_string(),
+                payload: sequence.to_string().into_bytes(),
             });
     }
 

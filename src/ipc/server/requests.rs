@@ -75,12 +75,20 @@ pub(super) async fn dispatch(ctx: &ClientCtx, msg_type: MessageType, payload: &[
             br#"{ "success": false, "error": "No bar with that ID" }"#.to_vec()
         }
         MessageType::SendTick => {
-            let payload = String::from_utf8_lossy(payload).into_owned();
-            for stream in ctx.event_streams.borrow_mut().iter_mut() {
-                let _ = stream.events.try_send(Event::Tick {
-                    payload: payload.clone(),
-                    first: false,
-                });
+            let event = Event::Tick {
+                payload: payload.to_vec(),
+                first: false,
+            };
+            let mut streams = ctx.event_streams.borrow_mut();
+            let mut remove = Vec::new();
+            for (index, stream) in streams.iter_mut().enumerate() {
+                if stream.tick.get() && stream.events.try_send(event.clone()).is_err() {
+                    remove.push(index);
+                }
+            }
+            for index in remove.into_iter().rev() {
+                let stream = streams.swap_remove(index);
+                let _ = stream.disconnect.send_blocking(());
             }
             // Sway writes this literal, space included
             // (`sway/sway/ipc-server.c:674`).

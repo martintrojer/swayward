@@ -157,7 +157,7 @@ pub enum Event {
     /// A sway IPC synchronization tick.
     Tick {
         /// Client-provided tick payload.
-        payload: String,
+        payload: Vec<u8>,
         /// Whether this is the initial subscription tick.
         first: bool,
     },

@@ -16,6 +16,8 @@ struct EventStreamClient {
     pub(super) read: Box<dyn AsyncRead + Unpin>,
     pub(super) write: Box<dyn AsyncWrite + Unpin>,
     pub(super) subscriptions: HashSet<String>,
+    /// Shared with this client's [`EventStreamSender::tick`].
+    pub(super) tick: Rc<Cell<bool>>,
     pub(super) ctx: ClientCtx,
 }
 
@@ -47,6 +49,10 @@ pub(super) struct EventStreamSender {
     pub(super) id: u64,
     pub(super) events: Sender<Event>,
     pub(super) disconnect: Sender<()>,
+    /// Whether the client subscribed to `tick`. SEND_TICK queues only for
+    /// these, so tick traffic cannot fill another subscriber's queue. Set
+    /// again when the client subscribes to more families later.
+    pub(super) tick: Rc<Cell<bool>>,
 }
 
 pub(super) struct CommandRequest {
@@ -185,10 +191,12 @@ pub(super) async fn handle_client(
             let (disconnect_tx, disconnect_rx) = async_channel::bounded(1);
             let id = ctx.next_event_stream_id.get();
             ctx.next_event_stream_id.set(id.wrapping_add(1));
+            let tick = Rc::new(Cell::new(subscriptions.iter().any(|event| event == "tick")));
             ctx.event_streams.borrow_mut().push(EventStreamSender {
                 id,
                 events: events_tx,
                 disconnect: disconnect_tx,
+                tick: tick.clone(),
             });
             let registration = EventStreamRegistration {
                 id,
@@ -215,6 +223,7 @@ pub(super) async fn handle_client(
                 read: Box::new(read),
                 write: Box::new(write),
                 subscriptions: subscriptions.into_iter().collect(),
+                tick,
                 ctx: ctx.clone(),
             })
             .await;
@@ -282,6 +291,7 @@ async fn handle_event_stream_client(client: EventStreamClient) -> anyhow::Result
         mut read,
         mut write,
         mut subscriptions,
+        tick,
         ctx,
     } = client;
     let query_state = ctx.query_state.clone();
@@ -374,6 +384,7 @@ async fn handle_event_stream_client(client: EventStreamClient) -> anyhow::Result
                 refresh_event_state(&ctx).await;
                 let send_first_tick = requested.iter().any(|event| event == "tick");
                 subscriptions.extend(requested);
+                tick.set(subscriptions.contains("tick"));
                 queue_ipc_message(
                     &mut write_buffer,
                     &mut write_buffer_size,
@@ -393,6 +404,19 @@ async fn handle_event_stream_client(client: EventStreamClient) -> anyhow::Result
             }
             StreamInput::Event(event) => event,
         };
+        // Sway inserts the raw payload bytes into the tick event's JSON
+        // (`sway/sway/ipc-server.c:480-492,671-676`), so a payload that is not
+        // UTF-8 reaches subscribers byte for byte rather than through serde.
+        if let Event::Tick { payload, first } = &event {
+            if subscriptions.contains("tick") {
+                let mut json = format!(r#"{{ "first": {first}, "payload": ""#).into_bytes();
+                json.extend_from_slice(payload);
+                json.extend_from_slice(br#"" }"#);
+                let buf = swayward_ipc::wire::encode_raw_bytes(SwayEventType::Tick as u32, &json);
+                queue_ipc_message(&mut write_buffer, &mut write_buffer_size, &buf)?;
+            }
+            continue;
+        }
         let Some((msg_type, payload)) = sway_event(event, &query_state.borrow()) else {
             continue;
         };

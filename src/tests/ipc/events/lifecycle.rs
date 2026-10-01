@@ -347,7 +347,7 @@ fn non_reading_event_subscriber_is_disconnected_without_blocking_ipc() {
     for _ in 0..4 {
         fixture.swayward().ipc_server.as_ref().unwrap().send_event(
             swayward_ipc::legacy::Event::Tick {
-                payload: payload.clone(),
+                payload: payload.as_bytes().to_vec(),
                 first: false,
             },
         );
@@ -399,4 +399,131 @@ fn event_subscription_does_not_block_a_concurrent_query() {
         serde_json::from_str::<Value>(&payload).unwrap()["variant"],
         "swayward"
     );
+}
+
+#[test]
+fn send_tick_preserves_raw_payload_bytes_like_sway() {
+    let (mut fixture, socket) = ipc_fixture();
+    let mut subscriber = UnixStream::connect(&socket).unwrap();
+    subscriber
+        .write_all(&swayward_ipc::wire::encode(
+            MessageType::Subscribe,
+            r#"["tick"]"#,
+        ))
+        .unwrap();
+    let ((_, _), remainder) =
+        read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, Vec::new());
+    let ((_, _), remainder) =
+        read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder); // initial tick
+    assert!(remainder.is_empty());
+
+    let mut command = UnixStream::connect(socket).unwrap();
+    command
+        .write_all(&swayward_ipc::wire::encode_raw_bytes(
+            MessageType::SendTick as u32,
+            b"\xff",
+        ))
+        .unwrap();
+    let (_, reply) = read_ipc_reply(&mut fixture, &mut command);
+    assert_eq!(reply, r#"{"success": true}"#);
+
+    subscriber.set_nonblocking(true).unwrap();
+    let mut raw = Vec::new();
+    let deadline = Instant::now() + Duration::from_secs(1);
+    while raw.len() < swayward_ipc::wire::HEADER_SIZE {
+        fixture.dispatch();
+        let mut buf = [0; 128];
+        match subscriber.read(&mut buf) {
+            Ok(len) => raw.extend_from_slice(&buf[..len]),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
+            Err(error) => panic!("tick read failed: {error}"),
+        }
+        assert!(Instant::now() < deadline, "timed out waiting for raw tick");
+    }
+    let length = u32::from_ne_bytes(raw[6..10].try_into().unwrap()) as usize;
+    while raw.len() < swayward_ipc::wire::HEADER_SIZE + length {
+        fixture.dispatch();
+        let mut buf = [0; 128];
+        if let Ok(len) = subscriber.read(&mut buf) {
+            raw.extend_from_slice(&buf[..len]);
+        }
+        assert!(Instant::now() < deadline, "timed out waiting for tick body");
+    }
+    assert_eq!(
+        &raw[swayward_ipc::wire::HEADER_SIZE..][..length],
+        b"{ \"first\": false, \"payload\": \"\xff\" }"
+    );
+}
+
+#[test]
+fn ticks_do_not_fill_non_tick_subscriber_queues() {
+    let (mut fixture, socket) = ipc_fixture();
+    let mut subscriber = UnixStream::connect(&socket).unwrap();
+    subscriber
+        .write_all(&swayward_ipc::wire::encode(
+            MessageType::Subscribe,
+            r#"["workspace"]"#,
+        ))
+        .unwrap();
+    let _ = read_ipc_reply(&mut fixture, &mut subscriber);
+    let mut command = UnixStream::connect(socket).unwrap();
+    for _ in 0..4100 {
+        command
+            .write_all(&swayward_ipc::wire::encode(
+                MessageType::SendTick,
+                "barrier",
+            ))
+            .unwrap();
+        let _ = read_ipc_reply(&mut fixture, &mut command);
+    }
+    assert_eq!(
+        fixture
+            .swayward()
+            .ipc_server
+            .as_ref()
+            .unwrap()
+            .event_stream_count(),
+        1
+    );
+}
+
+#[test]
+fn a_later_tick_subscription_receives_send_tick() {
+    // SEND_TICK queues only for tick subscribers, so a client that adds
+    // `tick` to an existing subscription must start receiving ticks
+    // (sway checks the client's current subscriptions on every event,
+    // sway/sway/ipc-server.c:671-676).
+    let (mut fixture, socket) = ipc_fixture();
+    let mut subscriber = UnixStream::connect(&socket).unwrap();
+    subscriber
+        .write_all(&swayward_ipc::wire::encode(
+            MessageType::Subscribe,
+            r#"["workspace"]"#,
+        ))
+        .unwrap();
+    let ((_, reply), remainder) =
+        read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, Vec::new());
+    assert_eq!(reply, r#"{"success": true}"#);
+    subscriber
+        .write_all(&swayward_ipc::wire::encode(
+            MessageType::Subscribe,
+            r#"["tick"]"#,
+        ))
+        .unwrap();
+    let ((_, reply), remainder) =
+        read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder);
+    assert_eq!(reply, r#"{"success": true}"#);
+    let ((_, first), remainder) =
+        read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder);
+    assert_eq!(first, r#"{"first":true,"payload":""}"#);
+
+    let mut command = UnixStream::connect(socket).unwrap();
+    command
+        .write_all(&swayward_ipc::wire::encode(MessageType::SendTick, "later"))
+        .unwrap();
+    let (_, reply) = read_ipc_reply(&mut fixture, &mut command);
+    assert_eq!(reply, r#"{"success": true}"#);
+    let ((kind, tick), _) = read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder);
+    assert_eq!(kind, (1 << 31) | 7);
+    assert_eq!(tick, r#"{ "first": false, "payload": "later" }"#);
 }
