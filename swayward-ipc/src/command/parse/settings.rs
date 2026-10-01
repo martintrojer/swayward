@@ -205,6 +205,10 @@ pub(super) fn parse_gaps(args: &[&str]) -> Result<Command, String> {
     }
 }
 
+pub(super) const FOCUS_FOLLOWS_MOUSE_USAGE: &str = "Expected 'focus_follows_mouse no|yes|always'";
+pub(super) const MOUSE_WARPING_USAGE: &str = "Expected 'mouse_warping output|container|none'";
+pub(super) const INVALID_SIZE: &str = "Invalid size specified";
+
 pub(super) fn parse(name: &str, rest: &[&str]) -> Result<Command, String> {
     match name {
         name @ ("client.focused"
@@ -370,7 +374,7 @@ pub(super) fn parse(name: &str, rest: &[&str]) -> Result<Command, String> {
             ["always"] => Ok(Command::SetLayoutOption(LayoutOption::FocusFollowsMouse(
                 FocusFollowsMouse::Always,
             ))),
-            _ => Err("Expected 'focus_follows_mouse no|yes|always'".into()),
+            _ => Err(FOCUS_FOLLOWS_MOUSE_USAGE.into()),
         },
         "workspace_auto_back_and_forth" => match rest {
             [value] => Ok(Command::SetLayoutOption(
@@ -494,11 +498,11 @@ pub(super) fn parse(name: &str, rest: &[&str]) -> Result<Command, String> {
                 } else if value.eq_ignore_ascii_case("none") {
                     MouseWarping::No
                 } else {
-                    return Err("Expected 'mouse_warping output|container|none'".into());
+                    return Err(MOUSE_WARPING_USAGE.into());
                 };
                 Ok(Command::SetLayoutOption(LayoutOption::MouseWarping(mode)))
             }
-            _ => Err("Expected 'mouse_warping output|container|none'".into()),
+            _ => Err(MOUSE_WARPING_USAGE.into()),
         },
         "font" => {
             // `sway/sway/commands/font.c` joins the remaining words and strips
@@ -516,7 +520,7 @@ pub(super) fn parse(name: &str, rest: &[&str]) -> Result<Command, String> {
             }))
         }
         "titlebar_border_thickness" => {
-            const INVALID: &str = "Invalid size specified";
+            const INVALID: &str = INVALID_SIZE;
             let [value] = rest else {
                 return Err(format!(
                     "Invalid titlebar_border_thickness command (expected 1 argument, got {})",
@@ -532,7 +536,7 @@ pub(super) fn parse(name: &str, rest: &[&str]) -> Result<Command, String> {
             // One value sets both axes; two set horizontal then vertical.
             // Negatives are rejected, matching sway's `Invalid size specified`
             // (`sway/sway/commands/titlebar_padding.c:8-38`).
-            const INVALID: &str = "Invalid size specified";
+            const INVALID: &str = INVALID_SIZE;
             let (horizontal, vertical) = match rest {
                 [h] => {
                     let h: i32 = h.parse().map_err(|_| INVALID.to_owned())?;

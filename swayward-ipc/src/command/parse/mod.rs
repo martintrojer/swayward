@@ -4,6 +4,7 @@ use super::variables::*;
 use crate::CommandOutcome;
 
 mod bindings;
+mod error;
 mod move_resize;
 mod output;
 mod rules;
@@ -11,6 +12,7 @@ mod settings;
 mod workspace;
 
 use bindings::*;
+use error::*;
 use move_resize::*;
 #[cfg(test)]
 use move_resize::{FOCUS_USAGE, LAYOUT_USAGE, MOVE_USAGE};
@@ -48,7 +50,7 @@ pub fn validate(input: &str) -> Result<(), String> {
 /// re-expanded, because sway resumes scanning after the inserted value
 /// (`sway/sway/config.c:931`).
 pub fn parse(input: &str) -> Vec<Result<ParsedCommand, CommandOutcome>> {
-    parse_with_variables(input, &[])
+    parse_with_variables(input, &[], true)
 }
 
 /// Parse commands after applying sway's runtime variable substitution.
@@ -58,9 +60,14 @@ pub fn parse(input: &str) -> Vec<Result<ParsedCommand, CommandOutcome>> {
 /// argument before handler dispatch (`sway/sway/commands.c:230-285`). Because
 /// the list is already split, a semicolon or comma inside a variable value
 /// remains data and cannot inject another command.
+///
+/// `has_view` says whether a container is focused. A few sway handlers check
+/// for one before they look at their arguments, so without it their bad
+/// arguments get the handler's precondition error instead.
 pub fn parse_with_variables(
     input: &str,
     variables: &[(String, String)],
+    has_view: bool,
 ) -> Vec<Result<ParsedCommand, CommandOutcome>> {
     let mut results = Vec::new();
     let mut variables = variables.to_vec();
@@ -115,12 +122,12 @@ pub fn parse_with_variables(
             // Sway strips quotes from argv[1..] only and looks argv[0] up
             // verbatim, so a quoted name matches no handler
             // (`sway/sway/commands.c:264-277`).
-            Err(format!("Unknown/invalid command '{name}'"))
+            Err(format!("Unknown/invalid command '{name}'").into())
         } else if variables.is_empty() {
             // Preserve the exact old path for commands such as `exec` and
             // `for_window`, whose parsers intentionally consume their raw
             // tails rather than a reconstructed argv.
-            parse_one(text)
+            parse_args(&words(text), text)
         } else {
             parse_one_with_variables(text, &variables)
         };
@@ -153,7 +160,7 @@ pub fn parse_with_variables(
                 }));
             }
             Err(error) => {
-                results.push(Err(parse_error(error)));
+                results.push(Err(error.into_outcome(has_view)));
                 break;
             }
         }
@@ -172,7 +179,7 @@ pub fn parse_with_variables(
 fn parse_one_with_variables(
     input: &str,
     variables: &[(String, String)],
-) -> Result<Command, String> {
+) -> Result<Command, ParseError> {
     let words = words(input);
     let skip = if words
         .first()
@@ -206,8 +213,12 @@ pub fn parse_error(error: impl Into<String>) -> CommandOutcome {
     }
 }
 
+#[cfg(test)]
 fn parse_one(input: &str) -> Result<Command, String> {
-    let words = words(input);
+    parse_args(&words(input), input).map_err(ParseError::into_message)
+}
+
+fn parse_args(words: &[String], input: &str) -> Result<Command, ParseError> {
     let args = words.iter().map(String::as_str).collect::<Vec<_>>();
     parse_words(&args, input)
 }
@@ -243,16 +254,69 @@ fn quoted_command_name(text: &str) -> Option<&str> {
     name.contains(['"', '\'']).then_some(name)
 }
 
-fn parse_words(args: &[&str], input: &str) -> Result<Command, String> {
-    let Some(name) = args.first().copied() else {
+/// Parse one command, recording the reply kind sway's handler gives a
+/// rejection.
+fn parse_words(args: &[&str], input: &str) -> Result<Command, ParseError> {
+    use ErrorKind::{Failure, Invalid};
+
+    let Some((name, rest)) = args.split_first() else {
         return Err("expected a command".into());
     };
-    let (_, rest) = args
-        .split_first()
-        .ok_or_else(|| "expected a command".to_owned())?;
     let lower = name.to_ascii_lowercase();
-    check_arity(&lower, rest.len())?;
-    match lower.as_str() {
+    let error = match parse_command(&lower, name, rest, input) {
+        Ok(command) => return Ok(command),
+        Err(error) => ParseError::from(error),
+    };
+    Err(match lower.as_str() {
+        // Handlers that check for a focused container before they read their
+        // arguments: `sway/sway/commands/border.c:61-67`,
+        // `sway/sway/commands/shortcuts_inhibitor.c:12-19`,
+        // `sway/sway/commands/opacity.c:11-18`,
+        // `sway/sway/commands/move.c:784-788` (move position) and
+        // `sway/sway/commands/resize.c:556-561`.
+        "border" if error.message_is(BORDER_SYNTAX) => {
+            error.unless_view("Only views can have borders", Invalid)
+        }
+        "shortcuts_inhibitor" if error.message_is(SHORTCUTS_INHIBITOR_USAGE) => {
+            error.unless_view("Only views can have shortcuts inhibitors", Invalid)
+        }
+        "opacity" if error.message_is(OPACITY_FLOAT_INVALID) => {
+            error.unless_view("No current container", Failure)
+        }
+        "move"
+            if error.message_is(&move_position_usage())
+                || error.message_is(INVALID_X_POSITION)
+                || error.message_is(INVALID_Y_POSITION) =>
+        {
+            error.unless_view(
+                "Only floating containers can be moved to an absolute position",
+                Failure,
+            )
+        }
+        "resize" => error.unless_view("Cannot resize nothing", Invalid),
+        // Handlers that report a bad value as CMD_FAILURE:
+        // `sway/sway/commands/focus_follows_mouse.c:17-18`,
+        // `sway/sway/commands/mouse_warping.c:16-17`,
+        // `sway/sway/commands/split.c:80-81` and
+        // `sway/sway/commands/titlebar_border_thickness.c:17`,
+        // `sway/sway/commands/titlebar_padding.c:17,26`.
+        "focus_follows_mouse" if error.message_is(FOCUS_FOLLOWS_MOUSE_USAGE) => {
+            error.into_failure()
+        }
+        "mouse_warping" if error.message_is(MOUSE_WARPING_USAGE) => error.into_failure(),
+        "split" if error.message_is(SPLIT_INVALID) => error.into_failure(),
+        "titlebar_border_thickness" | "titlebar_padding" if error.message_is(INVALID_SIZE) => {
+            error.into_failure()
+        }
+        _ => error,
+    })
+}
+
+const SHORTCUTS_INHIBITOR_USAGE: &str = "Expected `shortcuts_inhibitor enable|disable`";
+
+fn parse_command(lower: &str, name: &str, rest: &[&str], input: &str) -> Result<Command, String> {
+    check_arity(lower, rest.len())?;
+    match lower {
         "focus" => parse_focus(rest),
         "move" => parse_move(rest),
         "layout" => parse_layout(rest),
@@ -331,7 +395,7 @@ fn parse_words(args: &[&str], input: &str) -> Result<Command, String> {
         "shortcuts_inhibitor" => match rest {
             [value] if *value == "enable" => Ok(Command::ShortcutsInhibitor(true)),
             [value] if *value == "disable" => Ok(Command::ShortcutsInhibitor(false)),
-            _ => Err("Expected `shortcuts_inhibitor enable|disable`".into()),
+            _ => Err(SHORTCUTS_INHIBITOR_USAGE.into()),
         },
         // Session-wide layout settings from sway's shared `handlers` table,
         // which serves both the config file and IPC

@@ -1,7 +1,15 @@
 use super::*;
 
+pub(super) const BORDER_SYNTAX: &str =
+    "Expected 'border <none|normal|pixel|csd|toggle>' or 'border pixel <px>'";
+pub(super) const OPACITY_FLOAT_INVALID: &str = "opacity float invalid";
+pub(super) const INVALID_X_POSITION: &str = "Invalid x position specified";
+pub(super) const INVALID_Y_POSITION: &str = "Invalid y position specified";
+pub(super) const SPLIT_INVALID: &str =
+    "Invalid split command (expected either horizontal or vertical).";
+
 pub(super) fn parse_border(args: &[&str]) -> Result<Border, String> {
-    const SYNTAX: &str = "Expected 'border <none|normal|pixel|csd|toggle>' or 'border pixel <px>'";
+    const SYNTAX: &str = BORDER_SYNTAX;
     let Some(style) = args.first() else {
         return Err("Invalid border command (expected at least 1 argument, got 0)".into());
     };
@@ -169,12 +177,12 @@ pub(super) fn parse_move_position(args: &[&str]) -> Result<MovePosition, String>
     if args.len() < 2 {
         return Err(move_position_usage());
     }
-    let (x, consumed) = parse_resize_amount(args).map_err(|_| "Invalid x position specified")?;
+    let (x, consumed) = parse_resize_amount(args).map_err(|_| INVALID_X_POSITION)?;
     let args = args.get(consumed..).unwrap_or_default();
     if args.is_empty() {
         return Err(move_position_usage());
     }
-    let (y, consumed) = parse_resize_amount(args).map_err(|_| "Invalid y position specified")?;
+    let (y, consumed) = parse_resize_amount(args).map_err(|_| INVALID_Y_POSITION)?;
     if consumed != args.len() {
         return Err(move_position_usage());
     }
@@ -253,7 +261,7 @@ pub(super) fn parse_split(args: &[&str]) -> Result<Command, String> {
         "v" | "vertical" => Some(Layout::SplitV),
         "t" | "toggle" => Some(Layout::ToggleSplit),
         "n" | "none" => None,
-        _ => return Err("Invalid split command (expected either horizontal or vertical).".into()),
+        _ => return Err(SPLIT_INVALID.into()),
     };
     Ok(Command::Split(layout))
 }
@@ -268,7 +276,7 @@ pub(super) fn parse_opacity(args: &[&str]) -> Result<Command, String> {
             )
         })?
         .parse::<f32>()
-        .map_err(|_| "opacity float invalid".to_owned())?;
+        .map_err(|_| OPACITY_FLOAT_INVALID.to_owned())?;
 
     match args.first().map(|arg| arg.to_ascii_lowercase()).as_deref() {
         Some("plus") => Ok(Command::OpacityRelative(value)),

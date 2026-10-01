@@ -612,7 +612,7 @@ mod untrusted_input_panic_tests {
                 input.push_str(PIECES[(state % PIECES.len() as u64) as usize]);
             }
             let _ = parse(&input);
-            let _ = parse_with_variables(&input, &variables);
+            let _ = parse_with_variables(&input, &variables, true);
         }
     }
 }
@@ -644,7 +644,7 @@ mod quoted_command_name_tests {
                 "{input}"
             );
             assert_eq!(
-                parse_with_variables(input, &[("$oracle".into(), "x".into())]),
+                parse_with_variables(input, &[("$oracle".into(), "x".into())], true),
                 vec![Err(parse_error(format!(
                     "Unknown/invalid command '{name}'"
                 )))],
