@@ -16,14 +16,12 @@ criteria, the scratchpad, and sway's IPC protocol on `SWAYSOCK`. It is a very
 serious amount of engineering in service of putting one rectangle beside
 another rectangle, but correctly.
 
-**Status: beta.** After removing the reviewed X11-only boundary, swayward
-passes **1,217 of the 1,447 i3-suite assertions that sway 1.12 passes (84%)**.
-Sway doesn't pass i3's own suite either: many tests really ask "is this i3?"
-The [full comparison](docs/I3_SUITE_RESULTS.md) gives the remaining 230 rows a
-proper airing, while the [oracle's published snapshot
-table](https://github.com/martintrojer/sway-ipc-oracle) keeps every pass, skip,
-failure, unreached assertion, and unstable assertion visible. It is also
-somebody's desktop now: the maintainer's two work machines run it every day,
+**Status: beta.** swayward has a very extensive suite of tests, including
+i3's own test suite run unchanged and IPC replies compared with captures from
+real sway. [Testing and
+conformance](https://github.com/martintrojer/swayward/wiki/Testing-and-Conformance)
+has the current numbers and how each one is measured. It is also somebody's
+desktop now: the maintainer's two work machines run it every day,
 both Fedora 44, one a single-monitor setup with Waybar and kanshi, the other
 two monitors running DankMaterialShell with its outputs set in `config.kdl`.
 No spare laptop, no fallback session doing the real work. That is still two
@@ -67,7 +65,7 @@ and is responsible for it, following the Linux kernel's rule that
 
 The tokens went into checks, not just features. [Testing and
 conformance](https://github.com/martintrojer/swayward/wiki/Testing-and-Conformance)
-explains the unmodified i3 suite, and every intentional difference from sway is
+describes the test suite, and every intentional difference from sway is
 [recorded](https://github.com/martintrojer/swayward/wiki/Differences-from-Sway)
 with a citation into sway's source.
 
@@ -135,8 +133,7 @@ nix profile install github:martintrojer/swayward
 ```
 
 The repository flake provides `swayward`, `swayward-debug`, and a development
-shell. `nix flake check` runs the full test suite, including the pinned i3
-conformance oracle. Without Nix, follow
+shell. `nix flake check` runs the test suite. Without Nix, follow
 [Build swayward](docs/BUILDING.md); it needs Rust 1.87 or newer and the usual
 wlroots-style build dependencies.
 
@@ -208,24 +205,12 @@ See [Migrate a sway config](docs/SWAY_CONFIG_MIGRATION.md).
 
 ## How compatibility is measured
 
-The independent [sway IPC oracle](https://github.com/martintrojer/sway-ipc-oracle)
-runs i3's unchanged tests and sway IPC scenarios against i3, sway, and
-swayward. The [i3 suite results guide](docs/I3_SUITE_RESULTS.md) explains why
-raw non-pass counts include i3-only premises and gives the sway-relative
-comparison. The snapshot table publishes passes, skips, failures or unreached
-assertions, and unstable assertions together for the i3 suite, plus matches,
-not-applicable scenarios, and mismatches for the sway IPC suite. The underlying
-results are the versioned
-[`i3/results/swayward-eb170906.toml`](https://github.com/martintrojer/sway-ipc-oracle/blob/db7147c0908021f18090f73517daaa3f420ed54e/i3/results/swayward-eb170906.toml)
-and
-[`sway-ipc/results/swayward-eb170906.toml`](https://github.com/martintrojer/sway-ipc-oracle/blob/db7147c0908021f18090f73517daaa3f420ed54e/sway-ipc/results/swayward-eb170906.toml)
-files at the oracle revision this checkout pins.
-
-Swayward also keeps a faster in-process development harness. Its
-`tests/i3/coverage.toml` ledger records **2,208 passes, 877 documented skips,
-30 failures, and 56 unreached assertions**. Differences between that harness and
-the public black-box run are filed in the oracle's
-`i3/results/swayward-black-box-findings.tsv`.
+swayward has a very extensive suite of tests. [Testing and
+conformance](https://github.com/martintrojer/swayward/wiki/Testing-and-Conformance)
+lists every part of it with current numbers. The independent [sway IPC
+oracle](https://github.com/martintrojer/sway-ipc-oracle) runs i3's unchanged
+tests and sway IPC scenarios against i3, sway, and swayward, and the [i3 suite
+results guide](docs/I3_SUITE_RESULTS.md) explains how to read the i3 numbers.
 
 ## What differs from sway
 

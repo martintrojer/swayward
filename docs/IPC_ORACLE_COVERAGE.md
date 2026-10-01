@@ -1,11 +1,9 @@
 This reference records what `src/tests/ipc/` verifies against sway and where it can still accept an incompatible reply. Treat each entry as narrow: a caught mutation proves only the listed behavior.
 
-Public black-box results live in the
-[sway IPC oracle](https://github.com/martintrojer/sway-ipc-oracle)'s snapshot
-table and in the versioned
-[`sway-ipc/results/swayward-eb170906.toml`](https://github.com/martintrojer/sway-ipc-oracle/blob/db7147c0908021f18090f73517daaa3f420ed54e/sway-ipc/results/swayward-eb170906.toml)
-file at the pinned revision. This page describes swayward's focused in-process
-mutation checks.
+This page describes swayward's focused in-process mutation checks, one part of
+a very extensive test suite. [Testing and
+conformance](https://github.com/martintrojer/swayward/wiki/Testing-and-Conformance)
+describes the whole suite and has the black-box oracle results.
 
 ## Why we break things on purpose
 

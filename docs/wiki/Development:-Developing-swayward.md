@@ -18,13 +18,15 @@ swayward uses [`tracing`](https://lib.rs/crates/tracing) for logging:
 
 ## Tests
 
-When adding new operations to the layout, add them to the `Op` enum at the bottom of `src/layout/mod.rs` (this will automatically include it in the randomized tests), and if applicable to the `every_op` arrays below.
+swayward has a very extensive suite of tests. [Testing and conformance](Testing-and-Conformance.md) describes every part of it and where each part runs.
+
+When adding new operations to the layout, add them to the `Op` enum in `src/layout/tests/operations.rs` (this will automatically include it in the randomized tests), and if applicable to the `every_op` arrays in `src/layout/tests.rs`.
 
 When adding new config options, include them in the config parsing test.
 
 ### Running Tests
 
-Make sure to run `cargo test --all` to run tests from sub-crates too.
+Run `./contrib/fast-gate` before you push. It runs formatting, Clippy, `cargo test --all` (which includes the sub-crates), and the repository checks, and adds the slow layout tests when `src/layout/` changed.
 
 Some tests are a bit too slow to run normally, like the randomized tests of the layout code, so they are normally skipped. Set the `RUN_SLOW_TESTS` variable to run them:
 

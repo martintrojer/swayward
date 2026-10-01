@@ -51,11 +51,10 @@ for human legibility only.
 3. Resolve conflicts in favour of **sway's behaviour**, not niri's. When a
    conflict is about which model wins, sway wins, and the reason
    goes in `docs/KNOWN_DEVIATIONS.md` with a citation into sway's source.
-4. Run the full gate before pushing:
-   - `cargo test --all`
-   - `RUN_SLOW_TESTS=1 PROPTEST_CASES=20000 cargo test -p swayward --lib tiling_tree`
-   - `./contrib/coverage-report --check`
-   - `cargo +nightly fmt --all -- --check`
+4. Run `./contrib/fast-gate` before pushing. A merge touches `src/layout/`,
+   so it also runs the slow layout tests.
+   [Testing and conformance](https://github.com/martintrojer/swayward/wiki/Testing-and-Conformance)
+   describes each check.
 5. Update `docs/FORK-BASE.md` to the new tag, and add any new inherited-file
    edits to `docs/data/divergence/`.
 

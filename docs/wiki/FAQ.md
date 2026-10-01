@@ -21,7 +21,8 @@ Those are reasons to be curious, not evidence that sway made the wrong choices.
 Fair question. swayward was built largely with AI assistance. A human reviews
 every change and is responsible for it, following the Linux kernel's rule that
 [AI does not sign off](https://www.kernel.org/doc/html/next/process/coding-assistants.html).
-The [testing and conformance evidence](Testing-and-Conformance.md) is public.
+swayward has a very extensive suite of tests, and [Testing and
+conformance](Testing-and-Conformance.md) publishes all of it.
 
 ### How can I trust a new compositor?
 
@@ -29,19 +30,12 @@ You should not trust one on introduction. A compositor crash takes the whole
 session with it, so swayward tries to earn a test run before it asks for a daily
 driver.
 
-The suite includes:
-
-- i3's upstream tests, pinned byte for byte in sway-ipc-oracle and run against a real headless
-  compositor, real Wayland clients, and sway-shaped IPC;
-- reply schemas and selected values captured from sway, plus row-by-row checks
-  against sway's C source;
-- randomized container-tree operations, with every found failure kept as a
-  fast regression seed;
-- clean-container installation tests for the Ubuntu tarball, `.deb`, Fedora
-  RPM, and Arch package;
-- CI checks for the supported Rust version, Clippy, formatting, feature
-  combinations, the config translator, documentation links, and visual-test
-  compilation.
+swayward has a very extensive suite of tests. It runs i3's own test suite
+unchanged, compares IPC replies with captures from real sway, and drives the
+container tree with randomized operations. [Testing and
+conformance](Testing-and-Conformance.md) lists every part with its current
+numbers. The release workflow also installs every package in a clean
+container before it drafts a release.
 
 This is not a comparison with anyone else's engineering. It is how a young
 compositor pays for asking you to risk a session on it.
@@ -49,9 +43,7 @@ compositor pays for asking you to risk a session on it.
 It is also not proof that swayward is ready for your machine. Beyond the
 maintainer's two work machines, hardware coverage and time in live
 sessions remain thin. The suite is why we think the early beta
-is worth testing, not why we think testing is finished. The current counts and
-the limits of the oracle are explained in [Testing and
-conformance](Testing-and-Conformance.md).
+is worth testing, not why we think testing is finished.
 
 ### Doesn't SwayFX already do this?
 
@@ -189,8 +181,7 @@ Wayland clients; it does not rewrite assertions to make swayward pass.
 
 It does not prove a compatibility percentage, smooth animations, delayed-client
 behaviour, or support for X11 structures that sway itself does not expose.
-[Testing and conformance](Testing-and-Conformance.md) explains both the
-measurements and their limits.
+[Testing and conformance](Testing-and-Conformance.md) has the current numbers.
 
 ### Why are some i3 tests skipped or unreached?
 
@@ -199,8 +190,9 @@ parser, or tree nodes sway does not have. Those cannot honestly prove sway
 compatibility.
 
 Permanent skips are itemised with a reason and a citation. Failures and
-unreached assertions remain work. The machine-readable source is
-[`coverage.toml`](https://github.com/martintrojer/swayward/blob/main/tests/i3/coverage.toml).
+unreached assertions remain work. [Testing and
+conformance](Testing-and-Conformance.md#in-process-run) explains how they are
+recorded.
 
 ### Can I try it without replacing my current compositor?
 
@@ -255,8 +247,7 @@ before drafting the release.
 
 The repository also provides a Nix flake. Install the current source with
 `nix profile install github:martintrojer/swayward`, or use the flake as a NixOS
-input. `nix flake check` runs the full test suite, including the pinned i3
-conformance oracle.
+input. `nix flake check` runs the test suite.
 
 Until beta 1 is published, use the Nix flake or [build from
 source](https://github.com/martintrojer/swayward/blob/main/docs/BUILDING.md).

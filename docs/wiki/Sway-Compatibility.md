@@ -23,5 +23,5 @@ sway](Differences-from-Sway.md) before migrating an existing session.
 
 For exact request, event, and command rows, open the
 [compatibility reference](https://github.com/martintrojer/swayward/blob/main/docs/SWAY_COMPATIBILITY.md).
-The [IPC oracle report](https://github.com/martintrojer/swayward/blob/main/docs/IPC_ORACLE_COVERAGE.md)
-records the measured test boundary.
+swayward has a very extensive suite of tests. [Testing and
+conformance](Testing-and-Conformance.md) has the current numbers.

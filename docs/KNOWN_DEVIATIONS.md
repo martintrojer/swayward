@@ -3,7 +3,9 @@ internal changes inherited from the niri fork. See
 [Divergence from upstream niri](DIVERGENCE.md) for that engineering ledger.
 
 Start here. If a row sounds relevant to your setup, its details include the
-exact behaviour, the reason for it, and the sway source citations.
+exact behaviour, the reason for it, and the sway source citations. [Testing and
+conformance](https://github.com/martintrojer/swayward/wiki/Testing-and-Conformance#intentional-differences-from-sway)
+explains how the tests encode these differences.
 
 | Deviation | What you will notice | Details |
 |-----------|----------------------|---------|
