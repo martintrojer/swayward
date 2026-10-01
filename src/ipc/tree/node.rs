@@ -3,12 +3,54 @@ use super::*;
 pub(super) struct WindowNodeContext<'a> {
     pub(super) mapped: &'a Mapped,
     pub(super) rect: Rect,
+    pub(super) border: NodeBorder,
+    pub(super) border_width: i32,
+    pub(super) window_rect: Rect,
     pub(super) node_type: NodeType,
     pub(super) floating: &'a str,
     pub(super) parent: Option<Rect>,
     pub(super) marks: &'a std::collections::HashMap<MappedId, Vec<String>>,
     pub(super) in_scratchpad: bool,
     pub(super) visible: bool,
+}
+
+/// A view's container box and the border around its content.
+pub(super) struct ViewFrame {
+    pub(super) rect: Rect,
+    pub(super) border: NodeBorder,
+    pub(super) border_width: i32,
+    pub(super) has_titlebar: bool,
+    /// The sides that draw a border; floating views draw all four.
+    pub(super) edges: ResizeEdge,
+}
+
+impl ViewFrame {
+    /// The content box relative to the container, as sway reports it in
+    /// `window_rect`: offset by the border, with y at 0 under a titlebar
+    /// (`sway/sway/ipc-json.c:595-602`).
+    pub(super) fn window_rect(&self) -> Rect {
+        let border_width = match (self.border, self.has_titlebar) {
+            (NodeBorder::Normal | NodeBorder::Pixel, true) | (NodeBorder::Pixel, false) => {
+                self.border_width
+            }
+            _ => 0,
+        };
+        let side = |edge| border_width * i32::from(self.edges.contains(edge));
+        let left = side(ResizeEdge::LEFT);
+        let right = side(ResizeEdge::RIGHT);
+        let top = if self.has_titlebar {
+            0
+        } else {
+            side(ResizeEdge::TOP)
+        };
+        let bottom = side(ResizeEdge::BOTTOM);
+        Rect {
+            x: left,
+            y: top,
+            width: (self.rect.width - left - right).max(0),
+            height: (self.rect.height - top - bottom).max(0),
+        }
+    }
 }
 
 pub(super) struct CommonNodeContext<'a> {
@@ -102,9 +144,54 @@ pub(crate) fn describe_tiling<'a, I>(
                 warn!("omitting stale tree leaf from IPC output");
                 return None;
             };
+            let has_titlebar = deco_rect.is_some() && fullscreen_mode == 0;
+            // A view hidden under a fullscreen container has no box or border.
+            let frame = if mapped_under_fullscreen {
+                ViewFrame {
+                    rect: Rect::default(),
+                    border: NodeBorder::None,
+                    border_width: 0,
+                    has_titlebar,
+                    edges: border_edges,
+                }
+            } else {
+                ViewFrame {
+                    rect: offset_rect(rect, workspace_rect),
+                    border: ipc_border(border.0),
+                    border_width: ipc_border_width(border),
+                    has_titlebar,
+                    edges: border_edges,
+                }
+            };
+            let window_rect = if frame.rect.width == 0
+                && frame.rect.height == 0
+                && fullscreen_mode != 0
+                && percent.is_none()
+            {
+                Rect {
+                    width: workspace_rect.width,
+                    height: workspace_rect.height,
+                    ..Rect::default()
+                }
+            } else if fullscreen_mode != 0 && frame.rect.width > 0 && frame.rect.height > 0 {
+                // A fullscreen view's content is the output box, even while
+                // its container reports a tiled slot (`view_autoconfigure`,
+                // sway/tree/view.c:358-363).
+                Rect {
+                    x: workspace_rect.x - frame.rect.x,
+                    y: workspace_rect.y - frame.rect.y,
+                    width: workspace_rect.width,
+                    height: workspace_rect.height,
+                }
+            } else {
+                frame.window_rect()
+            };
             let mut node = describe_window(WindowNodeContext {
                 mapped,
-                rect: offset_rect(rect, workspace_rect),
+                rect: frame.rect,
+                border: frame.border,
+                border_width: frame.border_width,
+                window_rect,
                 node_type: NodeType::Con,
                 floating: "auto_off",
                 parent: None,
@@ -112,69 +199,20 @@ pub(crate) fn describe_tiling<'a, I>(
                 in_scratchpad: false,
                 visible: true,
             });
-            node.border = ipc_border(border.0);
-            node.current_border_width = ipc_border_width(border);
-            if mapped_under_fullscreen {
-                node.border = NodeBorder::None;
-                node.current_border_width = 0;
-                node.percent = Some(0.);
-                node.rect = Rect::default();
+            node.percent = if mapped_under_fullscreen {
+                Some(0.)
             } else {
-                node.percent = percent;
-            }
+                percent
+            };
             node.focused = focused;
             node.fullscreen_mode = fullscreen_mode;
             node.sticky = sticky;
-            let has_titlebar = deco_rect.is_some() && fullscreen_mode == 0;
-            node.deco_rect = if fullscreen_mode != 0 {
-                Rect::default()
-            } else {
-                deco_rect.map_or_else(Rect::default, |rect| {
+            node.deco_rect = match deco_rect {
+                Some(rect) if fullscreen_mode == 0 => {
                     rect_from(rect.loc.x, rect.loc.y, rect.size.w, rect.size.h)
-                })
-            };
-            let border_width = match (node.border, has_titlebar) {
-                (NodeBorder::Normal | NodeBorder::Pixel, true) | (NodeBorder::Pixel, false) => {
-                    node.current_border_width
                 }
-                _ => 0,
+                _ => Rect::default(),
             };
-            let left = border_width * i32::from(border_edges.contains(ResizeEdge::LEFT));
-            let right = border_width * i32::from(border_edges.contains(ResizeEdge::RIGHT));
-            let top = if has_titlebar {
-                0
-            } else {
-                border_width * i32::from(border_edges.contains(ResizeEdge::TOP))
-            };
-            let bottom = border_width * i32::from(border_edges.contains(ResizeEdge::BOTTOM));
-            if node.rect.width == 0
-                && node.rect.height == 0
-                && fullscreen_mode != 0
-                && percent.is_none()
-            {
-                node.window_rect = Rect {
-                    width: workspace_rect.width,
-                    height: workspace_rect.height,
-                    ..Rect::default()
-                };
-            } else if fullscreen_mode != 0 && node.rect.width > 0 && node.rect.height > 0 {
-                // A fullscreen view's content is the output box, even while
-                // its container reports a tiled slot (`view_autoconfigure`,
-                // sway/tree/view.c:358-363).
-                node.window_rect = Rect {
-                    x: workspace_rect.x - node.rect.x,
-                    y: workspace_rect.y - node.rect.y,
-                    width: workspace_rect.width,
-                    height: workspace_rect.height,
-                };
-            } else {
-                node.window_rect = Rect {
-                    x: left,
-                    y: top,
-                    width: (node.rect.width - left - right).max(0),
-                    height: (node.rect.height - top - bottom).max(0),
-                };
-            }
             Some(node)
         }
     }
@@ -216,6 +254,9 @@ pub(super) fn describe_window(context: WindowNodeContext<'_>) -> Node {
     let WindowNodeContext {
         mapped,
         rect,
+        border,
+        border_width,
+        window_rect,
         node_type,
         floating,
         parent,
@@ -263,8 +304,9 @@ pub(super) fn describe_window(context: WindowNodeContext<'_>) -> Node {
         focused: mapped.is_focused(),
         properties: NodeProperties::View(properties),
     });
-    node.border = NodeBorder::Normal;
-    node.current_border_width = 2;
+    node.border = border;
+    node.current_border_width = border_width;
+    node.window_rect = window_rect;
     node.floating = Some(floating.into());
     node.percent = percent;
     node.scratchpad_state = Some(if in_scratchpad { "fresh" } else { "none" }.into());
@@ -273,12 +315,6 @@ pub(super) fn describe_window(context: WindowNodeContext<'_>) -> Node {
     let natural_size = mapped.natural_size();
     node.geometry = rect_from(0., 0., natural_size.w.into(), natural_size.h.into());
     node.marks = marks.get(&mapped.id()).cloned().unwrap_or_default();
-    node.window_rect = Rect {
-        x: 2,
-        y: 0,
-        width: (rect.width - 4).max(0),
-        height: (rect.height - 2).max(0),
-    };
     node
 }
 
