@@ -712,17 +712,6 @@ enum MarkDestination {
     Tiling(TilingEndpoint),
 }
 
-fn mapped_window(
-    state: &State,
-    id: crate::window::mapped::MappedId,
-) -> Option<smithay::desktop::Window> {
-    state
-        .swayward
-        .layout
-        .windows()
-        .find_map(|(_, mapped)| (mapped.id() == id).then(|| mapped.window.clone()))
-}
-
 fn resolve_mark_destination(
     state: &State,
     destination: CommandTarget,
@@ -733,7 +722,7 @@ fn resolve_mark_destination(
         };
         return Ok(MarkDestination::Tiling((workspace, node)));
     };
-    let mapped = mapped_window(state, window).or_else(|| {
+    let mapped = super::mapped_window(state, window).or_else(|| {
         state
             .swayward
             .layout
@@ -769,7 +758,7 @@ fn move_window_to_mark_workspace(
             "moving container subtrees to scratchpad is not implemented yet"
         });
     };
-    let Some(source) = mapped_window(state, source) else {
+    let Some(source) = super::mapped_window(state, source) else {
         return failure("No matching node.");
     };
     let result = match workspace {
@@ -810,7 +799,7 @@ pub(super) fn move_target_to_mark(
     let source = match source {
         CommandTarget::Container(workspace, node) => (workspace, node),
         CommandTarget::Window(window) => {
-            let Some(mapped) = mapped_window(state, window) else {
+            let Some(mapped) = super::mapped_window(state, window) else {
                 return failure("No matching node.");
             };
             if state

@@ -376,12 +376,8 @@ pub(super) fn tiling_target(
     match target {
         CommandTarget::Container(workspace, node) => Ok((workspace, node)),
         CommandTarget::Window(window) => {
-            let window = state
-                .swayward
-                .layout
-                .windows()
-                .find_map(|(_, mapped)| (mapped.id() == window).then(|| mapped.window.clone()))
-                .ok_or_else(|| failure("No matching node."))?;
+            let window =
+                super::mapped_window(state, window).ok_or_else(|| failure("No matching node."))?;
             state
                 .swayward
                 .layout

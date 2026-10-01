@@ -17,12 +17,30 @@ fn target_window(
     let CommandTarget::Window(target) = target else {
         return Err(failure(container_error));
     };
-    state
-        .swayward
-        .layout
-        .windows()
-        .find_map(|(_, mapped)| (mapped.id() == target).then(|| mapped.window.clone()))
-        .ok_or_else(|| failure("No matching node."))
+    super::mapped_window(state, target).ok_or_else(|| failure("No matching node."))
+}
+
+fn apply_sticky(
+    state: &mut State,
+    target: Option<CommandTarget>,
+    window: &smithay::desktop::Window,
+    value: &str,
+) -> Result<(), CommandOutcome> {
+    if state.swayward.layout.is_scratchpad_hidden(window) {
+        return Ok(());
+    }
+    let applied = match target {
+        Some(CommandTarget::Container(workspace, node)) => state
+            .swayward
+            .layout
+            .set_floating_group_sticky(workspace, node, value),
+        Some(CommandTarget::Window(_)) | None => None,
+    };
+    if !applied.unwrap_or_else(|| state.swayward.layout.set_window_sticky(window, value)) {
+        return Err(failure("Expected output to have a workspace"));
+    }
+    state.swayward.queue_redraw_all();
+    Ok(())
 }
 
 pub(super) fn sticky(
@@ -47,21 +65,7 @@ pub(super) fn sticky(
         }
         CommandTarget::Window(_) => target_window(state, target, "No matching node.")?,
     };
-    if state.swayward.layout.is_scratchpad_hidden(&window) {
-        return Ok(());
-    }
-    let applied = match target {
-        CommandTarget::Container(workspace, node) => state
-            .swayward
-            .layout
-            .set_floating_group_sticky(workspace, node, value),
-        CommandTarget::Window(_) => None,
-    };
-    if !applied.unwrap_or_else(|| state.swayward.layout.set_window_sticky(&window, value)) {
-        return Err(failure("Expected output to have a workspace"));
-    }
-    state.swayward.queue_redraw_all();
-    Ok(())
+    apply_sticky(state, Some(target), &window, value)
 }
 
 pub(super) fn urgent(
@@ -172,52 +176,62 @@ pub(super) fn border(
     Ok(())
 }
 
+fn set_container_floating(
+    state: &mut State,
+    workspace: crate::layout::workspace::WorkspaceId,
+    node: crate::layout::tiling_tree::NodeId,
+    mode: Toggle,
+) -> Result<(), CommandOutcome> {
+    let floating = match mode {
+        Toggle::Enable => true,
+        Toggle::Disable => false,
+        Toggle::Toggle => state
+            .swayward
+            .layout
+            .active_workspace()
+            .is_some_and(|workspace| workspace.contains_tiling_node(node)),
+    };
+    let Some(root) = state
+        .swayward
+        .layout
+        .set_container_floating(workspace, node, floating)
+    else {
+        return Err(failure("No matching node."));
+    };
+    state.ipc_refresh_layout();
+    if let Some(server) = &state.swayward.ipc_server {
+        let tree = serde_json::to_value(crate::ipc::tree::describe_tree(
+            &state.swayward.layout,
+            &state.swayward.global_space,
+            &state.swayward.marks_by_window,
+            &state.swayward.marks_by_container,
+        ))
+        .unwrap_or_default();
+        if let Some(mut container) =
+            crate::ipc::server::find_node_by_id(&tree, crate::ipc::tree::container_id(root))
+                .cloned()
+        {
+            if floating {
+                container["type"] = "floating_con".into();
+                container["floating"] = "user_on".into();
+            }
+            server.send_event(swayward_ipc::legacy::Event::SwayWindowChanged {
+                change: "floating".into(),
+                container,
+            });
+        }
+    }
+    state.swayward.queue_redraw_all();
+    Ok(())
+}
+
 pub(super) fn floating(
     state: &mut State,
     target: CommandTarget,
     mode: &Toggle,
 ) -> Result<(), CommandOutcome> {
     if let CommandTarget::Container(workspace, node) = target {
-        let floating = match mode {
-            Toggle::Enable => true,
-            Toggle::Disable => false,
-            Toggle::Toggle => state
-                .swayward
-                .layout
-                .active_workspace()
-                .is_some_and(|workspace| workspace.contains_tiling_node(node)),
-        };
-        let Some(root) = state
-            .swayward
-            .layout
-            .set_container_floating(workspace, node, floating)
-        else {
-            return Err(failure("No matching node."));
-        };
-        state.ipc_refresh_layout();
-        if let Some(server) = &state.swayward.ipc_server {
-            let tree = serde_json::to_value(crate::ipc::tree::describe_tree(
-                &state.swayward.layout,
-                &state.swayward.global_space,
-                &state.swayward.marks_by_window,
-                &state.swayward.marks_by_container,
-            ))
-            .unwrap_or_default();
-            if let Some(mut container) =
-                crate::ipc::server::find_node_by_id(&tree, crate::ipc::tree::container_id(root))
-                    .cloned()
-            {
-                if floating {
-                    container["type"] = "floating_con".into();
-                    container["floating"] = "user_on".into();
-                }
-                server.send_event(swayward_ipc::legacy::Event::SwayWindowChanged {
-                    change: "floating".into(),
-                    container,
-                });
-            }
-        }
-        state.swayward.queue_redraw_all();
+        set_container_floating(state, workspace, node, *mode)?;
         return Ok(());
     }
     let window = target_window(state, target, "No matching node.")?;
@@ -498,18 +512,7 @@ pub(super) fn sticky_focused(state: &mut State, value: &str) -> super::HandlerRe
     if state.swayward.layout.is_scratchpad_hidden(&window) {
         return Err(super::success());
     }
-    let applied = match target {
-        Some(CommandTarget::Container(workspace, node)) => state
-            .swayward
-            .layout
-            .set_floating_group_sticky(workspace, node, value),
-        _ => None,
-    };
-    if !applied.unwrap_or_else(|| state.swayward.layout.set_window_sticky(&window, value)) {
-        return Err(failure("Expected output to have a workspace"));
-    }
-    state.swayward.queue_redraw_all();
-    Ok(None)
+    super::handled(apply_sticky(state, target, &window, value))
 }
 
 pub(super) fn border_focused(state: &mut State, border: &Border) -> super::HandlerResult {
@@ -522,46 +525,7 @@ pub(super) fn border_focused(state: &mut State, border: &Border) -> super::Handl
 pub(super) fn floating_focused(state: &mut State, mode: Toggle) -> super::HandlerResult {
     if let Some(CommandTarget::Container(workspace, node)) = super::targeted::focused_target(state)
     {
-        let floating = match mode {
-            Toggle::Enable => true,
-            Toggle::Disable => false,
-            Toggle::Toggle => state
-                .swayward
-                .layout
-                .active_workspace()
-                .is_some_and(|workspace| workspace.contains_tiling_node(node)),
-        };
-        let Some(root) = state
-            .swayward
-            .layout
-            .set_container_floating(workspace, node, floating)
-        else {
-            return Err(failure("No matching node."));
-        };
-        state.ipc_refresh_layout();
-        if let Some(server) = &state.swayward.ipc_server {
-            let tree = serde_json::to_value(crate::ipc::tree::describe_tree(
-                &state.swayward.layout,
-                &state.swayward.global_space,
-                &state.swayward.marks_by_window,
-                &state.swayward.marks_by_container,
-            ))
-            .unwrap_or_default();
-            if let Some(mut container) =
-                crate::ipc::server::find_node_by_id(&tree, crate::ipc::tree::container_id(root))
-                    .cloned()
-            {
-                if floating {
-                    container["type"] = "floating_con".into();
-                    container["floating"] = "user_on".into();
-                }
-                server.send_event(swayward_ipc::legacy::Event::SwayWindowChanged {
-                    change: "floating".into(),
-                    container,
-                });
-            }
-        }
-        state.swayward.queue_redraw_all();
+        set_container_floating(state, workspace, node, mode)?;
         return Err(super::success());
     }
     let Some(window) = state

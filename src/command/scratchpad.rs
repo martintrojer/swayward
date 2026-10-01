@@ -103,12 +103,9 @@ fn target_window(
             .layout
             .window_in_node(workspace, node)
             .ok_or_else(|| failure("No matching node.")),
-        CommandTarget::Window(target) => state
-            .swayward
-            .layout
-            .windows()
-            .find_map(|(_, mapped)| (mapped.id() == target).then(|| mapped.window.clone()))
-            .ok_or_else(|| failure("No matching node.")),
+        CommandTarget::Window(target) => {
+            super::mapped_window(state, target).ok_or_else(|| failure("No matching node."))
+        }
     }
 }
 

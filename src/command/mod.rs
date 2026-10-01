@@ -55,6 +55,17 @@ fn handled_outcome(outcome: CommandOutcome) -> HandlerResult {
     }
 }
 
+pub(super) fn mapped_window(
+    state: &crate::swayward::State,
+    id: crate::window::mapped::MappedId,
+) -> Option<smithay::desktop::Window> {
+    state
+        .swayward
+        .layout
+        .windows()
+        .find_map(|(_, mapped)| (mapped.id() == id).then(|| mapped.window.clone()))
+}
+
 pub(crate) fn create_output(
     headless: Option<&mut crate::backend::Headless>,
     swayward: &mut crate::swayward::Swayward,
