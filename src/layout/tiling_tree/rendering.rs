@@ -439,14 +439,6 @@ impl<W: LayoutElement> TilingTree<W> {
             })
     }
 
-    pub fn dnd_scroll_gesture_begin(&mut self) {}
-
-    pub fn dnd_scroll_gesture_scroll(&mut self, _delta: f64) -> bool {
-        false
-    }
-
-    pub fn dnd_scroll_gesture_end(&mut self) {}
-
     fn first_tile_in(&self, id: NodeId) -> Option<&Tile<W>> {
         self.first_leaf_in(id).and_then(|id| self.tile(id))
     }

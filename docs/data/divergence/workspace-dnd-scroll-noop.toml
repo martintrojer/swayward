@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/workspace.rs"]
+what = "make Workspace::dnd_scroll_gesture_begin/scroll/end explicit no-ops and delete the TilingTree stubs they forwarded to; the inherited Layout callers stay, and the monitor-level DnD workspace scroll is unchanged."
+why = "niri scrolled a workspace's column strip when a drag neared the output edge. The tiling tree has no strip, so Workspace computed an edge delta only to pass it to a TilingTree no-op."

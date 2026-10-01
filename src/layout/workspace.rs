@@ -2013,44 +2013,16 @@ impl<W: LayoutElement> Workspace<W> {
         false
     }
 
-    pub fn dnd_scroll_gesture_begin(&mut self) {
-        self.tiling.dnd_scroll_gesture_begin();
+    /// The tiling tree has no view to scroll while dragging near an output edge, so the
+    /// per-workspace part of niri's DnD edge scroll is a no-op; the monitor-level workspace
+    /// scroll in Monitor::dnd_scroll_gesture_* is real.
+    pub fn dnd_scroll_gesture_begin(&mut self) {}
+
+    pub fn dnd_scroll_gesture_scroll(&mut self, _pos: Point<f64, Logical>, _speed: f64) -> bool {
+        false
     }
 
-    pub fn dnd_scroll_gesture_scroll(&mut self, pos: Point<f64, Logical>, speed: f64) -> bool {
-        let config = &self.options.gestures.dnd_edge_view_scroll;
-        let trigger_width = config.trigger_width;
-
-        // This working area intentionally does not include extra struts from Options.
-        let x = pos.x - self.working_area.loc.x;
-        let width = self.working_area.size.w;
-
-        let x = x.clamp(0., width);
-        let trigger_width = trigger_width.clamp(0., width / 2.);
-
-        let delta = if x < trigger_width {
-            -(trigger_width - x)
-        } else if width - x < trigger_width {
-            trigger_width - (width - x)
-        } else {
-            0.
-        };
-
-        let delta = if trigger_width < 0.01 {
-            // Sanity check for trigger-width 0 or small window sizes.
-            0.
-        } else {
-            // Normalize to [0, 1].
-            delta / trigger_width
-        };
-        let delta = delta * speed;
-
-        self.tiling.dnd_scroll_gesture_scroll(delta)
-    }
-
-    pub fn dnd_scroll_gesture_end(&mut self) {
-        self.tiling.dnd_scroll_gesture_end();
-    }
+    pub fn dnd_scroll_gesture_end(&mut self) {}
 
     pub fn interactive_resize_begin(&mut self, window: W::Id, edges: ResizeEdge) -> bool {
         if self.floating.has_window(&window) {
