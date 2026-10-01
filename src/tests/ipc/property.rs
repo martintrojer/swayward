@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::sync::atomic::Ordering;
 
 use proptest::prelude::*;
-use swayward_ipc::{Node, NodeProperties};
+use swayward_ipc::{CommandOutcome, Node, NodeProperties};
 use wayland_client::protocol::wl_surface::WlSurface;
 
 use super::*;
@@ -244,7 +244,127 @@ fn assert_state(fixture: &mut Fixture) {
     assert_focus_ids_are_live(&tree);
 }
 
+/// A finished operation sequence: the live fixture plus every command it
+/// executed with its outcome, so a named regression can assert the result its
+/// name promises rather than only the invariants `assert_state` checks.
+struct Run {
+    fixture: Fixture,
+    client: super::client::ClientId,
+    windows: Vec<Option<WlSurface>>,
+    outcomes: Vec<(String, Vec<CommandOutcome>)>,
+}
+
+impl Run {
+    /// The outcome of the last executed command that matches `command`.
+    fn last_outcome(&self, command: &str) -> &CommandOutcome {
+        let (_, outcome) = self
+            .outcomes
+            .iter()
+            .rev()
+            .find(|(executed, _)| executed == command)
+            .unwrap_or_else(|| panic!("{command:?} never ran: {:?}", self.outcomes));
+        assert_eq!(outcome.len(), 1, "{command}: {outcome:?}");
+        &outcome[0]
+    }
+
+    fn last_outcome_ending_with(&self, command: &str) -> &CommandOutcome {
+        let (_, outcome) = self
+            .outcomes
+            .iter()
+            .rev()
+            .find(|(executed, _)| executed.ends_with(command))
+            .unwrap_or_else(|| panic!("{command:?} never ran: {:?}", self.outcomes));
+        assert_eq!(outcome.len(), 1, "{command}: {outcome:?}");
+        &outcome[0]
+    }
+
+    fn tree(&mut self) -> Node {
+        let swayward = self.fixture.swayward();
+        let tree = describe_tree(
+            &swayward.layout,
+            &swayward.global_space,
+            &swayward.marks_by_window,
+            &swayward.marks_by_container,
+        );
+        serde_json::from_value(serde_json::to_value(tree).unwrap()).unwrap()
+    }
+
+    fn workspaces(&mut self) -> Vec<swayward_ipc::Workspace> {
+        let swayward = self.fixture.swayward();
+        let workspaces = describe_workspaces(&swayward.layout, &swayward.global_space);
+        serde_json::from_value(serde_json::to_value(workspaces).unwrap()).unwrap()
+    }
+
+    fn finish(mut self) {
+        for surface in std::mem::take(&mut self.windows).into_iter().flatten() {
+            unmap_window(&mut self.fixture, self.client, &surface);
+        }
+    }
+}
+
+fn view_app_id(node: &Node) -> Option<&str> {
+    match &node.properties {
+        NodeProperties::View(view) => view.app_id.as_deref(),
+        _ => None,
+    }
+}
+
+fn find_app<'a>(node: &'a Node, app_id: &str) -> Option<&'a Node> {
+    if view_app_id(node) == Some(app_id) {
+        return Some(node);
+    }
+    node.nodes
+        .iter()
+        .chain(&node.floating_nodes)
+        .find_map(|child| find_app(child, app_id))
+}
+
+fn app_workspace<'a>(node: &'a Node, app_id: &str) -> Option<&'a Node> {
+    if node.node_type == swayward_ipc::NodeType::Workspace && find_app(node, app_id).is_some() {
+        return Some(node);
+    }
+    node.nodes
+        .iter()
+        .chain(&node.floating_nodes)
+        .find_map(|child| app_workspace(child, app_id))
+}
+
+fn collect_node_ids(node: &Node, ids: &mut Vec<i64>) {
+    ids.push(node.id);
+    for child in node.nodes.iter().chain(&node.floating_nodes) {
+        collect_node_ids(child, ids);
+    }
+}
+
+fn count_fullscreen_descendants(node: &Node) -> usize {
+    usize::from(
+        matches!(
+            node.node_type,
+            swayward_ipc::NodeType::Con | swayward_ipc::NodeType::FloatingCon
+        ) && node.fullscreen_mode != 0,
+    ) + node
+        .nodes
+        .iter()
+        .chain(&node.floating_nodes)
+        .map(count_fullscreen_descendants)
+        .sum::<usize>()
+}
+
+fn assert_success(outcome: &CommandOutcome, command: &str) {
+    assert!(outcome.success, "{command}: {outcome:?}");
+}
+
+fn assert_failure(outcome: &CommandOutcome, command: &str, error: &str) {
+    assert!(!outcome.success, "{command}: {outcome:?}");
+    assert_eq!(outcome.error.as_deref(), Some(error), "{command}");
+}
+
 fn check_ops(ops: Vec<Op>) {
+    run_ops(ops).finish();
+}
+
+fn run_ops(ops: Vec<Op>) -> Run {
+    let mut outcomes = Vec::new();
     let mut fixture = Fixture::new();
     fixture.swayward().clock.set_complete_instantly(true);
     fixture.add_output(1, (1280, 720));
@@ -258,7 +378,10 @@ fn check_ops(ops: Vec<Op>) {
     for op in ops {
         match op {
             Op::Command(command) => {
-                let _ = crate::command::execute(fixture.niri_state(), command);
+                outcomes.push((
+                    command.to_owned(),
+                    crate::command::execute(fixture.niri_state(), command),
+                ));
                 fixture.double_roundtrip(client);
                 let closed = fixture
                     .client(client)
@@ -296,10 +419,9 @@ fn check_ops(ops: Vec<Op>) {
                     &mut ids,
                 );
                 if let Some(id) = ids.get(usize::from(slot) % ids.len().max(1)) {
-                    let _ = crate::command::execute(
-                        fixture.niri_state(),
-                        &format!("[con_id={id}] {command}"),
-                    );
+                    let command = format!("[con_id={id}] {command}");
+                    let outcome = crate::command::execute(fixture.niri_state(), &command);
+                    outcomes.push((command, outcome));
                     fixture.double_roundtrip(client);
                 }
             }
@@ -319,10 +441,12 @@ fn check_ops(ops: Vec<Op>) {
         assert_state(&mut fixture);
     }
 
-    for surface in windows.into_iter().flatten() {
-        unmap_window(&mut fixture, client, &surface);
+    Run {
+        fixture,
+        client,
+        windows,
+        outcomes,
     }
-    drop(fixture);
 }
 
 #[test]
@@ -359,7 +483,7 @@ fn repeated_property_fixtures_release_file_descriptors() {
 
 #[test]
 fn swapping_a_marked_container_does_not_leave_multiple_fullscreen_nodes() {
-    check_ops(vec![
+    let mut run = run_ops(vec![
         Op::Command("focus left"),
         Op::Command("move workspace 1"),
         Op::Command("split horizontal"),
@@ -375,11 +499,24 @@ fn swapping_a_marked_container_does_not_leave_multiple_fullscreen_nodes() {
         Op::Command("[app_id=app-0] focus"),
         Op::Command("swap container with mark alpha"),
     ]);
+
+    assert_success(run.last_outcome("swap container with mark alpha"), "swap");
+    let tree = run.tree();
+    let workspaces = tree.nodes.iter().flat_map(|output| &output.nodes);
+    assert!(workspaces.clone().any(|ws| ws.name.as_deref() == Some("1")));
+    for workspace in workspaces {
+        assert!(
+            count_fullscreen_descendants(workspace) <= 1,
+            "multiple fullscreen containers in workspace {:?}",
+            workspace.name
+        );
+    }
+    run.finish();
 }
 
 #[test]
 fn swapping_with_a_marked_floating_container_is_rejected_safely() {
-    check_ops(vec![
+    let mut run = run_ops(vec![
         Op::Open(2),
         Op::ConIdCommand(1, "move scratchpad"),
         Op::ConIdCommand(2, "floating toggle"),
@@ -395,11 +532,22 @@ fn swapping_with_a_marked_floating_container_is_rejected_safely() {
         Op::Command("[app_id=app-0] focus"),
         Op::Command("swap container with mark alpha"),
     ]);
+
+    assert_failure(
+        run.last_outcome("swap container with mark alpha"),
+        "swap",
+        "Can only swap with containers and views",
+    );
+    let tree = run.tree();
+    for app_id in ["app-0", "app-1", "app-2", "app-3"] {
+        assert!(find_app(&tree, app_id).is_some(), "missing {app_id}");
+    }
+    run.finish();
 }
 
 #[test]
 fn showing_scratchpad_after_unfocused_floating_toggle_keeps_unique_trees() {
-    check_ops(vec![
+    let mut run = run_ops(vec![
         Op::Command("focus parent"),
         Op::Command("floating toggle"),
         Op::Open(2),
@@ -409,11 +557,26 @@ fn showing_scratchpad_after_unfocused_floating_toggle_keeps_unique_trees() {
         Op::Command("floating toggle"),
         Op::Command("scratchpad show"),
     ]);
+
+    assert_success(run.last_outcome("scratchpad show"), "scratchpad show");
+    let tree = run.tree();
+    let mut ids = Vec::new();
+    collect_node_ids(&tree, &mut ids);
+    let unique = ids.iter().copied().collect::<HashSet<_>>();
+    assert_eq!(ids.len(), unique.len(), "GET_TREE node ids must be unique");
+    for app_id in ["app-0", "app-1", "app-2"] {
+        assert_eq!(
+            app_workspace(&tree, app_id).and_then(|node| node.name.as_deref()),
+            Some("1"),
+            "{app_id} workspace",
+        );
+    }
+    run.finish();
 }
 
 #[test]
 fn killed_windows_can_receive_late_configures() {
-    check_ops(vec![
+    let mut run = run_ops(vec![
         Op::Command("focus parent"),
         Op::Command("floating toggle"),
         Op::ConIdCommand(0, "kill"),
@@ -422,11 +585,29 @@ fn killed_windows_can_receive_late_configures() {
         Op::Command("scratchpad show"),
         Op::Command("layout tabbed"),
     ]);
+
+    assert_success(run.last_outcome_ending_with("kill"), "kill");
+    assert_success(
+        run.last_outcome_ending_with("move scratchpad"),
+        "move scratchpad",
+    );
+    assert_failure(
+        run.last_outcome("layout tabbed"),
+        "layout tabbed",
+        "Unable to change layout of floating windows",
+    );
+    let tree = run.tree();
+    assert!(find_app(&tree, "app-0").is_none(), "killed window remained");
+    assert_eq!(
+        app_workspace(&tree, "app-1").and_then(|node| node.name.as_deref()),
+        Some("2"),
+    );
+    run.finish();
 }
 
 #[test]
 fn stale_mark_cannot_focus_an_empty_tiling_root() {
-    check_ops(vec![
+    let mut run = run_ops(vec![
         Op::Command("focus parent"),
         Op::Command("focus right"),
         Op::Close(0),
@@ -434,33 +615,87 @@ fn stale_mark_cannot_focus_an_empty_tiling_root() {
         Op::Command("move scratchpad"),
         Op::Command("[con_mark=alpha] focus"),
     ]);
+
+    assert_failure(
+        run.last_outcome("mark alpha"),
+        "mark alpha",
+        "Only containers can have marks",
+    );
+    assert_failure(
+        run.last_outcome("[con_mark=alpha] focus"),
+        "[con_mark=alpha] focus",
+        "No matching node.",
+    );
+    let workspaces = run.workspaces();
+    assert!(workspaces.iter().any(|ws| ws.name == "1" && ws.focused));
+    run.finish();
 }
 
 #[test]
 fn sticky_floating_window_stays_active_after_workspace_changes() {
-    check_ops(vec![
+    let mut run = run_ops(vec![
         Op::Command("floating toggle"),
         Op::Command("sticky toggle"),
         Op::Command("move workspace 2"),
         Op::Command("workspace 2"),
         Op::Command("workspace named"),
     ]);
+
+    for command in [
+        "floating toggle",
+        "sticky toggle",
+        "move workspace 2",
+        "workspace 2",
+        "workspace named",
+    ] {
+        assert_success(run.last_outcome(command), command);
+    }
+    let tree = run.tree();
+    let sticky = find_app(&tree, "app-1").unwrap();
+    assert!(sticky.sticky);
+    assert_eq!(sticky.node_type, swayward_ipc::NodeType::FloatingCon);
+    assert_eq!(
+        app_workspace(&tree, "app-1").and_then(|node| node.name.as_deref()),
+        Some("named"),
+    );
+    assert!(run
+        .workspaces()
+        .iter()
+        .any(|ws| ws.name == "named" && ws.focused && ws.visible));
+    run.finish();
 }
 
 #[test]
 fn runtime_default_border_keeps_floating_tile_data_current() {
-    check_ops(vec![
+    let mut run = run_ops(vec![
         Op::Command("layout tabbed"),
         Op::Command("default_border pixel 2"),
         Op::ConIdCommand(0, "floating toggle"),
     ]);
+
+    assert_success(run.last_outcome("layout tabbed"), "layout tabbed");
+    assert_success(run.last_outcome("default_border pixel 2"), "default_border");
+    assert_success(
+        run.last_outcome_ending_with("floating toggle"),
+        "floating toggle",
+    );
+    let tree = run.tree();
+    let floating = find_app(&tree, "app-0").unwrap();
+    assert_eq!(floating.node_type, swayward_ipc::NodeType::FloatingCon);
+    assert_eq!(floating.border, swayward_ipc::NodeBorder::Normal);
+    assert!(floating.deco_rect.height > 0, "floating titlebar missing");
+    assert_eq!(
+        floating.window_rect.width + 2 * floating.current_border_width,
+        floating.rect.width,
+    );
+    run.finish();
 }
 
 /// Sway refuses to rename a workspace to another live workspace's name
 /// (`sway/sway/commands/rename.c:82-91`).
 #[test]
 fn rename_does_not_reuse_a_live_empty_workspace_name() {
-    check_ops(vec![
+    let mut run = run_ops(vec![
         Op::Command("workspace 2"),
         Op::ConIdCommand(2, "floating toggle"),
         Op::ConIdCommand(0, "floating toggle"),
@@ -476,19 +711,63 @@ fn rename_does_not_reuse_a_live_empty_workspace_name() {
         Op::ConIdCommand(0, "move workspace 1"),
         Op::Command("rename workspace to fuzzed"),
     ]);
+
+    assert_success(
+        run.last_outcome("rename workspace to fuzzed"),
+        "rename workspace to fuzzed",
+    );
+    let workspaces = run.workspaces();
+    let names = workspaces
+        .iter()
+        .map(|workspace| workspace.name.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        names.iter().copied().collect::<HashSet<_>>().len(),
+        names.len(),
+    );
+    assert_eq!(
+        names.into_iter().collect::<HashSet<_>>(),
+        HashSet::from(["2", "fuzzed"]),
+    );
+    assert!(workspaces
+        .iter()
+        .any(|workspace| workspace.name == "fuzzed" && workspace.focused));
+    let tree = run.tree();
+    assert_eq!(
+        app_workspace(&tree, "app-1").and_then(|node| node.name.as_deref()),
+        Some("fuzzed"),
+    );
+    run.finish();
 }
 
 #[test]
 fn changing_from_tabbed_to_split_keeps_visible_tiles_consistent() {
-    check_ops(vec![
+    let mut run = run_ops(vec![
         Op::Command("layout tabbed"),
         Op::Command("layout splith"),
     ]);
+
+    assert_success(run.last_outcome("layout tabbed"), "layout tabbed");
+    assert_success(run.last_outcome("layout splith"), "layout splith");
+    let tree = run.tree();
+    let workspace = app_workspace(&tree, "app-0").unwrap();
+    let parent = workspace
+        .nodes
+        .iter()
+        .find(|node| find_app(node, "app-0").is_some())
+        .unwrap();
+    assert_eq!(parent.layout, swayward_ipc::NodeLayout::SplitH);
+    let first = find_app(parent, "app-0").unwrap();
+    let second = find_app(parent, "app-1").unwrap();
+    assert_eq!(first.rect.width, second.rect.width);
+    assert_eq!(first.rect.height, second.rect.height);
+    assert_eq!(first.rect.x + first.rect.width, second.rect.x);
+    run.finish();
 }
 
 #[test]
 fn closing_a_floating_group_child_keeps_the_resident_root() {
-    check_ops(vec![
+    let mut run = run_ops(vec![
         Op::Command("layout splitv"),
         Op::Command("floating toggle"),
         Op::Command("focus parent"),
@@ -499,16 +778,39 @@ fn closing_a_floating_group_child_keeps_the_resident_root() {
         Op::Command("focus parent"),
         Op::Command("layout splith"),
     ]);
+
+    assert_failure(
+        run.last_outcome("layout tabbed"),
+        "layout tabbed",
+        "Unable to change layout of floating windows",
+    );
+    assert_success(run.last_outcome("layout splith"), "final layout splith");
+    let tree = run.tree();
+    assert!(find_app(&tree, "app-1").is_none());
+    let workspace = app_workspace(&tree, "app-0").unwrap();
+    assert_eq!(workspace.floating_nodes.len(), 1);
+    assert!(find_app(&workspace.floating_nodes[0], "app-0").is_some());
+    run.finish();
 }
 
 #[test]
 fn targeted_scratchpad_window_can_be_moved_after_focus_changes() {
-    check_ops(vec![
+    let mut run = run_ops(vec![
         Op::ConIdCommand(0, "move scratchpad"),
         Op::ConIdCommand(5, "move scratchpad"),
         Op::Command("focus right"),
         Op::ConIdCommand(0, "move workspace 1"),
     ]);
+
+    assert_success(
+        run.last_outcome_ending_with("move workspace 1"),
+        "move workspace 1",
+    );
+    let tree = run.tree();
+    for app_id in ["app-0", "app-1"] {
+        assert!(find_app(&tree, app_id).is_some(), "missing {app_id}");
+    }
+    run.finish();
 }
 
 proptest! {
