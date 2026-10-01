@@ -91,6 +91,12 @@ impl SwaySocket {
         })
     }
 
+    /// Sets the socket receive timeout (`SO_RCVTIMEO`); `None` blocks forever.
+    pub fn set_read_timeout(&self, timeout: Option<std::time::Duration>) -> Result<(), SwayError> {
+        self.stream.set_read_timeout(timeout)?;
+        Ok(())
+    }
+
     /// Sends one request and reads its reply payload.
     ///
     /// Returns the raw JSON text. Callers that want typed values deserialise

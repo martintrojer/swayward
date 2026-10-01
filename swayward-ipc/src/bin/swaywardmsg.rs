@@ -1,15 +1,24 @@
 //! `swaywardmsg` — send a message to swayward over sway's IPC socket.
 //!
-//! A drop-in equivalent of `swaymsg` for the message types swayward
-//! implements. It exists so that installing swayward does not require
-//! installing sway, which would mean shipping a second compositor to obtain
-//! one IPC client.
+//! A drop-in equivalent of `swaymsg` (`sway/swaymsg/main.c` at 1.12): the
+//! same options, case-insensitive message types, the human summaries it
+//! prints on a terminal or with `-p`, json-c's JSON layout otherwise, one
+//! event after `-t subscribe` (all of them with `-m`), the three-second reply
+//! timeout and the exit codes 0, 1 (no usable reply) and 2 (unsuccessful).
+//! It also accepts `run_command` for `command`. It exists so that installing
+//! swayward does not require installing sway, which would mean shipping a
+//! second compositor to obtain one IPC client.
 
 use std::io::{self, IsTerminal, Write};
 use std::process::ExitCode;
 
 use swayward_ipc::sway_socket::SwaySocket;
 use swayward_ipc::MessageType;
+
+#[path = "swaywardmsg/summary.rs"]
+mod summary;
+
+const REPLY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
 
 const USAGE: &str = "\
 swaywardmsg — send a message to swayward over its sway-compatible IPC socket
@@ -18,17 +27,17 @@ USAGE:
     swaywardmsg [OPTIONS] [COMMAND]
 
 OPTIONS:
-    -t, --type <TYPE>   message type (default: run_command)
+    -t, --type <TYPE>   message type, any case (default: command)
     -s, --socket <PATH> socket path (default: $SWAYSOCK)
-    -r, --raw           print the raw JSON reply, never a summary
-    -p, --pretty        pretty-print the JSON reply
+    -r, --raw           print JSON even on a terminal
+    -p, --pretty        print swaymsg's summary even when piped
     -q, --quiet         suppress output
-    -m, --monitor       with -t subscribe, keep printing events
+    -m, --monitor       with -t subscribe, print every event, not just one
     -h, --help          show this message
     -v, --version       show the version
 
 TYPES:
-    run_command          get_workspaces      get_outputs
+    command              get_workspaces      get_outputs
     get_tree             get_marks           get_bar_config
     get_version          get_binding_modes   get_config
     send_tick            get_binding_state   get_inputs
@@ -41,9 +50,12 @@ EXAMPLES:
     swaywardmsg -t subscribe -m '[\"window\"]'
 ";
 
+/// Sway's message type names, matched case-insensitively as swaymsg does
+/// with strcasecmp (`sway/swaymsg/main.c:528-563`). swaymsg calls
+/// RUN_COMMAND `command`; `run_command` is accepted as well.
 fn message_type(name: &str) -> Option<MessageType> {
-    Some(match name {
-        "run_command" | "command" => MessageType::RunCommand,
+    Some(match name.to_ascii_lowercase().as_str() {
+        "command" | "run_command" => MessageType::RunCommand,
         "get_workspaces" => MessageType::GetWorkspaces,
         "subscribe" => MessageType::Subscribe,
         "get_outputs" => MessageType::GetOutputs,
@@ -59,54 +71,6 @@ fn message_type(name: &str) -> Option<MessageType> {
         "get_seats" => MessageType::GetSeats,
         _ => return None,
     })
-}
-
-/// Reports whether a `run_command` reply says every command succeeded.
-///
-/// swaymsg prints nothing on success and the error text on failure, and
-/// scripts depend on the exit status, so the summary is derived from the
-/// reply rather than from the fact that a reply arrived at all.
-fn command_failures(reply: &str) -> Vec<String> {
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(reply) else {
-        return Vec::new();
-    };
-    let Some(items) = value.as_array() else {
-        return Vec::new();
-    };
-    items
-        .iter()
-        .filter(|item| item.get("success").and_then(serde_json::Value::as_bool) == Some(false))
-        .map(|item| {
-            item.get("error")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or("command failed")
-                .to_owned()
-        })
-        .collect()
-}
-
-fn reply_status(reply: &str) -> serde_json::Result<bool> {
-    let value = serde_json::from_str::<serde_json::Value>(reply)?;
-    let failed = match value {
-        serde_json::Value::Array(items) => items
-            .iter()
-            .any(|item| item.get("success").and_then(serde_json::Value::as_bool) == Some(false)),
-        serde_json::Value::Object(object) => {
-            object.get("success").and_then(serde_json::Value::as_bool) == Some(false)
-        }
-        _ => false,
-    };
-    Ok(failed)
-}
-
-fn render(reply: &str, pretty: bool) -> String {
-    if !pretty {
-        return reply.to_owned();
-    }
-    match serde_json::from_str::<serde_json::Value>(reply) {
-        Ok(value) => serde_json::to_string_pretty(&value).unwrap_or_else(|_| reply.to_owned()),
-        Err(_) => reply.to_owned(),
-    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -143,8 +107,10 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Invocation, Stri
             "-v" | "--version" => return Ok(Invocation::Version),
             "-t" | "--type" => kind = args.next().ok_or("--type needs a value")?,
             "-s" | "--socket" => socket = Some(args.next().ok_or("--socket needs a value")?),
-            "-r" | "--raw" => raw = true,
-            "-p" | "--pretty" => pretty = true,
+            // The later of -r and -p wins, as in swaymsg's getopt loop
+            // (`sway/swaymsg/main.c:484-492`).
+            "-r" | "--raw" => (raw, pretty) = (true, false),
+            "-p" | "--pretty" => (raw, pretty) = (false, true),
             "-q" | "--quiet" => quiet = true,
             "-m" | "--monitor" => monitor = true,
             other if other.starts_with('-') && other.len() > 1 => {
@@ -155,6 +121,10 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Invocation, Stri
     }
 
     let msg_type = message_type(&kind).ok_or_else(|| format!("unknown message type: {kind}"))?;
+    if monitor && msg_type != MessageType::Subscribe {
+        // `sway/swaymsg/main.c:566-571`.
+        return Err("monitor can only be used with -t subscribe".into());
+    }
     Ok(Invocation::Execute(Options {
         msg_type,
         socket,
@@ -173,29 +143,38 @@ fn execute_once(
         Some(path) => SwaySocket::connect_to(path)?,
         None => SwaySocket::connect()?,
     };
+    // swaymsg gives up on a reply after three seconds
+    // (`sway/swaymsg/main.c:582-583`), so a wedged compositor cannot hang a
+    // script.
+    sock.set_read_timeout(Some(REPLY_TIMEOUT))?;
     let reply = sock.send(options.msg_type, &options.payload)?;
 
-    // Default to pretty output on a terminal, like swaymsg, but never when the
-    // caller is piping us into something.
-    let pretty = options.pretty || (!options.raw && io::stdout().is_terminal());
-    let failed = match reply_status(&reply) {
-        Ok(failed) => failed,
+    // swaymsg is raw when stdout is not a terminal, -r forces raw and -p
+    // forces the human summary (`sway/swaymsg/main.c:470,485-492`).
+    let raw = options.raw || (!options.pretty && !io::stdout().is_terminal());
+    let (value, failed) = match serde_json::from_str::<serde_json::Value>(&reply) {
+        Ok(value) => {
+            let failed = !summary::success(&value, true);
+            (value, failed)
+        }
         Err(error) => {
             if !options.quiet {
-                eprintln!("swaywardmsg: failed to parse payload as JSON: {error}");
+                eprintln!("swaywardmsg: failed to parse payload as json: {error}");
             }
-            return Ok((sock, ExitCode::FAILURE, pretty));
+            return Ok((sock, ExitCode::FAILURE, raw));
         }
     };
 
-    if options.msg_type == MessageType::RunCommand && !options.raw {
-        if failed && !options.quiet {
-            for error in command_failures(&reply) {
-                eprintln!("{error}");
-            }
+    // A successful subscribe reply is not printed; the event is
+    // (`sway/swaymsg/main.c:609`).
+    if !options.quiet && (options.msg_type != MessageType::Subscribe || failed) {
+        let summary = (!raw)
+            .then(|| summary::summary(options.msg_type, &value))
+            .flatten();
+        match summary {
+            Some(summary) => print!("{summary}"),
+            None => println!("{}", pretty_json(&reply)),
         }
-    } else if !options.quiet {
-        println!("{}", render(&reply, pretty));
     }
 
     let code = if failed {
@@ -203,20 +182,50 @@ fn execute_once(
     } else {
         ExitCode::SUCCESS
     };
-    Ok((sock, code, pretty))
+    Ok((sock, code, raw))
 }
 
-fn monitor_events(
+/// The reply in json-c's pretty layout, keeping the compositor's key order.
+fn pretty_json(reply: &str) -> String {
+    summary::json(reply, summary::Layout::Pretty).unwrap_or_else(|| reply.to_owned())
+}
+
+/// Print subscription events: one, or with `-m` every event until the
+/// connection ends (`sway/swaymsg/main.c:613-665`). The reply timeout no
+/// longer applies once subscribed.
+fn print_events(
     sock: &mut SwaySocket,
     quiet: bool,
-    pretty: bool,
+    raw: bool,
+    monitor: bool,
 ) -> Result<ExitCode, Box<dyn std::error::Error>> {
+    sock.set_read_timeout(None)?;
     let mut out = io::stdout().lock();
     loop {
         let (_, event) = sock.read_event()?;
+        let value = match serde_json::from_str::<serde_json::Value>(&event) {
+            Ok(value) => value,
+            Err(error) => {
+                if !quiet {
+                    eprintln!("swaywardmsg: failed to parse payload as json: {error}");
+                }
+                return Ok(ExitCode::FAILURE);
+            }
+        };
         if !quiet {
-            writeln!(out, "{}", render(&event, pretty))?;
+            // Raw events are compact, pretty ones indented
+            // (`sway/swaymsg/main.c:650-656`).
+            let layout = if raw {
+                summary::Layout::Spaced
+            } else {
+                summary::Layout::Pretty
+            };
+            let text = summary::json(&event, layout).unwrap_or_else(|| value.to_string());
+            writeln!(out, "{text}")?;
             out.flush()?;
+        }
+        if !monitor {
+            return Ok(ExitCode::SUCCESS);
         }
     }
 }
@@ -235,12 +244,12 @@ fn run() -> Result<ExitCode, Box<dyn std::error::Error>> {
         Invocation::Execute(options) => options,
     };
 
-    let (mut sock, code, pretty) = execute_once(&options)?;
+    let (mut sock, code, raw) = execute_once(&options)?;
     if code != ExitCode::SUCCESS {
         return Ok(code);
     }
-    if options.monitor && options.msg_type == MessageType::Subscribe {
-        return monitor_events(&mut sock, options.quiet, pretty);
+    if options.msg_type == MessageType::Subscribe {
+        return print_events(&mut sock, options.quiet, raw, options.monitor);
     }
     Ok(code)
 }
@@ -330,25 +339,23 @@ mod tests {
     }
 
     #[test]
-    fn reply_status_distinguishes_invalid_json_and_failure() {
-        assert!(!reply_status(r#"{"success":true}"#).unwrap());
-        assert!(reply_status(r#"{"success":false}"#).unwrap());
-        assert!(!reply_status(r#"[{"success":true}]"#).unwrap());
-        assert!(reply_status(r#"[{"success":false}]"#).unwrap());
-        assert!(reply_status("not json").is_err());
+    fn message_types_match_swaymsg_case_insensitively() {
+        assert_eq!(message_type("GET_TREE"), Some(MessageType::GetTree));
+        assert_eq!(message_type("Command"), Some(MessageType::RunCommand));
+        assert_eq!(message_type("run_command"), Some(MessageType::RunCommand));
+        assert_eq!(message_type("get_nothing"), None);
     }
 
     #[test]
-    fn run_command_failures_are_reported() {
-        assert!(command_failures(r#"[{"success":true}]"#).is_empty());
+    fn monitor_needs_subscribe_and_the_later_output_flag_wins() {
         assert_eq!(
-            command_failures(r#"[{"success":false,"error":"no such workspace"}]"#),
-            vec!["no such workspace".to_owned()]
+            parse_args(["-m", "-t", "get_tree"].map(str::to_owned)).unwrap_err(),
+            "monitor can only be used with -t subscribe"
         );
-        // A failure without an error string still counts as a failure.
-        assert_eq!(command_failures(r#"[{"success":false}]"#).len(), 1);
-        // Replies that are not command arrays are not failures.
-        assert!(command_failures(r#"{"human_readable":"1.11"}"#).is_empty());
-        assert!(command_failures("not json").is_empty());
+        let Invocation::Execute(options) = parse_args(["-r", "-p"].map(str::to_owned)).unwrap()
+        else {
+            panic!("expected executable options");
+        };
+        assert!(options.pretty && !options.raw);
     }
 }
