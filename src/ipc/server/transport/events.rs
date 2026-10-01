@@ -27,10 +27,34 @@ impl SwayEventType {
     }
 }
 
+/// Whether any sway event carries `event`. The rest are legacy-protocol
+/// bookkeeping that the event bridge keeps for its own diffs; no sway client
+/// can receive them, so they are never queued to a subscriber.
+pub(in crate::ipc::server) fn reaches_sway_clients(event: &Event) -> bool {
+    !matches!(
+        event,
+        Event::WorkspaceActiveWindowChanged { .. }
+            | Event::WorkspacesChanged { .. }
+            | Event::WorkspaceActivated { .. }
+            | Event::WindowsChanged { .. }
+            | Event::WindowOpenedOrChanged { .. }
+            | Event::WindowClosed { .. }
+            | Event::WindowFocusTimestampChanged { .. }
+            | Event::WindowUrgencyChanged { .. }
+            | Event::WindowLayoutsChanged { .. }
+            | Event::WindowFocusChanged { .. }
+            | Event::KeyboardLayoutsChanged { .. }
+            | Event::KeyboardLayoutSwitched { .. }
+    )
+}
+
 pub(super) fn sway_event(
     event: Event,
     query_state: &QueryState,
 ) -> Option<(SwayEventType, serde_json::Value)> {
+    if !reaches_sway_clients(&event) {
+        return None;
+    }
     Some(match event {
         Event::OutputChanged => (
             SwayEventType::Output,
@@ -68,9 +92,6 @@ pub(super) fn sway_event(
             SwayEventType::Workspace,
             serde_json::json!({"change":"focus","old":old,"current":current}),
         ),
-        Event::WorkspaceActiveWindowChanged { .. }
-        | Event::WorkspacesChanged { .. }
-        | Event::WorkspaceActivated { .. } => return None,
         Event::Shutdown { reason } => (
             SwayEventType::Shutdown,
             serde_json::json!({"change":reason}),
@@ -120,13 +141,6 @@ pub(super) fn sway_event(
                 serde_json::json!({"change":"move","container":container}),
             )
         }
-        Event::WindowsChanged { .. }
-        | Event::WindowOpenedOrChanged { .. }
-        | Event::WindowClosed { .. }
-        | Event::WindowFocusTimestampChanged { .. }
-        | Event::WindowUrgencyChanged { .. }
-        | Event::WindowLayoutsChanged { .. }
-        | Event::WindowFocusChanged { .. } => return None,
         _ => return None,
     })
 }

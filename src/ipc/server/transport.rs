@@ -4,6 +4,7 @@ use super::requests::dispatch;
 
 #[path = "transport/events.rs"]
 mod events;
+pub(super) use events::reaches_sway_clients;
 use events::{sway_event, SwayEventType};
 
 use super::*;
