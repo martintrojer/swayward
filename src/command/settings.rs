@@ -20,7 +20,6 @@ pub(super) fn criteria_global_setting(option: &swayward_ipc::command::LayoutOpti
             | LayoutOption::TilingDrag(..)
             | LayoutOption::TilingDragThreshold(..)
             | LayoutOption::ForceDisplayUrgencyHint(..)
-            | LayoutOption::PrimarySelection(..)
             | LayoutOption::FocusOnWindowActivation(..)
             | LayoutOption::WorkspaceAutoBackAndForth(..)
     )
@@ -91,12 +90,6 @@ pub(super) fn execute_global_setting(
                 };
                 Ok(())
             }
-            LayoutOption::WorkspaceLayout(value) => {
-                value.parse().map(|value| layout.workspace_layout = value)
-            }
-            LayoutOption::DefaultOrientation(value) => value
-                .parse()
-                .map(|value| layout.default_orientation = value),
             LayoutOption::HideEdgeBorders(value) => {
                 value.parse().map(|value| layout.hide_edge_borders = value)
             }
@@ -146,12 +139,6 @@ pub(super) fn execute_global_setting(
             }
             LayoutOption::ForceDisplayUrgencyHint(value) => {
                 config.urgent_timeout_ms = *value;
-                Ok(())
-            }
-            LayoutOption::PrimarySelection(enabled) => {
-                if *enabled == config.clipboard.disable_primary {
-                    return failure("primary_selection can only be enabled/disabled at launch");
-                }
                 Ok(())
             }
             LayoutOption::FocusOnWindowActivation(value) => value
@@ -282,12 +269,6 @@ pub(super) fn execute_global_setting(
                     Requested::Output => MouseWarping::Output,
                     Requested::Container => MouseWarping::Container,
                 };
-                Ok(())
-            }
-            LayoutOption::Xwayland { enabled } => {
-                if *enabled == config.xwayland_satellite.off {
-                    return failure("xwayland can only be enabled/disabled at launch");
-                }
                 Ok(())
             }
         };

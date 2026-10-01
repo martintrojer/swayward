@@ -1,29 +1,22 @@
 #[test]
 fn layout_settings_apply_at_runtime_like_sway() {
-    use swayward_config::layout::{
-        DefaultOrientation, FocusWrapping, HideEdgeBorders, SmartBorders, WorkspaceLayout,
-    };
+    use swayward_config::layout::{FocusWrapping, HideEdgeBorders, SmartBorders};
 
-    // Sway serves its config file and its IPC from one command table
-    // (`sway/sway/commands.c:162-173`), so these directives are live commands
-    // there. swayward keeps the setting in KDL; this asserts the command
-    // reaches the same state, rather than merely returning success.
+    // These directives are in sway's shared `handlers` table, which serves both
+    // the config file and IPC (`sway/sway/commands.c:43-100,160-173`), so they
+    // are live commands there. swayward keeps the setting in KDL; this asserts
+    // the command reaches the same state, rather than merely returning success.
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));
 
     let layout = |f: &mut Fixture| f.swayward().config.borrow().layout.clone();
-    let before = layout(&mut f);
-    assert_ne!(before.workspace_layout, WorkspaceLayout::Tabbed);
 
     for (command, check) in [
         (
-            "workspace_layout tabbed",
-            &(|l: &swayward_config::Layout| l.workspace_layout == WorkspaceLayout::Tabbed)
+            "focus_wrapping no",
+            &(|l: &swayward_config::Layout| l.focus_wrapping == FocusWrapping::No)
                 as &dyn Fn(&swayward_config::Layout) -> bool,
         ),
-        ("focus_wrapping no", &|l| {
-            l.focus_wrapping == FocusWrapping::No
-        }),
         ("focus_wrapping force", &|l| {
             l.focus_wrapping == FocusWrapping::Force
         }),
@@ -46,9 +39,6 @@ fn layout_settings_apply_at_runtime_like_sway() {
         ("smart_borders no_gaps", &|l| {
             l.smart_borders == SmartBorders::NoGaps
         }),
-        ("default_orientation vertical", &|l| {
-            l.default_orientation == DefaultOrientation::Vertical
-        }),
     ] {
         let outcome = crate::command::execute(f.niri_state(), command);
         assert!(outcome[0].success, "{command} failed: {outcome:?}");
@@ -59,24 +49,12 @@ fn layout_settings_apply_at_runtime_like_sway() {
     }
 
     // Values sway rejects must fail here too, with sway's message.
-    for (command, expected) in [
-        (
-            "workspace_layout sideways",
-            "Expected 'workspace_layout <default|stacking|tabbed>'",
-        ),
-        (
-            "focus_follows_mouse maybe",
-            "Expected 'focus_follows_mouse no|yes|always'",
-        ),
-        (
-            "default_orientation diagonal",
-            "Expected 'orientation <horizontal|vertical|auto>'",
-        ),
-    ] {
-        let outcome = crate::command::execute(f.niri_state(), command);
-        assert!(!outcome[0].success, "{command} should have failed");
-        assert_eq!(outcome[0].error.as_deref(), Some(expected));
-    }
+    let outcome = crate::command::execute(f.niri_state(), "focus_follows_mouse maybe");
+    assert!(!outcome[0].success, "invalid focus_follows_mouse should have failed");
+    assert_eq!(
+        outcome[0].error.as_deref(),
+        Some("Expected 'focus_follows_mouse no|yes|always'")
+    );
 
     assert!(crate::command::execute(f.niri_state(), "show_marks no")[0].success);
     assert!(!layout(&mut f).titlebar.show_marks);
@@ -101,18 +79,6 @@ fn layout_settings_apply_at_runtime_like_sway() {
     assert_eq!(f.swayward().config.borrow().input.tiling_drag_threshold, 17);
     assert!(crate::command::execute(f.niri_state(), "force_display_urgency_hint 700ms")[0].success);
     assert_eq!(f.swayward().config.borrow().urgent_timeout_ms, 700);
-
-    // The primary-selection manager is created at launch. Reasserting its
-    // current value succeeds; changing it must fail instead of claiming a
-    // live change that cannot affect the manager (`sway/server.c:783-785`).
-    assert!(crate::command::execute(f.niri_state(), "primary_selection enabled")[0].success);
-    let outcome = crate::command::execute(f.niri_state(), "primary_selection disabled");
-    assert!(!outcome[0].success);
-    assert_eq!(
-        outcome[0].error.as_deref(),
-        Some("primary_selection can only be enabled/disabled at launch")
-    );
-    assert!(!f.swayward().config.borrow().clipboard.disable_primary);
 
     assert!(crate::command::execute(f.niri_state(), "focus_on_window_activation none")[0].success);
     assert_eq!(
@@ -479,14 +445,47 @@ fn layout_settings_apply_at_runtime_like_sway() {
         Some("Expected 'mouse_warping output|container|none'")
     );
     assert!(crate::command::execute(f.niri_state(), "mouse_warping none")[0].success);
+}
 
-    assert!(crate::command::execute(f.niri_state(), "xwayland enable")[0].success);
-    let outcome = crate::command::execute(f.niri_state(), "xwayland disable");
-    assert!(!outcome[0].success);
-    assert_eq!(
-        outcome[0].error.as_deref(),
-        Some("xwayland can only be enabled/disabled at launch")
-    );
+/// Oracle: command-fuzz config-only-workspace-layout,
+/// config-only-default-orientation, config-only-orientation,
+/// config-only-primary-selection and config-only-xwayland. At run time sway
+/// searches `command_handlers` and the shared `handlers`, never
+/// `config_handlers` (`sway/sway/commands.c:102-110,156-173`), and
+/// `orientation` is in no table. All five are unknown over IPC and change
+/// nothing.
+#[test]
+fn config_only_directives_are_unknown_at_runtime_like_sway() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let snapshot = |f: &mut Fixture| {
+        let config = f.swayward().config.borrow();
+        (
+            config.layout.workspace_layout,
+            config.layout.default_orientation,
+            config.clipboard.disable_primary,
+            config.xwayland_satellite.off,
+        )
+    };
+    let before = snapshot(&mut f);
+
+    for (command, name) in [
+        ("workspace_layout tabbed", "workspace_layout"),
+        ("default_orientation vertical", "default_orientation"),
+        ("orientation vertical", "orientation"),
+        ("primary_selection disabled", "primary_selection"),
+        ("xwayland disable", "xwayland"),
+    ] {
+        let outcome = crate::command::execute(f.niri_state(), command);
+        assert_eq!(
+            outcome,
+            vec![swayward_ipc::command::parse_error(format!(
+                "Unknown/invalid command '{name}'"
+            ))],
+            "{command}"
+        );
+    }
+    assert_eq!(snapshot(&mut f), before);
 }
 
 /// A KDL `workspace "name" { layout { gaps N } }` must reach the workspace

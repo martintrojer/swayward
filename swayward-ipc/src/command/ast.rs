@@ -126,8 +126,6 @@ pub enum XkbLayoutTarget {
 pub enum LayoutOption {
     FocusWrapping(String),
     ForceFocusWrapping(String),
-    WorkspaceLayout(String),
-    DefaultOrientation(String),
     HideEdgeBorders(String),
     SmartBorders(String),
     SmartGaps(String),
@@ -136,7 +134,6 @@ pub enum LayoutOption {
     TilingDrag(String),
     TilingDragThreshold(u32),
     ForceDisplayUrgencyHint(u32),
-    PrimarySelection(bool),
     FocusOnWindowActivation(String),
     /// `focus_follows_mouse no|yes|always`.
     ///
@@ -156,15 +153,6 @@ pub enum LayoutOption {
         vertical: i32,
     },
     TitlebarBorderThickness(u16),
-    /// `xwayland <enable|disable|force>`.
-    ///
-    /// Sway accepts the command but refuses a change that would take effect
-    /// after startup, answering "xwayland can only be enabled/disabled at
-    /// launch" (`sway/sway/commands/xwayland.c:7-36`). Setting the value it
-    /// already has succeeds.
-    Xwayland {
-        enabled: bool,
-    },
     /// `mouse_warping output|container|none`.
     ///
     /// Sway keeps the three modes apart: `output` warps only when the focused
@@ -299,10 +287,12 @@ pub enum Command {
     OpacityRelative(f32),
     /// A sway directive that sets a layout option for the whole session.
     ///
-    /// Sway serves the config file and IPC from one command table
-    /// (`sway/sway/commands.c:162-173`), so these are runtime commands there
-    /// as well as config lines. swayward keeps the setting in KDL and applies
-    /// the same value here, then re-runs the normal config apply path.
+    /// These come from sway's shared `handlers` table, which serves both the
+    /// config file and IPC (`sway/sway/commands.c:43-100,160-173`). The
+    /// config-only `config_handlers` are excluded at run time
+    /// (commands.c:102-110,156-163) and are not represented here. swayward
+    /// keeps the setting in KDL and applies the same value, then re-runs the
+    /// normal config apply path.
     SetLayoutOption(LayoutOption),
     SetClientColors {
         class: ClientColorClass,

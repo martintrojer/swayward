@@ -207,32 +207,6 @@ pub(super) fn parse(name: &str, rest: &[&str]) -> Result<Command, String> {
             ))),
             _ => Err("Expected 'force_focus_wrapping <yes|no>'".into()),
         },
-        "workspace_layout" => match rest {
-            [value]
-                if matches!(
-                    value.to_ascii_lowercase().as_str(),
-                    "default" | "stacking" | "tabbed"
-                ) =>
-            {
-                Ok(Command::SetLayoutOption(LayoutOption::WorkspaceLayout(
-                    value.to_ascii_lowercase(),
-                )))
-            }
-            _ => Err("Expected 'workspace_layout <default|stacking|tabbed>'".into()),
-        },
-        "default_orientation" | "orientation" => match rest {
-            [value]
-                if matches!(
-                    value.to_ascii_lowercase().as_str(),
-                    "horizontal" | "vertical" | "auto"
-                ) =>
-            {
-                Ok(Command::SetLayoutOption(LayoutOption::DefaultOrientation(
-                    value.to_ascii_lowercase(),
-                )))
-            }
-            _ => Err("Expected 'orientation <horizontal|vertical|auto>'".into()),
-        },
         "hide_edge_borders" => {
             // `sway/sway/commands/hide_edge_borders.c` accepts an --i3 flag
             // before the value; it selects i3's smart behaviour, which
@@ -331,12 +305,6 @@ pub(super) fn parse(name: &str, rest: &[&str]) -> Result<Command, String> {
                 LayoutOption::ForceDisplayUrgencyHint(value.max(0).min(i64::from(u32::MAX)) as u32),
             ))
         }
-        "primary_selection" => match rest {
-            [value] => Ok(Command::SetLayoutOption(LayoutOption::PrimarySelection(
-                parse_boolean(value, true),
-            ))),
-            _ => Err("Expected 'primary_selection enabled|disabled'".into()),
-        },
         "focus_on_window_activation" => match rest {
             [value] if matches!(*value, "smart" | "urgent" | "focus" | "none") => Ok(
                 Command::SetLayoutOption(LayoutOption::FocusOnWindowActivation((*value).into())),
@@ -482,14 +450,6 @@ pub(super) fn parse(name: &str, rest: &[&str]) -> Result<Command, String> {
                 Ok(Command::SetLayoutOption(LayoutOption::MouseWarping(mode)))
             }
             _ => Err("Expected 'mouse_warping output|container|none'".into()),
-        },
-        "xwayland" => match rest {
-            [value] => Ok(Command::SetLayoutOption(LayoutOption::Xwayland {
-                // sway treats `force` as enabled-immediately and routes
-                // everything else through parse_boolean with a true default.
-                enabled: *value == "force" || parse_boolean(value, true),
-            })),
-            _ => Err("Invalid xwayland command (expected 1 argument, got 0)".into()),
         },
         "font" => {
             // `sway/sway/commands/font.c` joins the remaining words and strips

@@ -333,11 +333,15 @@ fn parse_words(args: &[&str], input: &str) -> Result<Command, String> {
             [value] if *value == "disable" => Ok(Command::ShortcutsInhibitor(false)),
             _ => Err("Expected `shortcuts_inhibitor enable|disable`".into()),
         },
-        // Session-wide layout settings. Sway serves these from the same table
-        // as the config file (`sway/sway/commands.c:162-173`), so they are
-        // runtime commands there; swayward stores the same settings in KDL and
-        // re-applies the config after changing one. Accepted values and error
-        // strings follow sway's own command files.
+        // Session-wide layout settings from sway's shared `handlers` table,
+        // which serves both the config file and IPC
+        // (`sway/sway/commands.c:43-100,160-173`). swayward stores the same
+        // settings in KDL and re-applies the config after changing one.
+        // Accepted values and error strings follow sway's own command files.
+        // The config-only `config_handlers` (workspace_layout,
+        // default_orientation, primary_selection, xwayland, ...) are not
+        // searched at run time (commands.c:102-110,156-163), so they fall
+        // through to the unknown-command arm.
         name if matches!(
             name,
             "client.focused"
@@ -347,9 +351,6 @@ fn parse_words(args: &[&str], input: &str) -> Result<Command, String> {
                 | "client.urgent"
                 | "focus_wrapping"
                 | "force_focus_wrapping"
-                | "workspace_layout"
-                | "default_orientation"
-                | "orientation"
                 | "hide_edge_borders"
                 | "smart_borders"
                 | "smart_gaps"
@@ -358,7 +359,6 @@ fn parse_words(args: &[&str], input: &str) -> Result<Command, String> {
                 | "tiling_drag"
                 | "tiling_drag_threshold"
                 | "force_display_urgency_hint"
-                | "primary_selection"
                 | "focus_on_window_activation"
                 | "focus_follows_mouse"
                 | "workspace_auto_back_and_forth"
@@ -369,7 +369,6 @@ fn parse_words(args: &[&str], input: &str) -> Result<Command, String> {
                 | "popup_during_fullscreen"
                 | "floating_modifier"
                 | "mouse_warping"
-                | "xwayland"
                 | "font"
                 | "titlebar_border_thickness"
                 | "titlebar_padding"
