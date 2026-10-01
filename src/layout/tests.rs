@@ -4443,7 +4443,7 @@ proptest! {
 
 #[test]
 fn moving_a_floating_singleton_after_child_focus_keeps_its_resident_root() {
-    check_ops([
+    let layout = check_ops([
         Op::AddOutput(1),
         Op::AddWindow {
             params: TestWindowParams::new(1),
@@ -4453,11 +4453,20 @@ fn moving_a_floating_singleton_after_child_focus_keeps_its_resident_root() {
         Op::FocusChild,
         Op::MoveWindowDownOrToWorkspaceDown,
     ]);
+    let (_, workspace) = layout
+        .workspaces()
+        .map(|(_, _, ws)| ws)
+        .enumerate()
+        .find(|(_, ws)| ws.has_window(&1))
+        .expect("window 1 is still laid out");
+    // Inside a floating container, so not a floating root leaf.
+    assert!(workspace.floating().has_window(&1) && !workspace.is_floating(&1));
+    assert_eq!(workspace.floating().tree_roots().count(), 1);
 }
 
 #[test]
 fn layout_changes_do_not_flatten_a_floating_group_resident_root() {
-    check_ops([
+    let layout = check_ops([
         Op::AddOutput(1),
         Op::AddOutput(2),
         Op::AddWindow {
@@ -4477,6 +4486,12 @@ fn layout_changes_do_not_flatten_a_floating_group_resident_root() {
         Op::FocusWindow(2),
         Op::SetFocusedLayout(tiling_tree::Layout::SplitH),
     ]);
+    // The split wrapped window 2 alone, so the floated group holds only it;
+    // the layout changes must leave that group a floating tree root.
+    let workspace = layout.active_workspace().unwrap();
+    assert!(workspace.floating().has_window(&2) && !workspace.is_floating(&2));
+    assert!(!workspace.floating().has_window(&1));
+    assert_eq!(workspace.floating().tree_roots().count(), 1);
 }
 
 #[test]
@@ -4830,7 +4845,7 @@ fn moving_a_tiny_window_to_scratchpad_with_a_huge_border_does_not_panic() {
 fn hiding_the_active_floating_container_focuses_the_remaining_leaf() {
     let mut floating = TestWindowParams::new(1);
     floating.is_floating = true;
-    check_ops([
+    let layout = check_ops([
         Op::AddOutput(1),
         Op::AddWindow {
             params: TestWindowParams::new(2),
@@ -4840,6 +4855,14 @@ fn hiding_the_active_floating_container_focuses_the_remaining_leaf() {
         Op::FocusWindowDown,
         Op::MoveFocusedToScratchpad,
     ]);
+    let hidden = if layout.is_scratchpad_window(&1) {
+        1
+    } else {
+        2
+    };
+    let remaining = 3 - hidden;
+    assert!(layout.is_scratchpad_window(&hidden));
+    assert_eq!(layout.focus().map(|window| *window.id()), Some(remaining));
 }
 
 #[test]
@@ -4875,7 +4898,7 @@ fn centering_a_floating_container_does_not_panic() {
 fn moving_the_last_floating_leaf_keeps_a_resident_tree_active() {
     let mut floating = TestWindowParams::new(1);
     floating.is_floating = true;
-    check_ops([
+    let layout = check_ops([
         Op::AddOutput(1),
         Op::AddWindow {
             params: TestWindowParams::new(3),
@@ -4884,6 +4907,12 @@ fn moving_the_last_floating_leaf_keeps_a_resident_tree_active() {
         Op::AddWindow { params: floating },
         Op::MoveWindowToWorkspaceDown(false),
     ]);
+    let workspace = layout.active_workspace().unwrap();
+    assert!(!workspace.has_window(&1));
+    assert!(workspace.floating().has_window(&3) && !workspace.is_floating(&3));
+    assert_eq!(workspace.floating().tree_roots().count(), 1);
+    assert!(workspace.floating_is_active());
+    assert_eq!(layout.focus().map(|window| *window.id()), Some(3));
 }
 
 #[test]
@@ -4912,7 +4941,7 @@ fn directional_focus_with_one_floating_container_does_not_panic() {
 
 #[test]
 fn toggling_a_window_in_a_floating_container_unfloats_the_container() {
-    check_ops([
+    let layout = check_ops([
         Op::AddOutput(1),
         Op::AddWindow {
             params: TestWindowParams::new(1),
@@ -4920,6 +4949,10 @@ fn toggling_a_window_in_a_floating_container_unfloats_the_container() {
         Op::ToggleFocusedContainerFloating,
         Op::ToggleWindowFloating { id: None },
     ]);
+    let workspace = layout.active_workspace().unwrap();
+    assert!(!workspace.floating().has_window(&1));
+    assert!(workspace.floating().is_empty());
+    assert!(!workspace.floating_is_active());
 }
 
 #[test]
@@ -4942,7 +4975,7 @@ fn unfloat_last_group_after_focusing_parent_deactivates_floating() {
     // focus while its last member returned to tiling (cc e3487ca6).
     let mut options = Options::default();
     options.layout.default_orientation = swayward_config::DefaultOrientation::Vertical;
-    check_ops_with_options(
+    let mut layout = check_ops_with_options(
         options,
         [
             Op::AddOutput(1),
@@ -4959,22 +4992,40 @@ fn unfloat_last_group_after_focusing_parent_deactivates_floating() {
             Op::FocusWindowTop,
             Op::ToggleWindowFloating { id: None },
             Op::FocusParent,
-            Op::ToggleWindowFloating { id: Some(3) },
-            Op::FocusChild,
         ],
     );
+    let workspace = layout
+        .workspaces()
+        .map(|(_, _, ws)| ws)
+        .find(|ws| ws.has_window(&3))
+        .unwrap();
+    assert!(workspace.floating().has_window(&3));
+    check_ops_on_layout(
+        &mut layout,
+        [Op::ToggleWindowFloating { id: Some(3) }, Op::FocusChild],
+    );
+    let workspace = layout
+        .workspaces()
+        .map(|(_, _, ws)| ws)
+        .find(|ws| ws.has_window(&3))
+        .unwrap();
+    assert!(!workspace.floating().has_window(&3));
+    assert!(workspace.floating().is_empty());
+    assert!(!workspace.floating_is_active());
 }
 
 #[test]
 fn singleton_move_after_floating_close_keeps_the_parent_live() {
     // CI 36310511080 shrank `random_operations_dont_panic` to this sequence
     // (proptest cc 16b75ae3). A directional move of the only window read a
-    // parent node that an earlier layout change had already removed.
+    // parent node that an earlier layout change had already removed. The
+    // seed was never committed and the run's artifact has expired, so this
+    // named sequence is the only record.
     let mut floating = TestWindowParams::new(5);
     floating.is_floating = true;
     let mut options = Options::default();
     options.layout.default_orientation = swayward_config::DefaultOrientation::Vertical;
-    check_ops_with_options(
+    let layout = check_ops_with_options(
         options,
         [
             Op::AddWindow {
@@ -4992,4 +5043,6 @@ fn singleton_move_after_floating_close_keeps_the_parent_live() {
             Op::MoveWindowDown,
         ],
     );
+    assert!(!layout.has_window(&5));
+    assert_eq!(layout.focus().map(|window| *window.id()), Some(3));
 }
