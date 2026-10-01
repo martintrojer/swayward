@@ -229,7 +229,9 @@ fn empty_tree_has_no_focus() {
 fn invariant_rejects_stale_and_duplicate_node_side_state() {
     for collection in 0..5 {
         let mut t = tree((1920., 1080.), 0.);
-        let stale = NodeId(999);
+        // The node counter is process-global and proptests allocate from it concurrently, so a
+        // small literal id can belong to this tree. The counter never reaches u64::MAX.
+        let stale = NodeId(u64::MAX);
         match collection {
             0 => t.focus_history.push(stale),
             1 => {
