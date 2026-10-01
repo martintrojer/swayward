@@ -270,15 +270,15 @@ fn fake_outputs_create_real_outputs_with_requested_geometry() {
 fn test_config_reload_requires_loaded_source() {
     let mut fixture = Fixture::new();
     assert_eq!(
-        reload_loaded_test_config(&mut fixture, None).unwrap_err(),
+        reload_loaded_test_config(&mut fixture, "", None).unwrap_err(),
         "no test config has been loaded"
     );
-    reload_loaded_test_config(&mut fixture, Some("font monospace")).unwrap();
+    reload_loaded_test_config(&mut fixture, "", Some("font monospace")).unwrap();
 }
 
 #[test]
 fn i3_config_translation_ignores_only_unsupported_bar_blocks() {
-    translate_config("font monospace\nbar {\n    output primary\n}\n").unwrap();
+    translate_config("", "font monospace\nbar {\n    output primary\n}\n").unwrap();
     assert!(!only_ignorable_translation_warnings(
         "316-drag-container.t",
         "manual attention: 1 directive(s)\n  config:2: another warning\n"
@@ -288,7 +288,7 @@ fn i3_config_translation_ignores_only_unsupported_bar_blocks() {
         "manual attention: 2 directive(s)\n  config:2: bar blocks are unsupported; use waybar (docs/SWAY_CONFIG_MIGRATION.md#replace-swaybar): bar { | }\n"
     ));
 
-    let error = translate_config("bar { output primary }\nmystery value\n").unwrap_err();
+    let error = translate_config("", "bar { output primary }\nmystery value\n").unwrap_err();
     assert!(error.contains("manual attention: 2 directive(s)"));
     assert!(error.contains("unhandled: mystery value"));
 }
@@ -306,23 +306,63 @@ fn i3_config_translation_ignores_provenance_warnings_only_for_271() {
     ));
 }
 
+/// The per-file overrides follow the file being run, not `SWAYWARD_I3_TEST`
+/// in the test process. The gate leaves that variable unset, so a file that
+/// loads its own config used to get the overrides only when measured alone.
+#[test]
+fn a_file_loaded_config_keeps_its_per_file_overrides() {
+    let mut fixture = Fixture::new();
+    fixture.add_output(1, (1280, 800));
+    let client = fixture.add_client();
+    let mut scratch = Vec::new();
+    let mut session = Session {
+        test: "257-keypress-group1-fallback.t",
+        client,
+        loaded_config_source: None,
+        scratch: &mut scratch,
+        initially_floating: HashSet::new(),
+    };
+    let reply = load_config(
+        &mut fixture,
+        &mut session,
+        &json!({ "config": "font monospace\n" }),
+    );
+    assert_eq!(reply, json!({ "success": true }));
+    let xkb = fixture.swayward().config.borrow().input.keyboard.xkb.clone();
+    assert_eq!(xkb.layout, "us,ru");
+    assert_eq!(xkb.options.as_deref(), Some("grp:alt_shift_toggle"));
+
+    reload_loaded_test_config(
+        &mut fixture,
+        "257-keypress-group1-fallback.t",
+        Some("font monospace\n"),
+    )
+    .unwrap();
+    let layout = fixture.swayward().config.borrow().input.keyboard.xkb.layout.clone();
+    assert_eq!(layout, "us,ru");
+
+    for path in scratch {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
 #[test]
 fn i3_config_translation_rejects_unhandled_directives() {
-    let error = translate_config("font monospace\nmystery value\n").unwrap_err();
+    let error = translate_config("", "font monospace\nmystery value\n").unwrap_err();
     assert!(error.contains("manual attention: 1 directive(s)"));
     assert!(error.contains("unhandled: mystery value"));
 }
 
 #[test]
 fn i3_config_translation_never_applies_a_partial_config() {
-    let incomplete = translate_config("bindsym X\n").unwrap_err();
+    let incomplete = translate_config("", "bindsym X\n").unwrap_err();
     assert!(incomplete.contains("manual attention: 1 directive(s)"));
     assert!(incomplete.contains("malformed bindsym: X"));
 }
 
 #[test]
 fn explicit_default_binding_mode_loads() {
-    let config = translate_config("mode \"default\" {\n    bindsym X nop\n}\n").unwrap();
+    let config = translate_config("", "mode \"default\" {\n    bindsym X nop\n}\n").unwrap();
     assert_eq!(config.binds.0.len(), 1);
     assert!(!config
         .binding_modes
@@ -332,7 +372,7 @@ fn explicit_default_binding_mode_loads() {
 
 #[test]
 fn workspace_layout_config_wraps_new_windows() {
-    let config = translate_config("workspace_layout tabbed\n").unwrap();
+    let config = translate_config("", "workspace_layout tabbed\n").unwrap();
     assert_eq!(
         config.layout.workspace_layout,
         swayward_config::WorkspaceLayout::Tabbed

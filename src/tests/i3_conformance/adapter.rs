@@ -352,9 +352,8 @@ fn translate_config_file(
     Ok((path, config))
 }
 
-fn translate_config(config: &str) -> Result<swayward_config::Config, String> {
-    let test = std::env::var("SWAYWARD_I3_TEST").unwrap_or_default();
-    let (path, config) = translate_config_file(&test, config)?;
+fn translate_config(test: &str, config: &str) -> Result<swayward_config::Config, String> {
+    let (path, config) = translate_config_file(test, config)?;
     let _ = std::fs::remove_file(path);
     Ok(config)
 }
@@ -370,8 +369,12 @@ fn configure_client_state_oracle(config: &mut swayward_config::Config, test: &st
     }
 }
 
-fn prepare_test_config(source: &str) -> Result<swayward_config::Config, String> {
-    let mut config = translate_config(source)?;
+/// The harness defaults every translated config shares, plus the per-file
+/// overrides for `test`. `test` is passed explicitly rather than read from
+/// `SWAYWARD_I3_TEST`: that variable is set only when one file is selected,
+/// so reading it here made the gate and a single-file measurement load
+/// different configs for the same file.
+fn apply_test_config_defaults(config: &mut swayward_config::Config, test: &str, source: &str) {
     if !source.lines().any(|line| {
         line.trim_start()
             .to_ascii_lowercase()
@@ -380,9 +383,7 @@ fn prepare_test_config(source: &str) -> Result<swayward_config::Config, String> 
         config.layout.gaps = 0.;
     }
     config.layout.border.off = false;
-    if let Ok(test) = std::env::var("SWAYWARD_I3_TEST") {
-        configure_client_state_oracle(&mut config, &test);
-    }
+    configure_client_state_oracle(config, test);
     if !source.lines().any(|line| {
         line.split_whitespace()
             .next()
@@ -396,20 +397,33 @@ fn prepare_test_config(source: &str) -> Result<swayward_config::Config, String> 
                 max_scroll_amount: None,
             });
     }
+}
+
+fn prepare_test_config(test: &str, source: &str) -> Result<swayward_config::Config, String> {
+    let mut config = translate_config(test, source)?;
+    apply_test_config_defaults(&mut config, test, source);
     Ok(config)
 }
 
-pub(super) fn reload_test_config(fixture: &mut Fixture, source: &str) -> Result<(), String> {
-    let config = prepare_test_config(source)?;
+pub(super) fn reload_test_config(
+    fixture: &mut Fixture,
+    test: &str,
+    source: &str,
+) -> Result<(), String> {
+    let config = prepare_test_config(test, source)?;
     fixture.swayward().for_window.clear();
     fixture.niri_state().reload_config(Ok(config));
     fixture.niri_state().ipc_config_loaded(false);
     Ok(())
 }
 
-fn reload_loaded_test_config(fixture: &mut Fixture, source: Option<&str>) -> Result<(), String> {
+fn reload_loaded_test_config(
+    fixture: &mut Fixture,
+    test: &str,
+    source: Option<&str>,
+) -> Result<(), String> {
     let source = source.ok_or_else(|| "no test config has been loaded".to_owned())?;
-    reload_test_config(fixture, source)
+    reload_test_config(fixture, test, source)
 }
 
 fn reset_config(fixture: &mut Fixture) -> Value {
@@ -419,42 +433,29 @@ fn reset_config(fixture: &mut Fixture) -> Value {
     json!({ "success": true })
 }
 
-fn load_config(
-    fixture: &mut Fixture,
+/// Per-file state of one conformance run, owned by `run_i3_test`.
+struct Session<'a> {
+    test: &'a str,
     client: super::client::ClientId,
-    loaded_config_source: &mut Option<String>,
-    scratch: &mut Vec<PathBuf>,
-    request: &Value,
-) -> Value {
+    loaded_config_source: Option<String>,
+    scratch: &'a mut Vec<PathBuf>,
+    initially_floating: HashSet<u32>,
+}
+
+fn load_config(fixture: &mut Fixture, session: &mut Session, request: &Value) -> Value {
     let source = request["config"].as_str().unwrap();
-    let test = std::env::var("SWAYWARD_I3_TEST").unwrap_or_default();
-    let (outputs, path, mut config) = match (fake_outputs(source), translate_config_file(&test, source)) {
-        (Ok(outputs), Ok((path, config))) => (outputs, path, config),
-        (Err(error), _) | (_, Err(error)) => return json!({ "success": false, "error": error }),
-    };
-    scratch.push(path.clone());
+    let (outputs, path, mut config) =
+        match (fake_outputs(source), translate_config_file(session.test, source)) {
+            (Ok(outputs), Ok((path, config))) => (outputs, path, config),
+            (Err(error), _) | (_, Err(error)) => {
+                return json!({ "success": false, "error": error })
+            }
+        };
+    session.scratch.push(path.clone());
     if let Some(server) = &fixture.swayward().ipc_server {
         server.set_loaded_config_file_name(path.to_string_lossy().into_owned());
     }
-    if !source.lines().any(|line| line.trim_start().to_ascii_lowercase().starts_with("gaps inner ")) {
-        config.layout.gaps = 0.;
-    }
-    config.layout.border.off = false;
-    if let Ok(test) = std::env::var("SWAYWARD_I3_TEST") {
-        configure_client_state_oracle(&mut config, &test);
-    }
-    if !source.lines().any(|line| {
-        line.split_whitespace()
-            .next()
-            .is_some_and(|word| word.eq_ignore_ascii_case("focus_follows_mouse"))
-    }) {
-        config.input.focus_follows_mouse.get_or_insert(
-            swayward_config::input::FocusFollowsMouse {
-                mode: swayward_config::input::FocusFollowsMouseMode::Yes,
-                max_scroll_amount: None,
-            },
-        );
-    }
+    apply_test_config_defaults(&mut config, session.test, source);
     fixture.swayward().layout.initialize_workspaces_from_bindings(&config);
     fixture.swayward().for_window.clear();
     fixture.niri_state().reload_config(Ok(config));
@@ -465,20 +466,14 @@ fn load_config(
     );
     if let Some(outputs) = outputs {
         fixture.replace_outputs(outputs);
-        fixture.double_roundtrip(client);
+        fixture.double_roundtrip(session.client);
     }
-    *loaded_config_source = Some(source.to_owned());
+    session.loaded_config_source = Some(source.to_owned());
     json!({ "success": true })
 }
 
-fn handle_control(
-    fixture: &mut Fixture,
-    client: super::client::ClientId,
-    loaded_config_source: &mut Option<String>,
-    scratch: &mut Vec<PathBuf>,
-    initially_floating: &mut HashSet<u32>,
-    stream: UnixStream,
-) {
+fn handle_control(fixture: &mut Fixture, session: &mut Session, stream: UnixStream) {
+    let client = session.client;
     let mut request = String::new();
     BufReader::new(stream.try_clone().unwrap())
         .read_line(&mut request)
@@ -486,15 +481,19 @@ fn handle_control(
     let request: Value = serde_json::from_str(&request).unwrap();
     let reply = match request["action"].as_str().unwrap() {
         "config_default" => reset_config(fixture),
-        "config" => load_config(fixture, client, loaded_config_source, scratch, &request),
-        "reload" => match reload_loaded_test_config(fixture, loaded_config_source.as_deref()) {
+        "config" => load_config(fixture, session, &request),
+        "reload" => match reload_loaded_test_config(
+            fixture,
+            session.test,
+            session.loaded_config_source.as_deref(),
+        ) {
             Ok(()) => json!({ "success": true }),
             Err(error) => json!({ "success": false, "error": error }),
         },
         "create" => {
             let handle = create_window(fixture, client, &request);
             if request["initial_floating"].as_bool() == Some(true) {
-                initially_floating.insert(handle);
+                session.initially_floating.insert(handle);
             }
             json!({ "handle": handle })
         }
@@ -518,7 +517,7 @@ fn handle_control(
                     client,
                     handle,
                     requested_size(&request),
-                    initially_floating.remove(&handle),
+                    session.initially_floating.remove(&handle),
                 )
             })
         }

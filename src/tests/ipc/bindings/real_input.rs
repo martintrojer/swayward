@@ -176,7 +176,7 @@ fn release_key_binding_survives_config_reload_after_press() {
     assert!(crate::command::execute(fixture.niri_state(), "mode held")[0].success);
 
     key_event(&mut fixture, 53, true);
-    super::i3_conformance::reload_test_config(&mut fixture, "font monospace\n").unwrap();
+    super::i3_conformance::reload_test_config(&mut fixture, "", "font monospace\n").unwrap();
     assert_eq!(fixture.swayward().binding_mode, "default");
     key_event(&mut fixture, 53, false);
 

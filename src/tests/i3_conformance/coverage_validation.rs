@@ -131,7 +131,7 @@ fn initial_floating_applies_only_to_the_requested_window() {
 #[test]
 fn settling_configures_does_not_ack_an_already_acked_configure() {
     let mut config =
-        prepare_test_config("font monospace\nno_focus [app_id=\"^notme$\"]\n").unwrap();
+        prepare_test_config("", "font monospace\nno_focus [app_id=\"^notme$\"]\n").unwrap();
     config.debug.deactivate_unfocused_windows = true;
     let mut fixture = Fixture::with_config(config);
     fixture.add_output(1, (1280, 800));

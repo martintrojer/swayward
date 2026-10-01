@@ -108,6 +108,7 @@ fn reload_replaces_map_time_rules_while_windows_are_mapped() {
 
     super::i3_conformance::reload_test_config(
         &mut fixture,
+        "",
         r#"for_window [app_id="special"] mark reloaded"#,
     )
     .unwrap();
@@ -312,7 +313,7 @@ fn translated_for_window_nop_has_no_observable_window_effect() {
         let mut fixture = Fixture::new();
         fixture.add_output(1, (1920, 1080));
         if let Some(config) = config {
-            super::i3_conformance::reload_test_config(&mut fixture, config).unwrap();
+            super::i3_conformance::reload_test_config(&mut fixture, "", config).unwrap();
         }
         let client = fixture.add_client();
         let window = fixture.client(client).create_window();

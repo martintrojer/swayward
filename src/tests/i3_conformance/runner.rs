@@ -192,19 +192,17 @@ fn run_i3_test(test: &str) {
     // measured at 33s cold, and the suite runs these files in parallel. A
     // genuinely hung test still fails, just later.
     let deadline = started + Duration::from_secs(180);
-    let mut loaded_config_source = None;
-    let mut initially_floating = HashSet::new();
+    let mut session = Session {
+        test,
+        client,
+        loaded_config_source: None,
+        scratch: &mut scratch.files,
+        initially_floating: HashSet::new(),
+    };
     loop {
         fixture.dispatch();
         match control.accept() {
-            Ok((stream, _)) => handle_control(
-                &mut fixture,
-                client,
-                &mut loaded_config_source,
-                &mut scratch.files,
-                &mut initially_floating,
-                stream,
-            ),
+            Ok((stream, _)) => handle_control(&mut fixture, &mut session, stream),
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
             Err(error) => panic!("test control accept failed: {error}"),
         }
