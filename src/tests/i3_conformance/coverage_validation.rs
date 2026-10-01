@@ -62,10 +62,8 @@ fn i3_conformance_runner() {
 
 #[test]
 fn coverage_data_validates_completely() {
-    // Every assertion either passes or is a documented, cited skip. This began
-    // as a ratchet at 165 violations while the data was extracted from prose;
-    // it is now an invariant, so any entry that claims something it has not
-    // shown fails the build.
+    // Every assertion either passes or is a documented, cited skip. This is an
+    // invariant: any entry that claims something it has not shown fails the build.
     let output = std::process::Command::new("python3")
         .arg("contrib/coverage-report")
         .arg("--check")

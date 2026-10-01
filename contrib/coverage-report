@@ -10,18 +10,8 @@ classification. This tool is the only thing that reads it authoritatively:
     contrib/coverage-report --gaps       every assertion that is not a pass and
                                          not documented
 
-Why the data moved out of prose. The classification used to live only in the
-Markdown table, and counting it required reverse-engineering English: literal
-pipes inside sway syntax, seventeen rows that stated a raw run and its
-superseding classification in one cell, three rows counting two levels at once.
-Ad-hoc parsing of that produced a fail total of 880 when the real figure was
-208, and a green ceiling of 107 when it was 105 -- always overstating defects,
-which is the expensive direction because it sends people hunting for bugs that
-are already explained.
-
-The target state is simple and checkable: **every assertion either passes, or
-carries a documented reason.** A `fail` is never acceptable as an end state. A
-`skip` or `unproven` is, provided it names why.
+Every assertion either passes or is a documented skip. `fail` and `unreached`
+are backlog that must become a pass or a cited skip.
 """
 
 import pathlib
@@ -35,15 +25,11 @@ ORACLE = ROOT / ".cache" / "sway-ipc-oracle" / "i3"
 UNVENDORED = ORACLE / "unvendored.toml"
 VENDOR = ORACLE / "t"
 
-LABELS = ("pass", "skip", "unproven", "fail", "unaccounted")
-
 # Reason codes whose skips are structural: the premise cannot exist on a
 # Wayland compositor speaking sway's protocol, so no amount of swayward work
 # converts them into passes. Anything else is either an i3 semantic sway also
 # declines, or a gap. The README quotes the fraction these represent, so it is
 # derived here rather than estimated in prose.
-SOURCE_WITHOUT_LINE = re.compile(r"\.(?:c|h|rs|pm)(?!:\d)")
-
 STRUCTURAL_REASONS = frozenset(
     {
         "bar_protocol",
@@ -55,6 +41,9 @@ STRUCTURAL_REASONS = frozenset(
         "x11_ewmh",
     }
 )
+
+# Source citations name a line, not just a file.
+SOURCE_WITHOUT_LINE = re.compile(r"\.(?:c|h|rs|pm)(?!:\d)")
 
 
 def load():
@@ -119,10 +108,10 @@ def validate(doc):
                 bad.append(f"{name}: file_skip needs a reason and citation")
 
         undocumented = entry.get("skip_undocumented", 0)
-        if undocumented:
+        if "skip_undocumented" in entry:
             bad.append(
-                f"{name}: {undocumented} skips are not itemised; each needs its "
-                "own [[files.\"...\".skip]] with a reason and a citation"
+                f"{name}: skip_undocumented is retired; itemise every skip with "
+                "a reason and citation"
             )
 
         if isinstance(skips, list):
@@ -274,12 +263,10 @@ def check_unvendored(vendored_names):
     with UNVENDORED.open("rb") as handle:
         listed = set(tomllib.load(handle).get("files", {}))
 
-    problems = []
-    for name in sorted(listed & vendored_names):
-        problems.append(f"unvendored.toml lists {name}, but it is vendored")
-    for entry in sorted(listed - vendored_names):
-        pass  # correctly unvendored
-    return problems
+    return [
+        f"unvendored.toml lists {name}, but it is vendored"
+        for name in sorted(listed & vendored_names)
+    ]
 
 
 def main():
