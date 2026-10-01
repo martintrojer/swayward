@@ -389,16 +389,12 @@ impl State {
         let is_floating = rules.compute_open_floating(toplevel);
 
         // Figure out if we should activate the window.
-        let (title, app_id) = crate::utils::with_toplevel_role(toplevel, |role| {
-            (role.title.clone(), role.app_id.clone())
-        });
-        let pid = crate::utils::get_credentials_for_surface(toplevel.wl_surface())
-            .and_then(|credentials| u32::try_from(credentials.pid).ok());
+        let identity = crate::swayward::UnmappedIdentity::from_toplevel(toplevel);
         let no_focus = self.swayward.runtime_window_rules.iter().any(|rule| {
             matches!(
                 rule,
                 crate::swayward::RuntimeWindowRule::NoFocus(_, criteria)
-                    if criteria.matches_unmapped(title.as_deref(), app_id.as_deref(), pid)
+                    if identity.matches(criteria)
             )
         });
         let activate = no_focus.then_some(ActivateWindow::No).or_else(|| {

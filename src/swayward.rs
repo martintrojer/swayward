@@ -95,7 +95,7 @@ use smithay::wayland::session_lock::{LockSurface, SessionLockManagerState, Sessi
 use smithay::wayland::shell::kde::decoration::KdeDecorationState;
 use smithay::wayland::shell::wlr_layer::{self, Layer, WlrLayerShellState};
 use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
-use smithay::wayland::shell::xdg::XdgShellState;
+use smithay::wayland::shell::xdg::{ToplevelSurface, XdgShellState};
 use smithay::wayland::shm::ShmState;
 mod capture;
 mod capture_requests;
@@ -213,6 +213,27 @@ pub enum RuntimeWindowRule {
         swayward_ipc::command::AssignmentTarget,
     ),
     NoFocus(String, crate::criteria::Criteria),
+}
+
+pub struct UnmappedIdentity {
+    pub title: Option<String>,
+    pub app_id: Option<String>,
+    pub pid: Option<u32>,
+}
+
+impl UnmappedIdentity {
+    pub fn from_toplevel(toplevel: &ToplevelSurface) -> Self {
+        let (title, app_id) = crate::utils::with_toplevel_role(toplevel, |role| {
+            (role.title.clone(), role.app_id.clone())
+        });
+        let pid = crate::utils::get_credentials_for_surface(toplevel.wl_surface())
+            .and_then(|credentials| u32::try_from(credentials.pid).ok());
+        Self { title, app_id, pid }
+    }
+
+    pub fn matches(&self, criteria: &crate::criteria::Criteria) -> bool {
+        criteria.matches_unmapped(self.title.as_deref(), self.app_id.as_deref(), self.pid)
+    }
 }
 
 struct LayerRenderRequest<'a> {

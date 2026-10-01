@@ -43,18 +43,14 @@ impl State {
             WindowRef::Unmapped(unmapped),
             self.swayward.is_at_startup,
         );
-        let (title, app_id) = crate::utils::with_toplevel_role(toplevel, |role| {
-            (role.title.clone(), role.app_id.clone())
-        });
-        let pid = crate::utils::get_credentials_for_surface(toplevel.wl_surface())
-            .and_then(|credentials| u32::try_from(credentials.pid).ok());
+        let identity = crate::swayward::UnmappedIdentity::from_toplevel(toplevel);
         let assignment = self
             .swayward
             .runtime_window_rules
             .iter()
             .find_map(|rule| match rule {
                 crate::swayward::RuntimeWindowRule::Assign(criteria, target)
-                    if criteria.matches_unmapped(title.as_deref(), app_id.as_deref(), pid)
+                    if identity.matches(criteria)
                         && match target {
                             AssignmentTarget::Output(name) => self
                                 .swayward
