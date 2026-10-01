@@ -149,7 +149,7 @@ fn i3_conformance_runner() {
     // failures, so conformance findings stay executable without turning the
     // default gate red.
     if let Ok(selected) = std::env::var("SWAYWARD_I3_TEST") {
-        run_i3_test_with_context(&selected);
+        run_i3_test_with_context(&selected, false);
         return;
     }
 
@@ -158,7 +158,7 @@ fn i3_conformance_runner() {
         !tests.is_empty(),
         "no fully green files derive from tests/i3/coverage.toml"
     );
-    let failures = collect_test_failures(tests.iter().copied(), run_i3_test_with_context);
+    let failures = collect_test_failures(tests.iter().map(|test| (*test, true)), run_i3_test_with_context);
     assert!(
         failures.is_empty(),
         "{} of {} green i3 files failed:\n{}",

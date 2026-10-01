@@ -125,12 +125,15 @@ fn harness_skips_only_i3_invalid_criteria_wording() {
 #[test]
 fn conformance_run_reports_every_failed_file() {
     let mut visited = Vec::new();
-    let failures = collect_test_failures(["first.t", "good.t", "last.t"], |test| {
+    let failures = collect_test_failures(
+        [("first.t", true), ("good.t", true), ("last.t", true)],
+        |test, _| {
         visited.push(test.to_owned());
         if test != "good.t" {
             panic!("failure in {test}");
         }
-    });
+    },
+    );
 
     assert_eq!(visited, ["first.t", "good.t", "last.t"]);
     assert_eq!(
