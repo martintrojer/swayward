@@ -632,3 +632,181 @@ fn get_seats_focus_is_the_focused_tree_node() {
         "focus parent selects a split container: {focused:#}"
     );
 }
+
+/// A libinput device whose configuration queries return fixed raw values.
+#[derive(Clone)]
+struct FakeLibinput {
+    send_events: u32,
+    tap_fingers: i32,
+    tap: u32,
+    tap_map: u32,
+    tap_drag: u32,
+    tap_drag_lock: u32,
+    accel: Option<(f64, u32)>,
+    natural_scroll: Option<bool>,
+    left_handed: Option<bool>,
+    click_methods: u32,
+    click_method: u32,
+    clickfinger_map: u32,
+    middle_emulation: Option<u32>,
+    scroll_methods: u32,
+    scroll_method: u32,
+    scroll_button: u32,
+    scroll_button_lock: u32,
+    dwt: Option<u32>,
+    dwtp: Option<u32>,
+    calibration: Option<[f32; 6]>,
+}
+
+impl crate::input::backend_ext::LibinputQuery for FakeLibinput {
+    fn send_events_mode(&self) -> u32 {
+        self.send_events
+    }
+    fn tap_finger_count(&self) -> i32 {
+        self.tap_fingers
+    }
+    fn tap_enabled(&self) -> u32 {
+        self.tap
+    }
+    fn tap_button_map(&self) -> u32 {
+        self.tap_map
+    }
+    fn tap_drag_enabled(&self) -> u32 {
+        self.tap_drag
+    }
+    fn tap_drag_lock_enabled(&self) -> u32 {
+        self.tap_drag_lock
+    }
+    fn accel(&self) -> Option<(f64, u32)> {
+        self.accel
+    }
+    fn natural_scroll(&self) -> Option<bool> {
+        self.natural_scroll
+    }
+    fn left_handed(&self) -> Option<bool> {
+        self.left_handed
+    }
+    fn click_methods(&self) -> u32 {
+        self.click_methods
+    }
+    fn click_method(&self) -> u32 {
+        self.click_method
+    }
+    fn clickfinger_button_map(&self) -> u32 {
+        self.clickfinger_map
+    }
+    fn middle_emulation(&self) -> Option<u32> {
+        self.middle_emulation
+    }
+    fn scroll_methods(&self) -> u32 {
+        self.scroll_methods
+    }
+    fn scroll_method(&self) -> u32 {
+        self.scroll_method
+    }
+    fn scroll_button(&self) -> u32 {
+        self.scroll_button
+    }
+    fn scroll_button_lock(&self) -> u32 {
+        self.scroll_button_lock
+    }
+    fn dwt(&self) -> Option<u32> {
+        self.dwt
+    }
+    fn dwtp(&self) -> Option<u32> {
+        self.dwtp
+    }
+    fn calibration_matrix(&self) -> Option<[f32; 6]> {
+        self.calibration
+    }
+}
+
+/// A clickpad as libinput reports one: tapping, two click methods, two-finger
+/// and edge scrolling, disable-while-typing. The expected object follows
+/// sway's describe_libinput_device at 1.12, cited per field below. No sway
+/// capture backs it yet: oracle row pending hardware capture
+/// (review2-core-get-inputs-libinput-touchpad).
+#[test]
+fn libinput_object_has_every_sway_field_for_touchpads_and_mice() {
+    let touchpad = FakeLibinput {
+        send_events: 0,
+        tap_fingers: 3,
+        tap: 1,
+        tap_map: 0,
+        tap_drag: 1,
+        tap_drag_lock: 0,
+        accel: Some((0.25, 2)),
+        natural_scroll: Some(true),
+        left_handed: Some(false),
+        click_methods: 1 | 2,
+        click_method: 2,
+        clickfinger_map: 1,
+        middle_emulation: Some(0),
+        scroll_methods: 1 | 2,
+        scroll_method: 1,
+        scroll_button: 0,
+        scroll_button_lock: 0,
+        dwt: Some(1),
+        dwtp: None,
+        calibration: None,
+    };
+    assert_eq!(
+        crate::input::backend_ext::describe_libinput_device(&touchpad),
+        serde_json::json!({
+            "send_events": "enabled",          // ipc-json.c:903-916
+            "tap": "enabled",                  // :918-928, finger count > 0
+            "tap_button_map": "lrm",           // :930-940
+            "tap_drag": "enabled",             // :942-952
+            "tap_drag_lock": "disabled",       // :954-969
+            "accel_speed": 0.25,               // :972-975
+            "accel_profile": "adaptive",       // :977-995
+            "natural_scroll": "enabled",       // :998-1005
+            "left_handed": "disabled",         // :1007-1014
+            "click_method": "clickfinger",     // :1016-1031, any click method
+            "clickfinger_button_map": "lmr",   // :1033-1043
+            "middle_emulation": "disabled",    // :1046-1058
+            "scroll_method": "two_finger",     // :1060-1078; no ON_BUTTON_DOWN,
+                                               // so no scroll_button (:1080-1095)
+            "dwt": "enabled",                  // :1098-1109; dwtp unavailable
+        })
+    );
+
+    // A device without tapping, click methods, dwt or a matrix keeps exactly
+    // the G703 mouse fields the pinned oracle captured
+    // (sway-ipc/fixtures/inputs-libinput.json).
+    let mouse = FakeLibinput {
+        tap_fingers: 0,
+        accel: Some((0.0, 2)),
+        natural_scroll: Some(false),
+        click_methods: 0,
+        scroll_methods: 4,
+        scroll_method: 0,
+        scroll_button: 274,
+        dwt: None,
+        ..touchpad.clone()
+    };
+    let fixture: Value =
+        serde_json::from_str(&sway_fixture!("inputs-libinput.json")).unwrap();
+    assert_eq!(
+        crate::input::backend_ext::describe_libinput_device(&mouse),
+        fixture[0]["libinput"]
+    );
+
+    // Values sway does not name print "unknown"; a matrix is six doubles; a
+    // sticky drag lock is named (ipc-json.c:962-966, :1124-1134).
+    let unusual = FakeLibinput {
+        send_events: 7,
+        tap_drag_lock: 2,
+        calibration: Some([1.0, 0.0, 0.0, 0.0, 1.0, 0.5]),
+        dwtp: Some(0),
+        ..touchpad
+    };
+    let unusual = crate::input::backend_ext::describe_libinput_device(&unusual);
+    assert_eq!(unusual["send_events"], "unknown");
+    assert_eq!(unusual["tap_drag_lock"], "enabled_sticky");
+    assert_eq!(unusual["dwtp"], "disabled");
+    assert_eq!(
+        unusual["calibration_matrix"],
+        serde_json::json!([1.0, 0.0, 0.0, 0.0, 1.0, 0.5])
+    );
+}
