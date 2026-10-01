@@ -80,13 +80,55 @@ pub struct Node {
 
 /// Fields which vary between sway tree node kinds.
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum NodeProperties {
     View(ViewProperties),
     Output(OutputProperties),
     Workspace(WorkspaceProperties),
     None {},
+}
+
+/// Keys that only a view, output or workspace node carries. A node holding
+/// any of them is one of those kinds, so it must not fall back to
+/// `NodeProperties::None` when one of its fields is missing.
+const KIND_KEYS: &[&str] = &[
+    "app_id",
+    "pid",
+    "shell",
+    "visible",
+    "idle_inhibitors",
+    "foreign_toplevel_identifier",
+    "active",
+    "current_mode",
+    "modes",
+    "scale",
+    "transform",
+    "num",
+    "representation",
+];
+
+impl<'de> Deserialize<'de> for NodeProperties {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::Error as _;
+
+        let value = serde_json::Value::deserialize(deserializer)?;
+        if let Ok(view) = ViewProperties::deserialize(&value) {
+            return Ok(Self::View(view));
+        }
+        if let Ok(output) = OutputProperties::deserialize(&value) {
+            return Ok(Self::Output(output));
+        }
+        if let Ok(workspace) = WorkspaceProperties::deserialize(&value) {
+            return Ok(Self::Workspace(workspace));
+        }
+        match KIND_KEYS.iter().find(|key| value.get(**key).is_some()) {
+            Some(key) => Err(D::Error::custom(format!(
+                "node has `{key}` but not the full view, output or workspace field set"
+            ))),
+            None => Ok(Self::None {}),
+        }
+    }
 }
 
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
@@ -370,5 +412,41 @@ mod tests {
                 assert_round_trip::<Output>(scenario, "outputs", &output.to_string());
             }
         }
+    }
+
+    /// `NodeProperties` is untagged with `None {}` last, so a view node that
+    /// lost one view field must not quietly decode as a property-less node and
+    /// re-serialise without its view fields.
+    #[test]
+    fn a_view_missing_a_view_field_does_not_decode_as_a_plain_node() {
+        /// JSON pointer to the first view node.
+        fn first_view(node: &serde_json::Value, path: String) -> Option<String> {
+            if node.get("app_id").is_some() {
+                return Some(path);
+            }
+            ["nodes", "floating_nodes"].into_iter().find_map(|key| {
+                node.get(key)?
+                    .as_array()?
+                    .iter()
+                    .enumerate()
+                    .find_map(|(index, child)| first_view(child, format!("{path}/{key}/{index}")))
+            })
+        }
+        let mut tree: serde_json::Value =
+            serde_json::from_str(&fixture("one_window", "tree")).unwrap();
+        let pointer = first_view(&tree, String::new()).expect("one_window has a view");
+        let view = tree.pointer_mut(&pointer).unwrap();
+        view.as_object_mut().unwrap().remove("app_id");
+        let decoded = serde_json::from_value::<Node>(view.clone());
+        assert!(
+            !matches!(
+                decoded,
+                Ok(Node {
+                    properties: NodeProperties::None {},
+                    ..
+                })
+            ),
+            "a view without app_id decoded as a plain node: {decoded:?}"
+        );
     }
 }
