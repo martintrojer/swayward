@@ -13,6 +13,7 @@ pub(super) struct TestWindowInner {
     pub(super) interactive_resize: Cell<Option<InteractiveResizeData>>,
     pub(super) has_xdg_decoration: Cell<bool>,
     pub(super) server_side_decoration_requested: Cell<Option<bool>>,
+    pub(super) bounds: Cell<Option<Size<i32, Logical>>>,
     pub(super) rules: ResolvedWindowRules,
 }
 
@@ -35,6 +36,7 @@ impl TestWindow {
             interactive_resize: Cell::new(None),
             has_xdg_decoration: Cell::new(false),
             server_side_decoration_requested: Cell::new(None),
+            bounds: Cell::new(None),
             rules,
         }))
     }
@@ -129,7 +131,9 @@ impl LayoutElement for TestWindow {
             .set(Some(server_side));
     }
     fn set_activated(&mut self, _: bool) {}
-    fn set_bounds(&self, _: Size<i32, Logical>) {}
+    fn set_bounds(&self, bounds: Size<i32, Logical>) {
+        self.0.bounds.set(Some(bounds));
+    }
     fn is_ignoring_opacity_window_rule(&self) -> bool {
         false
     }

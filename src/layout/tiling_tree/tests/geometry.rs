@@ -152,6 +152,39 @@ fn struts_reduce_new_window_bounds() {
 }
 
 #[test]
+fn refresh_sends_the_same_bounds_as_a_new_window_gets() {
+    // A window's xdg bounds must not change between its first configure and its first
+    // refresh, so both use the strut-reduced working area.
+    let mut options = Options::default();
+    options.layout.gaps = 0.;
+    options.layout.border.off = true;
+    options.layout.struts.left = swayward_config::FloatOrInt(40.);
+    options.layout.struts.top = swayward_config::FloatOrInt(20.);
+    let size = Size::from((1200., 800.));
+    let mut t = TilingTree::<TestWindow>::new(
+        size,
+        Rectangle::from_size(size),
+        false,
+        1.,
+        Clock::with_time(Duration::ZERO),
+        Rc::new(options),
+    );
+    let window = TestWindow::new(1);
+    let inner = window.0.clone();
+    t.add_tile(
+        Tile::new(window, size, 1., t.clock().clone(), t.options.clone()),
+        InsertTarget::Focused,
+    );
+
+    t.refresh(true, true);
+
+    assert_eq!(
+        inner.bounds.get(),
+        Some(t.new_window_toplevel_bounds(&ResolvedWindowRules::default()))
+    );
+}
+
+#[test]
 fn structural_moves_preserve_unfocused_window_order() {
     let mut t = tree((1200., 800.), 0.);
     for id in 1..=4 {

@@ -1,5 +1,22 @@
 use super::*;
 
+/// The xdg toplevel bounds for a tiled window: the strut-reduced working area minus gaps and
+/// the window's border, as niri's compute_toplevel_bounds.
+pub(super) fn toplevel_bounds(
+    options: &Options,
+    working_area: Rectangle<f64, Logical>,
+    gaps: f64,
+    rules: &ResolvedWindowRules,
+) -> Size<i32, Logical> {
+    let border = options.layout.border.merged_with(&rules.border);
+    let padding = gaps * 2. + if border.off { 0. } else { border.width * 2. };
+    Size::from((
+        (working_area.size.w - padding).max(1.),
+        (working_area.size.h - padding).max(1.),
+    ))
+    .to_i32_floor()
+}
+
 /// The layout a new or emptied workspace root takes: the configured orientation, or for `auto`
 /// SplitV on a portrait output and SplitH otherwise.
 fn default_layout(
@@ -271,12 +288,7 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub fn new_window_toplevel_bounds(&self, rules: &ResolvedWindowRules) -> Size<i32, Logical> {
-        let border = self.options.layout.border.merged_with(&rules.border);
-        let mut size = self.working_area().size;
-        let padding = self.gaps * 2. + if border.off { 0. } else { border.width * 2. };
-        size.w = (size.w - padding).max(1.);
-        size.h = (size.h - padding).max(1.);
-        size.to_i32_floor()
+        toplevel_bounds(&self.options, self.working_area(), self.gaps, rules)
     }
 
     /// Return a new tiled view's initial size.

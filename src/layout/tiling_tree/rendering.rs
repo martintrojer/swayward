@@ -394,6 +394,7 @@ impl<W: LayoutElement> TilingTree<W> {
         let individual =
             self.options.disable_transactions || self.options.disable_resize_throttling;
         let shared_intent = self.shared_configure_intent(individual);
+        let working_area = self.working_area();
         for (id, node) in &mut self.nodes {
             let TreeNode::Leaf { tile } = &mut node.value else {
                 continue;
@@ -410,17 +411,12 @@ impl<W: LayoutElement> TilingTree<W> {
                     .as_ref()
                     .and_then(|(target, data)| (window.id() == target).then_some(*data)),
             );
-            let border = self
-                .options
-                .layout
-                .border
-                .merged_with(&window.rules().border);
-            let padding = self.gaps * 2. + if border.off { 0. } else { border.width * 2. };
-            let bounds = Size::from((
-                (self.parent_area.size.w - padding).max(1.),
-                (self.parent_area.size.h - padding).max(1.),
+            window.set_bounds(super::state::toplevel_bounds(
+                &self.options,
+                working_area,
+                self.gaps,
+                window.rules(),
             ));
-            window.set_bounds(bounds.to_i32_floor());
             let intent = if individual {
                 window.configure_intent()
             } else {
