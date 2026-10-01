@@ -267,19 +267,14 @@ pub(super) fn parse(name: &str, rest: &[&str]) -> Result<Command, String> {
             [value] => {
                 let value = value.to_ascii_lowercase();
                 let mapped = match value.as_str() {
-                    "force" => "force",
-                    "workspace" => "workspace",
-                    "toggle" => "toggle",
-                    other => {
-                        if parse_boolean(other, false) {
-                            "yes"
-                        } else {
-                            "no"
-                        }
-                    }
+                    "force" => FocusWrappingArg::Force,
+                    "workspace" => FocusWrappingArg::Workspace,
+                    "toggle" => FocusWrappingArg::Toggle,
+                    other if parse_boolean(other, false) => FocusWrappingArg::Yes,
+                    _ => FocusWrappingArg::No,
                 };
                 Ok(Command::SetLayoutOption(LayoutOption::FocusWrapping(
-                    mapped.to_owned(),
+                    mapped,
                 )))
             }
             _ => Err("Expected 'focus_wrapping yes|no|force|workspace'".into()),
@@ -342,14 +337,12 @@ pub(super) fn parse(name: &str, rest: &[&str]) -> Result<Command, String> {
             [value] => {
                 let value = value.to_ascii_lowercase();
                 let mapped = match value.as_str() {
-                    "inverse_outer" => "inverse-outer",
-                    "toggle" => "toggle",
-                    other if parse_boolean(other, true) => "on",
-                    _ => "off",
+                    "inverse_outer" => SmartGapsArg::InverseOuter,
+                    "toggle" => SmartGapsArg::Toggle,
+                    other if parse_boolean(other, true) => SmartGapsArg::On,
+                    _ => SmartGapsArg::Off,
                 };
-                Ok(Command::SetLayoutOption(LayoutOption::SmartGaps(
-                    mapped.into(),
-                )))
+                Ok(Command::SetLayoutOption(LayoutOption::SmartGaps(mapped)))
             }
             _ => Err("Expected 'smart_gaps on|off|toggle|inverse_outer'".into()),
         },
@@ -464,19 +457,21 @@ pub(super) fn parse(name: &str, rest: &[&str]) -> Result<Command, String> {
                 width,
             }))
         }
-        "popup_during_fullscreen" => match rest {
-            [value]
-                if matches!(
-                    value.to_ascii_lowercase().as_str(),
-                    "smart" | "ignore" | "leave_fullscreen"
-                ) =>
-            {
-                Ok(Command::SetLayoutOption(
-                    LayoutOption::PopupDuringFullscreen(value.to_ascii_lowercase()),
-                ))
-            }
-            _ => Err("Expected 'popup_during_fullscreen smart|ignore|leave_fullscreen'".into()),
-        },
+        "popup_during_fullscreen" => {
+            let mode = match rest {
+                [value] => match value.to_ascii_lowercase().as_str() {
+                    "smart" => Some(PopupDuringFullscreen::Smart),
+                    "ignore" => Some(PopupDuringFullscreen::Ignore),
+                    "leave_fullscreen" => Some(PopupDuringFullscreen::LeaveFullscreen),
+                    _ => None,
+                },
+                _ => None,
+            };
+            mode.map(|mode| Command::SetLayoutOption(LayoutOption::PopupDuringFullscreen(mode)))
+                .ok_or_else(|| {
+                    "Expected 'popup_during_fullscreen smart|ignore|leave_fullscreen'".into()
+                })
+        }
         "floating_modifier" => {
             // `sway/sway/commands/floating_modifier.c:6-32`: at least one
             // argument, then an optional normal|inverse. `none` returns

@@ -44,15 +44,18 @@ pub(super) fn execute_global_setting(
         let layout = &mut config.layout;
         let parsed = match option {
             LayoutOption::FocusWrapping(value) => {
-                layout.focus_wrapping = match value.as_str() {
-                    "force" => swayward_config::FocusWrapping::Force,
-                    "workspace" => swayward_config::FocusWrapping::Workspace,
-                    "toggle" if layout.focus_wrapping == swayward_config::FocusWrapping::Yes => {
-                        swayward_config::FocusWrapping::No
+                use swayward_config::FocusWrapping;
+                use swayward_ipc::command::FocusWrappingArg;
+
+                layout.focus_wrapping = match value {
+                    FocusWrappingArg::Force => FocusWrapping::Force,
+                    FocusWrappingArg::Workspace => FocusWrapping::Workspace,
+                    FocusWrappingArg::Yes => FocusWrapping::Yes,
+                    FocusWrappingArg::No => FocusWrapping::No,
+                    FocusWrappingArg::Toggle if layout.focus_wrapping == FocusWrapping::Yes => {
+                        FocusWrapping::No
                     }
-                    "toggle" => swayward_config::FocusWrapping::Yes,
-                    "yes" => swayward_config::FocusWrapping::Yes,
-                    _ => swayward_config::FocusWrapping::No,
+                    FocusWrappingArg::Toggle => FocusWrapping::Yes,
                 };
                 Ok(())
             }
@@ -81,16 +84,17 @@ pub(super) fn execute_global_setting(
                 value.parse().map(|value| layout.smart_borders = value)
             }
             LayoutOption::SmartGaps(value) => {
-                if value == "toggle" {
-                    layout.smart_gaps = if layout.smart_gaps == swayward_config::SmartGaps::Off {
-                        swayward_config::SmartGaps::On
-                    } else {
-                        swayward_config::SmartGaps::Off
-                    };
-                    Ok(())
-                } else {
-                    value.parse().map(|value| layout.smart_gaps = value)
-                }
+                use swayward_config::SmartGaps;
+                use swayward_ipc::command::SmartGapsArg;
+
+                layout.smart_gaps = match value {
+                    SmartGapsArg::On => SmartGaps::On,
+                    SmartGapsArg::Off => SmartGaps::Off,
+                    SmartGapsArg::InverseOuter => SmartGaps::InverseOuter,
+                    SmartGapsArg::Toggle if layout.smart_gaps == SmartGaps::Off => SmartGaps::On,
+                    SmartGapsArg::Toggle => SmartGaps::Off,
+                };
+                Ok(())
             }
             LayoutOption::ShowMarks(value) => {
                 layout.titlebar.show_marks = parse_boolean(value, layout.titlebar.show_marks);
@@ -202,13 +206,14 @@ pub(super) fn execute_global_setting(
                 };
                 Ok(())
             }
-            LayoutOption::PopupDuringFullscreen(value) => {
-                config.popup_during_fullscreen = match value.as_str() {
-                    "ignore" => swayward_config::misc::PopupDuringFullscreen::Ignore,
-                    "leave_fullscreen" => {
-                        swayward_config::misc::PopupDuringFullscreen::LeaveFullscreen
-                    }
-                    _ => swayward_config::misc::PopupDuringFullscreen::Smart,
+            LayoutOption::PopupDuringFullscreen(mode) => {
+                use swayward_config::misc::PopupDuringFullscreen;
+                use swayward_ipc::command::PopupDuringFullscreen as Requested;
+
+                config.popup_during_fullscreen = match mode {
+                    Requested::Smart => PopupDuringFullscreen::Smart,
+                    Requested::Ignore => PopupDuringFullscreen::Ignore,
+                    Requested::LeaveFullscreen => PopupDuringFullscreen::LeaveFullscreen,
                 };
                 Ok(())
             }

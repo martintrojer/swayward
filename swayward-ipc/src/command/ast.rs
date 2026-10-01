@@ -124,7 +124,7 @@ pub enum XkbLayoutTarget {
 /// config file accept exactly the same values.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LayoutOption {
-    FocusWrapping(String),
+    FocusWrapping(FocusWrappingArg),
     ForceFocusWrapping(String),
     HideEdgeBorders(String),
     SmartBorders(String),
@@ -132,7 +132,7 @@ pub enum LayoutOption {
     /// mode and resets the edge mode to none in one command
     /// (`sway/sway/commands/hide_edge_borders.c:34-39`).
     HideEdgeBordersSmart(String),
-    SmartGaps(String),
+    SmartGaps(SmartGapsArg),
     ShowMarks(String),
     TitleAlignment(String),
     TilingDrag(String),
@@ -164,7 +164,7 @@ pub enum LayoutOption {
     /// `container` warps on every qualifying focus change
     /// (`sway/sway/input/seat.c:1526-1547`).
     MouseWarping(MouseWarping),
-    PopupDuringFullscreen(String),
+    PopupDuringFullscreen(PopupDuringFullscreen),
     /// `floating_modifier <mod> [inverse|normal]`.
     ///
     /// The modifier and the inverse bit are independent pieces of state in
@@ -211,6 +211,38 @@ impl LayoutOption {
                 | Self::WorkspaceAutoBackAndForth(..)
         )
     }
+}
+
+/// A `focus_wrapping` argument. `Toggle` depends on the current value, so it
+/// is resolved when the setting is applied
+/// (`sway/sway/commands/focus_wrapping.c:12-21`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FocusWrappingArg {
+    Yes,
+    No,
+    Force,
+    Workspace,
+    Toggle,
+}
+
+/// A `smart_gaps` argument. `Toggle` depends on the current value, so it is
+/// resolved when the setting is applied
+/// (`sway/sway/commands/smart_gaps.c:18-23`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SmartGapsArg {
+    On,
+    Off,
+    InverseOuter,
+    Toggle,
+}
+
+/// Sway's three `popup_during_fullscreen` modes
+/// (`sway/sway/commands/popup_during_fullscreen.c`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PopupDuringFullscreen {
+    Smart,
+    Ignore,
+    LeaveFullscreen,
 }
 
 /// Sway's three `focus_follows_mouse` states
