@@ -111,6 +111,11 @@ pub fn parse_with_variables(
             // quoting, instead of asking the generic argument parser to
             // tokenize it (`sway/sway/commands/nop.c`).
             Ok(Command::Nop)
+        } else if let Some(name) = quoted_command_name(text) {
+            // Sway strips quotes from argv[1..] only and looks argv[0] up
+            // verbatim, so a quoted name matches no handler
+            // (`sway/sway/commands.c:264-277`).
+            Err(format!("Unknown/invalid command '{name}'"))
         } else if variables.is_empty() {
             // Preserve the exact old path for commands such as `exec` and
             // `for_window`, whose parsers intentionally consume their raw
@@ -205,6 +210,37 @@ fn parse_one(input: &str) -> Result<Command, String> {
     let words = words(input);
     let args = words.iter().map(String::as_str).collect::<Vec<_>>();
     parse_words(&args, input)
+}
+
+/// The raw first token when it contains a quote character.
+///
+/// Sway's `split_args` keeps quote characters in every token, and argv[0] is
+/// never unquoted, so any quote in it makes the name unknown. Tokens split on
+/// ASCII whitespace only (`sway/common/stringop.c:13,92-140`). Quoted spaces
+/// stay inside the token, so `"focus left"` is one name.
+fn quoted_command_name(text: &str) -> Option<&str> {
+    let text = text.trim_start_matches(|c: char| c.is_ascii_whitespace());
+    let mut quote = None;
+    let mut escaped = false;
+    let mut end = text.len();
+    for (index, character) in text.char_indices() {
+        if escaped {
+            escaped = false;
+        } else if character == '\\' {
+            escaped = true;
+        } else if let Some(open) = quote {
+            if character == open {
+                quote = None;
+            }
+        } else if matches!(character, '"' | '\'') {
+            quote = Some(character);
+        } else if character.is_ascii_whitespace() {
+            end = index;
+            break;
+        }
+    }
+    let name = text.get(..end)?;
+    name.contains(['"', '\'']).then_some(name)
 }
 
 fn parse_words(args: &[&str], input: &str) -> Result<Command, String> {

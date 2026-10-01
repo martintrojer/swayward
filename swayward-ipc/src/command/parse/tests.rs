@@ -602,3 +602,45 @@ mod untrusted_input_panic_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod quoted_command_name_tests {
+    use super::super::*;
+
+    /// Oracle: command-fuzz argv0-single-quoted-focus,
+    /// argv0-double-quoted-workspace, argv0-quoted-kill, argv0-quoted-nop,
+    /// argv0-quoted-mode and argv0-quoted-set. Sway strips quotes from argv[1..]
+    /// only and looks argv[0] up verbatim (sway/sway/commands.c:264-277).
+    #[test]
+    fn quoted_command_names_are_unknown_commands() {
+        for (input, name) in [
+            ("'focus' left", "'focus'"),
+            ("\"workspace\" oracle-quoted", "\"workspace\""),
+            ("\"kill\"", "\"kill\""),
+            ("'nop' oracle", "'nop'"),
+            ("\"mode\" default", "\"mode\""),
+            ("\"set\" $oracle value", "\"set\""),
+            ("\"exec\" true", "\"exec\""),
+        ] {
+            assert_eq!(
+                parse(input),
+                vec![Err(parse_error(format!(
+                    "Unknown/invalid command '{name}'"
+                )))],
+                "{input}"
+            );
+            assert_eq!(
+                parse_with_variables(input, &[("$oracle".into(), "x".into())]),
+                vec![Err(parse_error(format!(
+                    "Unknown/invalid command '{name}'"
+                )))],
+                "{input} with variables"
+            );
+        }
+        // Quotes inside later arguments are still stripped.
+        assert_eq!(
+            parse("workspace \"oracle quoted\""),
+            parse("workspace 'oracle quoted'")
+        );
+    }
+}
