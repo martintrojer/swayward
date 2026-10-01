@@ -120,7 +120,7 @@ i3 tree** — strictly more than either parent offers.
 **Scroll-specific eye candy is out, but the overview is not scroll-specific.**
 `HorizontalViewMovementAnim` animates niri's infinite horizontal row, a concept
 that does not survive here, so it is *retired*: the config key goes, the code
-path goes with the scrolling engine, and `docs/data/divergence.toml` records it.
+path goes with the scrolling engine, and `docs/data/divergence/` records it.
 
 This paragraph originally retired `OverviewOpenCloseAnim` alongside it. That was
 wrong, and the operator has confirmed the correction: an overview of workspaces
@@ -131,7 +131,7 @@ The overview is therefore **kept**, with its animation, its `ToggleOverview`
 action and its four-finger swipe.
 
 The same reasoning keeps the MRU window switcher (`MruAdvance`, super-tab). Both
-are recorded as deliberate additive divergences in `docs/data/divergence.toml`
+are recorded as deliberate additive divergences in `docs/data/divergence/`
 rather than as scope creep.
 
 **What is retired is compositor-driven gesture *behaviour* that models a
@@ -268,7 +268,7 @@ are for user and hardware misbehaviour; errors are for ours.
 **I5 — Diff against upstream is a budgeted resource, not a prohibition.**
 Prefer new modules; keep inherited names; upstream generic fixes. When editing
 an inherited file genuinely is the right fix, do it — and add a one-line entry to
-`docs/data/divergence.toml` saying what and why.
+`docs/data/divergence/` saying what and why.
 *Verified by:* `git diff upstream/main --stat` staying legible, and every
 inherited-file edit having a note. Making the cost visible beats forbidding it
 and being quietly ignored.
@@ -544,7 +544,7 @@ changes. These are manual for now; automate what can be automated.
   we introduce a narrower trait and adapt callers? Resolve while building
   milestone 1, when the real call sites are visible.
 - Merge cadence with upstream niri: every release, or time-based?
-- Does `docs/data/divergence.toml` (I5) track only inherited-file edits, or also
+- Does `docs/data/divergence/` (I5) track only inherited-file edits, or also
   deliberate behavioural deviations from sway? Leaning both, in two sections.
 
 ## Implementation checklist

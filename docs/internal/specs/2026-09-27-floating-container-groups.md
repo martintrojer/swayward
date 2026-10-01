@@ -195,7 +195,7 @@ rendering, hit testing, configure scheduling, and resize state all encode that
 assumption. A subtree enum would put a second recursive branch through most of
 this file. Future niri changes to floating placement or animation would then
 conflict with swayward's container cases even when the behavior is unrelated.
-Every inherited-file edit also needs a `docs/data/divergence.toml` entry, and
+Every inherited-file edit also needs a `docs/data/divergence/` entry, and
 `docs/UPSTREAM.md` makes clear that this tree difference is paid again at every
 niri release merge.
 
@@ -235,7 +235,7 @@ The long-term boundary is better. The new module is wholly swayward-owned, so
 niri can change `src/layout/floating.rs` without forcing sway semantics through
 an inherited abstraction. The unavoidable inherited edits are concentrated in
 `workspace.rs`, `layout/mod.rs`, `tile.rs`, and input call sites and remain
-listed in `docs/data/divergence.toml`. This follows the foundation rule to use a
+listed in `docs/data/divergence/`. This follows the foundation rule to use a
 new module unless the sway model requires an inherited-file edit.
 
 ### What must survive replacing `FloatingSpace`
@@ -631,7 +631,7 @@ Generated tests combine fullscreen with every root transition.
 
 Option B removes long-term subtree branches from inherited `floating.rs`, but
 `Workspace`, input routing, `Tile`, and layout forwarding still change. Every
-inherited-file edit gets a precise `docs/data/divergence.toml` entry. New logic
+inherited-file edit gets a precise `docs/data/divergence/` entry. New logic
 stays in the owned module so later niri release merges see narrow adapters
 instead of sway semantics spread through niri's floating engine.
 

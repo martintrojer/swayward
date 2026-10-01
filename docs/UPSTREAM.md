@@ -57,7 +57,7 @@ for human legibility only.
    - `./contrib/coverage-report --check`
    - `cargo +nightly fmt --all -- --check`
 5. Update `docs/FORK-BASE.md` to the new tag, and add any new inherited-file
-   edits to `docs/data/divergence.toml`.
+   edits to `docs/data/divergence/`.
 
 Expect breakage the tests find only after the merge is resolved. A previous
 merge produced three integration failures that appeared in no individual

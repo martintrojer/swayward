@@ -158,9 +158,10 @@ reads.
 
 ## Divergence ledger
 
-Prefer new modules. When an inherited niri file must be edited, add an entry to
-[`docs/data/divergence.toml`](docs/data/divergence.toml) saying what changed and why.
-Run `./contrib/check-divergence` before committing.
+Prefer new modules. When an inherited niri file must be edited, add a uniquely named TOML file under
+[`docs/data/divergence/`](docs/data/divergence/) saying what changed and why. Each file contains
+one `[[edit]]`; use a descriptive slug, not the next migration number. Run
+`./contrib/check-divergence` before committing.
 
 ## Invariants
 
