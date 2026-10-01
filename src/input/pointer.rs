@@ -1,7 +1,10 @@
 use super::*;
 
+#[path = "pointer/buttons.rs"]
+mod buttons;
 #[path = "pointer/scroll_binds.rs"]
 mod scroll_binds;
+use buttons::{classify_press, floating_drag_policy, PressIntent};
 use scroll_binds::synthetic_bind;
 
 impl State {
@@ -477,45 +480,22 @@ impl State {
 
         let mod_key = self.backend.mod_key(&self.swayward.config.borrow());
 
-        if ButtonState::Released == button_state {
-            let suppressed = self.swayward.suppressed_buttons.remove(&button_code);
-            if let Some(bind) = self
-                .swayward
-                .held_release_buttons
-                .remove(&(input_device.clone(), button_code))
-            {
-                self.handle_bind(bind);
-                return;
-            }
-            // Ignore release events for mouse clicks that triggered a press bind.
-            if suppressed {
-                return;
-            }
+        if ButtonState::Released == button_state
+            && self.take_release_button_bind(&input_device, button_code)
+        {
+            // Ignore releases for release binds and clicks that triggered a
+            // press bind.
+            return;
         }
 
         let mods = self.modifier_state();
         let modifiers = modifiers_from_state(mods);
         let mod_down = mod_key.is_pressed(modifiers);
-
-        // Sway's `floating_modifier` is its own setting, independent of the
-        // binding modifier, and it carries an inverse bit that swaps the move
-        // and resize buttons (`sway/sway/input/seatop_default.c:359-363`).
-        // When no command has set one, swayward keeps its inherited
-        // behaviour: the compositor mod key, left to move, right to resize.
-        let (drag_mod_down, drag_move_button, drag_resize_button) =
-            match self.swayward.config.borrow().input.floating_modifier {
-                None => (mod_down, MouseButton::Left, MouseButton::Right),
-                Some(floating) => {
-                    // `floating_modifier none` stores ModKey::None, whose
-                    // is_pressed is always false, so the drag is off.
-                    let down = floating.modifier.is_pressed(modifiers);
-                    if floating.inverse {
-                        (down, MouseButton::Right, MouseButton::Left)
-                    } else {
-                        (down, MouseButton::Left, MouseButton::Right)
-                    }
-                }
-            };
+        let drag_policy = floating_drag_policy(
+            self.swayward.config.borrow().input.floating_modifier,
+            mod_key,
+            modifiers,
+        );
 
         if ButtonState::Pressed == button_state {
             if let Some(mru_output) = self.swayward.window_mru_ui.output() {
@@ -541,66 +521,24 @@ impl State {
                 }
             }
 
+            if let Some(bind) = self.resolve_button_bind(
+                button,
+                button_code,
+                &input_device,
+                mod_key,
+                mods,
+                modifiers,
+            ) {
+                self.swayward.suppressed_buttons.insert(button_code);
+                self.handle_bind(bind);
+                return;
+            }
+            if self
+                .swayward
+                .held_release_buttons
+                .contains_key(&(input_device, button_code))
             {
-                if let Some(bind) = match button {
-                    Some(MouseButton::Left) => Some(Trigger::MouseLeft),
-                    Some(MouseButton::Right) => Some(Trigger::MouseRight),
-                    Some(MouseButton::Middle) => Some(Trigger::MouseMiddle),
-                    Some(MouseButton::Back) => Some(Trigger::MouseBack),
-                    Some(MouseButton::Forward) => Some(Trigger::MouseForward),
-                    _ => None,
-                }
-                .map(|trigger| {
-                    let config = self.swayward.config.borrow();
-                    let bindings = make_binds_iter(
-                        &config,
-                        &self.swayward.binding_mode,
-                        &mut self.swayward.window_mru_ui,
-                        modifiers,
-                    );
-                    let release = find_configured_bind_for_device(
-                        bindings.clone().filter(|bind| bind.release),
-                        mod_key,
-                        trigger,
-                        mods,
-                        &input_device,
-                    );
-                    let press = find_configured_bind_for_device(
-                        bindings.filter(|bind| !bind.release),
-                        mod_key,
-                        trigger,
-                        mods,
-                        &input_device,
-                    );
-                    (press, release)
-                })
-                .map(|(press, release)| {
-                    let allowed = |bind: &Bind| {
-                        self.mouse_bind_matches_region(bind)
-                            && (!self.swayward.screenshot_ui.is_open()
-                                || allowed_during_screenshot(&bind.action))
-                    };
-                    (press.filter(allowed), release.filter(allowed))
-                })
-                .and_then(|(press, release)| {
-                    if let Some(release) = release {
-                        self.swayward
-                            .held_release_buttons
-                            .insert((input_device.clone(), button_code), release);
-                    }
-                    press
-                }) {
-                    self.swayward.suppressed_buttons.insert(button_code);
-                    self.handle_bind(bind.clone());
-                    return;
-                }
-                if self
-                    .swayward
-                    .held_release_buttons
-                    .contains_key(&(input_device, button_code))
-                {
-                    return;
-                }
+                return;
             }
 
             // We received an event for the regular pointer, so show it now.
@@ -678,10 +616,9 @@ impl State {
             if let Some(mapped) = self.swayward.window_under_cursor() {
                 let window = mapped.window.clone();
 
-                // Check if we need to start an interactive move. The overview
-                // is niri's and click-to-move there stays on the left button;
-                // only the floating drag follows sway's inverse bit.
-                let overview_move = is_overview_open && button == Some(MouseButton::Left);
+                // The overview is niri's and click-to-move there stays on
+                // the left button; only the floating drag follows sway's
+                // inverse bit.
                 let is_tiling = !mapped.is_floating();
                 let on_titlebar =
                     self.swayward
@@ -696,23 +633,12 @@ impl State {
                                 }
                             )
                         });
-                // Sway gates tiled modifier and titlebar drags independently of floating moves
-                // (`sway/input/seatop_default.c:490-500`).
-                let regular_move = !mapped.pending_sizing_mode().is_fullscreen()
-                    && if is_tiling {
-                        self.swayward.config.borrow().input.tiling_drag
-                            && ((button == Some(drag_move_button) && drag_mod_down)
-                                || (button == Some(MouseButton::Left) && on_titlebar))
-                    } else {
-                        button == Some(drag_move_button) && drag_mod_down
-                    };
-                // Sway resizes from a border on a plain left press, tiled before any modifier
-                // move and floating after one (`sway/sway/input/seatop_default.c:396-474`).
-                let border_resize = (!is_overview_open
-                    && button == Some(MouseButton::Left)
-                    && !pointer.is_grabbed()
-                    && self.swayward.config.borrow().input.border_resize
-                    && (is_tiling || !regular_move))
+                let border_resize = self
+                    .swayward
+                    .config
+                    .borrow()
+                    .input
+                    .border_resize
                     .then(|| {
                         let location = pointer.current_location();
                         let (output, pos) = self.swayward.output_under(location)?;
@@ -723,81 +649,25 @@ impl State {
                         (target.window == window).then_some((location, edges))
                     })
                     .flatten();
-                if let Some((location, edges)) = border_resize {
-                    self.begin_edge_resize(
-                        &pointer,
-                        window.clone(),
-                        edges,
-                        location,
-                        button_code,
-                        serial,
-                    );
-                } else if (overview_move || regular_move) && !pointer.is_grabbed() {
-                    let location = pointer.current_location();
+                let (tiling_drag, tiling_drag_threshold) = {
+                    let input = &self.swayward.config.borrow().input;
+                    (input.tiling_drag, input.tiling_drag_threshold.into())
+                };
+                let intent = classify_press(
+                    button,
+                    drag_policy,
+                    is_tiling,
+                    mapped.pending_sizing_mode().is_fullscreen(),
+                    on_titlebar,
+                    is_overview_open,
+                    pointer.is_grabbed(),
+                    tiling_drag,
+                    tiling_drag_threshold,
+                    border_resize,
+                );
 
-                    if !is_overview_open {
-                        self.swayward.layout.activate_window(&window);
-                    }
-
-                    let start_data = PointerGrabStartData {
-                        focus: None,
-                        button: button_code,
-                        location,
-                    };
-                    let start_data = AnyStartData::Pointer(start_data);
-                    let icon = CursorIcon::Grabbing;
-                    let grab = if is_tiling {
-                        let threshold = if drag_mod_down {
-                            0.
-                        } else {
-                            self.swayward
-                                .config
-                                .borrow()
-                                .input
-                                .tiling_drag_threshold
-                                .into()
-                        };
-                        MoveGrab::new_tiling(
-                            self,
-                            start_data,
-                            window.clone(),
-                            Some(icon),
-                            threshold,
-                        )
-                    } else {
-                        MoveGrab::new(self, start_data, window.clone(), false, Some(icon))
-                    };
-                    if let Some(grab) = grab {
-                        pointer.set_grab(self, grab, serial, Focus::Clear);
-
-                        // Set the cursor to Grabbing right away for Mod+LMB since it doesn't
-                        // do any other gesture.
-                        //
-                        // In the overview, we click to activate window and close the overview,
-                        // in this case setting the cursor right away would be distracting.
-                        if !is_overview_open && (!is_tiling || drag_mod_down) {
-                            self.swayward
-                                .cursor_manager
-                                .set_cursor_image(CursorImageStatus::Named(icon));
-                        }
-                    }
-                }
-                // Check if we need to start an interactive resize.
-                else if button == Some(drag_resize_button)
-                    && !pointer.is_grabbed()
-                    && drag_mod_down
-                {
-                    let location = pointer.current_location();
-                    let (output, pos_within_output) = self.swayward.output_under(location).unwrap();
-                    let edges = self
-                        .swayward
-                        .layout
-                        .resize_edges_under(output, pos_within_output)
-                        .unwrap_or(ResizeEdge::empty());
-
-                    // Sway has no double-click gestures here: every press
-                    // resizes from the corner under the pointer.
-                    if !edges.is_empty() {
+                match intent {
+                    PressIntent::BorderResize(location, edges) => {
                         self.begin_edge_resize(
                             &pointer,
                             window.clone(),
@@ -807,6 +677,63 @@ impl State {
                             serial,
                         );
                     }
+                    PressIntent::Move { tiling, threshold } => {
+                        let location = pointer.current_location();
+                        if !is_overview_open {
+                            self.swayward.layout.activate_window(&window);
+                        }
+                        let start_data = PointerGrabStartData {
+                            focus: None,
+                            button: button_code,
+                            location,
+                        };
+                        let start_data = AnyStartData::Pointer(start_data);
+                        let icon = CursorIcon::Grabbing;
+                        let grab = if tiling {
+                            MoveGrab::new_tiling(
+                                self,
+                                start_data,
+                                window.clone(),
+                                Some(icon),
+                                threshold,
+                            )
+                        } else {
+                            MoveGrab::new(self, start_data, window.clone(), false, Some(icon))
+                        };
+                        if let Some(grab) = grab {
+                            pointer.set_grab(self, grab, serial, Focus::Clear);
+                            // Set the cursor immediately for modifier drags;
+                            // overview click activation keeps the normal icon.
+                            if !is_overview_open && (!tiling || drag_policy.mod_down) {
+                                self.swayward
+                                    .cursor_manager
+                                    .set_cursor_image(CursorImageStatus::Named(icon));
+                            }
+                        }
+                    }
+                    PressIntent::CornerResize => {
+                        let location = pointer.current_location();
+                        let (output, pos_within_output) =
+                            self.swayward.output_under(location).unwrap();
+                        let edges = self
+                            .swayward
+                            .layout
+                            .resize_edges_under(output, pos_within_output)
+                            .unwrap_or(ResizeEdge::empty());
+                        // Sway has no double-click gesture here: every press
+                        // resizes from the corner under the pointer.
+                        if !edges.is_empty() {
+                            self.begin_edge_resize(
+                                &pointer,
+                                window.clone(),
+                                edges,
+                                location,
+                                button_code,
+                                serial,
+                            );
+                        }
+                    }
+                    PressIntent::None => {}
                 }
 
                 if !is_overview_open {
