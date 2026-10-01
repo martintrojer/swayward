@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/tests.rs"]
+what = "move the swayward-authored layout tests and their fixtures out of tests.rs into src/layout/tests/{workspace_lifecycle,gaps_borders,sticky,floating_scratchpad,floating_group,interactive_move,tree}.rs."
+why = "tests.rs mixed niri's tests and the proptest harness with swayward's groups in no order; keeping only niri's lines there shrinks the surface every upstream merge has to reconcile."
