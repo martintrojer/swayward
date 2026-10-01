@@ -165,8 +165,7 @@ impl IpcServer {
 
     /// Record the config path that GET_VERSION reports.
     ///
-    /// Called at startup and on reload. Without it the field stays empty in a
-    /// real session, which is how it shipped until a hardware boot showed it.
+    /// Called at startup and on reload; without it the field is empty.
     pub fn set_loaded_config_file_name(&self, path: String) {
         self.query_state.borrow_mut().loaded_config_file_name = path;
     }

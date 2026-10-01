@@ -177,6 +177,10 @@ pub(super) async fn handle_client(
                 continue;
             };
             refresh_event_state(&ctx).await;
+            // Sway has no event queue: it appends to the client's write
+            // buffer and drops the client past its size limit
+            // (`sway/sway/ipc-server.c:946-955`). This bounded channel is
+            // swayward's, and a full one also disconnects the client.
             let (events_tx, events_rx) = async_channel::bounded(4096);
             let (disconnect_tx, disconnect_rx) = async_channel::bounded(1);
             let id = ctx.next_event_stream_id.get();

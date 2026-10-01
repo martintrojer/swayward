@@ -57,7 +57,8 @@ pub(super) fn clear_focused(node: &mut Node) {
 /// Marks every window in a workspace subtree as shown or hidden.
 ///
 /// Sway reports `visible` per window: a window on a workspace that is not its
-/// output's active one is not visible (`sway/tree/container.c`, and the
+/// output's active one is not visible (`view_is_visible`,
+/// `sway/sway/tree/view.c:1157-1203`, and the
 /// captured `sway-ipc/fixtures/two_workspaces.tree.json` in the pinned oracle shows
 /// `visible: false` for the window on the background workspace). Waybar's
 /// `hasFlag` recurses into child nodes, so a window wrongly claiming to be
@@ -65,7 +66,7 @@ pub(super) fn clear_focused(node: &mut Node) {
 ///
 /// A window on an inactive tab is not visible either: sway walks up from the
 /// view and, at every tabbed or stacked ancestor, requires the seat's active
-/// tiling child to be on its path (`view_is_visible`, `sway/tree/view.c:1180-1193`).
+/// tiling child to be on its path (`view_is_visible`, `sway/sway/tree/view.c:1180-1193`).
 /// The active tiling child is the first tiling entry of that container's
 /// `focus` list, which the reply already carries.
 pub(super) fn set_windows_visible(node: &mut Node, visible: bool) {

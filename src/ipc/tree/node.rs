@@ -177,7 +177,7 @@ pub(crate) fn describe_tiling<'a, I>(
             } else if fullscreen_mode != 0 && frame.rect.width > 0 && frame.rect.height > 0 {
                 // A fullscreen view's content is the output box, even while
                 // its container reports a tiled slot (`view_autoconfigure`,
-                // sway/tree/view.c:358-363).
+                // sway/sway/tree/view.c:358-363).
                 Rect {
                     x: workspace_rect.x - frame.rect.x,
                     y: workspace_rect.y - frame.rect.y,
@@ -217,8 +217,8 @@ pub(crate) fn describe_tiling<'a, I>(
             if let Some(source) = moved_under_fullscreen {
                 // Sway zeroes a moved container's size and leaves it
                 // unarranged under the destination's fullscreen container
-                // (`container_move_to_workspace`, sway/commands/move.c:220-229;
-                // `arrange_workspace`, sway/tree/arrange.c:310-316), so the
+                // (`container_move_to_workspace`, sway/sway/commands/move.c:220-229;
+                // `arrange_workspace`, sway/sway/tree/arrange.c:310-316), so the
                 // titlebar still claims its height from a zero-sized box and the
                 // view keeps its last content box.
                 let source = offset_rect(source, workspace_rect);

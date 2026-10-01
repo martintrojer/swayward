@@ -244,7 +244,7 @@ fn floating_part(context: &WorkspaceNodeContext<'_>, state: &WorkspaceState) -> 
         .filter_map(|(_, tree, sticky)| {
             // `container_replace` hands a scratchpad view's membership to the
             // container that `container_split` wraps it in
-            // (sway/tree/container.c:1565-1620), so a group holding a
+            // (sway/sway/tree/container.c:1471-1564), so a group holding a
             // scratchpad window is itself the scratchpad container.
             let in_scratchpad =
                 tree.any_window(&|window| context.compositor_layout.is_scratchpad_window(window));
@@ -376,7 +376,7 @@ fn order_focus(
 
 /// A workspace fullscreen container hides every view outside it, across the
 /// tiling and floating layers (`view_is_visible`,
-/// `sway/tree/view.c:1187-1193`).
+/// `sway/sway/tree/view.c:1187-1193`).
 fn apply_workspace_visibility(
     layout: NodeLayout,
     focus: &[i64],

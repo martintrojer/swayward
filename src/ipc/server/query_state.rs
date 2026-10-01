@@ -53,8 +53,8 @@ pub(super) fn query_reply(state: &State, msg_type: MessageType) -> Option<Vec<u8
         MessageType::GetOutputs => to_reply(&describe_all_outputs(state)),
         MessageType::GetMarks => {
             // Sway walks the container tree and appends each container's
-            // marks in the order it meets them (`sway/tree/root.c:246-260`,
-            // `sway/ipc-server.c:604-610,825-834`). Collecting from the tree
+            // marks in the order it meets them (`sway/sway/tree/root.c:243-262`,
+            // `sway/sway/ipc-server.c:604-610,825-834`). Collecting from the tree
             // gives that order, and reaches marks on split containers as well
             // as on views.
             let mut all_marks = Vec::new();

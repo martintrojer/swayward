@@ -36,23 +36,10 @@ pub(super) async fn dispatch(ctx: &ClientCtx, msg_type: MessageType, payload: &[
             .unwrap_or_else(|| {
                 br#"{"success":false,"error":"compositor is unavailable"}"#.to_vec()
             }),
-        // GET_CONFIG is not implemented, and must not be faked.
-        //
-        // Sway's contract is the verbatim text of the sway config file:
-        // `config->current_config` is the file read byte for byte into a
-        // buffer (`sway/sway/config.c:734-773`) and returned unaltered
-        // (`sway/sway/ipc-server.c:908-917`). A client receiving it expects
-        // sway syntax it can parse, diff or re-serve.
-        //
-        // swayward's config is KDL. Returning it in sway's single-field
-        // envelope would be well-formed and wrong: the shape says "sway
-        // config" and the bytes are not one, so a client that parses the
-        // reply breaks in a way no error surfaces. A wire deviation is 100%
-        // compliant or not implemented; there is no third option.
-        //
-        // Sway itself sets the precedent for the honest answer: IPC_SYNC
-        // returns `{"success": false}` rather than inventing a reply
-        // (`sway/sway/ipc-server.c:919-925`).
+        // Not implemented: sway returns the verbatim sway config file
+        // (`sway/sway/ipc-server.c:908-917`), and swayward's is KDL. See the
+        // "no partial compliance" invariant in AGENTS.md; sway declines
+        // IPC_SYNC the same way (`sway/sway/ipc-server.c:919-925`).
         MessageType::GetConfig => br#"{"success": false}"#.to_vec(),
         MessageType::RunCommand => {
             let input = match String::from_utf8(payload.to_vec()) {
@@ -78,10 +65,12 @@ pub(super) async fn dispatch(ctx: &ClientCtx, msg_type: MessageType, payload: &[
                     .into_bytes()
                 })
         }
+        // Sway lists its configured bar ids (`sway/sway/ipc-server.c:847-857`);
+        // swayward has no bars.
         MessageType::GetBarConfig if payload.is_empty() => b"[]".to_vec(),
         // Byte-identical to sway, spaces included: it writes this as a C
         // string literal rather than serialising it
-        // (`sway/ipc-server.c:870`).
+        // (`sway/sway/ipc-server.c:869-871`).
         MessageType::GetBarConfig => {
             br#"{ "success": false, "error": "No bar with that ID" }"#.to_vec()
         }
@@ -93,9 +82,8 @@ pub(super) async fn dispatch(ctx: &ClientCtx, msg_type: MessageType, payload: &[
                     first: false,
                 });
             }
-            // Sway writes this literal with a space, and the two other
-            // success replies in this file already match it
-            // (`sway/ipc-server.c`, IPC_SEND_TICK).
+            // Sway writes this literal, space included
+            // (`sway/sway/ipc-server.c:674`).
             br#"{"success": true}"#.to_vec()
         }
         _ => br#"{"success":false,"error":"not implemented"}"#.to_vec(),

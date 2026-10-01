@@ -30,6 +30,9 @@ pub(crate) fn window_id(id: MappedId) -> i64 {
 pub(crate) fn window_id_from_raw(id: u64) -> i64 {
     WINDOW_ID_BASE + i64::try_from(id % ID_NAMESPACE_SIZE as u64).unwrap_or_default()
 }
+/// An output id derived from its name. Sway hands out sequential node ids;
+/// swayward keeps an output's id stable across reconnects instead, so a
+/// client holding it still finds the output.
 pub(super) fn stable_hash(value: &str) -> i64 {
     value.bytes().fold(0i64, |hash, byte| {
         hash.wrapping_mul(31).wrapping_add(i64::from(byte))

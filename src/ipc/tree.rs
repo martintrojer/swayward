@@ -218,6 +218,7 @@ fn scratch_output(
         focused: false,
         properties: NodeProperties::None {},
     });
+    // Sway reports 1 on the scratch workspace (`sway/sway/ipc-json.c:473`).
     workspace.fullscreen_mode = 1;
     common_node(CommonNodeContext {
         id: SCRATCH_OUTPUT_ID,

@@ -68,7 +68,7 @@ impl State {
                 if let Some(mut container) = current_node.clone() {
                     // Sway emits `new` from view_map before arranging, applying
                     // borders or setting the view title, then emits `title`
-                    // when that metadata arrives (`sway/tree/view.c:902,1138`).
+                    // when that metadata arrives (`sway/sway/tree/view.c:903,1146`).
                     // Our diff first sees the already-settled window, so
                     // reconstruct those two map-time snapshots.
                     container["border"] = "none".into();
@@ -116,7 +116,7 @@ impl State {
                 if window.is_focused {
                     if let Some(mut container) = current_node {
                         // Focus is delivered before sway commits the configured
-                        // default border (`sway/input/seat.c:1197`, after
+                        // default border (`sway/sway/input/seat.c:1197`, after
                         // `view_map` emitted the map-time events).
                         container["border"] = "none".into();
                         container["current_border_width"] = 0.into();
@@ -134,7 +134,7 @@ impl State {
             let moved = ipc_win.workspace_id != workspace_id;
             let shown_from_scratchpad =
                 moved && previous_node.is_some_and(|node| node["scratchpad_state"] == "fresh");
-            // root_scratchpad_remove_container emits `move` (sway/tree/root.c:150-154).
+            // root_scratchpad_remove_container emits `move` (sway/sway/tree/root.c:150-154).
             let left_scratchpad =
                 previous_node
                     .zip(current_node.as_ref())
@@ -249,11 +249,8 @@ impl State {
             }
         });
 
-        // It might make sense to push layout changes after closed windows (since windows about to
-        // be closed will occupy the same column/tile positions as the window that moved into this
-        // vacated space), but also we are already pushing some layout changes in
-        // WindowOpenedOrChanged above, meaning that the receiving end has to handle this case
-        // anyway.
+        // Legacy-protocol bookkeeping only: no sway client receives
+        // WindowLayoutsChanged (see transport::reaches_sway_clients).
         if !batch_change_layouts.is_empty() {
             events.push(Event::WindowLayoutsChanged {
                 changes: batch_change_layouts,
@@ -284,7 +281,7 @@ impl State {
         }
 
         // Sway emits close from container_begin_destroy before seat focus is
-        // restored (`sway/tree/container.c:492`; `sway/input/seat.c:260-315`).
+        // restored (`sway/sway/tree/container.c:477`; `sway/sway/input/seat.c:234-325`).
         events.append(&mut restored_focus_events);
 
         // Extra check for focus becoming None, since the checks above only work for focus becoming

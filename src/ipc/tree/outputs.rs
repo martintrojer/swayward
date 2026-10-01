@@ -80,7 +80,7 @@ fn output_properties(
     // state. Therefore active is true and primary is false. Runtime
     // power state supplies sway's identical dpms and power fields.
     // Like sway's default scale filter, integer scales use nearest and
-    // fractional scales use linear (`sway/config/output.c:650-665`).
+    // fractional scales use linear (`sway/sway/config/output.c:650-665`).
     // Backend adaptive-sync, tearing, HDR, and render-time capability/state do
     // not reach this query, so those fields conservatively report their
     // disabled defaults. Keep GET_OUTPUTS documented as Partial until
@@ -162,7 +162,7 @@ fn output_properties(
 /// The output's workspaces in focus order, most recent first.
 ///
 /// Sway builds an output's `focus` from the seat's focus-inactive children
-/// (ipc_json_describe_node, sway/ipc-json.c:827-835), so GET_OUTPUTS and the
+/// (ipc_json_describe_node, sway/sway/ipc-json.c:827-835), so GET_OUTPUTS and the
 /// GET_TREE output node list every workspace on the output, not just the
 /// active one. Only workspaces the replies describe are included: an empty,
 /// non-persistent, inactive workspace is already gone in sway.
