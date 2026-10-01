@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/monitor.rs"]
+what = "drop DndScrollGesture's is_clamped field and clamped min_max arm, make dnd_last_event_time a plain Duration, and remove the guards that tested it."
+why = "With niri's touchpad workspace-switch gesture retired (0075-mod-rs), drag-and-drop scrolling is the only producer: is_clamped was always false and dnd_last_event_time always Some, so the branches were dead and a doc line described the deleted is_touchpad field."
