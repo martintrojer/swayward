@@ -66,7 +66,7 @@ The diagram is the teaching view. If you want the machine view too, and we
 always do, run:
 
 ```
-swaywardmsg -t get_tree -p | grep -E '"(name|layout)"' | head -40
+swaywardmsg -t get_tree | grep -E '"(name|layout)"' | head -40
 ```
 
 Read the output as nested boxes:

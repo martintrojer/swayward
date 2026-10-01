@@ -34,7 +34,7 @@ tree. We built another stage for it.
 Verify it actually floated by looking for `"type": "floating_con"` in the tree dump:
 
 ```
-swaywardmsg -t get_tree -p | grep -B 1 '"type":' | grep -E '"(name|type)"'
+swaywardmsg -t get_tree | grep -E '"(name|type)"'
 ```
 
 ### Float a whole branch
@@ -46,10 +46,11 @@ swaywardmsg -t get_tree -p | grep -B 1 '"type":' | grep -E '"(name|type)"'
 
 You can still use `Mod+hjkl` to move focus inside the floating group. With a
 child focused, `Mod+W` switches the group to tabbed layout and `Mod+E` returns
-it to a split layout. To send the whole group to another workspace, focus any
-child and press
-`Mod+Shift+<number>`. The same rule applies to `Mod+Shift+Minus`: the scratchpad
-takes the complete group, not one leaf.
+it to a split layout. To send the whole group to another workspace, press
+`Mod+A` until the group itself is focused, then `Mod+Shift+<number>`. With a
+child focused, `Mod+Shift+<number>` takes just that child, and it lands on the
+other workspace tiled, as in sway. `Mod+Shift+Minus` is more generous: from any
+child, the scratchpad takes the complete group, not one leaf.
 
 Press `Mod+Shift+Space` again to return the branch to the tiled tree. Swayward
 inserts the branch as one container. Its internal split survives the trip.

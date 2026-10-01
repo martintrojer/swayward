@@ -38,7 +38,7 @@ key for. Bind those yourself.
 | `Mod+S` | Set the parent layout to stacking |
 | `Mod+E` | Toggle the parent layout between splith and splitv |
 | `Mod+F` | Fullscreen toggle |
-| `Mod+Shift+Space` | Floating toggle, on a single window only |
+| `Mod+Shift+Space` | Floating toggle, for the focused window or container |
 
 ### Resize
 
@@ -92,7 +92,7 @@ equivalents and keep working while the session is locked.
 
 ```
 # Compact view
-swaywardmsg -t get_tree -p | grep -E '"(name|layout)"'
+swaywardmsg -t get_tree | grep -E '"(name|layout)"'
 
 # Find an app's app_id
 swaywardmsg -t get_tree | jq -r '.. | select(.type?=="con" or .type?=="floating_con") | "\(.app_id // .window_properties.class // "?")  ::  \(.name)"'

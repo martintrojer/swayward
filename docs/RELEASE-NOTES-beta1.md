@@ -167,7 +167,7 @@ and mildly inconvenient news for snapshots made from older swayward builds.
   (`sway/commands/layout.c`; `sway/tree/container.c`).
 - Output and workspace focus arrays retain the complete most-recently-used
   order instead of only the active and previous workspace
-  (`sway/tree/root.c:246-260`; `sway/ipc-server.c:604-610,825-834`).
+  (`sway/ipc-json.c:786-832`).
 - Tiled windows now expose their stored sticky state in `GET_TREE`, like
   floating windows (`sway/commands/sticky.c`; `sway/ipc-json.c:710-744`).
 

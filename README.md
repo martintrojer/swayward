@@ -146,7 +146,8 @@ current session, run it nested in a window:
 swayward
 ```
 
-The defaults give you a working session: `Mod` is Super, `Mod+Return` opens a
+The defaults give you a working session: `Mod` is Super (Alt when running
+nested, so your outer session keeps its Super keys), `Mod+Return` opens a
 terminal, `Mod+D` runs a launcher, `Mod+Shift+Q` closes a window, and
 `Mod+Shift+E` exits. The full set is in
 [resources/default-config.kdl](resources/default-config.kdl), and the
