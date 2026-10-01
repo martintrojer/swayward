@@ -311,7 +311,7 @@ fn remap_replaces_the_tree_entry_and_focuses_the_same_toplevel_once() {
     let mut f = Fixture::new();
     f.add_output(1, (800, 600));
     let client = f.add_client();
-    let first = map_window(&mut f, client, "first");
+    let _first = map_window(&mut f, client, "first");
     let second = map_window(&mut f, client, "second");
 
     f.client(client).window(&second).attach_null();
@@ -342,9 +342,6 @@ fn remap_replaces_the_tree_entry_and_focuses_the_same_toplevel_once() {
             .count(),
         1
     );
-
-    // Keep both client handles live for the duration of the assertions.
-    assert_ne!(first, second);
 }
 
 #[test]

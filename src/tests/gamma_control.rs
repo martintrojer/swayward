@@ -129,4 +129,6 @@ fn removing_an_output_fails_its_control_and_stale_requests_are_safe() {
     control.set_gamma(fd.as_fd());
     f.client(client).connection.flush().unwrap();
     f.roundtrip(client);
+    assert!(f.client(client).connection.protocol_error().is_none());
+    assert!(f.client(client).state.gamma_controls[0].failed);
 }

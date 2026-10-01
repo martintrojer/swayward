@@ -39,41 +39,6 @@ fn simple_no_workspaces() {
 }
 
 #[test]
-fn production_windows_are_constructed_only_from_xdg_toplevels() {
-    fn visit(path: &std::path::Path, constructors: &mut Vec<String>) {
-        for entry in std::fs::read_dir(path).unwrap() {
-            let path = entry.unwrap().path();
-            if path.is_dir() {
-                if path.file_name().is_some_and(|name| name == "tests") {
-                    continue;
-                }
-                visit(&path, constructors);
-            } else if path.extension().is_some_and(|extension| extension == "rs") {
-                let source = std::fs::read_to_string(&path).unwrap();
-                for line in source.lines().filter(|line| line.contains("Window::new_")) {
-                    constructors.push(format!("{}: {line}", path.display()));
-                }
-            }
-        }
-    }
-
-    let mut constructors = Vec::new();
-    visit(
-        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
-        &mut constructors,
-    );
-    assert_eq!(
-        constructors.len(),
-        1,
-        "production Window constructors changed: {constructors:#?}"
-    );
-    assert!(
-        constructors[0].contains("Window::new_wayland_window(surface)"),
-        "production Window must retain the xdg-toplevel role: {constructors:#?}"
-    );
-}
-
-#[test]
 fn commits_before_mapping_and_after_unmapping_keep_wayland_role_invariants() {
     let mut f = Fixture::new();
     f.add_output(1, (1920, 1080));
@@ -88,6 +53,11 @@ fn commits_before_mapping_and_after_unmapping_keep_wayland_role_invariants() {
     window.commit();
     f.double_roundtrip(id);
     assert_eq!(f.swayward().unmapped_windows.len(), 1);
+    assert!(f
+        .swayward()
+        .unmapped_windows
+        .values()
+        .all(|unmapped| unmapped.window.toplevel().is_some()));
 
     let window = f.client(id).window(&surface);
     window.attach_new_buffer();
@@ -95,6 +65,10 @@ fn commits_before_mapping_and_after_unmapping_keep_wayland_role_invariants() {
     f.double_roundtrip(id);
     assert!(f.swayward().unmapped_windows.is_empty());
     assert_eq!(f.swayward().layout.windows().count(), 1);
+    assert!(f.swayward().layout.windows().all(|(_, mapped)| mapped
+        .window
+        .toplevel()
+        .is_some_and(|toplevel| toplevel.alive())));
 
     let window = f.client(id).window(&surface);
     window.attach_null();
@@ -210,11 +184,18 @@ fn focusing_a_window_deactivates_the_previous_window() {
     second.ack_last_and_commit();
     f.double_roundtrip(id);
 
-    assert!(f
-        .client(id)
-        .window(&first_surface)
-        .recent_configures()
-        .any(|configure| !configure.states.contains(&xdg_toplevel::State::Activated)));
+    let last_states = |f: &mut Fixture, surface| {
+        f.client(id)
+            .window(surface)
+            .configures_received
+            .last()
+            .unwrap()
+            .1
+            .states
+            .clone()
+    };
+    assert!(!last_states(&mut f, &first_surface).contains(&xdg_toplevel::State::Activated));
+    assert!(last_states(&mut f, &second_surface).contains(&xdg_toplevel::State::Activated));
 }
 
 #[test]

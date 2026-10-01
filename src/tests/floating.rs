@@ -4,6 +4,8 @@ use smithay::utils::Point;
 use swayward_config::Config;
 use swayward_ipc::SizeChange;
 use wayland_client::protocol::wl_surface::WlSurface;
+use wayland_client::Proxy as _;
+use wayland_server::Resource as _;
 
 use super::*;
 
@@ -1600,8 +1602,8 @@ fn floating_directional_focus_uses_nearest_center_and_wraps() {
 /// Two mapped windows must tile side by side through the real compositor, and a
 /// directional focus move must land on the other one. This is the headless
 /// equivalent of the manual two-terminal check: it drives real Wayland clients
-/// through the real layout, so it proves placement and focus rather than
-/// asserting tree arithmetic directly.
+/// through the real layout and checks the configured sizes, the rendered
+/// positions and which window gains focus.
 #[test]
 fn two_windows_tile_side_by_side_and_focus_follows() {
     let (mut f, id, first_surface) = set_up();
@@ -1617,57 +1619,45 @@ fn two_windows_tile_side_by_side_and_focus_follows() {
     f.client(id).window(&first_surface).ack_last_and_commit();
     f.roundtrip(id);
 
-    let first_width = f
-        .client(id)
-        .window(&first_surface)
-        .configures_received
-        .last()
-        .unwrap()
-        .1
-        .size
-        .0;
-    let second_width = f
-        .client(id)
-        .window(&second_surface)
-        .configures_received
-        .last()
-        .unwrap()
-        .1
-        .size
-        .0;
+    let last_size = |f: &mut Fixture, surface: &WlSurface| {
+        f.client(id)
+            .window(surface)
+            .configures_received
+            .last()
+            .unwrap()
+            .1
+            .size
+    };
+    // swayward's default gaps are 0, so two leaves split the 1920px output.
+    assert_eq!(last_size(&mut f, &first_surface), (960, 1080));
+    assert_eq!(last_size(&mut f, &second_surface), (960, 1080));
 
-    // Two tiled leaves split the 1888px working area, so neither fills it.
-    assert_eq!(
-        first_width, second_width,
-        "two tiled leaves must share the working area evenly"
-    );
-    assert!(
-        first_width > 0 && first_width < 1888,
-        "each leaf must be narrower than the full working area, got {first_width}"
-    );
-
-    // Focus must follow a directional move between the two leaves.
-    let focused_before = f
+    let mut tiles = f
         .swayward()
         .layout
         .active_workspace()
         .unwrap()
-        .active_window()
-        .unwrap()
-        .window
-        .clone();
+        .tiles_with_render_positions()
+        .map(|(_, pos, _)| pos.x)
+        .collect::<Vec<_>>();
+    tiles.sort_by(f64::total_cmp);
+    assert_eq!(tiles, [0., 960.], "the leaves must sit side by side");
+
+    let focused = |f: &mut Fixture| {
+        f.swayward()
+            .layout
+            .focus()
+            .unwrap()
+            .toplevel()
+            .wl_surface()
+            .id()
+            .protocol_id()
+    };
+    assert_eq!(focused(&mut f), second_surface.id().protocol_id());
     f.swayward().layout.focus_left();
-    let focused_after = f
-        .swayward()
-        .layout
-        .active_workspace()
-        .unwrap()
-        .active_window()
-        .unwrap()
-        .window
-        .clone();
-    assert_ne!(
-        focused_before, focused_after,
-        "focus_left must move focus to the sibling leaf"
+    assert_eq!(
+        focused(&mut f),
+        first_surface.id().protocol_id(),
+        "focus_left must move focus to the left leaf"
     );
 }
