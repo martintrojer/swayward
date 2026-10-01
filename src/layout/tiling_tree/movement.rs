@@ -273,7 +273,20 @@ impl<W: LayoutElement> TilingTree<W> {
                     );
                 }
                 if parent_id == boundary_root {
-                    return branch != id && self.promote_to_boundary(id, boundary_root, backwards);
+                    if branch == id {
+                        return false;
+                    }
+                    // A window whose parent is a singleton workspace child
+                    // counts as workspace level, like i3, and stays put
+                    // (sway/commands/move.c:387-393).
+                    let id_parent = self.nodes.get(&id).and_then(|node| node.parent);
+                    if boundary_root == self.root
+                        && id_parent == Some(branch)
+                        && self.split_len(branch) == Some(1)
+                    {
+                        return false;
+                    }
+                    return self.promote_to_boundary(id, boundary_root, backwards);
                 }
             }
             branch = parent_id;

@@ -523,3 +523,20 @@ fn reorienting_move_squashes_like_sway() {
     }
     t.check_invariants();
 }
+
+// random seed 405 step 19 (sway-1.12-random): in H[V[b] a], `move left` on b
+// does nothing. Sway treats a view whose parent is a singleton workspace
+// child as already at workspace level (sway/commands/move.c:387-393).
+#[test]
+fn move_out_of_a_singleton_workspace_child_is_a_no_op() {
+    let mut t = tree((1200., 800.), 0.);
+    let b = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.split(b, Layout::SplitV);
+    let before = format!("{:?}", t.ipc_tree());
+
+    assert!(!t.move_direction(b, Direction::Left));
+
+    assert_eq!(format!("{:?}", t.ipc_tree()), before);
+    t.check_invariants();
+}
