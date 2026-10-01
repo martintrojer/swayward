@@ -181,13 +181,7 @@ fn input_subscription_emits_xkb_keymap_and_layout_from_current_payload() {
     let config =
         swayward_config::Config::parse_mem(r#"input { keyboard { xkb { layout "us,ru"; }; }; }"#)
             .unwrap();
-    let mut fixture = Fixture::with_config(config);
-    let handle = fixture.swayward().event_loop.clone();
-    let ipc_server =
-        crate::ipc::server::IpcServer::start_at(&handle, Some(test_socket_path())).unwrap();
-    let socket = ipc_server.socket_path.clone().unwrap();
-    fixture.swayward().ipc_server = Some(ipc_server);
-    fixture.niri_state().ipc_keyboard_layouts_changed();
+    let (mut fixture, socket) = ipc_fixture_with_config(config);
     fixture.niri_state().process_input_event::<TestInput>(
         smithay::backend::input::InputEvent::DeviceAdded {
             device: TestDevice::keyboard("test keyboard"),
@@ -234,13 +228,7 @@ fn input_xkb_switch_layout_changes_get_inputs_and_emits_layout_events() {
     let config =
         swayward_config::Config::parse_mem(r#"input { keyboard { xkb { layout "us,ru"; }; }; }"#)
             .unwrap();
-    let mut fixture = Fixture::with_config(config);
-    let handle = fixture.swayward().event_loop.clone();
-    let ipc_server =
-        crate::ipc::server::IpcServer::start_at(&handle, Some(test_socket_path())).unwrap();
-    let socket = ipc_server.socket_path.clone().unwrap();
-    fixture.swayward().ipc_server = Some(ipc_server);
-    fixture.niri_state().ipc_keyboard_layouts_changed();
+    let (mut fixture, socket) = ipc_fixture_with_config(config);
     fixture.niri_state().process_input_event::<TestInput>(
         smithay::backend::input::InputEvent::DeviceAdded {
             device: TestDevice::keyboard("test keyboard"),

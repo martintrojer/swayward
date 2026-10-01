@@ -10,12 +10,7 @@ fn overview_workspace_jump_emits_a_workspace_focus_event() {
 workspace "2" {}"#,
     )
     .unwrap();
-    let mut fixture = Fixture::with_config(config);
-    let handle = fixture.swayward().event_loop.clone();
-    let ipc_server =
-        crate::ipc::server::IpcServer::start_at(&handle, Some(test_socket_path())).unwrap();
-    let socket = ipc_server.socket_path.clone().unwrap();
-    fixture.swayward().ipc_server = Some(ipc_server);
+    let (mut fixture, socket) = ipc_fixture_with_config(config);
     fixture.add_output(1, (1280, 720));
 
     for command in ["workspace 2", "workspace 1"] {
@@ -87,12 +82,7 @@ fn query_state_tree_is_current_when_a_workspace_event_is_emitted() {
 workspace "2" {}"#,
     )
     .unwrap();
-    let mut fixture = Fixture::with_config(config);
-    let handle = fixture.swayward().event_loop.clone();
-    let ipc_server =
-        crate::ipc::server::IpcServer::start_at(&handle, Some(test_socket_path())).unwrap();
-    let socket = ipc_server.socket_path.clone().unwrap();
-    fixture.swayward().ipc_server = Some(ipc_server);
+    let (mut fixture, socket) = ipc_fixture_with_config(config);
     fixture.add_output(1, (1280, 720));
     for command in ["workspace 2", "workspace 1"] {
         crate::command::execute(fixture.niri_state(), command);
@@ -159,12 +149,7 @@ fn overview_arrow_emits_focus_event_before_the_overview_closes() {
 workspace "2" {}"#,
     )
     .unwrap();
-    let mut fixture = Fixture::with_config(config);
-    let handle = fixture.swayward().event_loop.clone();
-    let ipc_server =
-        crate::ipc::server::IpcServer::start_at(&handle, Some(test_socket_path())).unwrap();
-    let socket = ipc_server.socket_path.clone().unwrap();
-    fixture.swayward().ipc_server = Some(ipc_server);
+    let (mut fixture, socket) = ipc_fixture_with_config(config);
     fixture.add_output(1, (1280, 720));
     for command in ["workspace 2", "workspace 1"] {
         crate::command::execute(fixture.niri_state(), command);
@@ -236,12 +221,7 @@ fn overview_arrow_then_escape_emits_workspace_focus_events() {
 workspace "2" {}"#,
     )
     .unwrap();
-    let mut fixture = Fixture::with_config(config);
-    let handle = fixture.swayward().event_loop.clone();
-    let ipc_server =
-        crate::ipc::server::IpcServer::start_at(&handle, Some(test_socket_path())).unwrap();
-    let socket = ipc_server.socket_path.clone().unwrap();
-    fixture.swayward().ipc_server = Some(ipc_server);
+    let (mut fixture, socket) = ipc_fixture_with_config(config);
     fixture.add_output(1, (1280, 720));
 
     for command in ["workspace 2", "workspace 1"] {

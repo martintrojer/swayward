@@ -50,13 +50,7 @@ fn initial_workspace_keeps_pre_mode_orientation_and_later_workspace_uses_configu
 fn emptied_workspace_is_recreated_with_default_layout() {
     let mut config = swayward_config::Config::default();
     config.animations.off = true;
-    let mut f = Fixture::with_config(config);
-    let handle = f.swayward().event_loop.clone();
-    let ipc_server =
-        crate::ipc::server::IpcServer::start_at(&handle, Some(test_socket_path())).unwrap();
-    let socket = ipc_server.socket_path.clone().unwrap();
-    f.swayward().ipc_server = Some(ipc_server);
-    f.niri_state().ipc_keyboard_layouts_changed();
+    let (mut f, socket) = ipc_fixture_with_config(config);
     f.add_output(1, (1270, 1408));
     let client = f.add_client();
 
@@ -138,13 +132,7 @@ fn layout_on_a_focused_nested_split_does_not_promote_to_the_workspace_root() {
         ("stacking", "stacked", "tabbed", "tabbed"),
         ("tabbed", "tabbed", "stacking", "stacked"),
     ] {
-        let mut f = Fixture::new();
-        let handle = f.swayward().event_loop.clone();
-        let ipc_server =
-            crate::ipc::server::IpcServer::start_at(&handle, Some(test_socket_path())).unwrap();
-        let socket = ipc_server.socket_path.clone().unwrap();
-        f.swayward().ipc_server = Some(ipc_server);
-        f.niri_state().ipc_keyboard_layouts_changed();
+        let (mut f, socket) = ipc_fixture();
         f.add_output(1, (1920, 1080));
         let client = f.add_client();
 

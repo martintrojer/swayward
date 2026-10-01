@@ -700,12 +700,7 @@ fn mouse_binding_events_name_buttons_and_wheel_like_sway() {
         }"#,
     )
     .unwrap();
-    let mut fixture = Fixture::with_config(config);
-    let handle = fixture.swayward().event_loop.clone();
-    let ipc_server =
-        crate::ipc::server::IpcServer::start_at(&handle, Some(test_socket_path())).unwrap();
-    let socket = ipc_server.socket_path.clone().unwrap();
-    fixture.swayward().ipc_server = Some(ipc_server);
+    let (mut fixture, socket) = ipc_fixture_with_config(config);
     fixture.add_output(1, (1280, 720));
     let mut subscriber = UnixStream::connect(&socket).unwrap();
     subscriber

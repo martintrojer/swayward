@@ -99,13 +99,7 @@ fn reloaded_gap_defaults_do_not_change_an_existing_workspace() {
         }"#,
     )
     .unwrap();
-    let mut fixture = Fixture::with_config(initial);
-    let handle = fixture.swayward().event_loop.clone();
-    let ipc_server =
-        crate::ipc::server::IpcServer::start_at(&handle, Some(test_socket_path())).unwrap();
-    let socket = ipc_server.socket_path.clone().unwrap();
-    fixture.swayward().ipc_server = Some(ipc_server);
-    fixture.niri_state().ipc_keyboard_layouts_changed();
+    let (mut fixture, socket) = ipc_fixture_with_config(initial);
     fixture.add_output(1, (1280, 800));
     add_two_tiled_windows(&mut fixture);
     let before = tiled_window_rects(&mut fixture);

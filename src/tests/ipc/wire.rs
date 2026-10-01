@@ -167,13 +167,7 @@ fn get_seats_reports_capabilities_from_attached_devices() {
 
 #[test]
 fn get_inputs_and_seats_return_sway_schema_and_values() {
-    let mut fixture = Fixture::new();
-    let handle = fixture.swayward().event_loop.clone();
-    let ipc_server =
-        crate::ipc::server::IpcServer::start_at(&handle, Some(test_socket_path())).unwrap();
-    let socket = ipc_server.socket_path.clone().unwrap();
-    fixture.swayward().ipc_server = Some(ipc_server);
-    fixture.niri_state().ipc_keyboard_layouts_changed();
+    let (mut fixture, socket) = ipc_fixture();
     fixture.niri_state().process_input_event::<TestInput>(
         smithay::backend::input::InputEvent::DeviceAdded {
             device: TestDevice::keyboard("wayland-keyboard-seat0"),

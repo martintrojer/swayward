@@ -328,13 +328,7 @@ fn collect_fixture_nodes(value: &Value, nodes: &mut Vec<Value>) {
 
 fn nested_live_tree() -> Value {
     let config = swayward_config::Config::parse_mem("layout { border { on; }; }").unwrap();
-    let mut f = Fixture::with_config(config);
-    let handle = f.swayward().event_loop.clone();
-    let ipc_server =
-        crate::ipc::server::IpcServer::start_at(&handle, Some(test_socket_path())).unwrap();
-    let socket = ipc_server.socket_path.clone().unwrap();
-    f.swayward().ipc_server = Some(ipc_server);
-    f.niri_state().ipc_keyboard_layouts_changed();
+    let (mut f, socket) = ipc_fixture_with_config(config);
     f.add_output(1, (1920, 1080));
     let id = f.add_client();
     for title in ["fixture-1", "fixture-2", "fixture-3"] {

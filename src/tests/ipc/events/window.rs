@@ -454,13 +454,7 @@ fn mapping_an_unfocused_window_emits_only_new() {
         open_focused: Some(false),
         ..Default::default()
     });
-    let mut fixture = Fixture::with_config(config);
-    let handle = fixture.swayward().event_loop.clone();
-    let ipc_server =
-        crate::ipc::server::IpcServer::start_at(&handle, Some(test_socket_path())).unwrap();
-    let socket = ipc_server.socket_path.clone().unwrap();
-    fixture.swayward().ipc_server = Some(ipc_server);
-    fixture.niri_state().ipc_keyboard_layouts_changed();
+    let (mut fixture, socket) = ipc_fixture_with_config(config);
     fixture.add_output(1, (1920, 1080));
     let client = fixture.add_client();
     map_test_window(&mut fixture, client, "existing-focus");
