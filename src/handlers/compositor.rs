@@ -192,291 +192,8 @@ impl State {
         if let Entry::Occupied(entry) = self.swayward.unmapped_windows.entry(surface.clone()) {
             if is_mapped(surface) {
                 // The toplevel got mapped.
-                let Unmapped {
-                    window,
-                    state,
-                    activation_token_data,
-                } = entry.remove();
-
-                window.on_commit();
-
-                let toplevel = window.toplevel().expect("no X11 support");
-
-                let (
-                    rules,
-                    width,
-                    height,
-                    is_full_width,
-                    output,
-                    workspace_id,
-                    is_pending_maximized,
-                ) = if let InitialConfigureState::Configured {
-                    rules,
-                    width,
-                    height,
-                    floating_width: _,
-                    floating_height: _,
-                    is_full_width,
-                    output,
-                    workspace_name,
-                    is_pending_maximized,
-                } = state
-                {
-                    // Check that the output is still connected.
-                    let output =
-                        output.filter(|o| self.swayward.layout.monitor_for_output(o).is_some());
-
-                    // Check that the workspace still exists.
-                    let workspace_id = workspace_name
-                        .as_deref()
-                        .and_then(|n| self.swayward.layout.find_workspace_by_name(n))
-                        .map(|(_, ws)| ws.id());
-
-                    (
-                        rules,
-                        width,
-                        height,
-                        is_full_width,
-                        output,
-                        workspace_id,
-                        is_pending_maximized,
-                    )
-                } else {
-                    // Can happen when a surface unmaps by attaching a null buffer while
-                    // there are in-flight pending configures.
-                    debug!("window mapped without proper initial configure");
-                    (
-                        ResolvedWindowRules::default(),
-                        None,
-                        None,
-                        false,
-                        None,
-                        None,
-                        false,
-                    )
-                };
-
-                // The GTK about dialog sets min/max size after the initial configure but
-                // before mapping, so we need to compute open_floating at the last possible
-                // moment, that is here.
-                let is_floating = rules.compute_open_floating(toplevel);
-
-                // Figure out if we should activate the window.
-                let (title, app_id) = crate::utils::with_toplevel_role(toplevel, |role| {
-                    (role.title.clone(), role.app_id.clone())
-                });
-                let pid = crate::utils::get_credentials_for_surface(toplevel.wl_surface())
-                    .and_then(|credentials| u32::try_from(credentials.pid).ok());
-                let no_focus = self.swayward.runtime_window_rules.iter().any(|rule| {
-                    matches!(
-                        rule,
-                        crate::swayward::RuntimeWindowRule::NoFocus(_, criteria)
-                            if criteria.matches_unmapped(title.as_deref(), app_id.as_deref(), pid)
-                    )
-                });
-                let activate = no_focus.then_some(ActivateWindow::No).or_else(|| {
-                    rules.open_focused.map(|focus| {
-                        if focus {
-                            ActivateWindow::Yes
-                        } else {
-                            ActivateWindow::No
-                        }
-                    })
-                });
-                let activate = activate.unwrap_or_else(|| {
-                    // Check the token timestamp again in case the window took a while between
-                    // requesting activation and mapping.
-                    let token = activation_token_data
-                        .filter(|token| token.timestamp.elapsed() < XDG_ACTIVATION_TOKEN_TIMEOUT);
-                    if token.is_some() {
-                        ActivateWindow::Yes
-                    } else {
-                        let config = self.swayward.config.borrow();
-                        if config.debug.strict_new_window_focus_policy {
-                            ActivateWindow::No
-                        } else {
-                            ActivateWindow::Smart
-                        }
-                    }
-                });
-
-                let parent = toplevel
-                    .parent()
-                    .and_then(|parent| self.swayward.layout.find_window_and_output(&parent))
-                    // Only consider the parent if we configured the window for the same
-                    // output.
-                    //
-                    // Normally when we're following the parent, the configured output will be
-                    // None. If the configured output is set, that means it was set explicitly
-                    // by a window rule or a fullscreen request.
-                    .filter(|(_, parent_output)| {
-                        parent_output.is_none()
-                            || output.is_none()
-                            || output.as_ref() == *parent_output
-                    })
-                    .map(|(mapped, _)| {
-                        (
-                            mapped.window.clone(),
-                            mapped.pending_sizing_mode().is_fullscreen(),
-                        )
-                    });
-
-                let popup_policy = self.swayward.config.borrow().popup_during_fullscreen;
-                let parent_was_fullscreen =
-                    parent.as_ref().is_some_and(|(_, fullscreen)| *fullscreen);
-                let activate = if parent_was_fullscreen
-                    && popup_policy != swayward_config::PopupDuringFullscreen::Smart
-                {
-                    ActivateWindow::No
-                } else {
-                    activate
-                };
-                if parent_was_fullscreen
-                    && popup_policy == swayward_config::PopupDuringFullscreen::LeaveFullscreen
-                {
-                    self.swayward
-                        .layout
-                        .set_fullscreen(&parent.as_ref().unwrap().0, false);
-                }
-                let parent = parent.and_then(|(parent, _)| {
-                    (!parent_was_fullscreen
-                        || popup_policy != swayward_config::PopupDuringFullscreen::Ignore)
-                        .then_some(parent)
-                });
-
-                // The mapped pre-commit hook deals with dma-bufs on its own.
-                self.remove_default_dmabuf_pre_commit_hook(surface);
-                let hook = add_mapped_toplevel_pre_commit_hook(toplevel);
-                // A floating window takes its border from a matching rule,
-                // or failing that from sway's `default_floating_border`
-                // (`sway/sway/commands/default_border.c`). Tiled windows
-                // resolve `default_border` in Tile::sway_border instead.
-                let floating_border = is_floating.then(|| {
-                    // Only override when the default differs from the
-                    // shipped one. Forcing an explicit style on every
-                    // floating window would pin a border width where the
-                    // tile previously had none, changing its size.
-                    let default = self.swayward.config.borrow().layout.default_floating_border;
-                    let configured =
-                        (default != Default::default()).then_some(match default.style {
-                            swayward_config::layout::SwayBorderStyle::None => {
-                                swayward_ipc::command::BorderStyle::None
-                            }
-                            swayward_config::layout::SwayBorderStyle::Normal => {
-                                swayward_ipc::command::BorderStyle::Normal
-                            }
-                            swayward_config::layout::SwayBorderStyle::Pixel => {
-                                swayward_ipc::command::BorderStyle::Pixel
-                            }
-                        });
-                    (
-                        rules.sway_floating_border.or(configured),
-                        rules.sway_floating_border_width.or(default.width),
-                    )
-                });
-                let mapped = {
-                    let config = self.swayward.config.borrow();
-                    Mapped::new(window, rules, hook, &config)
-                };
-                let mapped_id = mapped.id();
-                let window = mapped.window.clone();
-
-                let target = if let Some(p) = &parent {
-                    // Open dialogs next to their parent window.
-                    AddWindowTarget::NextTo(p)
-                } else if let Some(id) = workspace_id {
-                    AddWindowTarget::Workspace(id)
-                } else if let Some(output) = &output {
-                    AddWindowTarget::Output(output)
-                } else {
-                    AddWindowTarget::Auto
-                };
-                let output = self
-                    .swayward
-                    .layout
-                    .add_window(
-                        mapped,
-                        target,
-                        width,
-                        height,
-                        is_full_width,
-                        is_floating,
-                        activate,
-                    )
-                    .cloned();
-                if let Some((Some(style), width)) = floating_border {
-                    let _ = self
-                        .swayward
-                        .layout
-                        .set_window_border(&window, style, width);
-                }
-
-                // The window state cannot contain Fullscreen and Maximized at once. Therefore,
-                // if the window ended up fullscreen, then we only know that it is also
-                // maximized from the is_pending_maximized variable. Tell the layout about it
-                // here so that unfullscreening the window makes it maximized.
-                if let Some((mapped, _)) = self.swayward.layout.find_window_and_output(surface) {
-                    if mapped.pending_sizing_mode().is_fullscreen() && is_pending_maximized {
-                        self.swayward.layout.set_maximized(&window, true);
-                    }
-                } else {
-                    error!("layout is missing the window that we just added");
-                }
-
-                let rules_output = output.clone();
-                if let Some(output) = output {
-                    self.swayward
-                        .layout
-                        .start_open_animation_for_window(&window);
-
-                    let new_focus = self.swayward.layout.focus().map(|m| &m.window);
-                    if new_focus == Some(&window) {
-                        // We activated the newly opened window.
-                        self.maybe_warp_cursor_to_focus();
-                        self.swayward.layer_shell_on_demand_focus = None;
-                    }
-
-                    self.swayward.queue_redraw(&output);
-                }
-                // Re-resolve rules after insertion so `tiling` and `floating` criteria see the
-                // chosen state. `Mapped::is_floating` is not updated until after add_window, so
-                // expose that decision first. Sway likewise floats a view before running criteria
-                // (sway/sway/tree/view.c:912,942).
-                let commands = {
-                    if let Some(output) = rules_output.as_ref() {
-                        if let Some(mapped) = self
-                            .swayward
-                            .layout
-                            .windows_for_output_mut(output)
-                            .find(|mapped| mapped.id() == mapped_id)
-                        {
-                            mapped.set_floating_for_rules(is_floating);
-                        }
-                    }
-                    let config = self.swayward.config.borrow();
-                    let rules = &config.window_rules;
-                    self.swayward
-                        .layout
-                        .windows()
-                        .find(|(_, mapped)| mapped.id() == mapped_id)
-                        .map(|(_, mapped)| {
-                            crate::window::ResolvedWindowRules::compute(
-                                rules,
-                                crate::window::WindowRef::Mapped(mapped),
-                                false,
-                            )
-                            .sway_for_window_commands
-                        })
-                        .unwrap_or_default()
-                };
-                for command in commands {
-                    let targeted = format!(
-                        "[con_id={}] {command}",
-                        crate::ipc::tree::window_id(mapped_id)
-                    );
-                    let _ = crate::command::execute(self, &targeted);
-                }
-                crate::command::run_for_window(self, mapped_id);
+                let unmapped = entry.remove();
+                self.map_toplevel(surface, unmapped);
                 return;
             }
 
@@ -491,122 +208,7 @@ impl State {
         }
 
         // This is a commit of a previously-mapped root or a non-toplevel root.
-        if let Some((mapped, output)) = self.swayward.layout.find_window_and_output(surface) {
-            let window = mapped.window.clone();
-            let output = output.cloned();
-
-            let id = mapped.id();
-
-            // This is a commit of a previously-mapped toplevel.
-            let is_mapped = is_mapped(surface);
-
-            // Must start the close animation before window.on_commit().
-            let transaction = Transaction::new();
-            if !is_mapped {
-                let blocker = transaction.blocker();
-                self.backend.with_primary_renderer(|renderer| {
-                    self.swayward
-                        .layout
-                        .start_close_animation_for_window(renderer, &window, blocker);
-                });
-            }
-
-            window.on_commit();
-
-            if !is_mapped {
-                // The toplevel got unmapped.
-                //
-                // Test client: wleird-unmap.
-                trace!("toplevel got unmapped");
-
-                let active_window = self.swayward.layout.focus().map(|m| &m.window);
-                let was_active = active_window == Some(&window);
-
-                self.swayward
-                    .stop_casts_for_target(CastTarget::Window { id: id.get() });
-
-                self.swayward.window_mru_ui.remove_window(id);
-                self.swayward.cancel_urgency_timer(id);
-                self.swayward
-                    .executed_for_window
-                    .retain(|(window, _, _)| *window != id);
-                self.swayward.unmark(Some(id), None);
-                self.swayward
-                    .layout
-                    .remove_window(&window, transaction.clone());
-                self.add_default_dmabuf_pre_commit_hook(surface);
-
-                // If this is the only instance, then this transaction will complete
-                // immediately, so no need to set the timer.
-                if !transaction.is_last() {
-                    transaction.register_deadline_timer(&self.swayward.event_loop);
-                }
-
-                if was_active {
-                    self.maybe_warp_cursor_to_focus();
-                }
-
-                // Newly-unmapped toplevels must perform the initial commit-configure sequence
-                // afresh.
-                let unmapped = Unmapped::new(window);
-                self.swayward
-                    .unmapped_windows
-                    .insert(surface.clone(), unmapped);
-
-                if let Some(output) = output {
-                    self.swayward.queue_redraw(&output);
-                    self.swayward.queue_redraw_mru_output();
-                }
-                return;
-            }
-
-            let (serial, buffer_delta) = with_states(surface, |states| {
-                let buffer_delta = states
-                    .cached_state
-                    .get::<SurfaceAttributes>()
-                    .current()
-                    .buffer_delta
-                    .take();
-
-                let serial = states
-                    .cached_state
-                    .get::<ToplevelCachedState>()
-                    .current()
-                    .last_acked
-                    .as_ref()
-                    .map(|c| c.serial);
-                (serial, buffer_delta)
-            });
-            if serial.is_none() {
-                error!("commit on a mapped surface without a configured serial");
-            }
-
-            // The toplevel remains mapped.
-            self.swayward
-                .window_mru_ui
-                .update_window(&self.swayward.layout, id);
-            self.swayward.layout.update_window(&window, serial);
-
-            // Move the toplevel according to the attach offset.
-            if let Some(delta) = buffer_delta {
-                if delta.x != 0 || delta.y != 0 {
-                    let (x, y) = delta.to_f64().into();
-                    self.swayward.layout.move_floating_window(
-                        Some(&window),
-                        PositionChange::AdjustFixed(x),
-                        PositionChange::AdjustFixed(y),
-                        false,
-                    );
-                }
-            }
-
-            // Popup placement depends on window size which might have changed.
-            self.update_reactive_popups(&window);
-
-            if let Some(output) = output {
-                self.swayward.queue_redraw(&output);
-                self.swayward.queue_redraw_mru_output();
-            }
+        if self.commit_mapped_toplevel(surface) {
             return;
         }
 
@@ -615,6 +217,403 @@ impl State {
         // This might be a popup.
         self.popups_handle_commit(surface);
         self.commit_auxiliary_surface(surface, surface);
+    }
+
+    fn commit_mapped_toplevel(&mut self, surface: &WlSurface) -> bool {
+        let Some((mapped, output)) = self.swayward.layout.find_window_and_output(surface) else {
+            return false;
+        };
+        let window = mapped.window.clone();
+        let output = output.cloned();
+
+        let id = mapped.id();
+
+        // This is a commit of a previously-mapped toplevel.
+        let is_mapped = is_mapped(surface);
+
+        // Must start the close animation before window.on_commit().
+        let transaction = Transaction::new();
+        if !is_mapped {
+            let blocker = transaction.blocker();
+            self.backend.with_primary_renderer(|renderer| {
+                self.swayward
+                    .layout
+                    .start_close_animation_for_window(renderer, &window, blocker);
+            });
+        }
+
+        window.on_commit();
+
+        if !is_mapped {
+            // The toplevel got unmapped.
+            //
+            // Test client: wleird-unmap.
+            trace!("toplevel got unmapped");
+
+            let active_window = self.swayward.layout.focus().map(|m| &m.window);
+            let was_active = active_window == Some(&window);
+
+            self.swayward
+                .stop_casts_for_target(CastTarget::Window { id: id.get() });
+
+            self.swayward.window_mru_ui.remove_window(id);
+            self.swayward.cancel_urgency_timer(id);
+            self.swayward
+                .executed_for_window
+                .retain(|(window, _, _)| *window != id);
+            self.swayward.unmark(Some(id), None);
+            self.swayward
+                .layout
+                .remove_window(&window, transaction.clone());
+            self.add_default_dmabuf_pre_commit_hook(surface);
+
+            // If this is the only instance, then this transaction will complete
+            // immediately, so no need to set the timer.
+            if !transaction.is_last() {
+                transaction.register_deadline_timer(&self.swayward.event_loop);
+            }
+
+            if was_active {
+                self.maybe_warp_cursor_to_focus();
+            }
+
+            // Newly-unmapped toplevels must perform the initial commit-configure sequence
+            // afresh.
+            let unmapped = Unmapped::new(window);
+            self.swayward
+                .unmapped_windows
+                .insert(surface.clone(), unmapped);
+
+            if let Some(output) = output {
+                self.swayward.queue_redraw(&output);
+                self.swayward.queue_redraw_mru_output();
+            }
+            return true;
+        }
+
+        let (serial, buffer_delta) = with_states(surface, |states| {
+            let buffer_delta = states
+                .cached_state
+                .get::<SurfaceAttributes>()
+                .current()
+                .buffer_delta
+                .take();
+
+            let serial = states
+                .cached_state
+                .get::<ToplevelCachedState>()
+                .current()
+                .last_acked
+                .as_ref()
+                .map(|c| c.serial);
+            (serial, buffer_delta)
+        });
+        if serial.is_none() {
+            error!("commit on a mapped surface without a configured serial");
+        }
+
+        // The toplevel remains mapped.
+        self.swayward
+            .window_mru_ui
+            .update_window(&self.swayward.layout, id);
+        self.swayward.layout.update_window(&window, serial);
+
+        // Move the toplevel according to the attach offset.
+        if let Some(delta) = buffer_delta {
+            if delta.x != 0 || delta.y != 0 {
+                let (x, y) = delta.to_f64().into();
+                self.swayward.layout.move_floating_window(
+                    Some(&window),
+                    PositionChange::AdjustFixed(x),
+                    PositionChange::AdjustFixed(y),
+                    false,
+                );
+            }
+        }
+
+        // Popup placement depends on window size which might have changed.
+        self.update_reactive_popups(&window);
+
+        if let Some(output) = output {
+            self.swayward.queue_redraw(&output);
+            self.swayward.queue_redraw_mru_output();
+        }
+        true
+    }
+
+    fn map_toplevel(&mut self, surface: &WlSurface, unmapped: Unmapped) {
+        let Unmapped {
+            window,
+            state,
+            activation_token_data,
+        } = unmapped;
+
+        window.on_commit();
+
+        let toplevel = window.toplevel().expect("no X11 support");
+
+        let (rules, width, height, is_full_width, output, workspace_id, is_pending_maximized) =
+            if let InitialConfigureState::Configured {
+                rules,
+                width,
+                height,
+                floating_width: _,
+                floating_height: _,
+                is_full_width,
+                output,
+                workspace_name,
+                is_pending_maximized,
+            } = state
+            {
+                // Check that the output is still connected.
+                let output =
+                    output.filter(|o| self.swayward.layout.monitor_for_output(o).is_some());
+
+                // Check that the workspace still exists.
+                let workspace_id = workspace_name
+                    .as_deref()
+                    .and_then(|n| self.swayward.layout.find_workspace_by_name(n))
+                    .map(|(_, ws)| ws.id());
+
+                (
+                    rules,
+                    width,
+                    height,
+                    is_full_width,
+                    output,
+                    workspace_id,
+                    is_pending_maximized,
+                )
+            } else {
+                // Can happen when a surface unmaps by attaching a null buffer while
+                // there are in-flight pending configures.
+                debug!("window mapped without proper initial configure");
+                (
+                    ResolvedWindowRules::default(),
+                    None,
+                    None,
+                    false,
+                    None,
+                    None,
+                    false,
+                )
+            };
+
+        // The GTK about dialog sets min/max size after the initial configure but
+        // before mapping, so we need to compute open_floating at the last possible
+        // moment, that is here.
+        let is_floating = rules.compute_open_floating(toplevel);
+
+        // Figure out if we should activate the window.
+        let (title, app_id) = crate::utils::with_toplevel_role(toplevel, |role| {
+            (role.title.clone(), role.app_id.clone())
+        });
+        let pid = crate::utils::get_credentials_for_surface(toplevel.wl_surface())
+            .and_then(|credentials| u32::try_from(credentials.pid).ok());
+        let no_focus = self.swayward.runtime_window_rules.iter().any(|rule| {
+            matches!(
+                rule,
+                crate::swayward::RuntimeWindowRule::NoFocus(_, criteria)
+                    if criteria.matches_unmapped(title.as_deref(), app_id.as_deref(), pid)
+            )
+        });
+        let activate = no_focus.then_some(ActivateWindow::No).or_else(|| {
+            rules.open_focused.map(|focus| {
+                if focus {
+                    ActivateWindow::Yes
+                } else {
+                    ActivateWindow::No
+                }
+            })
+        });
+        let activate = activate.unwrap_or_else(|| {
+            // Check the token timestamp again in case the window took a while between
+            // requesting activation and mapping.
+            let token = activation_token_data
+                .filter(|token| token.timestamp.elapsed() < XDG_ACTIVATION_TOKEN_TIMEOUT);
+            if token.is_some() {
+                ActivateWindow::Yes
+            } else {
+                let config = self.swayward.config.borrow();
+                if config.debug.strict_new_window_focus_policy {
+                    ActivateWindow::No
+                } else {
+                    ActivateWindow::Smart
+                }
+            }
+        });
+
+        let parent = toplevel
+            .parent()
+            .and_then(|parent| self.swayward.layout.find_window_and_output(&parent))
+            // Only consider the parent if we configured the window for the same
+            // output.
+            //
+            // Normally when we're following the parent, the configured output will be
+            // None. If the configured output is set, that means it was set explicitly
+            // by a window rule or a fullscreen request.
+            .filter(|(_, parent_output)| {
+                parent_output.is_none() || output.is_none() || output.as_ref() == *parent_output
+            })
+            .map(|(mapped, _)| {
+                (
+                    mapped.window.clone(),
+                    mapped.pending_sizing_mode().is_fullscreen(),
+                )
+            });
+
+        let popup_policy = self.swayward.config.borrow().popup_during_fullscreen;
+        let parent_was_fullscreen = parent.as_ref().is_some_and(|(_, fullscreen)| *fullscreen);
+        let activate = if parent_was_fullscreen
+            && popup_policy != swayward_config::PopupDuringFullscreen::Smart
+        {
+            ActivateWindow::No
+        } else {
+            activate
+        };
+        if popup_policy == swayward_config::PopupDuringFullscreen::LeaveFullscreen {
+            if let Some((parent, true)) = parent.as_ref() {
+                self.swayward.layout.set_fullscreen(parent, false);
+            }
+        }
+        let parent = parent.and_then(|(parent, _)| {
+            (!parent_was_fullscreen
+                || popup_policy != swayward_config::PopupDuringFullscreen::Ignore)
+                .then_some(parent)
+        });
+
+        // The mapped pre-commit hook deals with dma-bufs on its own.
+        self.remove_default_dmabuf_pre_commit_hook(surface);
+        let hook = add_mapped_toplevel_pre_commit_hook(toplevel);
+        // A floating window takes its border from a matching rule,
+        // or failing that from sway's `default_floating_border`
+        // (`sway/sway/commands/default_border.c`). Tiled windows
+        // resolve `default_border` in Tile::sway_border instead.
+        let floating_border = is_floating.then(|| {
+            // Only override when the default differs from the
+            // shipped one. Forcing an explicit style on every
+            // floating window would pin a border width where the
+            // tile previously had none, changing its size.
+            let default = self.swayward.config.borrow().layout.default_floating_border;
+            let configured = (default != Default::default()).then_some(match default.style {
+                swayward_config::layout::SwayBorderStyle::None => {
+                    swayward_ipc::command::BorderStyle::None
+                }
+                swayward_config::layout::SwayBorderStyle::Normal => {
+                    swayward_ipc::command::BorderStyle::Normal
+                }
+                swayward_config::layout::SwayBorderStyle::Pixel => {
+                    swayward_ipc::command::BorderStyle::Pixel
+                }
+            });
+            (
+                rules.sway_floating_border.or(configured),
+                rules.sway_floating_border_width.or(default.width),
+            )
+        });
+        let mapped = {
+            let config = self.swayward.config.borrow();
+            Mapped::new(window, rules, hook, &config)
+        };
+        let mapped_id = mapped.id();
+        let window = mapped.window.clone();
+
+        let target = if let Some(p) = &parent {
+            // Open dialogs next to their parent window.
+            AddWindowTarget::NextTo(p)
+        } else if let Some(id) = workspace_id {
+            AddWindowTarget::Workspace(id)
+        } else if let Some(output) = &output {
+            AddWindowTarget::Output(output)
+        } else {
+            AddWindowTarget::Auto
+        };
+        let output = self
+            .swayward
+            .layout
+            .add_window(
+                mapped,
+                target,
+                width,
+                height,
+                is_full_width,
+                is_floating,
+                activate,
+            )
+            .cloned();
+        if let Some((Some(style), width)) = floating_border {
+            let _ = self
+                .swayward
+                .layout
+                .set_window_border(&window, style, width);
+        }
+
+        // The window state cannot contain Fullscreen and Maximized at once. Therefore,
+        // if the window ended up fullscreen, then we only know that it is also
+        // maximized from the is_pending_maximized variable. Tell the layout about it
+        // here so that unfullscreening the window makes it maximized.
+        if let Some((mapped, _)) = self.swayward.layout.find_window_and_output(surface) {
+            if mapped.pending_sizing_mode().is_fullscreen() && is_pending_maximized {
+                self.swayward.layout.set_maximized(&window, true);
+            }
+        } else {
+            error!("layout is missing the window that we just added");
+        }
+
+        let rules_output = output.clone();
+        if let Some(output) = output {
+            self.swayward
+                .layout
+                .start_open_animation_for_window(&window);
+
+            let new_focus = self.swayward.layout.focus().map(|m| &m.window);
+            if new_focus == Some(&window) {
+                // We activated the newly opened window.
+                self.maybe_warp_cursor_to_focus();
+                self.swayward.layer_shell_on_demand_focus = None;
+            }
+
+            self.swayward.queue_redraw(&output);
+        }
+        // Re-resolve rules after insertion so `tiling` and `floating` criteria see the
+        // chosen state. `Mapped::is_floating` is not updated until after add_window, so
+        // expose that decision first. Sway likewise floats a view before running criteria
+        // (sway/sway/tree/view.c:912,942).
+        let commands = {
+            if let Some(output) = rules_output.as_ref() {
+                if let Some(mapped) = self
+                    .swayward
+                    .layout
+                    .windows_for_output_mut(output)
+                    .find(|mapped| mapped.id() == mapped_id)
+                {
+                    mapped.set_floating_for_rules(is_floating);
+                }
+            }
+            let config = self.swayward.config.borrow();
+            let rules = &config.window_rules;
+            self.swayward
+                .layout
+                .windows()
+                .find(|(_, mapped)| mapped.id() == mapped_id)
+                .map(|(_, mapped)| {
+                    crate::window::ResolvedWindowRules::compute(
+                        rules,
+                        crate::window::WindowRef::Mapped(mapped),
+                        false,
+                    )
+                    .sway_for_window_commands
+                })
+                .unwrap_or_default()
+        };
+        for command in commands {
+            let targeted = format!(
+                "[con_id={}] {command}",
+                crate::ipc::tree::window_id(mapped_id)
+            );
+            let _ = crate::command::execute(self, &targeted);
+        }
+        crate::command::run_for_window(self, mapped_id);
     }
 
     fn commit_auxiliary_surface(&mut self, surface: &WlSurface, root_surface: &WlSurface) {
