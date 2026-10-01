@@ -286,39 +286,44 @@ impl<W: LayoutElement> TilingTree<W> {
                                     } else {
                                         (parent_extent * stored_percent).round()
                                     };
-                                    Some(if tree.mapped_under_fullscreen.contains(child) {
-                                        0.
-                                    } else if !tree.mapped_under_fullscreen.is_empty()
-                                        && tree.fullscreen_node() != Some(*child)
-                                    {
-                                        let visible_total = children
-                                            .iter()
-                                            .zip(percents)
-                                            .filter(|(child, _)| {
-                                                !tree.mapped_under_fullscreen.contains(child)
-                                            })
-                                            .map(|(_, percent)| percent)
-                                            .sum::<f64>();
-                                        *stored_percent / visible_total
-                                    } else if tree.fullscreen_node() == Some(*child) {
-                                        let child_rect = tree
-                                            .fullscreen_tile_slot_rect(*child, geometries)
-                                            .or_else(|| geometries.ipc_nodes.get(child).copied())
-                                            .unwrap_or_default();
-                                        let parent_area =
-                                            parent_rect.size.w.round() * parent_rect.size.h.round();
-                                        let child_area =
-                                            child_rect.size.w.round() * child_rect.size.h.round();
-                                        if parent_area > 0. {
-                                            child_area / parent_area
+                                    let excluded = tree.split_excluded();
+                                    Some(
+                                        if excluded.contains(child)
+                                            && tree.fullscreen_node() != Some(*child)
+                                        {
+                                            0.
+                                        } else if !excluded.is_empty()
+                                            && tree.fullscreen_node() != Some(*child)
+                                        {
+                                            let visible_total = children
+                                                .iter()
+                                                .zip(percents)
+                                                .filter(|(child, _)| !excluded.contains(child))
+                                                .map(|(_, percent)| percent)
+                                                .sum::<f64>();
+                                            *stored_percent / visible_total
+                                        } else if tree.fullscreen_node() == Some(*child) {
+                                            let child_rect = tree
+                                                .fullscreen_tile_slot_rect(*child, geometries)
+                                                .or_else(|| {
+                                                    geometries.ipc_nodes.get(child).copied()
+                                                })
+                                                .unwrap_or_default();
+                                            let parent_area = parent_rect.size.w.round()
+                                                * parent_rect.size.h.round();
+                                            let child_area = child_rect.size.w.round()
+                                                * child_rect.size.h.round();
+                                            if parent_area > 0. {
+                                                child_area / parent_area
+                                            } else {
+                                                *stored_percent
+                                            }
+                                        } else if parent_extent > 0. {
+                                            allocated / parent_extent
                                         } else {
                                             *stored_percent
-                                        }
-                                    } else if parent_extent > 0. {
-                                        allocated / parent_extent
-                                    } else {
-                                        *stored_percent
-                                    })
+                                        },
+                                    )
                                 }
                                 Layout::SplitH | Layout::SplitV => {
                                     let rounded_extent =

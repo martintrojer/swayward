@@ -807,6 +807,10 @@ impl<W: LayoutElement> Workspace<W> {
         self.tiling.set_node_fullscreen(id, mode)
     }
 
+    pub(super) fn mark_tiling_fullscreen_arrived(&mut self) {
+        self.tiling.mark_fullscreen_arrived();
+    }
+
     pub fn disable_fullscreen(&mut self) {
         if let Some(fullscreen) = self.tiling.fullscreen_node() {
             self.tiling.set_node_fullscreen(fullscreen, None);

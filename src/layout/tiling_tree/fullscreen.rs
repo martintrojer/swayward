@@ -32,6 +32,7 @@ impl<W: LayoutElement> TilingTree<W> {
             return false;
         }
         self.fullscreen_tile_slot = false;
+        self.fullscreen_arrived = false;
         if let Some(current) = current {
             if let Some(mode) = self.pending_modes.get_mut(&current) {
                 mode.fullscreen = None;
@@ -54,6 +55,14 @@ impl<W: LayoutElement> TilingTree<W> {
         }
         self.cancel_resize_for(id);
         true
+    }
+
+    /// Record that the current fullscreen node was moved into this tree while
+    /// fullscreen, so its branch keeps no share of the parent split.
+    pub fn mark_fullscreen_arrived(&mut self) {
+        if self.fullscreen_node().is_some() {
+            self.fullscreen_arrived = true;
+        }
     }
 
     pub fn fullscreen_node(&self) -> Option<NodeId> {

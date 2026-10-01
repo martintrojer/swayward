@@ -241,6 +241,12 @@ impl<W: LayoutElement> TilingTree<W> {
             (self.root, None)
         };
         self.insert_child(parent, id, after);
+        if self
+            .fullscreen_node()
+            .is_some_and(|fullscreen| self.contains_node(id, fullscreen))
+        {
+            self.fullscreen_arrived = true;
+        }
         self.restore_transferred_focus(focus_history);
         if self.focus.is_none() {
             self.set_focus_id(self.focused_leaf_in(id));

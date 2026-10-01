@@ -358,6 +358,13 @@ pub struct TilingTree<W: LayoutElement> {
     /// `arrange_container(parent)` gives it the slot's pending box until the
     /// next workspace arrange restores the output box.
     fullscreen_tile_slot: bool,
+    /// The fullscreen node arrived in this tree already fullscreen. Sway gives
+    /// a moved container a zero width fraction and arranges only the
+    /// fullscreen node (`container_move_to_workspace`,
+    /// sway/commands/move.c:220-229; `arrange_workspace`,
+    /// sway/tree/arrange.c:310-316), so its siblings keep their old shares
+    /// until fullscreen ends.
+    fullscreen_arrived: bool,
     fullscreen_layout_wrappers: HashSet<NodeId>,
     pre_layout_ipc_rects: HashMap<NodeId, Rectangle<f64, Logical>>,
     interactive_resize: Option<InteractiveResize<W::Id>>,

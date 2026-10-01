@@ -367,3 +367,61 @@ fn mapping_beside_fullscreen_reports_its_tile_slot_until_rearranged() {
     assert_eq!(slot(&t).0, 720.);
     t.check_invariants();
 }
+
+// random seed 50 step 15 (sway-1.12-random): a window moved to another
+// workspace while fullscreen takes no share of the destination split, so the
+// destination's existing view keeps its full width until fullscreen ends.
+#[test]
+fn fullscreen_arriving_in_a_tree_leaves_sibling_shares_alone() {
+    let mut t = tree((1280., 720.), 0.);
+    let existing = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let arriving = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    assert!(t.set_node_fullscreen(arriving, Some(FullscreenMode::Workspace)));
+    t.mark_fullscreen_arrived();
+
+    let IpcNode::Split { children, .. } = t.ipc_tree() else {
+        panic!("IPC root must be a split");
+    };
+    let IpcNode::Leaf {
+        id, percent, rect, ..
+    } = &children[0]
+    else {
+        panic!("first child must be a leaf");
+    };
+    assert_eq!(*id, existing);
+    assert_eq!(*percent, Some(1.));
+    assert_eq!(rect.size.w, 1280.);
+
+    assert!(t.set_node_fullscreen(arriving, None));
+    let IpcNode::Split { children, .. } = t.ipc_tree() else {
+        panic!("IPC root must be a split");
+    };
+    let IpcNode::Leaf { percent, .. } = &children[0] else {
+        panic!("first child must be a leaf");
+    };
+    assert_eq!(*percent, Some(0.5));
+    t.check_invariants();
+}
+
+// random seed 273 step 16 (sway-1.12-random): a fullscreen view moved into a
+// tabbed container leaves the container at its existing size.
+#[test]
+fn fullscreen_arriving_in_a_tab_keeps_the_tabbed_container_sized() {
+    let mut t = tree((1280., 720.), 0.);
+    t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let tab = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.split(tab, Layout::Tabbed);
+    let arriving = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+    assert!(t.set_node_fullscreen(arriving, Some(FullscreenMode::Workspace)));
+    t.mark_fullscreen_arrived();
+
+    let IpcNode::Split { children, .. } = t.ipc_tree() else {
+        panic!("IPC root must be a split");
+    };
+    let IpcNode::Split { percent, rect, .. } = &children[1] else {
+        panic!("first child must be the tabbed container");
+    };
+    assert_eq!(*percent, Some(0.5));
+    assert_eq!(rect.size.w, 640.);
+    t.check_invariants();
+}
