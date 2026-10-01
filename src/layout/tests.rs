@@ -2612,8 +2612,8 @@ fn raising_a_floating_window_keeps_each_titlebar_cache_with_its_window() {
     }
 }
 
-#[test]
-fn floating_tree_entry_routes_geometry_focus_hit_testing_and_lifecycle() {
+/// A 1280x720 output named "output", ready to host a workspace.
+fn test_output() -> Output {
     let output = Output::new(
         "output".into(),
         PhysicalProperties {
@@ -2639,12 +2639,18 @@ fn floating_tree_entry_routes_geometry_focus_hit_testing_and_lifecycle() {
         model: None,
         serial: None,
     });
+    output
+}
+
+/// A workspace on `output` holding tiled windows `1..=count`, the last one
+/// focused.
+fn workspace_with_tiled(output: Output, count: usize) -> Workspace<TestWindow> {
     let mut workspace = Workspace::new(
         output,
         Clock::with_time(Duration::ZERO),
         Rc::new(Options::default()),
     );
-    for id in 1..=2 {
+    for id in 1..=count {
         let tile = workspace.make_tile(TestWindow::new(TestWindowParams::new(id)));
         workspace.add_tile(
             tile,
@@ -2655,6 +2661,12 @@ fn floating_tree_entry_routes_geometry_focus_hit_testing_and_lifecycle() {
             },
         );
     }
+    workspace
+}
+
+#[test]
+fn floating_tree_entry_routes_geometry_focus_hit_testing_and_lifecycle() {
+    let mut workspace = workspace_with_tiled(test_output(), 2);
     let first = workspace.tiling().node_for_window(&1).unwrap();
     workspace
         .tiling_mut()
@@ -2699,47 +2711,7 @@ fn floating_tree_entry_routes_geometry_focus_hit_testing_and_lifecycle() {
 
 #[test]
 fn moving_the_only_child_of_a_floating_group_keeps_the_root_position() {
-    let output = Output::new(
-        "output".into(),
-        PhysicalProperties {
-            size: Size::from((1280, 720)),
-            subpixel: Subpixel::Unknown,
-            make: String::new(),
-            model: String::new(),
-            serial_number: String::new(),
-        },
-    );
-    output.change_current_state(
-        Some(Mode {
-            size: Size::from((1280, 720)),
-            refresh: 60000,
-        }),
-        None,
-        None,
-        None,
-    );
-    output.user_data().insert_if_missing(|| OutputName {
-        connector: "output".into(),
-        make: None,
-        model: None,
-        serial: None,
-    });
-    let mut workspace = Workspace::new(
-        output,
-        Clock::with_time(Duration::ZERO),
-        Rc::new(Options::default()),
-    );
-    for id in 1..=2 {
-        let tile = workspace.make_tile(TestWindow::new(TestWindowParams::new(id)));
-        workspace.add_tile(
-            tile,
-            WorkspaceAddWindowTarget::Auto,
-            super::workspace::AddTileOptions {
-                activate: ActivateWindow::Yes,
-                is_floating: false,
-            },
-        );
-    }
+    let mut workspace = workspace_with_tiled(test_output(), 2);
     let second = workspace.tiling().node_for_window(&2).unwrap();
     workspace
         .tiling_mut()
@@ -2765,47 +2737,7 @@ fn moving_the_only_child_of_a_floating_group_keeps_the_root_position() {
 
 #[test]
 fn directional_move_reorders_a_floating_group_child() {
-    let output = Output::new(
-        "output".into(),
-        PhysicalProperties {
-            size: Size::from((1280, 720)),
-            subpixel: Subpixel::Unknown,
-            make: String::new(),
-            model: String::new(),
-            serial_number: String::new(),
-        },
-    );
-    output.change_current_state(
-        Some(Mode {
-            size: Size::from((1280, 720)),
-            refresh: 60000,
-        }),
-        None,
-        None,
-        None,
-    );
-    output.user_data().insert_if_missing(|| OutputName {
-        connector: "output".into(),
-        make: None,
-        model: None,
-        serial: None,
-    });
-    let mut workspace = Workspace::new(
-        output,
-        Clock::with_time(Duration::ZERO),
-        Rc::new(Options::default()),
-    );
-    for id in 1..=3 {
-        let tile = workspace.make_tile(TestWindow::new(TestWindowParams::new(id)));
-        workspace.add_tile(
-            tile,
-            WorkspaceAddWindowTarget::Auto,
-            super::workspace::AddTileOptions {
-                activate: ActivateWindow::Yes,
-                is_floating: false,
-            },
-        );
-    }
+    let mut workspace = workspace_with_tiled(test_output(), 3);
     let second = workspace.tiling().node_for_window(&2).unwrap();
     workspace.tiling_mut().set_focus(second);
     workspace.tiling_mut().focus_root();
@@ -2826,47 +2758,7 @@ fn directional_move_reorders_a_floating_group_child() {
 
 #[test]
 fn removing_a_floating_tree_leaf_uses_the_resident_tree() {
-    let output = Output::new(
-        "output".into(),
-        PhysicalProperties {
-            size: Size::from((1280, 720)),
-            subpixel: Subpixel::Unknown,
-            make: String::new(),
-            model: String::new(),
-            serial_number: String::new(),
-        },
-    );
-    output.change_current_state(
-        Some(Mode {
-            size: Size::from((1280, 720)),
-            refresh: 60000,
-        }),
-        None,
-        None,
-        None,
-    );
-    output.user_data().insert_if_missing(|| OutputName {
-        connector: "output".into(),
-        make: None,
-        model: None,
-        serial: None,
-    });
-    let mut workspace = Workspace::new(
-        output,
-        Clock::with_time(Duration::ZERO),
-        Rc::new(Options::default()),
-    );
-    for id in 1..=2 {
-        let tile = workspace.make_tile(TestWindow::new(TestWindowParams::new(id)));
-        workspace.add_tile(
-            tile,
-            WorkspaceAddWindowTarget::Auto,
-            super::workspace::AddTileOptions {
-                activate: ActivateWindow::Yes,
-                is_floating: false,
-            },
-        );
-    }
+    let mut workspace = workspace_with_tiled(test_output(), 2);
     workspace.tiling_mut().focus_root();
     let root = workspace.tiling().focus().unwrap();
     let (subtree, old_parent) = workspace.detach_tiling_subtree(root).unwrap();
@@ -2886,47 +2778,8 @@ fn removing_a_floating_tree_leaf_uses_the_resident_tree() {
 
 #[test]
 fn floating_tree_root_tracks_output_geometry_changes() {
-    let output = Output::new(
-        "output".into(),
-        PhysicalProperties {
-            size: Size::from((1280, 720)),
-            subpixel: Subpixel::Unknown,
-            make: String::new(),
-            model: String::new(),
-            serial_number: String::new(),
-        },
-    );
-    output.change_current_state(
-        Some(Mode {
-            size: Size::from((1280, 720)),
-            refresh: 60000,
-        }),
-        None,
-        None,
-        None,
-    );
-    output.user_data().insert_if_missing(|| OutputName {
-        connector: "output".into(),
-        make: None,
-        model: None,
-        serial: None,
-    });
-    let mut workspace = Workspace::new(
-        output.clone(),
-        Clock::with_time(Duration::ZERO),
-        Rc::new(Options::default()),
-    );
-    for id in 1..=2 {
-        let tile = workspace.make_tile(TestWindow::new(TestWindowParams::new(id)));
-        workspace.add_tile(
-            tile,
-            WorkspaceAddWindowTarget::Auto,
-            super::workspace::AddTileOptions {
-                activate: ActivateWindow::Yes,
-                is_floating: false,
-            },
-        );
-    }
+    let output = test_output();
+    let mut workspace = workspace_with_tiled(output.clone(), 2);
     workspace.tiling_mut().focus_root();
     let root = workspace.tiling().focus().unwrap();
     let (subtree, old_parent) = workspace.detach_tiling_subtree(root).unwrap();
@@ -2951,47 +2804,7 @@ fn floating_tree_root_tracks_output_geometry_changes() {
 }
 
 fn floating_group_workspace() -> (Workspace<TestWindow>, tiling_tree::NodeId) {
-    let output = Output::new(
-        "output".into(),
-        PhysicalProperties {
-            size: Size::from((1280, 720)),
-            subpixel: Subpixel::Unknown,
-            make: String::new(),
-            model: String::new(),
-            serial_number: String::new(),
-        },
-    );
-    output.change_current_state(
-        Some(Mode {
-            size: Size::from((1280, 720)),
-            refresh: 60000,
-        }),
-        None,
-        None,
-        None,
-    );
-    output.user_data().insert_if_missing(|| OutputName {
-        connector: "output".into(),
-        make: None,
-        model: None,
-        serial: None,
-    });
-    let mut workspace = Workspace::new(
-        output,
-        Clock::with_time(Duration::ZERO),
-        Rc::new(Options::default()),
-    );
-    for id in 1..=2 {
-        let tile = workspace.make_tile(TestWindow::new(TestWindowParams::new(id)));
-        workspace.add_tile(
-            tile,
-            WorkspaceAddWindowTarget::Auto,
-            super::workspace::AddTileOptions {
-                activate: ActivateWindow::Yes,
-                is_floating: false,
-            },
-        );
-    }
+    let mut workspace = workspace_with_tiled(test_output(), 2);
     workspace.tiling_mut().focus_root();
     let root = workspace.tiling().focus().unwrap();
     let (subtree, old_parent) = workspace.detach_tiling_subtree(root).unwrap();
@@ -3040,47 +2853,7 @@ fn swap_targets_children_inside_the_same_floating_group() {
 
 #[test]
 fn fullscreen_targets_a_node_inside_a_floating_tree() {
-    let output = Output::new(
-        "output".into(),
-        PhysicalProperties {
-            size: Size::from((1280, 720)),
-            subpixel: Subpixel::Unknown,
-            make: String::new(),
-            model: String::new(),
-            serial_number: String::new(),
-        },
-    );
-    output.change_current_state(
-        Some(Mode {
-            size: Size::from((1280, 720)),
-            refresh: 60000,
-        }),
-        None,
-        None,
-        None,
-    );
-    output.user_data().insert_if_missing(|| OutputName {
-        connector: "output".into(),
-        make: None,
-        model: None,
-        serial: None,
-    });
-    let mut workspace = Workspace::new(
-        output,
-        Clock::with_time(Duration::ZERO),
-        Rc::new(Options::default()),
-    );
-    for id in 1..=2 {
-        let tile = workspace.make_tile(TestWindow::new(TestWindowParams::new(id)));
-        workspace.add_tile(
-            tile,
-            WorkspaceAddWindowTarget::Auto,
-            super::workspace::AddTileOptions {
-                activate: ActivateWindow::Yes,
-                is_floating: false,
-            },
-        );
-    }
+    let mut workspace = workspace_with_tiled(test_output(), 2);
     workspace.tiling_mut().focus_root();
     let root = workspace.tiling().focus().unwrap();
     let (subtree, old_parent) = workspace.detach_tiling_subtree(root).unwrap();
@@ -3134,47 +2907,8 @@ fn fullscreen_targets_a_node_inside_a_floating_tree() {
 
 #[test]
 fn floating_tree_root_survives_workspace_and_output_moves() {
-    let output = Output::new(
-        "output".into(),
-        PhysicalProperties {
-            size: Size::from((1280, 720)),
-            subpixel: Subpixel::Unknown,
-            make: String::new(),
-            model: String::new(),
-            serial_number: String::new(),
-        },
-    );
-    output.change_current_state(
-        Some(Mode {
-            size: Size::from((1280, 720)),
-            refresh: 60000,
-        }),
-        None,
-        None,
-        None,
-    );
-    output.user_data().insert_if_missing(|| OutputName {
-        connector: "output".into(),
-        make: None,
-        model: None,
-        serial: None,
-    });
-    let mut source = Workspace::new(
-        output.clone(),
-        Clock::with_time(Duration::ZERO),
-        Rc::new(Options::default()),
-    );
-    for id in 1..=2 {
-        let tile = source.make_tile(TestWindow::new(TestWindowParams::new(id)));
-        source.add_tile(
-            tile,
-            WorkspaceAddWindowTarget::Auto,
-            super::workspace::AddTileOptions {
-                activate: ActivateWindow::Yes,
-                is_floating: false,
-            },
-        );
-    }
+    let output = test_output();
+    let mut source = workspace_with_tiled(output.clone(), 2);
     let first = source.tiling().node_for_window(&1).unwrap();
     source.tiling_mut().focus_root();
     let root = source.tiling().focus().unwrap();
@@ -3314,31 +3048,7 @@ fn floating_tree_scratchpad_moves_the_whole_root() {
 
 #[test]
 fn mixed_layer_selection_filters_one_global_focus_order() {
-    let output = Output::new(
-        "output".into(),
-        PhysicalProperties {
-            size: Size::from((1280, 720)),
-            subpixel: Subpixel::Unknown,
-            make: String::new(),
-            model: String::new(),
-            serial_number: String::new(),
-        },
-    );
-    output.change_current_state(
-        Some(Mode {
-            size: Size::from((1280, 720)),
-            refresh: 60000,
-        }),
-        None,
-        None,
-        None,
-    );
-    output.user_data().insert_if_missing(|| OutputName {
-        connector: "output".into(),
-        make: None,
-        model: None,
-        serial: None,
-    });
+    let output = test_output();
     let mut workspace = Workspace::new(
         output,
         Clock::with_time(Duration::ZERO),
