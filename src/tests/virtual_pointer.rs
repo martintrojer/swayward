@@ -113,7 +113,7 @@ fn zero_extent_absolute_motion_and_unknown_button_are_safe() {
 }
 
 #[test]
-fn axis_frames_are_delivered_only_when_finished() {
+fn axis_frame_sequence_is_accepted_without_protocol_error() {
     let mut f = Fixture::new();
     f.add_output(1, (800, 600));
     let client = f.add_client();
@@ -134,7 +134,7 @@ fn axis_frames_are_delivered_only_when_finished() {
 }
 
 #[test]
-fn extreme_discrete_axis_value_does_not_panic() {
+fn extreme_discrete_axis_value_keeps_the_connection_live() {
     let mut f = Fixture::new();
     f.add_output(1, (800, 600));
     let client = f.add_client();
@@ -148,7 +148,7 @@ fn extreme_discrete_axis_value_does_not_panic() {
 }
 
 #[test]
-fn disconnect_with_an_unfinished_axis_frame_is_safe() {
+fn disconnect_with_an_unfinished_axis_frame_keeps_the_compositor_live() {
     let mut f = Fixture::new();
     f.add_output(1, (800, 600));
     let client = f.add_client();

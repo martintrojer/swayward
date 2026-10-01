@@ -4,7 +4,9 @@ use std::os::fd::AsFd;
 
 use smithay::reexports::rustix::fs::{ftruncate, memfd_create, MemfdFlags};
 use smithay::reexports::rustix::pipe::pipe;
+use smithay::reexports::wayland_protocols_wlr::gamma_control::v1::client::zwlr_gamma_control_v1::ZwlrGammaControlV1;
 
+use super::client::ClientId;
 use super::Fixture;
 
 fn gamma_fd(len: usize) -> std::os::fd::OwnedFd {
@@ -13,15 +15,20 @@ fn gamma_fd(len: usize) -> std::os::fd::OwnedFd {
     fd
 }
 
+fn gamma_fixture() -> (Fixture, ClientId, ZwlrGammaControlV1) {
+    let mut fixture = Fixture::new();
+    fixture.add_output(1, (320, 240));
+    let client = fixture.add_client();
+    fixture.double_roundtrip(client);
+    let output = fixture.client(client).output("headless-1");
+    let control = fixture.client(client).gamma_control(&output).proxy.clone();
+    fixture.roundtrip(client);
+    (fixture, client, control)
+}
+
 #[test]
 fn unreadable_pipe_fails_instead_of_blocking_the_compositor() {
-    let mut f = Fixture::new();
-    f.add_output(1, (320, 240));
-    let client = f.add_client();
-    f.double_roundtrip(client);
-    let output = f.client(client).output("headless-1");
-    let control = f.client(client).gamma_control(&output).proxy.clone();
-    f.roundtrip(client);
+    let (mut f, client, control) = gamma_fixture();
 
     let (read, _write) = pipe().unwrap();
     control.set_gamma(read.as_fd());

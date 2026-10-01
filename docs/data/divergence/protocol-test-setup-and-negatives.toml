@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/tests/output_management.rs", "src/tests/gamma_control.rs", "src/tests/screencopy.rs", "src/tests/virtual_pointer.rs"]
+what = "deduplicate output-management and gamma-control setup, assert exact protocol interfaces and error codes, verify output-manager test requests do not remove the live output, and name virtual-pointer liveness tests after what they observe."
+why = "Protocol tests should distinguish the expected wire error from any earlier error and should not claim event-delivery coverage when the client harness has no wl_pointer listener."

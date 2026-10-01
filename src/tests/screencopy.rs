@@ -104,6 +104,7 @@ fn wrong_sized_buffer_is_rejected() {
     f.client(client).dispatch_unchecked();
 
     let error = f.client(client).connection.protocol_error().unwrap();
+    assert_eq!(error.object_interface, "zwlr_screencopy_frame_v1");
     assert_eq!(error.code, 1);
 }
 
