@@ -228,4 +228,128 @@ impl<W: LayoutElement> TilingTree<W> {
         self.remove_node(id);
         self.remove_node(child);
     }
+
+    /// Sway's `workspace_squash`, run only by directional moves
+    /// (sway/commands/move.c:137,150,412; sway/tree/workspace.c:1124-1129).
+    /// Unlike `compact_tree` it makes one top-down pass, reinserts a
+    /// squashed pair's grandchildren in reverse because each is inserted at
+    /// the same index, and gives each grandchild its own fraction rather
+    /// than a share of the removed pair's (`container_squash`,
+    /// sway/tree/container.c:1686-1716; `apply_horiz_layout` normalizes the
+    /// fractions, sway/tree/arrange.c).
+    ///
+    /// `fresh` is a node whose fraction sway zeroed, so the next arrange gives
+    /// it the average of its siblings' (`apply_horiz_layout`,
+    /// sway/tree/arrange.c).
+    pub(super) fn squash_for_move(&mut self, fresh: Option<NodeId>) {
+        let mut index = 0;
+        while let Some(child) = self.child_at(self.root, index) {
+            index = index.saturating_add_signed(self.squash_for_move_from(child));
+            index += 1;
+        }
+        let Some((fresh, parent)) =
+            fresh.and_then(|fresh| Some((fresh, self.nodes.get(&fresh)?.parent?)))
+        else {
+            return;
+        };
+        let Some(Node {
+            value: TreeNode::Split {
+                children, percents, ..
+            },
+            ..
+        }) = self.nodes.get_mut(&parent)
+        else {
+            return;
+        };
+        let Some(index) = children.iter().position(|child| *child == fresh) else {
+            return;
+        };
+        if children.len() < 2 {
+            return;
+        }
+        let others: f64 = percents
+            .iter()
+            .enumerate()
+            .filter(|(position, _)| *position != index)
+            .map(|(_, percent)| percent)
+            .sum();
+        let average = others / (children.len() - 1) as f64;
+        if let Some(percent) = percents.get_mut(index) {
+            *percent = average;
+        }
+        let total: f64 = percents.iter().sum();
+        if total > 0. {
+            for percent in percents.iter_mut() {
+                *percent /= total;
+            }
+        }
+    }
+
+    fn squash_for_move_from(&mut self, id: NodeId) -> isize {
+        let Some(len) = self.split_len(id) else {
+            return 0;
+        };
+        let squash = (len == 1)
+            .then(|| self.squashable_child(id))
+            .flatten()
+            .zip(self.nodes.get(&id).and_then(|node| node.parent));
+        let Some((child, parent)) = squash else {
+            let mut index = 0;
+            while let Some(grandchild) = self.child_at(id, index) {
+                index = index.saturating_add_signed(self.squash_for_move_from(grandchild));
+                index += 1;
+            }
+            return 0;
+        };
+        let Some(TreeNode::Split {
+            children: grandchildren,
+            percents: grandchild_percents,
+            ..
+        }) = self.nodes.get(&child).map(|node| &node.value)
+        else {
+            return 0;
+        };
+        let moved: Vec<_> = grandchildren
+            .iter()
+            .copied()
+            .zip(grandchild_percents.iter().copied())
+            .collect();
+        let Some(Node {
+            value: TreeNode::Split {
+                children, percents, ..
+            },
+            ..
+        }) = self.nodes.get_mut(&parent)
+        else {
+            return 0;
+        };
+        let Some(index) = children.iter().position(|candidate| *candidate == id) else {
+            return 0;
+        };
+        children.remove(index);
+        percents.remove(index);
+        // Each grandchild goes in at the same index, so they end up reversed.
+        for (grandchild, percent) in &moved {
+            children.insert(index, *grandchild);
+            percents.insert(index, *percent);
+        }
+        let total: f64 = percents.iter().sum();
+        if total > 0. {
+            for percent in percents.iter_mut() {
+                *percent /= total;
+            }
+        }
+        for (grandchild, _) in &moved {
+            self.nodes
+                .get_mut(grandchild)
+                .expect("invariant: every squashed grandchild is present in the arena")
+                .parent = Some(parent);
+        }
+        if self.focus == Some(id) || self.focus == Some(child) {
+            self.set_focus_id(Some(moved.last().map_or(parent, |(first, _)| *first)));
+        }
+        self.remove_node(id);
+        self.remove_node(child);
+        moved.len() as isize - 1
+    }
 }

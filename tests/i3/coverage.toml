@@ -4340,8 +4340,20 @@ citation = "tests/i3/t/308-focus_wrapping.t; sway/sway/commands/layout.c:18-27"
 [files."309-crash-move-parent.t"]
 assertions = 2
 tap_plan = 2
-pass = 2
-note = "Both `cmp_tree` subtests run, including liveness, workspace-layout, strict shape, and focus assertions."
+pass = 0
+reason = "i3_only_semantics"
+reason_verified = true
+note = "Both `cmp_tree` subtests run. Liveness, the splitv workspace layout and focus on b pass; each subtest fails only its two name checks, because sway's squash leaves c before b. The test's own comment says it is not attached to the result. Random seed 185 step 6 (sway-1.12-random) records the same reversal from pinned sway."
+[[files."309-crash-move-parent.t".skip]]
+n = 1
+desc = "redundant H[V[b c]] is flattened after `move down`"
+reason = "Sway squashes the redundant H/V pair by inserting each grandchild at the same index, so b and c come out reversed: the result is H[a] c b, not i3's H[a] b c."
+citation = "sway/sway/commands/move.c:394-412; sway/sway/tree/container.c:1686-1716"
+[[files."309-crash-move-parent.t".skip]]
+n = 2
+desc = "redundant container made with `split h` is flattened after `move down`"
+reason = "Sway squashes the redundant H/V pair by inserting each grandchild at the same index, so b and c come out reversed: the result is H[a] c b, not i3's H[a] b c."
+citation = "sway/sway/commands/move.c:394-412; sway/sway/tree/container.c:1686-1716"
 
 [files."310-client-message-sticky.t"]
 assertions = 6

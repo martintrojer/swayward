@@ -480,3 +480,46 @@ fn lone_window_same_axis_move_promotes_beside_the_parallel_ancestor() {
     );
     t.check_invariants();
 }
+
+// random seed 185 step 6 (sway-1.12-random): `move left` from
+// V[H[a b] c] wraps the workspace, promotes c, and squashes the redundant
+// V[H] pair. `container_squash` reinserts the grandchildren at one index,
+// reversing them, and keeps each one's own fraction, so c, which arrives
+// with no fraction, takes the average and all three end equal
+// (sway/tree/container.c:1686-1716; `apply_horiz_layout`,
+// sway/tree/arrange.c).
+#[test]
+fn reorienting_move_squashes_like_sway() {
+    let mut t = tree((1200., 800.), 0.);
+    let a = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let b = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    let c = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+    assert!(t.move_direction(c, Direction::Down));
+    assert!(t.move_direction(c, Direction::Left));
+
+    let tree = t.ipc_tree();
+    let IpcNode::Split {
+        layout,
+        ref children,
+        ..
+    } = tree
+    else {
+        panic!("{tree:?}");
+    };
+    assert_eq!(layout, Layout::SplitH, "{tree:?}");
+    let ids: Vec<_> = children
+        .iter()
+        .map(|child| match child {
+            IpcNode::Leaf { id, .. } => Some(*id),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(ids, [Some(c), Some(b), Some(a)], "{tree:?}");
+    let TreeNode::Split { percents, .. } = &t.nodes[&t.root].value else {
+        unreachable!()
+    };
+    for percent in percents {
+        assert!((percent - 1. / 3.).abs() < 1e-9, "{percents:?}");
+    }
+    t.check_invariants();
+}

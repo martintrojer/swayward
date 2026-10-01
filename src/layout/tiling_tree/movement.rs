@@ -322,7 +322,9 @@ impl<W: LayoutElement> TilingTree<W> {
         // squashable H/V pair, so it survives (`container_squash`,
         // sway/tree/container.c:1686-1716).
         self.reap_empty_from(old_parent);
-        self.compact_tree();
+        // The wrap zeroes the moved container's fractions
+        // (sway/commands/move.c:341-342).
+        self.squash_for_move(Some(id));
         self.finish_directional_move(id);
         true
     }
