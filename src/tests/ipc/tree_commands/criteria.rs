@@ -771,3 +771,72 @@ fn criteria_over_floating_group_leaves_survive_group_lifecycle() {
         matched(&mut f);
     }
 }
+
+/// Oracle: state/criteria_order_split_before_child and
+/// state/criteria_order_scratchpad_last. Plain `mark n` moves the mark to
+/// each match in turn, so the target left holding it is the last in match
+/// order. Sway walks parents before children, outputs before the hidden
+/// scratchpad (`sway/sway/criteria.c:500-512`,
+/// `sway/sway/tree/root.c:246-261`).
+#[test]
+fn criteria_commands_apply_to_matches_in_sways_walk_order() {
+    fn marks_of<'a>(tree: &'a Value, app_id: Option<&str>) -> Vec<&'a Value> {
+        let mut found = Vec::new();
+        fn walk<'a>(node: &'a Value, app_id: Option<&str>, found: &mut Vec<&'a Value>) {
+            let is_split = node["type"] == "con" && node["app_id"].is_null();
+            if app_id.map_or(is_split, |app_id| node["app_id"] == app_id) {
+                found.push(&node["marks"]);
+            }
+            for key in ["nodes", "floating_nodes"] {
+                for child in node[key].as_array().into_iter().flatten() {
+                    walk(child, app_id, found);
+                }
+            }
+        }
+        walk(tree, app_id, &mut found);
+        found
+    }
+    let ipc_tree = |f: &mut Fixture| {
+        let swayward = f.swayward();
+        serde_json::to_value(describe_tree(
+            &swayward.layout,
+            &swayward.global_space,
+            &swayward.marks_by_window,
+            &swayward.marks_by_container,
+        ))
+        .unwrap()
+    };
+    let run = |f: &mut Fixture, command: &str| {
+        let outcome = crate::command::execute(f.niri_state(), command);
+        assert!(outcome.iter().all(|o| o.success), "{command}: {outcome:?}");
+    };
+
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    map_test_window(&mut f, client, "fixture-1");
+    run(&mut f, "splitv");
+    map_test_window(&mut f, client, "fixture-2");
+    run(&mut f, "splith");
+    map_test_window(&mut f, client, "fixture-3");
+    run(&mut f, "mark m-child");
+    run(&mut f, "focus parent");
+    run(&mut f, "mark m-parent");
+    run(&mut f, "[con_mark=\"^m-\"] mark n");
+    let tree = ipc_tree(&mut f);
+    assert_eq!(marks_of(&tree, Some("fixture-3")), [&serde_json::json!(["n"])]);
+    assert_eq!(marks_of(&tree, None), [&serde_json::json!([])]);
+
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    map_test_window(&mut f, client, "fixture-1");
+    run(&mut f, "mark m-a");
+    run(&mut f, "move scratchpad");
+    map_test_window(&mut f, client, "fixture-2");
+    run(&mut f, "mark m-b");
+    run(&mut f, "[con_mark=\"^m-\"] mark n");
+    let tree = ipc_tree(&mut f);
+    assert_eq!(marks_of(&tree, Some("fixture-1")), [&serde_json::json!(["n"])]);
+    assert_eq!(marks_of(&tree, Some("fixture-2")), [&serde_json::json!([])]);
+}

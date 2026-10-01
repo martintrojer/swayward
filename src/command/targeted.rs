@@ -637,116 +637,175 @@ impl WindowSnapshot {
     }
 }
 
-pub(super) fn matching_targets(state: &State, criteria: &criteria::Criteria) -> Vec<CommandTarget> {
-    let workspace_names = state
-        .swayward
-        .layout
+/// One criteria candidate, in the order sway's walk visits it.
+enum Candidate {
+    Window(WindowSnapshot),
+    /// A container node, with the target a match on it selects.
+    Container(CommandTarget, crate::layout::tiling_tree::NodeId),
+}
+
+/// Every window and container a criteria command can match, in sway's
+/// `root_for_each_container` order: per output and workspace, the tiling
+/// tree and then the floating containers, each depth first with parents
+/// before children, then the hidden scratchpad
+/// (`sway/sway/tree/root.c:246-261`, `sway/sway/tree/workspace.c:836-850`).
+fn collect_candidates(state: &State) -> Vec<Candidate> {
+    use std::collections::HashMap;
+
+    use crate::layout::tiling_tree::{IpcNode, IpcNodeKind};
+
+    let layout = &state.swayward.layout;
+    let workspace_names = layout
         .workspaces()
         .map(|(_, _, ws)| (ws.id(), ws.sway_name()))
-        .collect::<std::collections::HashMap<_, _>>();
+        .collect::<HashMap<_, _>>();
+    let mut order = Vec::new();
+    let mut snapshots = HashMap::new();
+    layout.with_windows(|mapped, _, workspace_id, _| {
+        let workspace = workspace_id
+            .and_then(|id| workspace_names.get(&id).cloned())
+            .flatten();
+        order.push(mapped.id());
+        snapshots.insert(
+            mapped.id(),
+            WindowSnapshot::new(mapped, workspace, mapped.is_floating()),
+        );
+    });
+    let mapped_by_window = layout
+        .windows()
+        .map(|(_, mapped)| (&mapped.window, mapped))
+        .collect::<HashMap<_, _>>();
+
+    let mut candidates = Vec::new();
+    for (_, _, workspace) in layout.workspaces() {
+        let push_tree = |tree: IpcNode<_>,
+                         floating: bool,
+                         candidates: &mut Vec<Candidate>,
+                         snapshots: &mut HashMap<_, WindowSnapshot>| {
+            for (node, kind) in tree.nodes() {
+                if !matches!(kind, IpcNodeKind::Leaf) {
+                    let target = CommandTarget::Container(workspace.id(), node);
+                    candidates.push(Candidate::Container(target, node));
+                    continue;
+                }
+                let Some(mapped) = tree
+                    .window_for_node(node)
+                    .and_then(|window| mapped_by_window.get(window))
+                else {
+                    warn!("criteria: leaf {node:?} has no mapped window");
+                    continue;
+                };
+                // Floating-group leaves are not in `with_windows`.
+                let snapshot = snapshots.remove(&mapped.id()).unwrap_or_else(|| {
+                    WindowSnapshot::new(mapped, workspace.sway_name(), floating)
+                });
+                candidates.push(Candidate::Window(snapshot));
+            }
+        };
+        push_tree(
+            workspace.ipc_tiling_tree(),
+            false,
+            &mut candidates,
+            &mut snapshots,
+        );
+        // GET_TREE's floating_nodes order: plain floating windows and
+        // floating groups, reversed (src/ipc/tree/workspaces.rs).
+        let plain_floating = workspace
+            .tiles_with_ipc_layouts()
+            .map(|(tile, _)| tile.window())
+            .filter(|mapped| workspace.is_floating_for_ipc(&mapped.window))
+            .map(|mapped| mapped.id())
+            .collect::<Vec<_>>();
+        for id in plain_floating.into_iter().rev() {
+            if let Some(snapshot) = snapshots.remove(&id) {
+                candidates.push(Candidate::Window(snapshot));
+            }
+        }
+        let groups = workspace.ipc_floating_trees().collect::<Vec<_>>();
+        for (_, tree, _) in groups.into_iter().rev() {
+            push_tree(tree, true, &mut candidates, &mut snapshots);
+        }
+    }
+    // A hidden scratchpad group has no workspace, so a match on one of its
+    // nodes targets the group through one of its windows; the scratchpad
+    // commands act on the whole group from any of them.
+    for (node, window) in layout.scratchpad_tree_nodes() {
+        if let Some(mapped) = mapped_by_window.get(window) {
+            candidates.push(Candidate::Container(
+                CommandTarget::Window(mapped.id()),
+                node,
+            ));
+        }
+    }
+    // Hidden scratchpad windows, then anything the walk did not reach (a
+    // window under an interactive move), in `with_windows` order.
+    let hidden = layout
+        .scratchpad_windows()
+        .map(|mapped| mapped.id())
+        .collect::<Vec<_>>();
+    let (hidden, rest): (Vec<_>, Vec<_>) = order.into_iter().partition(|id| hidden.contains(id));
+    for id in hidden.into_iter().chain(rest) {
+        if let Some(snapshot) = snapshots.remove(&id) {
+            candidates.push(Candidate::Window(snapshot));
+        }
+    }
+    candidates
+}
+
+/// The candidates `criteria` selects, in walk order, each target once.
+///
+/// Sway applies a criteria command to its matches in this order
+/// (`sway/sway/criteria.c:500-512`), so a command whose effect depends on
+/// order, such as `mark` moving a mark between targets, ends as sway does.
+pub(super) fn matching_targets(state: &State, criteria: &criteria::Criteria) -> Vec<CommandTarget> {
+    let candidates = collect_candidates(state);
+    let windows = || {
+        candidates.iter().filter_map(|candidate| match candidate {
+            Candidate::Window(snapshot) => Some(snapshot),
+            Candidate::Container(..) => None,
+        })
+    };
     let focused_id = focused_id(state);
-    let mut snapshots = Vec::new();
-    state
-        .swayward
-        .layout
-        .with_windows(|mapped, _, workspace_id, _| {
-            let workspace = workspace_id
-                .and_then(|id| workspace_names.get(&id).cloned())
-                .flatten();
-            snapshots.push(WindowSnapshot::new(mapped, workspace, mapped.is_floating()));
-        });
-    let focused = snapshots
-        .iter()
-        .find(|snapshot| Some(snapshot.id) == focused_id);
-    let focused_info = focused
+    let focused_info = windows()
+        .find(|snapshot| Some(snapshot.id) == focused_id)
         .map(|snapshot| snapshot.info(state))
         .unwrap_or_default();
-    let mut targets = snapshots
-        .iter()
-        .filter(|snapshot| criteria.matches(&snapshot.info(state), &focused_info))
-        .map(|snapshot| CommandTarget::Window(snapshot.id))
-        .collect::<Vec<_>>();
     if let Some(order) = criteria.urgent() {
-        targets.sort_by_key(|target| {
-            let CommandTarget::Window(id) = target else {
-                return None;
-            };
-            snapshots
-                .iter()
-                .find(|snapshot| snapshot.id == *id)
-                .and_then(|snapshot| snapshot.urgent_since)
-        });
+        // Sway stable-sorts the urgent views by urgency time and takes the
+        // oldest or the latest (`sway/sway/criteria.c:434-447`).
+        let mut urgent = windows()
+            .filter(|snapshot| criteria.matches(&snapshot.info(state), &focused_info))
+            .collect::<Vec<_>>();
+        urgent.sort_by_key(|snapshot| snapshot.urgent_since);
         if matches!(order, criteria::Urgent::Latest) {
-            targets.reverse();
+            urgent.reverse();
         }
-        targets.truncate(1);
+        return urgent
+            .first()
+            .map(|snapshot| CommandTarget::Window(snapshot.id))
+            .into_iter()
+            .collect();
     }
-    for (_, _, workspace) in state.swayward.layout.workspaces() {
-        let trees = std::iter::once((workspace.ipc_tiling_tree(), false)).chain(
-            workspace
-                .ipc_floating_trees()
-                .map(|(_, tree, _)| (tree, true)),
-        );
-        for (tree, floating) in trees {
-            for (node, value) in tree.nodes() {
-                if matches!(value, crate::layout::tiling_tree::IpcNodeKind::Leaf) {
-                    if floating {
-                        // The snapshot and the window list come from the same
-                        // workspace borrow, so both lookups succeed. A leaf that
-                        // did not resolve would be unmatchable, never a reason
-                        // to take the compositor down on a criteria command.
-                        let Some(mapped) = tree.window_for_node(node).and_then(|window| {
-                            workspace.windows().find(|mapped| mapped.window == *window)
-                        }) else {
-                            warn!("criteria: floating leaf {node:?} has no mapped window");
-                            continue;
-                        };
-                        let snapshot = WindowSnapshot::new(mapped, workspace.sway_name(), true);
-                        if criteria.matches(&snapshot.info(state), &focused_info)
-                            && !targets.contains(&CommandTarget::Window(mapped.id()))
-                        {
-                            targets.push(CommandTarget::Window(mapped.id()));
-                        }
-                    }
-                } else {
-                    let marks = state
-                        .swayward
-                        .marks_by_container
-                        .get(&node)
-                        .map(Vec::as_slice)
-                        .unwrap_or(&[]);
-                    if criteria
-                        .matches_container(crate::ipc::tree::container_id(node) as u64, marks)
-                    {
-                        targets.push(CommandTarget::Container(workspace.id(), node));
-                    }
-                }
+    let mut targets = Vec::new();
+    for candidate in &candidates {
+        let target = match candidate {
+            Candidate::Window(snapshot) => criteria
+                .matches(&snapshot.info(state), &focused_info)
+                .then_some(CommandTarget::Window(snapshot.id)),
+            Candidate::Container(target, node) => {
+                let marks = state
+                    .swayward
+                    .marks_by_container
+                    .get(node)
+                    .map(Vec::as_slice)
+                    .unwrap_or(&[]);
+                criteria
+                    .matches_container(crate::ipc::tree::container_id(*node) as u64, marks)
+                    .then_some(*target)
             }
-        }
-    }
-    // A hidden scratchpad group's containers stay matchable, as in sway's
-    // criteria walk (`sway/sway/tree/root.c:250-257`). The group has no
-    // workspace, so a match targets the group through one of its windows;
-    // the scratchpad commands act on the whole group from any of them.
-    for (node, window) in state.swayward.layout.scratchpad_tree_nodes() {
-        let marks = state
-            .swayward
-            .marks_by_container
-            .get(&node)
-            .map(Vec::as_slice)
-            .unwrap_or(&[]);
-        if criteria.matches_container(crate::ipc::tree::container_id(node) as u64, marks) {
-            if let Some(mapped) = state
-                .swayward
-                .layout
-                .windows()
-                .find_map(|(_, mapped)| (mapped.window == *window).then(|| mapped.id()))
-            {
-                let target = CommandTarget::Window(mapped);
-                if !targets.contains(&target) {
-                    targets.push(target);
-                }
-            }
+        };
+        if let Some(target) = target.filter(|target| !targets.contains(target)) {
+            targets.push(target);
         }
     }
     targets
