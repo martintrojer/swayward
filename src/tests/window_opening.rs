@@ -277,19 +277,6 @@ impl fmt::Display for SetParent {
     }
 }
 
-#[derive(Clone, Copy)]
-enum DefaultSize {
-    WindowChooses,
-}
-
-impl fmt::Display for DefaultSize {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            DefaultSize::WindowChooses => write!(f, "U"),
-        }
-    }
-}
-
 #[test]
 fn assigned_window_on_another_output_does_not_steal_focus() {
     let config = Config::parse_mem(
@@ -862,7 +849,6 @@ fn target_size() {
     // * open-fullscreen
     // * open-maximized
     // * open-floating
-    // * window-chosen width and height
     // * border
 
     let open_fullscreen = [None, Some("false"), Some("true")];
@@ -876,44 +862,46 @@ fn target_size() {
     ];
     let open_maximized = [None, Some("true")];
     let open_floating = [None, Some("true")];
-    let default_column_width = [None, Some(DefaultSize::WindowChooses)];
-    let default_window_height = [None, Some(DefaultSize::WindowChooses)];
     let border = [false, true];
 
     let mut powerset = Vec::new();
-    for fs in open_fullscreen {
-        for wfs in want_fullscreen {
-            for om in open_maximized {
-                for of in open_floating {
-                    for dw in default_column_width {
-                        for dh in default_window_height {
-                            for b in border {
-                                powerset.push((fs, wfs, om, of, dw, dh, b));
-                            }
-                        }
+    for open_fullscreen in open_fullscreen {
+        for want_fullscreen in want_fullscreen {
+            for open_maximized in open_maximized {
+                for open_floating in open_floating {
+                    for border in border {
+                        powerset.push(TargetSizeCase {
+                            open_fullscreen,
+                            want_fullscreen,
+                            open_maximized,
+                            open_floating,
+                            border,
+                        });
                     }
                 }
             }
         }
     }
 
-    powerset
-        .into_par_iter()
-        .for_each(|(fs, wfs, om, of, dw, dh, b)| {
-            check_target_size(fs, wfs, om, of, dw, dh, b);
-        });
+    powerset.into_par_iter().for_each(check_target_size);
 }
 
-#[allow(clippy::too_many_arguments)]
-fn check_target_size(
-    open_fullscreen: Option<&str>,
+struct TargetSizeCase {
+    open_fullscreen: Option<&'static str>,
     want_fullscreen: WantFullscreen,
-    open_maximized: Option<&str>,
-    open_floating: Option<&str>,
-    default_width: Option<DefaultSize>,
-    default_height: Option<DefaultSize>,
+    open_maximized: Option<&'static str>,
+    open_floating: Option<&'static str>,
     border: bool,
-) {
+}
+
+fn check_target_size(case: TargetSizeCase) {
+    let TargetSizeCase {
+        open_fullscreen,
+        want_fullscreen,
+        open_maximized,
+        open_floating,
+        border,
+    } = case;
     let mut snapshot_desc = Vec::new();
     let mut snapshot_suffix = Vec::new();
 
@@ -942,24 +930,6 @@ window-rule {
 
         let x = if x == "true" { "T" } else { "F" };
         snapshot_suffix.push(format!("of{x}"));
-    }
-
-    if let Some(x) = default_width {
-        let value = match x {
-            DefaultSize::WindowChooses => String::new(),
-        };
-        writeln!(config, "    default-column-width {{ {value} }}").unwrap();
-
-        snapshot_suffix.push(format!("dw{x}"));
-    }
-
-    if let Some(x) = default_height {
-        let value = match x {
-            DefaultSize::WindowChooses => String::new(),
-        };
-        writeln!(config, "    default-window-height {{ {value} }}").unwrap();
-
-        snapshot_suffix.push(format!("dh{x}"));
     }
 
     if border {

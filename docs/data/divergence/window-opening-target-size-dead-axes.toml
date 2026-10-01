@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/tests/window_opening.rs", "src/tests/snapshots/"]
+what = "remove the inert default-column-width and default-window-height axes from the target-size matrix, replace seven positional arguments with TargetSizeCase, and delete the 360 duplicate dwU/dhU snapshots."
+why = "Swayward removed niri's fixed and proportional column-size variants, leaving one WindowChooses variant that emitted empty configuration blocks and produced snapshots identical to the cases without those axes."
