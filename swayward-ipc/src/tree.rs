@@ -250,30 +250,40 @@ pub struct Output {
 mod tests {
     use super::*;
 
-    const SCENARIOS: &[&str] = &[
-        "empty",
-        "empty_named",
-        "fullscreen",
-        "marked",
-        "named_workspace",
-        "nested_h_in_v",
-        "numbered_sparse",
-        "one_floating",
-        "two_floating",
-        "three_floating_before_raise",
-        "three_floating_after_raise",
-        "one_window",
-        "stacked",
-        "tabbed",
-        "two_split_h",
-        "two_split_v",
-        "two_workspaces",
-    ];
+    fn fixtures_dir() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../.cache/sway-ipc-oracle/sway-ipc/fixtures")
+    }
+
+    /// Every scenario that has a captured `<scenario>.tree.json`. The pinned
+    /// oracle has 55; requiring a floor makes an empty or partial cache fail
+    /// instead of passing vacuously.
+    fn scenarios() -> Vec<String> {
+        let dir = fixtures_dir();
+        let mut scenarios = std::fs::read_dir(&dir)
+            .unwrap_or_else(|error| {
+                panic!(
+                    "cannot list sway IPC oracle fixtures in {}: {error}; run ./contrib/fetch-oracle",
+                    dir.display()
+                )
+            })
+            .filter_map(|entry| {
+                let name = entry.ok()?.file_name().into_string().ok()?;
+                name.strip_suffix(".tree.json").map(str::to_owned)
+            })
+            .collect::<Vec<_>>();
+        scenarios.sort();
+        assert!(
+            scenarios.len() >= 50,
+            "only {} tree fixtures in {}; run ./contrib/fetch-oracle",
+            scenarios.len(),
+            dir.display()
+        );
+        scenarios
+    }
 
     fn fixture(scenario: &str, kind: &str) -> String {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../.cache/sway-ipc-oracle/sway-ipc/fixtures")
-            .join(format!("{scenario}.{kind}.json"));
+        let path = fixtures_dir().join(format!("{scenario}.{kind}.json"));
         std::fs::read_to_string(&path).unwrap_or_else(|error| {
             panic!(
                 "cannot read sway IPC oracle fixture {}: {error}; run ./contrib/fetch-oracle",
@@ -298,14 +308,67 @@ mod tests {
 
     #[test]
     fn round_trips_all_real_sway_fixtures_without_schema_drift() {
-        for &scenario in SCENARIOS {
+        for scenario in scenarios() {
+            let scenario = scenario.as_str();
             assert_round_trip::<Node>(scenario, "tree", &fixture(scenario, "tree"));
             assert_round_trip::<Vec<Workspace>>(
                 scenario,
                 "workspaces",
                 &fixture(scenario, "workspaces"),
             );
-            assert_round_trip::<Vec<Output>>(scenario, "outputs", &fixture(scenario, "outputs"));
+            assert_outputs_round_trip(scenario, &fixture(scenario, "outputs"));
+            assert_round_trip::<crate::Version>(scenario, "version", &fixture(scenario, "version"));
+            let commands: Vec<serde_json::Value> =
+                serde_json::from_str(&fixture(scenario, "commands")).unwrap();
+            for command in commands {
+                assert_round_trip::<Vec<crate::CommandOutcome>>(
+                    scenario,
+                    "commands",
+                    &command["reply"].to_string(),
+                );
+            }
+        }
+    }
+
+    /// The fields sway serialises for a disabled output: the common output
+    /// fields plus `percent: null` and an empty rect, without the
+    /// active-output block (`ipc_json_describe_disabled_output`,
+    /// sway/sway/ipc-json.c:415-442). swayward builds that entry as raw JSON,
+    /// so the typed [`Output`] covers only active outputs.
+    const DISABLED_OUTPUT_KEYS: &[&str] = &[
+        "active",
+        "current_workspace",
+        "dpms",
+        "features",
+        "make",
+        "model",
+        "modes",
+        "name",
+        "non_desktop",
+        "percent",
+        "power",
+        "primary",
+        "rect",
+        "serial",
+        "type",
+    ];
+
+    fn assert_outputs_round_trip(scenario: &str, json: &str) {
+        let outputs: Vec<serde_json::Value> = serde_json::from_str(json).unwrap();
+        for output in outputs {
+            if output["active"] == false {
+                let mut keys = output
+                    .as_object()
+                    .map(|object| object.keys().map(String::as_str).collect::<Vec<_>>())
+                    .unwrap_or_default();
+                keys.sort_unstable();
+                assert_eq!(
+                    keys, DISABLED_OUTPUT_KEYS,
+                    "disabled output shape in {scenario}.outputs.json"
+                );
+            } else {
+                assert_round_trip::<Output>(scenario, "outputs", &output.to_string());
+            }
         }
     }
 }
