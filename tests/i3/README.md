@@ -178,19 +178,16 @@ on X11 configure requests remain unproven.
 
 ### Per-file harness branch audit
 
-An audit at commit `current` found 32 textual references to
-`SWAYWARD_I3_TEST` in the current harness. The count fell from 69 when the
-broad assertion-name, assertion-number, and subtest interceptors were deleted.
-Those branches emitted TAP skips before comparing values; the remaining branches
-select file-level inability-to-start handling, portable input substitutions, or
-the single exact i3-error-wording assertion documented in the coverage ledger.
-A test asserts the total against the harness, so a new branch remains a
-deliberate, reviewable change.
+Per-file adaptations are declared on each `coverage.toml` file entry. The
+runner passes those flags and assertion-number skips to the Perl harness; the
+harness contains no test filenames and does not key skips on assertion prose.
+This keeps the sway citation, affected assertion number and adaptation in the
+same reviewed data row.
 
 | Category | References | Count | Audit result |
 | --- | --- | ---: | --- |
 | Portability substitution | `194` initial-floating path and four size fields; `531` fullscreen request; `295` activated state; `240` activation event; `287` client rectangle; `153` floating client geometry | 10 | Each branch drives a native Wayland operation or observes its corresponding native state while preserving the tested behavior. The corresponding coverage rows cite sway's xdg-shell, activation, focus, and geometry behavior. |
-| Cited skip | `159`/`196`/`235`/`262`/`540` skip dispatch and reason selection; assertion skips for `193`, `260`, `294`, `287`, `228`, `518`, `194`, `541`, `319`, `133`, `132`, `166`, `551`, `164`, `285`, and `202` | 18 | Each branch marks an assertion or file that cannot hold against sway or the Wayland harness. Each file remains outside the derived green set; its coverage row gives the source citation and boundary. The five-file skip-all dispatch and its two-way reason selection count as two references. |
+| Cited skip | `159`/`196`/`235`/`262`/`540` skip dispatch and reason selection; assertion skips for `193`, `260`, `294`, `287`, `228`, `518`, `194`, `541`, `319`, `133`, `132`, `166`, `551`, `164`, and `285` | 17 | Each branch marks an assertion or file that cannot hold against sway or the Wayland harness. Each file remains outside the derived green set; its coverage row gives the source citation and boundary. The five-file skip-all dispatch and its two-way reason selection count as two references. |
 | Setup or lifecycle adaptation | `298` removes i3's unsupported `ipc_kill_timeout 500` test directive; `202` finds sway's nested scratchpad workspace; `205` filters sway's extra client-driven title event from i3's two-event assertion; `265` filters sway's extra empty pre-clear mark event from i3's one-event assertion; `289` preserves shutdown subscriptions and requests in-process exit; `553` maps transient parents and isolates i3's unsupported `all` policy | 6 | Each branch preserves the unchanged test's intended assertion while adapting a cited sway lifecycle or protocol difference. |
 | Weakens the oracle | `201`; both `238` checks; `509`; `307`; `510`; `231`; `245`; `320`; `513`; `120`; `169`; `512`; `550-split-redundant-containers`; `302`; and both `527` checks | 17 | Fifteen files containing 78 TAP skips were listed as passing in full. This masked the cited incompatibilities as false greens. The audit removed all fifteen from the old `passing.txt` manifest and deleted the duplicate, unreachable `509` branch. |
 
@@ -613,7 +610,7 @@ it cannot claim a file we have already vendored or omit one we have not. The
 prose audit this replaced had no such check and had drifted by five files
 before anyone noticed.
 
-The **current green ceiling is 107 files**: the 99 green in `coverage.toml` plus
+The **current green ceiling is 108 files**: the 100 green in `coverage.toml` plus
 8 vendored files whose only obstacles are implementation or adapter gaps.
 A file carrying a documented skip can never join them, because a documented
 skip records that the assertion is wrong about sway and is permanent; a file

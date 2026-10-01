@@ -68,6 +68,7 @@ pass = 1
 note = "Switching from a workspace with a window to a fresh workspace changes keyboard focus."
 
 [files."005-floating.t"]
+adapt = ["initial_floating_rect", "client_geometry"]
 assertions = 13
 tap_plan = 13
 pass = 9
@@ -1016,6 +1017,7 @@ reason = "Sway rejects mark when no container is focused and leaves the existing
 citation = "sway/sway/commands/mark.c:20-23"
 
 [files."133-size-hints.t"]
+adapt = ["drop_before_map_skip"]
 assertions = 16
 tap_plan = 16
 pass = 0
@@ -1479,6 +1481,8 @@ reason_verified = true
 note = "The liveness assertion passes, but obsolete `mode toggle` is rejected, so the file does not exercise toggling the content-level selection. See `126-regress-close.t`; a temporary `floating toggle` diagnostic passes."
 
 [files."153-floating-originalsize.t"]
+citation = "sway/sway/desktop/xdg_shell.c:481-482; sway/sway/tree/container.c:847-862"
+adapt = ["conditional_client_geometry"]
 plan_unknown = true
 assertions = 7
 tap_plan = "none"
@@ -1530,6 +1534,7 @@ skip = [
 ]
 
 [files."159-socketpaths.t"]
+adapt = ["skip_all_process"]
 source_assertions = 7
 assertions = 0
 tap_plan = 0
@@ -1581,6 +1586,7 @@ reason = "The geometry assertion depends on the preceding `_NET_WM_WINDOW_TYPE_D
 citation = "tests/i3/t/162-regress-dock-urgent.t:35-51; sway/sway/criteria.c:123-131,415-417; sway/sway/desktop/layer_shell.c:409-470"
 
 [files."164-kill-win-vs-client.t"]
+adapt = ["keep_client"]
 assertions = 12
 tap_plan = 12
 pass = 11
@@ -2044,6 +2050,7 @@ pass = 1
 note = "The unchanged file passes, but it compares only descriptor counts after filtering standard descriptors and each `ls` process's `/proc/.../fd` directory. A deliberate non-CLOEXEC `/dev/null` descriptor did not fail it because the clean shell also had one residual descriptor. Native coverage instead rejects any inherited socket descriptor and failed when the IPC listener's CLOEXEC flag was deliberat"
 
 [files."181-regress-float-border.t"]
+adapt = ["initial_floating_rect", "client_geometry"]
 assertions = 6
 tap_plan = 6
 pass = 4
@@ -2264,6 +2271,7 @@ reason = "The assertion depends on state after an in-place compositor restart. T
 citation = "tests/i3/t/188-regress-focus-restart.t:35-44; src/tests/i3_conformance.rs:871-891; src/tests/fixture.rs:15-50"
 
 [files."189-floating-constraints.t"]
+adapt = ["initial_floating_rect", "client_geometry"]
 plan_unknown = true
 assertions = 28
 tap_plan = "none"
@@ -2517,6 +2525,7 @@ reason = "The assertion hard-codes i3's product version. Sway's GET_VERSION repl
 citation = "sway/sway/ipc-json.c:225-238"
 
 [files."194-regress-floating-size.t"]
+adapt = ["initial_floating_rect"]
 assertions = 15
 tap_plan = 15
 pass = 5
@@ -2566,6 +2575,7 @@ reason = "The native adapter requests 150px of xdg-shell content; sway's IPC rec
 citation = "sway/sway/desktop/xdg_shell.c:313-334; sway/sway/tree/container.c:1032-1052"
 
 [files."196-randr-output-names.t"]
+adapt = ["skip_all_config_check"]
 source_assertions = 1
 assertions = 0
 tap_plan = 0
@@ -2656,6 +2666,7 @@ reason = "The assertion depends on an X11 WM_HINTS urgency mutation or _NET_WM_S
 citation = "tests/i3/t/200-urgency-timer.t:34-41; sway/sway/desktop/xwayland.c:756-773"
 
 [files."201-config-parser.t"]
+adapt = ["skip_all_parser_trace"]
 source_assertions = 32
 assertions = 0
 tap_plan = 0
@@ -2696,6 +2707,8 @@ pass = 1
 note = "Moving the last window of an inactive workspace to scratchpad does not crash."
 
 [files."205-ipc-windows.t"]
+citation = "sway/sway/tree/view.c:896-903; sway/sway/input/seat.c:1189-1198"
+adapt = ["drop_title_event"]
 assertions = 3
 tap_plan = 3
 pass = 3
@@ -2854,6 +2867,7 @@ pass = 3
 note = "The adapter's `Window::name` setter now calls the real Wayland `xdg_toplevel.set_title` request. The unchanged test receives one `window::title` event and its container carries the new title, matching sway's `title` event source (`sway/tree/view.c:1138`) and the captured `window.title.json` payload shape."
 
 [files."221-floating-type-hints.t"]
+adapt = ["drop_before_map_ignore"]
 assertions = 8
 tap_plan = 8
 pass = 0
@@ -3090,6 +3104,7 @@ pass = 2
 note = "The translator maps X11 `class` to Wayland `app_id` and preserves `kill` and `move scratchpad` as one-shot map-time sway commands. Both focus-preservation assertions run and pass: hiding or closing the newly mapped matching window leaves the prior window focused. Sway likewise executes every matching `for_window` command after inserting the view but before deciding whether to focus it (`sway/tree/"
 
 [files."235-check-config-no-x.t"]
+adapt = ["skip_all_config_check"]
 source_assertions = 8
 assertions = 0
 tap_plan = 0
@@ -3181,6 +3196,8 @@ reason = "Sway's binding event object has no `mode` member."
 citation = "sway/sway/ipc-server.c:394-476"
 
 [files."240-focus-on-window-activation.t"]
+citation = "sway/sway/commands/focus_on_window_activation.c:9-25"
+adapt = ["activation_event"]
 assertions = 15
 tap_plan = 15
 pass = 15
@@ -3367,6 +3384,7 @@ pass = 4
 note = "Combined app-id with focused con-id or mark criteria leave non-matches alive and kill exact matches. Sway resolves `__focused__` to the focused container's serialized node id (`sway/criteria.c:184-188,658-668`); swayward now selects the public leaf ID rather than its private tiling-tree ID. Expected non-match failures are allow-listed by exact command."
 
 [files."262-config-validation.t"]
+adapt = ["skip_all_config_check"]
 source_assertions = 2
 assertions = 0
 tap_plan = 0
@@ -3472,6 +3490,8 @@ reason = "The assertion targets an X11 dock/dockarea object. Sway command criter
 citation = "sway/sway/criteria.c:483-521"
 
 [files."265-ipc-mark.t"]
+citation = "sway/sway/tree/container.c:1639-1679"
+adapt = ["drop_first_mark_event"]
 assertions = 2
 tap_plan = 2
 pass = 2
@@ -3815,6 +3835,7 @@ pass = 1
 note = "The unchanged file reaches `1..1` and the wheel binding switches to workspace `special` without a rejected command. `--whole-window` maps to `mouse-regions=\"titlebar+border+contents\"`, and the XTEST adapter sends a real wheel-axis event after moving the pointer to `(50,50)`. The headless fixture has a workspace background rather than an X11 root window; sway applies an all-region mouse binding on"
 
 [files."287-edge-borders.t"]
+adapt = ["window_rect"]
 assertions = 31
 tap_plan = 31
 pass = 29
@@ -3833,6 +3854,8 @@ reason = "i3 uses -1 as sentinel metadata on its internal container. Sway serial
 citation = "sway/sway/ipc-json.c:746-751"
 
 [files."289-ipc-shutdown-event.t"]
+citation = "sway/sway/ipc-server.c:723-729"
+adapt = ["shutdown_in_process"]
 assertions = 4
 tap_plan = 4
 pass = 0
@@ -3971,6 +3994,8 @@ citation = "sway/sway/commands/swap.c:22-31,55-58"
 note = "The fresh unchanged run emits no rejected-command diagnostic and reports exactly 53 passes and eight explicit TAP skips. Assertions 46–53 use `swap ... id`, whose sway implementation targets only Xwayland window IDs (`sway/sway/commands/swap.c:22-31,55-58`); native Wayland windows have no such identity. The portable `con_id` and `mark` forms remain supported."
 
 [files."295-net-wm-state-focused.t"]
+citation = "sway/sway/input/seat.c:1072-1078"
+adapt = ["activated_state"]
 assertions = 5
 tap_plan = 5
 pass = 5
@@ -3998,6 +4023,7 @@ reason_verified = true
 note = "`launch_with_config('-default')` uses the fixture's minimal default config. It does not translate i3's 99-line `i3-test.config`, whose obsolete and i3-only bound commands would fail swayward's eager validation. The unchanged file reaches `1..14` with real pointer motion and wheel-axis input and no rejected commands. Assertions 1–4 and 7 show that wheel events over the title strip do not select the"
 
 [files."298-ipc-misbehaving-connection.t"]
+adapt = ["strip_kill_timeout"]
 assertions = 2
 tap_plan = 2
 pass = 1
@@ -4436,6 +4462,7 @@ reason = "Sway explicitly requires fullscreen_mode == FULLSCREEN_NONE before ent
 citation = "/var/home/martintrojer/hacking/sway/sway/input/seatop_default.c:490-500"
 
 [files."316-transient-for-loop.t"]
+adapt = ["transient_loop"]
 assertions = 1
 tap_plan = 1
 pass = 0
@@ -4562,6 +4589,7 @@ reason = "Sway rejects floating-state changes on a hidden scratchpad container."
 citation = "sway/sway/commands/floating.c:35-38"
 
 [files."322-match-error-crash.t"]
+adapt = ["skip_all_window_type"]
 source_assertions = 2
 assertions = 0
 tap_plan = 0
@@ -5181,6 +5209,8 @@ pass = 1
 note = "Moving the only occupied workspace onto the adjacent output removes the empty source workspace without crashing. A temporary mutation replacing the move with `nop` makes the assertion fail, proving the liveness/state check is not an accidental no-op pass."
 
 [files."531-fullscreen-on-given-output.t"]
+citation = "sway/sway/desktop/xdg_shell.c:475-482"
+adapt = ["fullscreen_output"]
 assertions = 4
 tap_plan = 4
 pass = 4
@@ -5189,6 +5219,8 @@ reason_verified = true
 note = "For this file's exact `before_map => fullscreen` callback, the adapter sends a real `xdg_toplevel.set_fullscreen(output)` request before the first surface commit, choosing `fake-0` or `fake-1` from the supplied full-output rectangle. Both windows span the requested real output and retain `fullscreen_mode: 1`. This is the native protocol path sway consumes at map time (`sway/desktop/xdg_shell.c:475"
 
 [files."534-dont-warp.t"]
+citation = "sway/sway/input/seat.c:1526-1547"
+adapt = ["no_pointer_warp"]
 assertions = 2
 tap_plan = 2
 pass = 0
@@ -5395,6 +5427,7 @@ pass = 10
 note = "`focus_wrapping no` disables local wrap-candidate recording in both horizontal and vertical trees. Repeated directional focus at either edge leaves the same window focused, matching sway's `WRAP_NO` candidate gate (`sway/commands/focus.c:178-191`)."
 
 [files."540-sigterm-cleanup.t"]
+adapt = ["skip_all_process"]
 source_assertions = 2
 assertions = 0
 tap_plan = 0
@@ -5887,6 +5920,7 @@ citation = "sway/sway/commands/focus.c:310-352"
 note = "Assertions 1, 10, 20, and 31 are direct setup checks and pass. Assertions 5, 9, 14, and 18 are rejected-command no-change false positives: focus happens to remain on the expected output during an intended cycle. The other 33 cycle assertions fail. Sway joins all arguments into one identifier, accepts only one output name or identifier or one direction, and rejects `next`, `nonprimary`, and output"
 
 [files."545-i3-registration.t"]
+adapt = ["skip_all_x11_selection"]
 source_assertions = 1
 assertions = 0
 tap_plan = 0
@@ -5896,6 +5930,7 @@ note = "Fresh measurement emits a skip-all plan before opening X11. The assertio
 file_skip = { reason = "The harness emits a file-level skip because native Wayland has no X11 WM_S0 selection-owner request.", citation = "tests/i3/t/545-i3-registration.t; sway/sway/server.c:191-208" }
 
 [files."546-empty-bindcommand.t"]
+adapt = ["skip_all_empty_binding"]
 source_assertions = 1
 assertions = 0
 tap_plan = 0
@@ -5943,6 +5978,7 @@ reason = "For a singleton H/V parent, sway changes the existing parent or worksp
 citation = "sway/sway/tree/container.c:1565-1585"
 
 [files."551-net-wm-state-maximized.t"]
+adapt = ["maximized_state"]
 assertions = 35
 tap_plan = 35
 pass = 3

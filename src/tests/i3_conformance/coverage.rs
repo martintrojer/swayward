@@ -9,7 +9,6 @@
 const COVERAGE: &str = include_str!("../../../tests/i3/coverage.toml");
 const COVERAGE_README: &str = include_str!("../../../tests/i3/README.md");
 const PROJECT_README: &str = include_str!("../../../README.md");
-const HARNESS: &str = include_str!("../../../tests/i3/lib/i3test.pm");
 
 #[test]
 fn child_is_reaped_when_the_control_loop_panics() {
@@ -79,6 +78,7 @@ fn harness_does_not_convert_wrong_named_assertions_into_skips() {
              'workspace layout is \"tabbed\"'); done_testing;",
         )
         .env("SWAYWARD_I3_TEST", "509-workspace_layout.t")
+        .env("SWAYWARD_I3_SKIPS", r#"{"2":"different assertion"}"#)
         .output()
         .unwrap();
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -108,6 +108,7 @@ fn harness_skips_only_i3_invalid_criteria_wording() {
              is('sway text', 'i3 text', 'correct error is returned'); done_testing;",
         )
         .env("SWAYWARD_I3_TEST", "260-invalid-criteria.t")
+        .env("SWAYWARD_I3_SKIPS", r#"{"2":"i3 error wording differs"}"#)
         .output()
         .unwrap();
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -611,30 +612,6 @@ fn green_coverage_rows_do_not_lead_with_a_failing_result() {
 }
 
 /// The harness adjusts its behaviour per test file, and an audit found those
-/// branches masking TAP skips in fifteen manifest entries. The count is quoted
-/// in the coverage report, so keep it honest: a new branch is a deliberate act
-/// that should be classified, not an accident.
-#[test]
-fn per_file_harness_branch_count_matches_the_audit() {
-    let actual = HARNESS.matches("SWAYWARD_I3_TEST").count();
-    let claimed: usize = COVERAGE_README
-        .lines()
-        .find_map(|line| line.trim().strip_prefix("An audit at commit `"))
-        .and_then(|rest| rest.split_once("found "))
-        .map(|(_, rest)| rest)
-        .expect("the coverage report states an audited branch count")
-        .split_once(" textual references")
-        .expect("the count precedes the phrase")
-        .0
-        .parse()
-        .expect("audited count is a number");
-    assert_eq!(
-        actual, claimed,
-        "tests/i3/lib/i3test.pm has {actual} per-file branches but the audit \
-         records {claimed}; classify the change in the audit table"
-    );
-}
-
 #[test]
 fn i3_scratch_defaults_off_tmpfs_and_removes_its_whole_directory() {
     let path = {
@@ -645,4 +622,98 @@ fn i3_scratch_defaults_off_tmpfs_and_removes_its_whole_directory() {
         path
     };
     assert!(!path.exists());
+}
+
+
+fn coverage_adaptations(test: &str) -> Value {
+    let header = format!(r#"[files."{test}"]"#);
+    let mut in_file = false;
+    for line in COVERAGE.lines().map(str::trim) {
+        if line.starts_with("[files.\"") {
+            in_file = line == header;
+            continue;
+        }
+        if in_file {
+            if let Some(flags) = line.strip_prefix("adapt = [").and_then(|s| s.strip_suffix(']')) {
+                return Value::Array(
+                    flags.split(',')
+                        .map(str::trim)
+                        .filter_map(|flag| flag.strip_prefix('"').and_then(|s| s.strip_suffix('"')))
+                        .map(|flag| Value::String(flag.to_owned()))
+                        .collect(),
+                );
+            }
+        }
+    }
+    Value::Array(Vec::new())
+}
+
+fn coverage_skip_adaptations(test: &str) -> Value {
+    let header = format!(r#"[files."{test}"]"#);
+    let mut in_file = false;
+    let mut current_number = None;
+    let mut skips = serde_json::Map::new();
+    for line in COVERAGE.lines().map(str::trim) {
+        if line.starts_with("[files.\"") {
+            in_file = line == header;
+            current_number = None;
+            continue;
+        }
+        if !in_file {
+            continue;
+        }
+        if line == format!(r#"[[files."{test}".skip]]"#) {
+            current_number = None;
+        } else if let Some(number) = line.strip_prefix("n = ") {
+            current_number = number.parse::<usize>().ok();
+        } else if let (Some(number), Some(reason)) =
+            (current_number, line.strip_prefix("reason = \"").and_then(|s| s.strip_suffix('"')))
+        {
+            skips.insert(number.to_string(), Value::String(reason.to_owned()));
+        }
+    }
+    Value::Object(skips)
+}
+
+#[test]
+fn conformance_client_binds_a_modern_xdg_wm_base_version() {
+    let mut fixture = Fixture::new();
+    fixture.add_output(1, (1280, 800));
+    let client = fixture.add_client();
+    let handle = create_window(&mut fixture, client, &json!({}));
+    let id = map_window(&mut fixture, client, handle, None, false);
+    assert!(window_states(&mut fixture, client, id).is_some());
+    assert!(fixture.client(client).state.xdg_wm_base_version >= Some(2));
+}
+
+#[test]
+fn every_harness_adaptation_has_a_sway_citation() {
+    let mut file = None;
+    let mut adaptations = Vec::new();
+    let mut citation = None;
+    let check = |file: Option<&str>, adaptations: &[&str], citation: Option<&str>| {
+        if !adaptations.is_empty() {
+            assert!(
+                citation.is_some_and(|citation| !citation.is_empty()),
+                "{file:?} adaptations {adaptations:?} have no source citation"
+            );
+        }
+    };
+    for line in COVERAGE.lines().map(str::trim) {
+        if let Some(rest) = line.strip_prefix("[files.\"") {
+            check(file, &adaptations, citation);
+            file = rest.split_once("\"]").map(|(file, _)| file);
+            adaptations.clear();
+            citation = None;
+        } else if let Some(flags) = line.strip_prefix("adapt = [").and_then(|s| s.strip_suffix(']')) {
+            adaptations = flags
+                .split(',')
+                .map(str::trim)
+                .filter_map(|flag| flag.strip_prefix('"').and_then(|s| s.strip_suffix('"')))
+                .collect();
+        } else if let Some((_, value)) = line.split_once("citation = \"") {
+            citation = value.split_once('"').map(|(citation, _)| citation);
+        }
+    }
+    check(file, &adaptations, citation);
 }

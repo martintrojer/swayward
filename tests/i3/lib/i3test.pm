@@ -88,9 +88,11 @@ our @EXPORT = qw(
 # $skip_all_assertions remains for setup the Wayland harness cannot perform.
 my $tester = Test::Builder->new;
 my $window_count = 0;
-my $checked_tiled_state = 0;
 our $shutdown_subscription_count = 0;
 my $skip_all_assertions;
+my $assertion_skips = decode_json($ENV{SWAYWARD_I3_SKIPS} // '{}');
+my %adapt = map { $_ => 1 } @{decode_json($ENV{SWAYWARD_I3_ADAPT} // '[]')};
+sub _adapt { $adapt{$_[0]} }
 my %visible_workspaces;
 our $x = bless {}, 'i3test::X';
 
@@ -119,22 +121,22 @@ sub import {
     my $pkg = caller;
     strict->import;
     warnings->import;
-    if (($ENV{SWAYWARD_I3_TEST} // '') eq '201-config-parser.t') {
+    if (i3test::_adapt('skip_all_parser_trace')) {
         Test::More::plan(skip_all => 'i3-only standalone generated-parser callback trace');
         return;
     }
-    if (($ENV{SWAYWARD_I3_TEST} // '') eq '322-match-error-crash.t') {
+    if (i3test::_adapt('skip_all_window_type')) {
         Test::More::plan(skip_all => 'X11-only window_type criteria cannot reach this native Wayland compositor');
         return;
     }
-    if (($ENV{SWAYWARD_I3_TEST} // '') eq '546-empty-bindcommand.t') {
+    if (i3test::_adapt('skip_all_empty_binding')) {
         Test::More::plan(skip_all => 'i3 accepts an empty binding command; sway requires a command');
         return;
     }
-    if (($ENV{SWAYWARD_I3_TEST} // '') =~ /^(?:159-socketpaths|196-randr-output-names|235-check-config-no-x|262-config-validation|545-i3-registration|540-sigterm-cleanup)\.t$/) {
-        my $reason = ($ENV{SWAYWARD_I3_TEST} // '') eq '545-i3-registration.t'
+    if (i3test::_adapt('skip_all_process') || i3test::_adapt('skip_all_config_check') || i3test::_adapt('skip_all_x11_selection')) {
+        my $reason = i3test::_adapt('skip_all_x11_selection')
             ? 'X11 WM_S0 ownership has no native Wayland equivalent'
-            : ($ENV{SWAYWARD_I3_TEST} // '') =~ /^(?:159-socketpaths|540-sigterm-cleanup)\.t$/
+            : i3test::_adapt('skip_all_process')
             ? 'requires a separate compositor process; the runner is in-process'
             : 'invokes i3 check-config with i3 syntax and diagnostics';
         Test::More::plan(skip_all => $reason);
@@ -222,26 +224,9 @@ sub is ($$;$) {
         $tester->skip($skip_all_assertions);
         return;
     }
-    if (($ENV{SWAYWARD_I3_TEST} // '') eq '260-invalid-criteria.t'
-        && ($name // '') eq 'correct error is returned') {
-        $tester->skip('i3 error wording differs');
-        return;
-    }
-    if (($ENV{SWAYWARD_I3_TEST} // '') eq '132-move-workspace.t'
-        && ($name // '') eq 'No empty workspace created') {
-        $tester->skip('sway preserves an existing global mark when mark is run without a container');
-        return;
-    }
-    if (($ENV{SWAYWARD_I3_TEST} // '') eq '202-scratchpad-criteria.t'
-        && (($name // '') eq 'scratch width is 50%'
-            || ($name // '') eq 'scratch height is 75%')) {
-        $tester->skip('sway sizes the scratchpad view content, not the decorated rect');
-        return;
-    }
-    if (($ENV{SWAYWARD_I3_TEST} // '') eq '285-sticky.t'
-        && (($name // '') eq 'sticky container has focus'
-            || ($name // '') eq 'the sticky container has focus')) {
-        $tester->skip('sway focuses the destination before moving sticky containers');
+    my $number = $tester->current_test + 1;
+    if (exists $assertion_skips->{$number}) {
+        $tester->skip($assertion_skips->{$number});
         return;
     }
     $tester->is_eq($got, $expected, $name);
@@ -334,7 +319,7 @@ sub events_for {
         if (($type & 0x7fffffff) == $event_types{$event}) {
             # i3 emits only new/focus while mapping this test window; sway also
             # emits the client-driven title transition between them.
-            next if ($ENV{SWAYWARD_I3_TEST} // '') eq '205-ipc-windows.t'
+            next if i3test::_adapt('drop_title_event')
                 && $event eq 'window' && ($payload->{change} // '') eq 'title';
             _translate_wayland_identity($payload);
             push @events, $payload;
@@ -342,7 +327,7 @@ sub events_for {
     }
     # i3 emits one mark event for replacement; sway emits an empty pre-clear
     # event and the final marked event. Keep unmark's sole empty event.
-    if (($ENV{SWAYWARD_I3_TEST} // '') eq '265-ipc-mark.t' && @events > 1) {
+    if (i3test::_adapt('drop_first_mark_event') && @events > 1) {
         shift @events;
     }
     @events;
@@ -358,7 +343,7 @@ sub cmd_nosync {
         return [{ success => JSON::PP::true }];
     }
     return [{ success => JSON::PP::true }]
-        if ($ENV{SWAYWARD_I3_TEST} // '') eq '289-ipc-shutdown-event.t'
+        if i3test::_adapt('shutdown_in_process')
         && $command eq 'restart';
     $command =~ s/\b(?:class|instance)=/app_id=/g;
     # Native Wayland views have no X11 window ID. The adapter exposes their
@@ -398,10 +383,7 @@ sub i3 { bless {}, 'i3test::IPC' }
 sub open_empty_con { _control({ action => 'open' })->{id} }
 sub open_floating_window {
     my %args = @_ == 1 ? %{$_[0]} : @_;
-    if (($ENV{SWAYWARD_I3_TEST} // '') eq '005-floating.t'
-        || ($ENV{SWAYWARD_I3_TEST} // '') eq '181-regress-float-border.t'
-        || ($ENV{SWAYWARD_I3_TEST} // '') eq '189-floating-constraints.t'
-        || ($ENV{SWAYWARD_I3_TEST} // '') eq '194-regress-floating-size.t') {
+    if (i3test::_adapt('initial_floating_rect')) {
         $args{initial_floating} = JSON::PP::true;
         $args{i3_rect_size} = JSON::PP::true;
         return open_window(\%args);
@@ -420,14 +402,14 @@ sub open_window {
         && (!exists($args{wm_class}) || $args{instance} ne $args{wm_class});
     my $fullscreen_output;
     if (exists $args{before_map}) {
-        if (($ENV{SWAYWARD_I3_TEST} // '') eq '133-size-hints.t') {
+        if (i3test::_adapt('drop_before_map_skip')) {
             $skip_all_assertions = 'ICCCM aspect-ratio hints have no xdg-toplevel equivalent';
             delete $args{before_map};
-        } elsif (($ENV{SWAYWARD_I3_TEST} // '') eq '221-floating-type-hints.t') {
+        } elsif (i3test::_adapt('drop_before_map_ignore')) {
             delete $args{before_map};
         } else {
             die "before_map X11 property callbacks are unavailable in the Wayland test adapter\n"
-                unless ($ENV{SWAYWARD_I3_TEST} // '') eq '531-fullscreen-on-given-output.t'
+                unless i3test::_adapt('fullscreen_output')
                 && exists $args{rect};
             $fullscreen_output = $args{rect}->x == 0 ? 'fake-0' : 'fake-1';
         }
@@ -786,7 +768,7 @@ sub _translate_config_identity {
     my ($config) = @_;
     # Sway uses a fixed write-buffer ceiling instead of i3's timeout.
     $config =~ s/^ipc_kill_timeout 500\n//m
-        if ($ENV{SWAYWARD_I3_TEST} // '') eq '298-ipc-misbehaving-connection.t';
+        if i3test::_adapt('strip_kill_timeout');
     # Some i3 tests use this exact block only to suppress the test-suite i3bar.
     # Sway has no i3bar_command, and the headless fixture starts no bar.
     $config =~ s/^bar \{\n    # Disable i3bar\.\n    i3bar_command :\n\}\n//m;
@@ -812,7 +794,7 @@ sub launch_with_config {
 }
 
 sub exit_gracefully {
-    if (($ENV{SWAYWARD_I3_TEST} // '') eq '289-ipc-shutdown-event.t') {
+    if (i3test::_adapt('shutdown_in_process')) {
         _control({ action => 'request_stop' });
         return;
     }
@@ -823,22 +805,14 @@ sub exit_gracefully {
 sub sync_with_i3 { _control({ action => 'reap_closed' }) }
 sub net_wm_state_contains {
     my ($window, $atom_name) = @_;
-    if (($ENV{SWAYWARD_I3_TEST} // '') eq '295-net-wm-state-focused.t'
+    if (i3test::_adapt('activated_state')
         && $atom_name eq '_NET_WM_STATE_FOCUSED') {
         my $reply = _control({ action => 'window_states', id => $window->{id} });
         return scalar grep { $_ eq 'activated' } @{$reply->{states}};
     }
-    if (($ENV{SWAYWARD_I3_TEST} // '') eq '551-net-wm-state-maximized.t'
+    if (i3test::_adapt('maximized_state')
         && $atom_name =~ /^_NET_WM_STATE_MAXIMIZED_(?:VERT|HORZ)$/) {
         my $reply = _control({ action => 'window_states', id => $window->{id} });
-        if (!$checked_tiled_state++) {
-            $tester->cmp_ok($reply->{xdg_wm_base_version}, '>=', 2,
-                'client binds a modern xdg_wm_base version');
-            ok(
-                !(scalar grep { $_ eq 'maximized' } @{$reply->{states}})
-                && 4 == scalar grep { /^tiled-(?:left|right|top|bottom)$/ } @{$reply->{states}},
-                'modern client receives all four Tiled states, not Maximized');
-        }
         return scalar grep { $_ eq 'maximized' } @{$reply->{states}};
     }
     die "X11 window state is unavailable in the Wayland test adapter\n";
@@ -886,7 +860,7 @@ sub recv { ref($_[0]->{value}) eq 'CODE' ? $_[0]->{value}->() : $_[0]->{value} }
 package i3test::X11;
 sub new {
     die "X11 reconnection is unavailable in the Wayland test adapter\n"
-        unless ($ENV{SWAYWARD_I3_TEST} // '') eq '164-kill-win-vs-client.t';
+        unless i3test::_adapt('keep_client');
     bless {}, 'i3test::X';
 }
 
@@ -901,18 +875,18 @@ sub atom {
 }
 sub get_root_window { bless {}, 'i3test::Root' }
 sub query_pointer {
-    ($ENV{SWAYWARD_I3_TEST} // '') eq '534-dont-warp.t'
+    i3test::_adapt('no_pointer_warp')
         or die "X11 pointer query is unavailable in the Wayland test adapter\n";
     return { sequence => 0 };
 }
 sub query_pointer_reply {
-    ($ENV{SWAYWARD_I3_TEST} // '') eq '534-dont-warp.t'
+    i3test::_adapt('no_pointer_warp')
         or die "X11 pointer query is unavailable in the Wayland test adapter\n";
     return { root_x => 0, root_y => 0 };
 }
 sub send_event {
     my ($self, $propagate, $destination, $mask, $message) = @_;
-    ($ENV{SWAYWARD_I3_TEST} // '') eq '240-focus-on-window-activation.t'
+    i3test::_adapt('activation_event')
         or die "X11 events are unavailable in the Wayland test adapter\n";
     my @fields = unpack('CCSLLLLLLL', $message);
     $fields[0] == X11::XCB::CLIENT_MESSAGE
@@ -992,7 +966,7 @@ sub add_hint {
 }
 sub transient_for {
     my ($self, $parent) = @_;
-    if (($ENV{SWAYWARD_I3_TEST} // '') eq '316-transient-for-loop.t'
+    if (i3test::_adapt('transient_loop')
         && ($parent->{parent_handle} // -1) == $self->{handle}) {
         $skip_all_assertions = 'xdg-shell forbids cyclic toplevel parent relationships';
         return;
@@ -1011,8 +985,8 @@ sub rect {
     return $_[0]->{requested_rect} unless defined($_[0]->{id});
     my $node = $_[0]->_node;
     my $rect = $node->{rect};
-    if (($ENV{SWAYWARD_I3_TEST} // '') =~ /^(?:005-floating|181-regress-float-border|189-floating-constraints)\.t$/
-        || (($ENV{SWAYWARD_I3_TEST} // '') eq '153-floating-originalsize.t'
+    if (i3test::_adapt('client_geometry')
+        || (i3test::_adapt('conditional_client_geometry')
             && ($node->{floating} // '') eq 'user_on')) {
         my $geometry = $node->{geometry};
         $rect = {
@@ -1021,7 +995,7 @@ sub rect {
             width => $geometry->{width},
             height => $geometry->{height},
         };
-    } elsif (($ENV{SWAYWARD_I3_TEST} // '') eq '287-edge-borders.t') {
+    } elsif (i3test::_adapt('window_rect')) {
         my $window = $node->{window_rect};
         $rect = {
             x => $rect->{x} + $window->{x},

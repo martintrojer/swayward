@@ -197,6 +197,8 @@ fn run_i3_file(test: &str) -> I3Run {
 
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let oracle = oracle_i3_dir();
+    let skip_adaptations = coverage_skip_adaptations(test);
+    let adaptations = coverage_adaptations(test);
     let mut child = Command::new("perl")
         .arg(format!("-I{}", root.join("tests/i3/lib").display()))
         .arg(format!("-I{}", oracle.join("lib").display()))
@@ -204,6 +206,8 @@ fn run_i3_file(test: &str) -> I3Run {
         .env("I3SOCK", &ipc_socket)
         .env("SWAYWARD_TEST_CONTROL", &control_path)
         .env("SWAYWARD_I3_TEST", test)
+        .env("SWAYWARD_I3_SKIPS", skip_adaptations.to_string())
+        .env("SWAYWARD_I3_ADAPT", adaptations.to_string())
         .env(
             "PATH",
             format!(
