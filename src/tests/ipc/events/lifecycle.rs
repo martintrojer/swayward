@@ -271,7 +271,9 @@ fn disconnected_event_subscribers_are_removed_without_an_event() {
         );
 
         if clean_disconnect {
-            subscriber.write_all(swayward_ipc::wire::CLOSE_SENTINEL).unwrap();
+            subscriber
+                .write_all(swayward_ipc::wire::CLOSE_SENTINEL)
+                .unwrap();
         }
         drop(subscriber);
         let deadline = Instant::now() + Duration::from_secs(1);
@@ -398,4 +400,3 @@ fn event_subscription_does_not_block_a_concurrent_query() {
         "swayward"
     );
 }
-

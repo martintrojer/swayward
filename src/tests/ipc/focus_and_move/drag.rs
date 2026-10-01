@@ -577,4 +577,3 @@ fn resize_rejects_hidden_scratchpad_window_without_panicking() {
         Some("Cannot resize a hidden scratchpad container")
     );
 }
-

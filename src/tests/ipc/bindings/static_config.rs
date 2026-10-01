@@ -81,7 +81,10 @@ fn mark_event_matches_captured_sway_schema() {
     let expected: Value = serde_json::from_str(&sway_fixture!("events/window.mark.json")).unwrap();
     let marked = serde_json::from_str(&payload).unwrap();
     assert_event_shape(&expected, &marked, "$window");
-    assert_eq!(marked["container"]["marks"], serde_json::json!(["event-mark"]));
+    assert_eq!(
+        marked["container"]["marks"],
+        serde_json::json!(["event-mark"])
+    );
     assert!(remainder.is_empty());
 }
 
@@ -131,7 +134,10 @@ fn plain_mark_on_container_emits_clear_then_add_events() {
         read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder);
     let marked = serde_json::from_str::<Value>(&payload).unwrap();
     assert_eq!(marked["change"], "mark");
-    assert_eq!(marked["container"]["marks"], serde_json::json!(["containermark"]));
+    assert_eq!(
+        marked["container"]["marks"],
+        serde_json::json!(["containermark"])
+    );
     assert!(remainder.is_empty());
 }
 
@@ -329,4 +335,3 @@ fn get_marks_reports_container_marks_in_tree_order_like_sway() {
          before its children, rather than sorting: {marks:?}"
     );
 }
-

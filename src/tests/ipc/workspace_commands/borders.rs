@@ -644,7 +644,13 @@ fn border_command_updates_rendering_and_tree_metadata() {
     let default_width = {
         let swayward = f.swayward();
         let mapped = swayward.layout.focus().unwrap();
-        let tile = swayward.layout.active_workspace().unwrap().tiles().next().unwrap();
+        let tile = swayward
+            .layout
+            .active_workspace()
+            .unwrap()
+            .tiles()
+            .next()
+            .unwrap();
         assert_eq!(tile.window().id(), mapped.id());
         i32::from(tile.sway_border_thickness().1)
     };
@@ -745,4 +751,3 @@ fn border_csd_fails_without_client_decoration_support() {
         Some("This window doesn't support client side decorations")
     );
 }
-

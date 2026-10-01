@@ -273,9 +273,7 @@ fn ipc_fixture() -> (Fixture, std::path::PathBuf) {
 ///
 /// Keyboard layouts are initialized here so configured and default fixtures
 /// expose the same initial input state to subscribers and GET_INPUTS clients.
-fn ipc_fixture_with_config(
-    config: swayward_config::Config,
-) -> (Fixture, std::path::PathBuf) {
+fn ipc_fixture_with_config(config: swayward_config::Config) -> (Fixture, std::path::PathBuf) {
     let mut fixture = Fixture::with_config(config);
     let handle = fixture.swayward().event_loop.clone();
     let ipc_server =

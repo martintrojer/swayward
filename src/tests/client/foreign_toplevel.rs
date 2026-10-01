@@ -229,4 +229,3 @@ impl Dispatch<ZwlrVirtualPointerV1, ()> for State {
         unreachable!()
     }
 }
-

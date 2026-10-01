@@ -341,12 +341,7 @@ fn live_ipc_move_to_an_empty_workspace_preserves_the_container_layout() {
         "workspace target",
         "[con_mark=group] move workspace target",
     ] {
-        let outcome = query_ipc_with_payload(
-            &mut f,
-            &mut stream,
-            MessageType::RunCommand,
-            command,
-        );
+        let outcome = query_ipc_with_payload(&mut f, &mut stream, MessageType::RunCommand, command);
         assert_eq!(outcome[0]["success"], true, "{command}: {outcome}");
     }
     let tree = query_ipc(&mut f, &mut stream, MessageType::GetTree);
@@ -723,7 +718,10 @@ fn floating_toggle_after_moving_scratchpad_window_between_workspaces_does_not_pa
         ("floating toggle", true),
     ] {
         let outcome = crate::command::execute(f.niri_state(), command);
-        assert_eq!(outcome[0].success, expected_success, "{command}: {outcome:?}");
+        assert_eq!(
+            outcome[0].success, expected_success,
+            "{command}: {outcome:?}"
+        );
         f.swayward().layout.verify_invariants();
     }
 }
@@ -766,7 +764,10 @@ fn moving_a_window_away_refocuses_the_most_recent_container_under_its_parent() {
     map(&mut f, "first");
     map(&mut f, "second");
     for command in ["layout splitv", "focus up", "move right"] {
-        assert!(crate::command::execute(f.niri_state(), command)[0].success, "{command}");
+        assert!(
+            crate::command::execute(f.niri_state(), command)[0].success,
+            "{command}"
+        );
     }
     assert!(crate::command::execute(f.niri_state(), "move container to workspace 2")[0].success);
     assert_eq!(

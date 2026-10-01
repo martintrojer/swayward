@@ -38,8 +38,11 @@ fn stale_oracle_cache_fails_loudly() {
         .join("target")
         .join(format!("stale-oracle-cache-{}", std::process::id()));
     std::fs::create_dir_all(cache.join(".git")).unwrap();
-    std::fs::write(cache.join(".git/HEAD"), "0000000000000000000000000000000000000000\n")
-        .unwrap();
+    std::fs::write(
+        cache.join(".git/HEAD"),
+        "0000000000000000000000000000000000000000\n",
+    )
+    .unwrap();
 
     let error = oracle_fixture_at(&cache, "unused.json").unwrap_err();
     std::fs::remove_dir_all(cache).unwrap();
@@ -178,22 +181,22 @@ fn tree_fixture_comparison_rejects_every_rectangle_coordinate() {
     let mut paths = Vec::new();
     for rectangle in ["rect", "deco_rect", "window_rect", "geometry"] {
         for coordinate in ["x", "y", "width", "height"] {
-            paths.push(format!(
-                "/nodes/1/nodes/0/nodes/0/{rectangle}/{coordinate}"
-            ));
+            paths.push(format!("/nodes/1/nodes/0/nodes/0/{rectangle}/{coordinate}"));
         }
     }
 
     for pointer in paths {
         let mut mutated = original.clone();
-        *mutated.pointer_mut(&pointer).unwrap() = Value::from(
-            mutated.pointer(&pointer).unwrap().as_i64().unwrap() + 100,
-        );
+        *mutated.pointer_mut(&pointer).unwrap() =
+            Value::from(mutated.pointer(&pointer).unwrap().as_i64().unwrap() + 100);
         let rejected = std::panic::catch_unwind(|| {
             assert_tree_rectangles_match_fixture(&original, &mutated, "$tree");
             assert_rectangle_roles_match_fixture(&original, &mutated, "$tree");
         });
-        assert!(rejected.is_err(), "rectangle mutation survived at {pointer}");
+        assert!(
+            rejected.is_err(),
+            "rectangle mutation survived at {pointer}"
+        );
     }
 }
 
@@ -213,7 +216,11 @@ fn tree_fixture_comparators_reject_a_missing_or_extra_child() {
         for key in ["nodes", "floating_nodes"] {
             let pointer = format!("{workspace}/{key}");
             let mut missing = original.clone();
-            let children = missing.pointer_mut(&pointer).unwrap().as_array_mut().unwrap();
+            let children = missing
+                .pointer_mut(&pointer)
+                .unwrap()
+                .as_array_mut()
+                .unwrap();
             let child = children.pop().expect("fixture workspace has the child");
             let mut extra = original.clone();
             extra
@@ -285,4 +292,3 @@ fn normalized_fixture_comparison_rejects_every_retained_value() {
         }
     }
 }
-

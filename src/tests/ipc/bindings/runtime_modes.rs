@@ -516,4 +516,3 @@ fn modifier_bindcode_matches_without_its_own_modifier() {
         .find_workspace_by_name("super-release")
         .is_some());
 }
-

@@ -513,8 +513,16 @@ fn sticky_on_a_focused_split_marks_the_container_like_sway() {
         ))
         .unwrap()
     };
-    for command in ["layout splitv", "layout splith", "focus parent", "sticky toggle"] {
-        assert!(crate::command::execute(f.niri_state(), command)[0].success, "{command}");
+    for command in [
+        "layout splitv",
+        "layout splith",
+        "focus parent",
+        "sticky toggle",
+    ] {
+        assert!(
+            crate::command::execute(f.niri_state(), command)[0].success,
+            "{command}"
+        );
     }
     let tree = tree(&mut f);
     let split = find_json_node(&tree, "con", true).unwrap();
@@ -717,4 +725,3 @@ fn workspace_next_and_prev_cross_outputs() {
         second_output
     );
 }
-

@@ -446,4 +446,3 @@ fn reconfiguring_a_dock_without_changing_its_zone_preserves_tiled_geometry() {
         .next()
         .is_some());
 }
-

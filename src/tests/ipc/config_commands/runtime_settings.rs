@@ -139,8 +139,10 @@ fn reloaded_gap_defaults_do_not_change_an_existing_workspace() {
     assert_eq!(tiled_window_rects(&mut fixture), before);
     assert!(crate::command::execute(fixture.niri_state(), "workspace reload-fresh")[0].success);
     add_two_tiled_windows(&mut fixture);
-    assert_eq!(tiled_window_rects_on(&mut fixture, "reload-fresh")[0]["x"], 14);
-
+    assert_eq!(
+        tiled_window_rects_on(&mut fixture, "reload-fresh")[0]["x"],
+        14
+    );
 }
 
 #[test]
@@ -232,7 +234,10 @@ fn gaps_defaults_and_runtime_forms_hold_separate_state() {
     assert_eq!(tiled_window_rects(&mut fixture)[0]["x"], 5);
     assert!(crate::command::execute(fixture.niri_state(), "workspace first-fresh")[0].success);
     add_two_tiled_windows(&mut fixture);
-    assert_eq!(tiled_window_rects_on(&mut fixture, "first-fresh")[0]["x"], 25);
+    assert_eq!(
+        tiled_window_rects_on(&mut fixture, "first-fresh")[0]["x"],
+        25
+    );
 
     // A further default write still does not touch the original live
     // workspace, while another new workspace observes 50.
@@ -241,7 +246,10 @@ fn gaps_defaults_and_runtime_forms_hold_separate_state() {
     assert_eq!(tiled_window_rects(&mut fixture)[0]["x"], 5);
     assert!(crate::command::execute(fixture.niri_state(), "workspace second-fresh")[0].success);
     add_two_tiled_windows(&mut fixture);
-    assert_eq!(tiled_window_rects_on(&mut fixture, "second-fresh")[0]["x"], 50);
+    assert_eq!(
+        tiled_window_rects_on(&mut fixture, "second-fresh")[0]["x"],
+        50
+    );
 }
 
 /// `workspace <name> gaps <kind> <px>` is a per-workspace-name default applied
@@ -273,4 +281,3 @@ fn workspace_gaps_apply_to_a_later_workspace_of_that_name() {
     add_two_tiled_windows(&mut fixture);
     assert_eq!(tiled_window_rects_on(&mut fixture, "plain")[0]["x"], 10);
 }
-

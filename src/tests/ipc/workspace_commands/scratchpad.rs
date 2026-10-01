@@ -74,8 +74,14 @@ fn fullscreen_with_a_focused_floating_window_does_not_target_the_tiling_parent()
         &Default::default(),
     ))
     .unwrap();
-    assert_eq!(find_json_node_with_app_id(&tree, "floating").unwrap()["fullscreen_mode"], 1);
-    assert_eq!(find_json_parent_of_app_id(&tree, "tiled").unwrap()["fullscreen_mode"], 0);
+    assert_eq!(
+        find_json_node_with_app_id(&tree, "floating").unwrap()["fullscreen_mode"],
+        1
+    );
+    assert_eq!(
+        find_json_parent_of_app_id(&tree, "tiled").unwrap()["fullscreen_mode"],
+        0
+    );
 
     assert!(crate::command::execute(f.niri_state(), "fullscreen disable")[0].success);
     assert!(crate::command::execute(f.niri_state(), "focus tiling")[0].success);
@@ -89,7 +95,10 @@ fn fullscreen_with_a_focused_floating_window_does_not_target_the_tiling_parent()
         &Default::default(),
     ))
     .unwrap();
-    assert_eq!(find_json_parent_of_app_id(&tree, "tiled").unwrap()["focused"], true);
+    assert_eq!(
+        find_json_parent_of_app_id(&tree, "tiled").unwrap()["focused"],
+        true
+    );
 }
 
 #[test]
@@ -584,7 +593,10 @@ fn scratchpad_show_toggles_the_only_window() {
     }
     let mut stream = UnixStream::connect(&socket).unwrap();
     let tree = query_ipc(&mut f, &mut stream, MessageType::GetTree);
-    assert_eq!(find_json_node_with_app_id(&tree, "only").unwrap()["focused"], true);
+    assert_eq!(
+        find_json_node_with_app_id(&tree, "only").unwrap()["focused"],
+        true
+    );
 
     assert!(crate::command::execute(f.niri_state(), "scratchpad show")[0].success);
     let tree = query_ipc(&mut f, &mut stream, MessageType::GetTree);
@@ -720,4 +732,3 @@ fn focus_next_and_prev_follow_the_immediate_parent_layout() {
     assert!(outcome[0].success, "{outcome:?}");
     assert!(f.swayward().layout.focus().is_none());
 }
-

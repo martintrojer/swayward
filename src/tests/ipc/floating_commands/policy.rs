@@ -42,7 +42,10 @@ fn opacity_updates_focused_and_criteria_targeted_windows() {
     assert!(crate::command::execute(f.niri_state(), "opacity plus 0.25")[0].success);
     assert_eq!(f.swayward().layout.focus().unwrap().command_opacity(), 0.75);
     let outcome = crate::command::execute(f.niri_state(), "opacity minus 1");
-    assert_eq!(outcome[0].error.as_deref(), Some("opacity value out of bounds"));
+    assert_eq!(
+        outcome[0].error.as_deref(),
+        Some("opacity value out of bounds")
+    );
     assert_eq!(f.swayward().layout.focus().unwrap().command_opacity(), 0.75);
 
     let second = f.client(client).create_window();
@@ -551,10 +554,7 @@ fn tiled_resize_that_only_changes_an_ancestor_reports_failure() {
     }
     assert!(crate::command::execute(f.niri_state(), "split h")[0].success);
 
-    let outcome = crate::command::execute(
-        f.niri_state(),
-        "resize grow up 10 px or 25 ppt",
-    );
+    let outcome = crate::command::execute(f.niri_state(), "resize grow up 10 px or 25 ppt");
     assert_eq!(
         outcome,
         [swayward_ipc::CommandOutcome {
@@ -592,7 +592,6 @@ fn tiled_grow_at_workspace_edge_reports_failure() {
         }]
     );
 }
-
 
 #[test]
 fn directional_resize_of_a_floating_group_child_resizes_inside_the_group() {
@@ -641,7 +640,11 @@ fn directional_resize_of_a_floating_group_child_resizes_inside_the_group() {
     };
     let before = widths(&mut f);
 
-    for command in ["resize grow left 10 px", "resize shrink up 10 px", "resize grow down 10 px"] {
+    for command in [
+        "resize grow left 10 px",
+        "resize shrink up 10 px",
+        "resize grow down 10 px",
+    ] {
         let outcome = crate::command::execute(f.niri_state(), command);
         assert_eq!(
             outcome,
@@ -753,7 +756,11 @@ fn moving_a_floating_group_child_to_a_workspace_leaves_its_sibling_floating() {
     assert_eq!(
         workspace_shapes(&mut f),
         [
-            ("1".to_owned(), vec![], vec!["splith[group-first]".to_owned()]),
+            (
+                "1".to_owned(),
+                vec![],
+                vec!["splith[group-first]".to_owned()]
+            ),
             ("2".to_owned(), vec!["group-second".to_owned()], vec![]),
         ]
     );

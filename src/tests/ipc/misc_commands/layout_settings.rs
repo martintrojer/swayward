@@ -55,7 +55,10 @@ fn layout_settings_apply_at_runtime_like_sway() {
 
     // Values sway rejects must fail here too, with sway's message.
     let outcome = crate::command::execute(f.niri_state(), "focus_follows_mouse maybe");
-    assert!(!outcome[0].success, "invalid focus_follows_mouse should have failed");
+    assert!(
+        !outcome[0].success,
+        "invalid focus_follows_mouse should have failed"
+    );
     assert_eq!(
         outcome[0].error.as_deref(),
         Some("Expected 'focus_follows_mouse no|yes|always'")
@@ -89,7 +92,8 @@ fn layout_settings_apply_at_runtime_like_sway() {
     // ignored (`sway/sway/commands/hide_edge_borders.c:16-42`). Sway's --i3
     // also enables hide_lone_tab, which swayward refuses rather than drops,
     // once the rest of the command is one sway would accept.
-    let usage = "Expected 'hide_edge_borders [--i3] none|vertical|horizontal|both|smart|smart_no_gaps";
+    let usage =
+        "Expected 'hide_edge_borders [--i3] none|vertical|horizontal|both|smart|smart_no_gaps";
     for (command, error) in [
         ("hide_edge_borders NONE", usage),
         ("hide_edge_borders --i3", usage),
@@ -106,7 +110,10 @@ fn layout_settings_apply_at_runtime_like_sway() {
     // a second argument must be "ms"; later ones are ignored
     // (`sway/sway/commands/force_display_urgency_hint.c:12-23`).
     for (command, error) in [
-        ("force_display_urgency_hint 5msms", "timeout integer invalid"),
+        (
+            "force_display_urgency_hint 5msms",
+            "timeout integer invalid",
+        ),
         (
             "force_display_urgency_hint 500 extra",
             "Expected 'force_display_urgency_hint <timeout> [ms]'",
@@ -121,7 +128,10 @@ fn layout_settings_apply_at_runtime_like_sway() {
         "force_display_urgency_hint 500 ms",
         "force_display_urgency_hint 500 ms extra",
     ] {
-        assert!(crate::command::execute(f.niri_state(), command)[0].success, "{command}");
+        assert!(
+            crate::command::execute(f.niri_state(), command)[0].success,
+            "{command}"
+        );
     }
     assert_eq!(f.swayward().config.borrow().urgent_timeout_ms, 500);
 
@@ -376,9 +386,19 @@ fn layout_settings_apply_at_runtime_like_sway() {
         outcome[0].error.as_deref(),
         Some("Expected 'default_floating_border <none|normal|pixel>' or 'default_floating_border <normal|pixel> <px>'")
     );
-    for (command, width) in [("default_border pixel wide", 0), ("default_border pixel 7px", 7)] {
-        assert!(crate::command::execute(f.niri_state(), command)[0].success, "{command}");
-        assert_eq!(layout(&mut f).default_border.width, Some(width), "{command}");
+    for (command, width) in [
+        ("default_border pixel wide", 0),
+        ("default_border pixel 7px", 7),
+    ] {
+        assert!(
+            crate::command::execute(f.niri_state(), command)[0].success,
+            "{command}"
+        );
+        assert_eq!(
+            layout(&mut f).default_border.width,
+            Some(width),
+            "{command}"
+        );
     }
 
     // popup_during_fullscreen shares its accepted values and error string
@@ -614,4 +634,3 @@ fn windows_on_workspaces(fixture: &mut Fixture, plan: &[(&str, &str)]) {
         fixture.double_roundtrip(client);
     }
 }
-

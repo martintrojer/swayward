@@ -331,11 +331,9 @@ fn binding_modes_switch_binds_emit_events_and_list_over_ipc() {
     // (sway/sway/tree/output.c:387-405), so the startup workspace 1 precedes it.
     let workspaces: Vec<swayward_ipc::Workspace> =
         serde_json::from_value(get_workspaces(&mut fixture)).unwrap();
-    assert!(
-        workspaces
-            .iter()
-            .any(|workspace| workspace.num == 7 && workspace.focused)
-    );
+    assert!(workspaces
+        .iter()
+        .any(|workspace| workspace.num == 7 && workspace.focused));
 
     assert!(crate::command::execute(fixture.niri_state(), "mode default")[0].success);
     let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);

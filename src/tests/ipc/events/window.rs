@@ -64,7 +64,10 @@ fn floating_events_report_user_requested_state() {
     fixture.niri_state().ipc_refresh_layout();
     let mut subscriber = subscribe_to_window_events(&mut fixture, &socket);
 
-    for (command, expected) in [("floating enable", "user_on"), ("floating disable", "user_off")] {
+    for (command, expected) in [
+        ("floating enable", "user_on"),
+        ("floating disable", "user_off"),
+    ] {
         assert!(crate::command::execute(fixture.niri_state(), command)[0].success);
         fixture.niri_state().ipc_refresh_layout();
         let (event_type, payload) = read_ipc_reply(&mut fixture, &mut subscriber);
@@ -224,7 +227,10 @@ fn focusing_a_resident_floating_group_leaf_emits_focus() {
     assert_eq!(event_type, EVENT_WINDOW);
     let event = serde_json::from_str::<Value>(&payload).unwrap();
     assert_eq!(event["change"], "focus");
-    assert_eq!(event["container"]["id"], crate::ipc::tree::window_id(target));
+    assert_eq!(
+        event["container"]["id"],
+        crate::ipc::tree::window_id(target)
+    );
     assert!(remainder.is_empty(), "unexpected events were buffered");
 }
 
@@ -250,11 +256,9 @@ fn moving_a_floating_group_to_new_workspace_emits_empty_init() {
     let (_, reply) = read_ipc_reply(&mut fixture, &mut subscriber);
     assert_eq!(reply, r#"{"success": true}"#);
 
-    assert!(crate::command::execute(
-        fixture.niri_state(),
-        "move container to workspace 2",
-    )[0]
-    .success);
+    assert!(
+        crate::command::execute(fixture.niri_state(), "move container to workspace 2",)[0].success
+    );
     fixture.niri_state().ipc_refresh_layout();
 
     let ((event_type, payload), _) =
@@ -340,7 +344,10 @@ fn mapping_a_focused_window_emits_new_title_then_focus() {
         assert_eq!(event["container"]["current_border_width"], 0);
         assert_eq!(event["container"]["focused"], false);
         assert_eq!(event["container"]["percent"], 0.0);
-        assert_eq!(event["container"]["rect"], serde_json::json!({"x":0,"y":0,"width":0,"height":0}));
+        assert_eq!(
+            event["container"]["rect"],
+            serde_json::json!({"x":0,"y":0,"width":0,"height":0})
+        );
     }
     assert_eq!(events[0]["container"]["name"], Value::Null);
     assert_eq!(events[1]["container"]["name"], "focused-map");
@@ -669,8 +676,7 @@ fn closing_the_focused_window_emits_close_before_restored_focus() {
 
     let ((_, close), remainder) =
         read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, Vec::new());
-    let ((_, focus), _) =
-        read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder);
+    let ((_, focus), _) = read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder);
     let close: Value = serde_json::from_str(&close).unwrap();
     let focus: Value = serde_json::from_str(&focus).unwrap();
     assert_eq!(close["change"], "close");
@@ -678,7 +684,6 @@ fn closing_the_focused_window_emits_close_before_restored_focus() {
     assert_eq!(focus["change"], "focus");
     assert_eq!(focus["container"]["app_id"], "first");
 }
-
 
 /// Oracle: events/for_window_during_scratchpad. A `mark` whose runtime
 /// `for_window` rule matches re-enters the command executor in the middle of

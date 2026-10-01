@@ -11,11 +11,10 @@ fn initial_workspace_keeps_pre_mode_orientation_and_later_workspace_uses_configu
     assert!(crate::command::execute(f.niri_state(), "workspace 1")[0].success);
     for (workspace, app_id) in [(None, "initial"), (Some("2"), "later")] {
         if let Some(workspace) = workspace {
-            assert!(crate::command::execute(
-                f.niri_state(),
-                &format!("workspace {workspace}")
-            )[0]
-            .success);
+            assert!(
+                crate::command::execute(f.niri_state(), &format!("workspace {workspace}"))[0]
+                    .success
+            );
         }
         let window = f.client(client).create_window();
         window.xdg_toplevel.set_app_id(app_id.into());
@@ -150,7 +149,9 @@ fn layout_on_a_focused_nested_split_does_not_promote_to_the_workspace_root() {
         }
         assert!(crate::command::execute(f.niri_state(), "focus parent")[0].success);
         assert!(crate::command::execute(f.niri_state(), &format!("layout {outer}"))[0].success);
-        assert!(crate::command::execute(f.niri_state(), r#"[app_id="^fixture-1$"] focus"#)[0].success);
+        assert!(
+            crate::command::execute(f.niri_state(), r#"[app_id="^fixture-1$"] focus"#)[0].success
+        );
         assert!(crate::command::execute(f.niri_state(), "splith")[0].success);
         let window = f.client(client).create_window();
         window.xdg_toplevel.set_app_id("fixture-3".into());
@@ -184,8 +185,18 @@ fn layout_on_a_focused_nested_split_does_not_promote_to_the_workspace_root() {
         let inner = &workspace["nodes"][0]["nodes"][0]["rect"];
         assert_eq!(outer["y"], 44);
         assert_eq!(outer["height"], 1036);
-        assert_eq!(inner["y"], if expected_inner == "stacked" { 110 } else { 66 });
-        assert_eq!(inner["height"], if expected_inner == "stacked" { 970 } else { 1014 });
+        assert_eq!(
+            inner["y"],
+            if expected_inner == "stacked" { 110 } else { 66 }
+        );
+        assert_eq!(
+            inner["height"],
+            if expected_inner == "stacked" {
+                970
+            } else {
+                1014
+            }
+        );
     }
 }
 
@@ -245,7 +256,10 @@ fn splitting_a_focused_container_keeps_it_nested() {
     ))
     .unwrap();
     let workspace = &tree["nodes"][1]["nodes"][0];
-    assert_eq!(workspace["representation"], "H[H[first second third fourth] fifth]");
+    assert_eq!(
+        workspace["representation"],
+        "H[H[first second third fourth] fifth]"
+    );
     assert_eq!(workspace["nodes"][0]["layout"], "splith");
 }
 
@@ -604,7 +618,6 @@ fn focused_container_can_be_marked_and_targeted_by_con_id() {
     );
 }
 
-
 #[test]
 fn wrapping_a_tiled_child_does_not_promote_it_past_an_older_floating_child() {
     let mut f = Fixture::new();
@@ -630,7 +643,6 @@ fn wrapping_a_tiled_child_does_not_promote_it_past_an_older_floating_child() {
     let workspace = &tree["nodes"][1]["nodes"][0];
     assert_eq!(workspace["focus"][0], workspace["floating_nodes"][0]["id"]);
 }
-
 
 #[test]
 fn scripted_split_nesting_is_bounded() {
@@ -674,6 +686,10 @@ fn scripted_split_nesting_is_bounded() {
             .unwrap_or(0)
     }
     // root, output, workspace, then the tiling tree below the workspace.
-    assert!(depth(&tree) <= 3 + crate::layout::tiling_tree::MAX_TREE_DEPTH, "{}", depth(&tree));
+    assert!(
+        depth(&tree) <= 3 + crate::layout::tiling_tree::MAX_TREE_DEPTH,
+        "{}",
+        depth(&tree)
+    );
     swayward.layout.verify_invariants();
 }

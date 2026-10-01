@@ -91,11 +91,11 @@ impl State {
             .as_ref()
             .unwrap()
             .create_surface(&self.qh, ());
-        let subsurface = self
-            .subcompositor
-            .as_ref()
-            .unwrap()
-            .get_subsurface(&surface, parent, &self.qh, ());
+        let subsurface =
+            self.subcompositor
+                .as_ref()
+                .unwrap()
+                .get_subsurface(&surface, parent, &self.qh, ());
         self.subsurfaces.push((surface, subsurface));
         self.subsurfaces.last_mut().unwrap()
     }
@@ -570,7 +570,6 @@ impl Dispatch<ZxdgToplevelDecorationV1, ()> for State {
         }
     }
 }
-
 
 impl Dispatch<WlSubcompositor, ()> for State {
     fn event(

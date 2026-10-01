@@ -334,4 +334,3 @@ fn layer_popup_is_constrained_and_parent_unmap_is_safe() {
     f.client(client).dispatch_unchecked();
     assert!(f.client(client).connection.protocol_error().is_none());
 }
-

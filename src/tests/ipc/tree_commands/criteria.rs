@@ -756,7 +756,11 @@ fn criteria_over_floating_group_leaves_survive_group_lifecycle() {
     let matched = |f: &mut Fixture| {
         let outcome = crate::command::execute(f.niri_state(), "[app_id=^grouped$] nop");
         let remaining = f.swayward().layout.windows().count();
-        assert_eq!(outcome[0].success, remaining > 0, "{remaining}: {outcome:?}");
+        assert_eq!(
+            outcome[0].success,
+            remaining > 0,
+            "{remaining}: {outcome:?}"
+        );
     };
     matched(&mut f);
     assert!(crate::command::execute(f.niri_state(), "move scratchpad")[0].success);

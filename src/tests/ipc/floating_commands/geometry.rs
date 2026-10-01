@@ -346,7 +346,10 @@ fn move_absolute_position_is_verbatim_under_a_bar_and_gaps() {
         ws["width"].as_i64().unwrap(),
         ws["height"].as_i64().unwrap(),
     );
-    assert_eq!(ws_y, 24, "workspace rect starts below the bar and outer gap");
+    assert_eq!(
+        ws_y, 24,
+        "workspace rect starts below the bar and outer gap"
+    );
 
     // The tallCenter preset from a real script: full workspace height at the
     // workspace origin, computed from the IPC workspace rect. Zero slack, so
@@ -671,4 +674,3 @@ fn floating_stacking_and_focus_match_sway_before_and_after_raise() {
         serde_json::from_str(&sway_fixture!("three_floating_after_raise.tree.json")).unwrap();
     assert_eq!(floating_order(&describe(&mut f)), floating_order(&after));
 }
-

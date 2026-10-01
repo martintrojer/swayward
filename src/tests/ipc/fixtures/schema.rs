@@ -407,4 +407,3 @@ fn mixed_live_tree() -> Value {
 fn mixed_fixture_tree() -> Value {
     serde_json::from_str(&sway_fixture!("one_floating.tree.json")).unwrap()
 }
-

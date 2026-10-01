@@ -26,7 +26,11 @@ fn get_tree_reports_sway_default_floating_rules() {
         let node = find_json_node_with_app_id(&tree, name).unwrap();
         assert_eq!(
             node["floating"],
-            if expected_floating { "user_on" } else { "auto_off" },
+            if expected_floating {
+                "user_on"
+            } else {
+                "auto_off"
+            },
             "GET_TREE floating state for {name}"
         );
     }
@@ -255,10 +259,7 @@ fn moved_workspace_keeps_destination_output_focus_order() {
         .collect::<Vec<_>>();
     assert_eq!(
         output_focus,
-        [
-            (vec!["3"], vec!["3"]),
-            (vec!["1", "2"], vec!["2", "1"]),
-        ]
+        [(vec!["3"], vec!["3"]), (vec!["1", "2"], vec!["2", "1"]),]
     );
 }
 
@@ -363,14 +364,12 @@ fn split_children_report_their_arranged_share_including_gaps() {
 
     let mut stream = UnixStream::connect(socket).unwrap();
     let tree = query_ipc(&mut f, &mut stream, MessageType::GetTree);
-    let children = tree["nodes"][1]["nodes"][0]["nodes"]
-        .as_array()
-        .unwrap();
-    for (child, expected) in children.iter().zip([
-        0.3245481927710843,
-        0.3245481927710843,
-        0.3253012048192771,
-    ]) {
+    let children = tree["nodes"][1]["nodes"][0]["nodes"].as_array().unwrap();
+    for (child, expected) in
+        children
+            .iter()
+            .zip([0.3245481927710843, 0.3245481927710843, 0.3253012048192771])
+    {
         let actual = child["percent"].as_f64().unwrap();
         assert!(
             (actual - expected).abs() < 1e-9,
@@ -450,7 +449,6 @@ fn workspace_fullscreen_controls_focus_visibility_and_percent() {
     assert_eq!(second["percent"], 0.0);
     assert_eq!(second["border"], "none");
     assert_eq!(second["current_border_width"], 0);
-
 }
 
 #[test]
@@ -575,7 +573,10 @@ fn nested_tabbed_children_report_arranged_area_share() {
     let split = find_json_parent_of_app_id(&tree, "fixture-1").unwrap();
     let parent = find_json_parent_of_app_id(&tree, "fixture-2").unwrap();
     let percent = split["percent"].as_f64().unwrap();
-    assert!(percent < 1., "nested tab child must not report full-parent percent");
+    assert!(
+        percent < 1.,
+        "nested tab child must not report full-parent percent"
+    );
     assert_eq!(parent["nodes"][1]["percent"], 1.0);
 }
 
@@ -587,4 +588,3 @@ fn split_containers_report_sway_container_state_fields() {
     assert_eq!(split["floating"], "auto_off");
     assert_eq!(split["scratchpad_state"], "none");
 }
-

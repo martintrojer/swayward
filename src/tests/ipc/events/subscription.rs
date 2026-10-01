@@ -312,4 +312,3 @@ fn input_event_queue_overflow_disconnects_a_non_reading_subscriber() {
         }
     }
 }
-

@@ -335,7 +335,6 @@ fn move_no_auto_back_and_forth_changes_the_same_workspace_destination() {
     assert_eq!(workspace_apps[&1], ["suppressed"]);
 }
 
-
 /// Sway creates every workspace on the first resolving output its config
 /// assigns, else on the focused output (workspace_get_initial_output,
 /// sway/tree/workspace.c:153-175). Oracle scenarios

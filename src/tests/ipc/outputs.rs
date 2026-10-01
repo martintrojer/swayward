@@ -239,7 +239,10 @@ fn rapid_output_config_changes_report_sway_output_state() {
         &swayward.output_power,
     );
     let left = outputs.iter().find(|output| output.name == "left").unwrap();
-    let right = outputs.iter().find(|output| output.name == "right").unwrap();
+    let right = outputs
+        .iter()
+        .find(|output| output.name == "right")
+        .unwrap();
     assert_eq!(left.current_mode.width, 1280);
     assert_eq!(left.current_mode.height, 720);
     assert_eq!(left.scale, 1.5);
@@ -704,7 +707,11 @@ fn moving_a_floating_group_to_the_scratchpad_while_outputless_does_not_abort_out
         window.ack_last_and_commit();
         fixture.double_roundtrip(client);
     }
-    for command in ["focus parent", "floating enable", "output headless-1 disable"] {
+    for command in [
+        "focus parent",
+        "floating enable",
+        "output headless-1 disable",
+    ] {
         let outcome = crate::command::execute(fixture.niri_state(), command);
         assert!(outcome[0].success, "{command}: {outcome:?}");
     }
@@ -729,7 +736,9 @@ fn tiny_scale_on_large_output_does_not_overflow_tree_percentages() {
     // exceeds i32::MAX. GET_TREE and every layout refresh must still succeed.
     let mut fixture = Fixture::new();
     fixture.add_output(1, (7680, 4320));
-    assert!(crate::command::execute(fixture.niri_state(), "output headless-1 scale 0.1")[0].success);
+    assert!(
+        crate::command::execute(fixture.niri_state(), "output headless-1 scale 0.1")[0].success
+    );
     let state = fixture.niri_state();
     let tree = crate::ipc::tree::describe_tree(
         &state.swayward.layout,
@@ -754,7 +763,10 @@ fn tiny_scale_on_large_output_does_not_overflow_tree_percentages() {
         fixture.double_roundtrip(client);
     }
     for command in ["splitv", "layout stacking", "focus parent", "layout tabbed"] {
-        assert!(crate::command::execute(fixture.niri_state(), command)[0].success, "{command}");
+        assert!(
+            crate::command::execute(fixture.niri_state(), command)[0].success,
+            "{command}"
+        );
     }
     let state = fixture.niri_state();
     let tree = crate::ipc::tree::describe_tree(
@@ -775,8 +787,7 @@ fn get_outputs_focus_lists_every_workspace_in_focus_order() {
     f.add_output(1, (1280, 720));
     let client = f.add_client();
     for (workspace, app_id) in [("1", "fixture-1"), ("3", "fixture-3"), ("7", "fixture-7")] {
-        let outcome =
-            crate::command::execute(f.niri_state(), &format!("workspace {workspace}"));
+        let outcome = crate::command::execute(f.niri_state(), &format!("workspace {workspace}"));
         assert!(outcome[0].success, "{outcome:?}");
         let window = f.client(client).create_window();
         window.xdg_toplevel.set_app_id(app_id.into());
@@ -811,7 +822,10 @@ fn get_outputs_focus_lists_every_workspace_in_focus_order() {
         .iter()
         .find(|node| node.name.as_deref() == Some(outputs[0].name.as_str()))
         .unwrap();
-    assert_eq!(output_node.focus, expected, "GET_TREE and GET_OUTPUTS agree");
+    assert_eq!(
+        output_node.focus, expected,
+        "GET_TREE and GET_OUTPUTS agree"
+    );
 }
 
 /// Oracle: output_config_live_changes / output_power_off (tree). Sway's output
@@ -838,7 +852,10 @@ fn get_tree_output_nodes_report_runtime_power_like_get_outputs() {
                 .find(|node| node["name"] == name)
                 .unwrap();
             for field in ["power", "dpms"] {
-                assert_eq!(output[field], powered, "{command}: GET_OUTPUTS {name} {field}");
+                assert_eq!(
+                    output[field], powered,
+                    "{command}: GET_OUTPUTS {name} {field}"
+                );
                 assert_eq!(node[field], powered, "{command}: GET_TREE {name} {field}");
             }
         }

@@ -158,7 +158,10 @@ fn i3_conformance_runner() {
         !tests.is_empty(),
         "no fully green files derive from tests/i3/coverage.toml"
     );
-    let failures = collect_test_failures(tests.iter().map(|test| (*test, true)), run_i3_test_with_context);
+    let failures = collect_test_failures(
+        tests.iter().map(|test| (*test, true)),
+        run_i3_test_with_context,
+    );
     assert!(
         failures.is_empty(),
         "{} of {} green i3 files failed:\n{}",
@@ -370,8 +373,9 @@ fn tap_tally(stdout: &str) -> TapTally {
             .map(|(index, _)| trailer[index + 1..].trim_start().to_ascii_lowercase());
         let word = |name: &str| {
             directive.as_deref().is_some_and(|text| {
-                text.strip_prefix(name)
-                    .is_some_and(|after| !after.starts_with(|c: char| c.is_alphanumeric() || c == '_'))
+                text.strip_prefix(name).is_some_and(|after| {
+                    !after.starts_with(|c: char| c.is_alphanumeric() || c == '_')
+                })
             })
         };
         if word("todo") {

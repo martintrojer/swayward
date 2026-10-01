@@ -246,10 +246,7 @@ fn floating_group_command_serializes_one_recursive_root() {
         if node["type"] == "workspace" && node["name"] != "__i3_scratch" {
             return Some(node);
         }
-        node["nodes"]
-            .as_array()?
-            .iter()
-            .find_map(visible_workspace)
+        node["nodes"].as_array()?.iter().find_map(visible_workspace)
     }
     let workspace = visible_workspace(&tree).unwrap();
     assert_eq!(workspace["nodes"].as_array().unwrap().len(), 1, "{tree:#}");
@@ -491,7 +488,6 @@ fn floating_sizes_accept_i32_values_and_reject_malformed_values() {
     }
 }
 
-
 /// Oracle: scratchpad_group_marked (hidden and shown). Sway keeps a marked
 /// floating group's marks while it is in the scratchpad: GET_TREE shows them
 /// on the hidden root, GET_MARKS lists them (`sway/sway/ipc-server.c:604-610`
@@ -521,7 +517,10 @@ fn marked_floating_group_keeps_its_mark_through_the_scratchpad() {
         "floating enable",
         "move scratchpad",
     ] {
-        assert!(crate::command::execute(f.niri_state(), command)[0].success, "{command}");
+        assert!(
+            crate::command::execute(f.niri_state(), command)[0].success,
+            "{command}"
+        );
     }
 
     fn marked(node: &Value, out: &mut Vec<(String, String)>) {
@@ -531,7 +530,10 @@ fn marked_floating_group_keeps_its_mark_through_the_scratchpad() {
         {
             out.push((
                 node["type"].as_str().unwrap().to_owned(),
-                node["scratchpad_state"].as_str().unwrap_or_default().to_owned(),
+                node["scratchpad_state"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_owned(),
             ));
         }
         for key in ["nodes", "floating_nodes"] {
@@ -557,6 +559,9 @@ fn marked_floating_group_keeps_its_mark_through_the_scratchpad() {
     assert_eq!(shown.len(), 1, "{tree:#}");
     assert_eq!(shown[0].0, "floating_con");
     let workspace = &tree["nodes"][1]["nodes"][0];
-    assert_eq!(workspace["floating_nodes"].as_array().unwrap().len(), 1, "{tree:#}");
+    assert_eq!(
+        workspace["floating_nodes"].as_array().unwrap().len(),
+        1,
+        "{tree:#}"
+    );
 }
-

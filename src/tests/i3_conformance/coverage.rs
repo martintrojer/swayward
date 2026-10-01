@@ -128,11 +128,11 @@ fn conformance_run_reports_every_failed_file() {
     let failures = collect_test_failures(
         [("first.t", true), ("good.t", true), ("last.t", true)],
         |test, _| {
-        visited.push(test.to_owned());
-        if test != "good.t" {
-            panic!("failure in {test}");
-        }
-    },
+            visited.push(test.to_owned());
+            if test != "good.t" {
+                panic!("failure in {test}");
+            }
+        },
     );
 
     assert_eq!(visited, ["first.t", "good.t", "last.t"]);
@@ -218,7 +218,11 @@ fn headless_startup_outputs_follow_sways_backend_order() {
             .iter()
             .map(|output| (output.name.as_str(), output.rect.x))
             .collect::<Vec<_>>(),
-        [("headless-3", 0), ("headless-2", 1280), ("headless-1", 2560)]
+        [
+            ("headless-3", 0),
+            ("headless-2", 1280),
+            ("headless-1", 2560)
+        ]
     );
 }
 
@@ -327,7 +331,14 @@ fn a_file_loaded_config_keeps_its_per_file_overrides() {
     };
     let reply = load_config_source(&mut fixture, &mut session, "font monospace\n");
     assert_eq!(reply, json!({ "success": true }));
-    let xkb = fixture.swayward().config.borrow().input.keyboard.xkb.clone();
+    let xkb = fixture
+        .swayward()
+        .config
+        .borrow()
+        .input
+        .keyboard
+        .xkb
+        .clone();
     assert_eq!(xkb.layout, "us,ru");
     assert_eq!(xkb.options.as_deref(), Some("grp:alt_shift_toggle"));
 
@@ -337,9 +348,16 @@ fn a_file_loaded_config_keeps_its_per_file_overrides() {
         Some("font monospace\n"),
     )
     .unwrap();
-    let layout = fixture.swayward().config.borrow().input.keyboard.xkb.layout.clone();
+    let layout = fixture
+        .swayward()
+        .config
+        .borrow()
+        .input
+        .keyboard
+        .xkb
+        .layout
+        .clone();
     assert_eq!(layout, "us,ru");
-
 }
 
 #[test]
@@ -616,7 +634,6 @@ fn per_file_harness_branch_count_matches_the_audit() {
          records {claimed}; classify the change in the audit table"
     );
 }
-
 
 #[test]
 fn i3_scratch_defaults_off_tmpfs_and_removes_its_whole_directory() {

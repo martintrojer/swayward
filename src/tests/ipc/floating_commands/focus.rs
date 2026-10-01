@@ -583,11 +583,11 @@ fn unfloating_a_shown_scratchpad_window_removes_it_from_the_scratchpad() {
 
         let outcome = crate::command::execute(f.niri_state(), unfloat);
         assert!(outcome[0].success, "{unfloat}: {outcome:?}");
+        assert!(!f.swayward().layout.is_scratchpad_window(&id), "{unfloat}");
         assert!(
-            !f.swayward().layout.is_scratchpad_window(&id),
+            !f.swayward().layout.focus().unwrap().is_floating(),
             "{unfloat}"
         );
-        assert!(!f.swayward().layout.focus().unwrap().is_floating(), "{unfloat}");
         assert_eq!(
             crate::command::execute(f.niri_state(), "scratchpad show")[0]
                 .error
@@ -595,6 +595,9 @@ fn unfloating_a_shown_scratchpad_window_removes_it_from_the_scratchpad() {
             Some("Scratchpad is empty"),
             "{unfloat}"
         );
-        assert_eq!(f.swayward().layout.focus().map(|w| w.window.clone()), Some(id));
+        assert_eq!(
+            f.swayward().layout.focus().map(|w| w.window.clone()),
+            Some(id)
+        );
     }
 }

@@ -34,7 +34,6 @@ fn reload_rereads_config_and_emits_the_sway_workspace_event() {
         subscriber.read(&mut byte),
         Err(error) if error.kind() == std::io::ErrorKind::WouldBlock
     ));
-
 }
 
 #[test]
@@ -58,7 +57,6 @@ fn reload_reports_malformed_config_in_the_command_reply() {
             parse_error: Some(false),
         }]
     );
-
 }
 
 #[test]
@@ -339,7 +337,6 @@ fn translated_for_window_nop_has_no_observable_window_effect() {
     assert_eq!(with_nop, baseline);
 }
 
-
 /// Oracle: sway-ipc-oracle events scenario reload_from_resize_mode. Sway's
 /// reload resets the binding mode with no `mode` event; only `mode resize`
 /// itself emits one (sway/sway/commands/reload.c:34-45; commands/mode.c:78).
@@ -350,7 +347,11 @@ fn reload_from_a_non_default_mode_resets_it_without_a_mode_event() {
     fixture.add_output(1, (1920, 1080));
     let scratch = ScratchDir::new("reload-mode");
     let path = scratch.join("config.kdl");
-    std::fs::write(&path, r#"mode "resize" { Escape { command "mode default"; }; }"#).unwrap();
+    std::fs::write(
+        &path,
+        r#"mode "resize" { Escape { command "mode default"; }; }"#,
+    )
+    .unwrap();
     crate::utils::watcher::setup(
         fixture.niri_state(),
         &swayward_config::ConfigPath::Explicit(path.clone()),
@@ -397,5 +398,4 @@ fn reload_from_a_non_default_mode_resets_it_without_a_mode_event() {
         ),
         "reload must emit nothing after output::unspecified, in particular no mode event"
     );
-
 }

@@ -28,12 +28,8 @@ fn run_command_wire_covers_representative_command_families() {
         "fullscreen disable",
         "mark wire-smoke",
     ] {
-        let outcomes = query_ipc_with_payload(
-            &mut fixture,
-            &mut stream,
-            MessageType::RunCommand,
-            command,
-        );
+        let outcomes =
+            query_ipc_with_payload(&mut fixture, &mut stream, MessageType::RunCommand, command);
         assert!(
             outcomes
                 .as_array()
@@ -99,12 +95,8 @@ fn input_queries_and_commands_survive_device_hotplug() {
             "input * accel_speed 0.5",
             "seat seat0 hide_cursor 1000",
         ] {
-            let reply = query_ipc_with_payload(
-                &mut fixture,
-                &mut command,
-                MessageType::RunCommand,
-                input,
-            );
+            let reply =
+                query_ipc_with_payload(&mut fixture, &mut command, MessageType::RunCommand, input);
             assert_eq!(
                 reply[0]["success"],
                 input.starts_with("input * xkb_switch_layout"),
@@ -205,7 +197,8 @@ fn get_inputs_and_seats_return_sway_schema_and_values() {
         },
     );
     let inputs = query_ipc(&mut fixture, &mut stream, MessageType::GetInputs);
-    let sway_libinput: Value = serde_json::from_str(&sway_fixture!("inputs-libinput.json")).unwrap();
+    let sway_libinput: Value =
+        serde_json::from_str(&sway_fixture!("inputs-libinput.json")).unwrap();
     let actual_libinput = inputs
         .as_array()
         .unwrap()
@@ -560,7 +553,11 @@ fn run_command_splits_on_newlines_like_sway() {
         let reply =
             query_ipc_with_payload(&mut fixture, &mut stream, MessageType::RunCommand, payload);
         assert_eq!(reply, replies, "{payload:?}");
-        assert_eq!(workspaces(&mut fixture, &mut stream), [focused], "{payload:?}");
+        assert_eq!(
+            workspaces(&mut fixture, &mut stream),
+            [focused],
+            "{payload:?}"
+        );
     }
 }
 
@@ -773,8 +770,7 @@ fn libinput_object_has_every_sway_field_for_touchpads_and_mice() {
         dwt: None,
         ..touchpad.clone()
     };
-    let fixture: Value =
-        serde_json::from_str(&sway_fixture!("inputs-libinput.json")).unwrap();
+    let fixture: Value = serde_json::from_str(&sway_fixture!("inputs-libinput.json")).unwrap();
     assert_eq!(
         crate::input::backend_ext::describe_libinput_device(&mouse),
         fixture[0]["libinput"]

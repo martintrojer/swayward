@@ -122,7 +122,10 @@ struct I3Run {
 enum Verdict {
     TapFailed,
     AdapterFailed,
-    RejectionsChanged { expected: Vec<String>, actual: Vec<String> },
+    RejectionsChanged {
+        expected: Vec<String>,
+        actual: Vec<String>,
+    },
     GreenFileSkipped(Vec<String>),
 }
 
@@ -276,4 +279,3 @@ fn i3_child_polling_yields_cpu_between_checks() {
     }
     assert!(started.elapsed() >= Duration::from_millis(5));
 }
-

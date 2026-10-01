@@ -392,11 +392,7 @@ fn configure_client_state_oracle(config: &mut swayward_config::Config, test: &st
 /// `SWAYWARD_I3_TEST`: that variable is set only when one file is selected,
 /// so reading it here made the gate and a single-file measurement load
 /// different configs for the same file.
-fn apply_harness_policy(
-    config: &mut swayward_config::Config,
-    source: Option<&str>,
-    test: &str,
-) {
+fn apply_harness_policy(config: &mut swayward_config::Config, source: Option<&str>, test: &str) {
     let source = source.unwrap_or_default();
     if !source.lines().any(|line| {
         line.trim_start()
@@ -470,18 +466,21 @@ struct Session<'a> {
 }
 
 fn load_config_source(fixture: &mut Fixture, session: &mut Session, source: &str) -> Value {
-    let (outputs, path, mut config) =
-        match (fake_outputs(source), translate_config_file(session.test, source, session.scratch)) {
-            (Ok(outputs), Ok((path, config))) => (outputs, path, config),
-            (Err(error), _) | (_, Err(error)) => {
-                return json!({ "success": false, "error": error })
-            }
-        };
+    let (outputs, path, mut config) = match (
+        fake_outputs(source),
+        translate_config_file(session.test, source, session.scratch),
+    ) {
+        (Ok(outputs), Ok((path, config))) => (outputs, path, config),
+        (Err(error), _) | (_, Err(error)) => return json!({ "success": false, "error": error }),
+    };
     if let Some(server) = &fixture.swayward().ipc_server {
         server.set_loaded_config_file_name(path.to_string_lossy().into_owned());
     }
     apply_harness_policy(&mut config, Some(source), session.test);
-    fixture.swayward().layout.initialize_workspaces_from_bindings(&config);
+    fixture
+        .swayward()
+        .layout
+        .initialize_workspaces_from_bindings(&config);
     fixture.swayward().for_window.clear();
     fixture.niri_state().reload_config(Ok(config));
     crate::utils::watcher::setup(
@@ -517,26 +516,72 @@ impl WindowRequest {
 #[serde(tag = "action", rename_all = "snake_case")]
 enum Control {
     ConfigDefault,
-    Config { config: String },
+    Config {
+        config: String,
+    },
     Reload,
-    Create { #[serde(flatten)] window: WindowRequest },
-    Open { #[serde(flatten)] window: WindowRequest },
-    Map { handle: u32, requested_width: Option<u16>, requested_height: Option<u16> },
-    Fullscreen { handle: u32, enabled: bool },
-    SetTitle { handle: u32, title: String },
-    SetParent { handle: u32, parent_handle: u32 },
-    Close { id: i64 },
+    Create {
+        #[serde(flatten)]
+        window: WindowRequest,
+    },
+    Open {
+        #[serde(flatten)]
+        window: WindowRequest,
+    },
+    Map {
+        handle: u32,
+        requested_width: Option<u16>,
+        requested_height: Option<u16>,
+    },
+    Fullscreen {
+        handle: u32,
+        enabled: bool,
+    },
+    SetTitle {
+        handle: u32,
+        title: String,
+    },
+    SetParent {
+        handle: u32,
+        parent_handle: u32,
+    },
+    Close {
+        id: i64,
+    },
     Focused,
-    Activate { id: i64 },
-    WindowStates { id: i64 },
-    PointerButton { button: u32, pressed: bool },
-    PointerAxis { horizontal_v120: f64, vertical_v120: f64 },
-    KeyEvent { key: u32, pressed: bool },
-    SetXkbGroup { group: u32 },
-    TypeKeyChords { chords: Vec<Vec<u32>> },
-    WarpPointer { x: f64, y: f64 },
+    Activate {
+        id: i64,
+    },
+    WindowStates {
+        id: i64,
+    },
+    PointerButton {
+        button: u32,
+        pressed: bool,
+    },
+    PointerAxis {
+        horizontal_v120: f64,
+        vertical_v120: f64,
+    },
+    KeyEvent {
+        key: u32,
+        pressed: bool,
+    },
+    SetXkbGroup {
+        group: u32,
+    },
+    TypeKeyChords {
+        chords: Vec<Vec<u32>>,
+    },
+    WarpPointer {
+        x: f64,
+        y: f64,
+    },
     PrepareResize,
-    ReapClosed { #[serde(default)] settle_configures: bool },
+    ReapClosed {
+        #[serde(default)]
+        settle_configures: bool,
+    },
     RemoveAllWindows,
     RequestStop,
 }
@@ -546,9 +591,13 @@ fn handle_control(fixture: &mut Fixture, session: &mut Session, stream: UnixStre
     let reply = match BufReader::new(stream.try_clone().unwrap()).read_line(&mut request) {
         Ok(_) => match serde_json::from_str::<Control>(&request) {
             Ok(control) => dispatch_control(fixture, session, control),
-            Err(error) => json!({ "success": false, "error": format!("invalid control request: {error}") }),
+            Err(error) => {
+                json!({ "success": false, "error": format!("invalid control request: {error}") })
+            }
         },
-        Err(error) => json!({ "success": false, "error": format!("cannot read control request: {error}") }),
+        Err(error) => {
+            json!({ "success": false, "error": format!("cannot read control request: {error}") })
+        }
     };
     writeln!(&stream, "{reply}").unwrap();
 }
@@ -567,7 +616,11 @@ fn dispatch_control(fixture: &mut Fixture, session: &mut Session, control: Contr
         },
         Control::Create { window } => create_control_window(fixture, session, window, false),
         Control::Open { window } => create_control_window(fixture, session, window, true),
-        Control::Map { handle, requested_width, requested_height } => {
+        Control::Map {
+            handle,
+            requested_width,
+            requested_height,
+        } => {
             if client_surface(fixture, session.client, handle).is_none() {
                 return json!({ "success": false, "error": format!("unknown surface handle {handle}") });
             }
@@ -580,14 +633,31 @@ fn dispatch_control(fixture: &mut Fixture, session: &mut Session, control: Contr
                 session.initially_floating.remove(&handle),
             ) })
         }
-        Control::Fullscreen { handle, enabled } => window_control(fixture, session.client, handle, |window| {
-            if enabled { window.set_fullscreen(None); } else { window.unset_fullscreen(); }
-        }),
-        Control::SetTitle { handle, title } => window_control(fixture, session.client, handle, |window| window.set_title(&title)),
-        Control::SetParent { handle, parent_handle } => set_parent_control(fixture, session.client, handle, parent_handle),
+        Control::Fullscreen { handle, enabled } => {
+            window_control(fixture, session.client, handle, |window| {
+                if enabled {
+                    window.set_fullscreen(None);
+                } else {
+                    window.unset_fullscreen();
+                }
+            })
+        }
+        Control::SetTitle { handle, title } => {
+            window_control(fixture, session.client, handle, |window| {
+                window.set_title(&title)
+            })
+        }
+        Control::SetParent {
+            handle,
+            parent_handle,
+        } => set_parent_control(fixture, session.client, handle, parent_handle),
         Control::Close { id } => json!({ "success": close_window(fixture, session.client, id) }),
-        Control::Focused => json!({ "id": fixture.swayward().layout.focus().map(|mapped| crate::ipc::tree::window_id(mapped.id())) }),
-        Control::Activate { id } => json!({ "success": activate_window(fixture, session.client, id) }),
+        Control::Focused => {
+            json!({ "id": fixture.swayward().layout.focus().map(|mapped| crate::ipc::tree::window_id(mapped.id())) })
+        }
+        Control::Activate { id } => {
+            json!({ "success": activate_window(fixture, session.client, id) })
+        }
         Control::WindowStates { id } => json!({
             "states": window_states(fixture, session.client, id),
             "xdg_wm_base_version": fixture.client(session.client).state.xdg_wm_base_version,
@@ -664,8 +734,13 @@ fn dispatch_input_control(
     control: Control,
 ) -> Value {
     match control {
-        Control::PointerButton { button, pressed } => super::ipc::pointer_button(fixture, button, pressed),
-        Control::PointerAxis { horizontal_v120, vertical_v120 } => super::ipc::pointer_axis(fixture, horizontal_v120, vertical_v120),
+        Control::PointerButton { button, pressed } => {
+            super::ipc::pointer_button(fixture, button, pressed)
+        }
+        Control::PointerAxis {
+            horizontal_v120,
+            vertical_v120,
+        } => super::ipc::pointer_axis(fixture, horizontal_v120, vertical_v120),
         Control::KeyEvent { key, pressed } => super::ipc::key_event(fixture, key, pressed),
         Control::SetXkbGroup { group } => {
             let Some(keyboard) = fixture.swayward().seat.get_keyboard() else {
@@ -691,13 +766,19 @@ fn dispatch_input_control(
             fixture.niri_state().move_cursor(location);
         }
         Control::PrepareResize => settle_configures(fixture, client),
-        Control::ReapClosed { settle_configures: settle } => {
-            if settle { settle_configures(fixture, client); }
+        Control::ReapClosed {
+            settle_configures: settle,
+        } => {
+            if settle {
+                settle_configures(fixture, client);
+            }
             reap_closed_windows(fixture, client);
         }
         Control::RemoveAllWindows => remove_all_windows(fixture, client),
         Control::RequestStop => fixture.niri_state().request_stop("exit"),
-        _ => return json!({ "success": false, "error": "control action is not an input or lifecycle action" }),
+        _ => {
+            return json!({ "success": false, "error": "control action is not an input or lifecycle action" })
+        }
     }
     json!({ "success": true })
 }

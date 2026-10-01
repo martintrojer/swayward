@@ -517,4 +517,3 @@ fn rejections_match(test: &str, rejected: &[&str]) -> bool {
             .zip(expected)
             .all(|(command, allowed)| allowed.matches(test, command))
 }
-

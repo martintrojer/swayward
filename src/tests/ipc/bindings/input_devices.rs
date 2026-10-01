@@ -643,7 +643,6 @@ fn pointer_button_binding_requires_the_configured_rendered_region() {
         .is_none());
 }
 
-
 /// Startup continues without a seat keyboard when no keymap compiles, so every
 /// live input and reload path must tolerate its absence instead of panicking.
 #[test]
@@ -706,11 +705,8 @@ fn mouse_binding_events_name_buttons_and_wheel_like_sway() {
 
     let mut remainder = Vec::new();
     let mut next_binding = |fixture: &mut Fixture| {
-        let ((event_type, payload), rest) = read_ipc_reply_with_remainder(
-            fixture,
-            &mut subscriber,
-            std::mem::take(&mut remainder),
-        );
+        let ((event_type, payload), rest) =
+            read_ipc_reply_with_remainder(fixture, &mut subscriber, std::mem::take(&mut remainder));
         remainder = rest;
         assert_eq!(event_type, EVENT_BINDING, "{payload}");
         serde_json::from_str::<Value>(&payload).unwrap()
@@ -742,12 +738,14 @@ fn mouse_binding_events_name_buttons_and_wheel_like_sway() {
         assert_eq!(next_binding(&mut fixture), sway(command, symbol));
     }
     for ((horizontal, vertical), (command, symbol)) in
-        [(0., -120.), (0., 120.), (-120., 0.), (120., 0.)].into_iter().zip([
-            ("nop wheel-up", "0x00000300"),
-            ("nop wheel-down", "0x00000301"),
-            ("nop wheel-left", "0x00000302"),
-            ("nop wheel-right", "0x00000303"),
-        ])
+        [(0., -120.), (0., 120.), (-120., 0.), (120., 0.)]
+            .into_iter()
+            .zip([
+                ("nop wheel-up", "0x00000300"),
+                ("nop wheel-down", "0x00000301"),
+                ("nop wheel-left", "0x00000302"),
+                ("nop wheel-right", "0x00000303"),
+            ])
     {
         pointer_axis(&mut fixture, horizontal, vertical);
         assert_eq!(next_binding(&mut fixture), sway(command, symbol));
