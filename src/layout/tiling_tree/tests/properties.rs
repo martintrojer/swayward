@@ -346,6 +346,95 @@ fn run_operations(ops: Vec<Op>) {
     }
 }
 
+// Shrunk sequences behind the `cc` seeds in
+// proptest-regressions/layout/tiling_tree/tests/properties.txt, replayed by name so the minimal
+// reproduction survives even if the seed file is regenerated.
+
+#[test]
+fn regression_stacked_then_tabbed_split_survives_window_removal() {
+    // Seed 08e57fa6, fixed by 216d2bb4: a one-window directional move read its parent before
+    // root compaction and left that parent empty.
+    run_operations(vec![
+        Op::Add,
+        Op::FocusChild,
+        Op::FocusChild,
+        Op::Split(0, Layout::Stacked),
+        Op::Split(0, Layout::Tabbed),
+        Op::SetLayout(2, Layout::SplitV),
+        Op::Add,
+        Op::Move(11, Direction::Up),
+        Op::SetLayout(18, Layout::SplitH),
+        Op::Remove(12),
+        Op::Move(0, Direction::Left),
+    ]);
+}
+
+#[test]
+fn regression_transfer_fullscreen_and_drop_sequence() {
+    // Seed da2b5410, recorded by c15d1fbd (broaden tiling-tree mutation properties). The
+    // shrunk sequence no longer fails on c15d1fbd with its swap or attach fix reverted, so this
+    // replays the recorded case rather than pinning a known failure.
+    run_operations(vec![
+        Op::Add,
+        Op::Add,
+        Op::Remove(5),
+        Op::Add,
+        Op::ReorderLast(24),
+        Op::Add,
+        Op::Add,
+        Op::Resize(9, 10, 0.3883400016140841),
+        Op::Expel(13, false),
+        Op::Remove(18),
+        Op::ReorderFirst(19),
+        Op::Expel(1, false),
+        Op::Add,
+        Op::Consume(21, true),
+        Op::SetLayout(10, Layout::Stacked),
+        Op::Add,
+        Op::Transfer(3, true),
+        Op::ReorderIndex(14, 31),
+        Op::ResizeSession(24, Direction::Down, 41.03084835101202),
+        Op::ToggleLayout(17),
+        Op::FocusParent,
+        Op::Maximize(3, false),
+        Op::Maximize(9, true),
+        Op::FocusParent,
+        Op::Transfer(9, true),
+        Op::Fullscreen(9, false),
+        Op::Transfer(5, true),
+        Op::Resize(3, 10, 0.13694612537910983),
+        Op::Swap(9, 15),
+        Op::Split(4, Layout::Tabbed),
+        Op::Fullscreen(6, false),
+        Op::Drop(3, ResizeEdge::BOTTOM),
+        Op::Swap(20, 30),
+        Op::Maximize(14, false),
+        Op::ReorderIndex(25, 5),
+        Op::Drop(6, ResizeEdge::TOP),
+        Op::ToggleLayout(19),
+    ]);
+}
+
+#[test]
+fn regression_fullscreen_transfer_after_drop_and_expel() {
+    // Seed 30a67654, fixed by c15d1fbd: attaching a fullscreen subtree left two fullscreen
+    // nodes until attach_subtree_at cleared the destination's.
+    run_operations(vec![
+        Op::Add,
+        Op::Drop(0, ResizeEdge::BOTTOM),
+        Op::Fullscreen(0, true),
+        Op::Add,
+        Op::Split(4, Layout::SplitH),
+        Op::Consume(8, false),
+        Op::Transfer(12, false),
+        Op::Add,
+        Op::Fullscreen(3, true),
+        Op::Remove(2),
+        Op::Expel(0, false),
+        Op::Transfer(8, false),
+    ]);
+}
+
 proptest! {
     #![proptest_config(ProptestConfig {
         cases: tiling_tree_proptest_cases(),
