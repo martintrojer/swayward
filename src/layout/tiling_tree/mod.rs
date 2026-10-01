@@ -1,6 +1,8 @@
 // A live-session path must not panic (AGENTS.md). Outside tests, look nodes
 // up with `get` and handle a miss, or state the invariant with `expect`.
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::indexing_slicing))]
+mod arena;
+mod configure;
 mod depth;
 mod focus;
 mod fullscreen;
@@ -10,9 +12,9 @@ mod invariants;
 mod movement;
 mod mutation;
 mod node;
+mod normalize;
 mod rendering;
 mod resize;
-mod sizing;
 mod state;
 mod transfer;
 mod tree_layout;

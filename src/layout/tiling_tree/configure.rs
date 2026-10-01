@@ -116,45 +116,6 @@ impl<W: LayoutElement> TilingTree<W> {
         }
     }
 
-    pub(super) fn titlebar_state(&self, id: NodeId, workspace_focused: bool) -> TitlebarState {
-        let urgent = self.tile(id).is_some_and(|tile| tile.window().is_urgent());
-        if urgent {
-            return TitlebarState::Urgent;
-        }
-        let Some(focus) = self.focus else {
-            return TitlebarState::Unfocused;
-        };
-        if id == focus {
-            return if workspace_focused {
-                TitlebarState::Focused
-            } else {
-                TitlebarState::FocusedInactive
-            };
-        }
-        // A tab or stack entry labels its first leaf. It shows the focused-tab colour when the
-        // entry's subtree holds the focus, so only the focus's ancestors can be such entries.
-        let is_tab_title_with_focused_descendant =
-            std::iter::successors(Some(focus), |child| self.nodes.get(child)?.parent).any(
-                |child| {
-                    let parent = self.nodes.get(&child).and_then(|node| node.parent);
-                    matches!(
-                        parent
-                            .and_then(|parent| self.nodes.get(&parent))
-                            .map(|node| &node.value),
-                        Some(TreeNode::Split {
-                            layout: Layout::Tabbed | Layout::Stacked,
-                            ..
-                        })
-                    ) && self.first_leaf_in(child) == Some(id)
-                },
-            );
-        if is_tab_title_with_focused_descendant {
-            TitlebarState::FocusedTabTitle
-        } else {
-            TitlebarState::Unfocused
-        }
-    }
-
     pub(super) fn visible_leaves(&self) -> HashSet<NodeId> {
         if let Some(fullscreen) = self.fullscreen_node() {
             let mut visible = HashSet::new();
@@ -190,42 +151,6 @@ impl<W: LayoutElement> TilingTree<W> {
         }
     }
 
-    pub(super) fn root_children(&self) -> Option<&[NodeId]> {
-        match &self.nodes.get(&self.root)?.value {
-            TreeNode::Split { children, .. } => Some(children),
-            TreeNode::Leaf { .. } => None,
-        }
-    }
-
-    pub(super) fn root_branch(&self, mut id: NodeId) -> Option<NodeId> {
-        loop {
-            let parent = self.nodes.get(&id)?.parent?;
-            if parent == self.root {
-                return Some(id);
-            }
-            id = parent;
-        }
-    }
-
-    pub(super) fn tile(&self, id: NodeId) -> Option<&Tile<W>> {
-        match &self.nodes.get(&id)?.value {
-            TreeNode::Leaf { tile } => Some(tile),
-            TreeNode::Split { .. } => None,
-        }
-    }
-
-    pub(super) fn tile_mut(&mut self, id: NodeId) -> Option<&mut Tile<W>> {
-        match &mut self.nodes.get_mut(&id)?.value {
-            TreeNode::Leaf { tile } => Some(tile),
-            TreeNode::Split { .. } => None,
-        }
-    }
-
-    pub(crate) fn node_for_window(&self, window: &W::Id) -> Option<NodeId> {
-        self.windows()
-            .find_map(|(id, candidate)| (candidate.id() == window).then_some(id))
-    }
-
     pub(super) fn sibling_percents(&self, first: NodeId, second: NodeId) -> Option<(f64, f64)> {
         let parent = self.nodes.get(&first)?.parent?;
         if self.nodes.get(&second)?.parent != Some(parent) {
@@ -246,26 +171,6 @@ impl<W: LayoutElement> TilingTree<W> {
         self.compute_geometry().ipc_nodes.remove(&id)
     }
 
-    pub(super) fn leaf_ids_in(&self, id: NodeId) -> Vec<NodeId> {
-        let mut ids = Vec::new();
-        self.collect_leaf_ids(id, &mut ids);
-        ids
-    }
-
-    pub(super) fn collect_leaf_ids(&self, id: NodeId, ids: &mut Vec<NodeId>) {
-        let Some(node) = self.nodes.get(&id) else {
-            return;
-        };
-        match &node.value {
-            TreeNode::Leaf { .. } => ids.push(id),
-            TreeNode::Split { children, .. } => {
-                for child in children {
-                    self.collect_leaf_ids(*child, ids);
-                }
-            }
-        }
-    }
-
     pub(super) fn cancel_resize_for(&mut self, id: NodeId) {
         if self.interactive_resize.as_ref().is_some_and(|resize| {
             resize.target == id
@@ -276,27 +181,6 @@ impl<W: LayoutElement> TilingTree<W> {
         }) {
             self.interactive_resize = None;
         }
-    }
-
-    pub(super) fn first_leaf(&self) -> Option<NodeId> {
-        self.first_leaf_in(self.root)
-    }
-
-    pub(super) fn first_leaf_in(&self, id: NodeId) -> Option<NodeId> {
-        match &self.nodes.get(&id)?.value {
-            TreeNode::Leaf { .. } => Some(id),
-            TreeNode::Split { children, .. } => {
-                children.iter().find_map(|child| self.first_leaf_in(*child))
-            }
-        }
-    }
-
-    pub(super) fn focused_leaf_in(&self, id: NodeId) -> Option<NodeId> {
-        self.focus_history
-            .iter()
-            .copied()
-            .find(|candidate| self.tile(*candidate).is_some() && self.contains_node(id, *candidate))
-            .or_else(|| self.first_leaf_in(id))
     }
 
     pub(super) fn request_window_sizes(&mut self) {

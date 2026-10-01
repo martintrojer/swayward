@@ -142,68 +142,6 @@ impl<W: LayoutElement> TilingTree<W> {
             children: Vec::new(),
         })
     }
-
-    /// Which decoration layers the tiling tree collects, front to back.
-    ///
-    /// Render elements are collected front to back, so an element pushed earlier
-    /// is drawn on top. The uncovered top border sits exactly where an inactive
-    /// tab's titlebar ring is drawn, so it must be collected before titlebars, or
-    /// the ring paints over it and the line breaks under every inactive tab.
-    pub(super) const DECORATION_LAYERS: [DecorationLayer; 3] = [
-        DecorationLayer::UncoveredTopBorders,
-        DecorationLayer::Titlebars,
-        DecorationLayer::Tiles,
-    ];
-
-    /// Nodes in the order their render elements are collected, front to back.
-    ///
-    /// The focused node comes first so its decorations sit above sibling shadows. This mirrors
-    /// sway's arranged tabbed and stacked scene, where only the active child's border is enabled
-    /// (sway/desktop/transaction.c:313-370). Plain depth-first order lets a preceding sibling's
-    /// shadow darken the focused border where the two meet.
-    pub(super) fn leaf_render_order(
-        &self,
-        focus: Option<NodeId>,
-    ) -> impl Iterator<Item = (NodeId, &TreeNode<W>)> {
-        let focused = focus
-            .and_then(|id| self.nodes.get(&id).map(|node| (id, &node.value)))
-            .into_iter();
-        focused.chain(
-            self.iter_depth_first()
-                .filter(move |(id, _)| Some(*id) != focus),
-        )
-    }
-
-    pub fn iter_depth_first(&self) -> impl Iterator<Item = (NodeId, &TreeNode<W>)> {
-        let mut ids = Vec::new();
-        self.collect_depth_first(self.root, &mut ids);
-        ids.into_iter()
-            .filter_map(|id| self.nodes.get(&id).map(|node| (id, &node.value)))
-    }
-
-    pub fn contains_node(&self, ancestor: NodeId, mut id: NodeId) -> bool {
-        loop {
-            if id == ancestor {
-                return true;
-            }
-            let Some(parent) = self.nodes.get(&id).and_then(|node| node.parent) else {
-                return false;
-            };
-            id = parent;
-        }
-    }
-
-    fn collect_depth_first(&self, id: NodeId, ids: &mut Vec<NodeId>) {
-        let Some(node) = self.nodes.get(&id) else {
-            return;
-        };
-        ids.push(id);
-        if let TreeNode::Split { children, .. } = &node.value {
-            for child in children {
-                self.collect_depth_first(*child, ids);
-            }
-        }
-    }
 }
 
 /// One GET_TREE serialization pass. The fullscreen node and the nodes inside a pending

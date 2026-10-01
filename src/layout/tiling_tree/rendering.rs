@@ -613,4 +613,74 @@ impl<W: LayoutElement> TilingTree<W> {
             );
         }
     }
+
+    /// Which decoration layers the tiling tree collects, front to back.
+    ///
+    /// Render elements are collected front to back, so an element pushed earlier
+    /// is drawn on top. The uncovered top border sits exactly where an inactive
+    /// tab's titlebar ring is drawn, so it must be collected before titlebars, or
+    /// the ring paints over it and the line breaks under every inactive tab.
+    pub(super) const DECORATION_LAYERS: [DecorationLayer; 3] = [
+        DecorationLayer::UncoveredTopBorders,
+        DecorationLayer::Titlebars,
+        DecorationLayer::Tiles,
+    ];
+
+    /// Nodes in the order their render elements are collected, front to back.
+    ///
+    /// The focused node comes first so its decorations sit above sibling shadows. This mirrors
+    /// sway's arranged tabbed and stacked scene, where only the active child's border is enabled
+    /// (sway/desktop/transaction.c:313-370). Plain depth-first order lets a preceding sibling's
+    /// shadow darken the focused border where the two meet.
+    pub(super) fn leaf_render_order(
+        &self,
+        focus: Option<NodeId>,
+    ) -> impl Iterator<Item = (NodeId, &TreeNode<W>)> {
+        let focused = focus
+            .and_then(|id| self.nodes.get(&id).map(|node| (id, &node.value)))
+            .into_iter();
+        focused.chain(
+            self.iter_depth_first()
+                .filter(move |(id, _)| Some(*id) != focus),
+        )
+    }
+
+    pub(super) fn titlebar_state(&self, id: NodeId, workspace_focused: bool) -> TitlebarState {
+        let urgent = self.tile(id).is_some_and(|tile| tile.window().is_urgent());
+        if urgent {
+            return TitlebarState::Urgent;
+        }
+        let Some(focus) = self.focus else {
+            return TitlebarState::Unfocused;
+        };
+        if id == focus {
+            return if workspace_focused {
+                TitlebarState::Focused
+            } else {
+                TitlebarState::FocusedInactive
+            };
+        }
+        // A tab or stack entry labels its first leaf. It shows the focused-tab colour when the
+        // entry's subtree holds the focus, so only the focus's ancestors can be such entries.
+        let is_tab_title_with_focused_descendant =
+            std::iter::successors(Some(focus), |child| self.nodes.get(child)?.parent).any(
+                |child| {
+                    let parent = self.nodes.get(&child).and_then(|node| node.parent);
+                    matches!(
+                        parent
+                            .and_then(|parent| self.nodes.get(&parent))
+                            .map(|node| &node.value),
+                        Some(TreeNode::Split {
+                            layout: Layout::Tabbed | Layout::Stacked,
+                            ..
+                        })
+                    ) && self.first_leaf_in(child) == Some(id)
+                },
+            );
+        if is_tab_title_with_focused_descendant {
+            TitlebarState::FocusedTabTitle
+        } else {
+            TitlebarState::Unfocused
+        }
+    }
 }

@@ -566,4 +566,173 @@ impl<W: LayoutElement> TilingTree<W> {
             self.expel(id, true);
         }
     }
+
+    pub(super) fn consume(&mut self, id: NodeId, right: bool) -> bool {
+        let Some(parent) = self.nodes.get(&id).and_then(|node| node.parent) else {
+            return false;
+        };
+        let Some(index) = self.child_index(parent, id) else {
+            return false;
+        };
+        let sibling_index = if right {
+            Some(index + 1)
+        } else {
+            index.checked_sub(1)
+        };
+        let Some(sibling) = sibling_index.and_then(|index| self.child_at(parent, index)) else {
+            return false;
+        };
+        // The new wrapper holds both `id` and its sibling one level deeper.
+        if !self.can_wrap(id) || !self.can_wrap(sibling) {
+            return false;
+        }
+
+        self.interactive_resize = None;
+        let old = self.compute_geometry();
+        self.remove_child(parent, id);
+        if !self.wrap_pair(parent, sibling, id, right) {
+            return false;
+        }
+        self.compact_tree();
+        self.animate_geometry_changes(old, None);
+        self.request_window_sizes();
+        true
+    }
+
+    /// Replaces `sibling` in `parent` with a new SplitV holding `sibling` and the detached `id`,
+    /// `id` after the sibling when `right`. The wrapper takes the sibling's share.
+    fn wrap_pair(&mut self, parent: NodeId, sibling: NodeId, id: NodeId, right: bool) -> bool {
+        let Some(sibling_percent) = self
+            .child_index(parent, sibling)
+            .and_then(|index| match &self.nodes.get(&parent)?.value {
+                TreeNode::Split { percents, .. } => percents.get(index).copied(),
+                TreeNode::Leaf { .. } => None,
+            })
+        else {
+            return false;
+        };
+        let wrapper = self.alloc(Node {
+            parent: Some(parent),
+            value: TreeNode::Split {
+                layout: Layout::SplitV,
+                children: if right {
+                    vec![sibling, id]
+                } else {
+                    vec![id, sibling]
+                },
+                percents: vec![0.5, 0.5],
+                meta: SplitMeta::default(),
+            },
+        });
+        if let Some(Node {
+            value: TreeNode::Split {
+                children, percents, ..
+            },
+            ..
+        }) = self.nodes.get_mut(&parent)
+        {
+            if let Some(index) = children.iter().position(|child| *child == sibling) {
+                if let (Some(child), Some(percent)) =
+                    (children.get_mut(index), percents.get_mut(index))
+                {
+                    *child = wrapper;
+                    *percent = sibling_percent;
+                }
+            }
+        }
+        self.nodes
+            .get_mut(&sibling)
+            .expect("invariant: a sibling child remains in the arena while it is wrapped")
+            .parent = Some(wrapper);
+        self.nodes
+            .get_mut(&id)
+            .expect("invariant: the consumed node remains in the arena while it is wrapped")
+            .parent = Some(wrapper);
+        true
+    }
+
+    pub(super) fn expel(&mut self, id: NodeId, after: bool) -> bool {
+        let Some(parent) = self.nodes.get(&id).and_then(|node| node.parent) else {
+            return false;
+        };
+        let Some(grandparent) = self.nodes.get(&parent).and_then(|node| node.parent) else {
+            return false;
+        };
+        self.interactive_resize = None;
+        let old = self.compute_geometry();
+        let Some(parent_index) = self.child_index(grandparent, parent) else {
+            return false;
+        };
+        self.remove_child(parent, id);
+        let index = parent_index + usize::from(after);
+        self.insert_existing_child(grandparent, id, index, parent);
+        self.collapse_from(parent);
+        self.compact_tree();
+        self.animate_geometry_changes(old, None);
+        self.request_window_sizes();
+        true
+    }
+
+    pub(super) fn wrap_root_for_direction(&mut self, id: NodeId, direction: Direction) {
+        let layout = direction.axis();
+        let mut old_value = std::mem::replace(
+            &mut self
+                .nodes
+                .get_mut(&self.root)
+                .expect("invariant: the root is always present in the arena")
+                .value,
+            TreeNode::Split {
+                layout,
+                children: Vec::new(),
+                percents: Vec::new(),
+                meta: SplitMeta::default(),
+            },
+        );
+        // The root's metadata belongs to the workspace and stays with it; the container that
+        // takes over the root's children starts fresh.
+        let root_meta = match &mut old_value {
+            TreeNode::Split { meta, .. } => std::mem::take(meta),
+            TreeNode::Leaf { .. } => SplitMeta::default(),
+        };
+        let old = self.alloc(Node {
+            parent: Some(self.root),
+            value: old_value,
+        });
+        if let TreeNode::Split { children, .. } = &self
+            .nodes
+            .get(&old)
+            .expect("invariant: the freshly allocated old root remains in the arena")
+            .value
+        {
+            for child in children.clone() {
+                self.nodes
+                    .get_mut(&child)
+                    .expect("invariant: every split child is present in the arena")
+                    .parent = Some(old);
+            }
+        }
+        self.nodes
+            .get_mut(&old)
+            .expect("invariant: the freshly allocated old root remains in the arena")
+            .parent = Some(self.root);
+        let moving_first = direction.is_backwards();
+        let (children, percents) = if moving_first {
+            (vec![id, old], vec![0.5, 0.5])
+        } else {
+            (vec![old, id], vec![0.5, 0.5])
+        };
+        self.nodes
+            .get_mut(&id)
+            .expect("invariant: a node detached for a root wrap remains in the arena")
+            .parent = Some(self.root);
+        self.nodes
+            .get_mut(&self.root)
+            .expect("invariant: the root is always present in the arena")
+            .value = TreeNode::Split {
+            layout,
+            children,
+            percents,
+            meta: root_meta,
+        };
+    }
 }
