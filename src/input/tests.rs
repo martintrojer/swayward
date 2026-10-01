@@ -47,21 +47,48 @@ fn mouse_region_matching_uses_intersection_except_for_workspace_background() {
 }
 
 fn binding(command: &str, group: Option<u8>) -> Bind {
-    Bind {
-        key: Key {
-            trigger: Trigger::Keysym(Keysym::q),
-            modifiers: Modifiers::empty(),
-        },
-        action: Action::SwayCommand(command.into()),
+    bind(
+        Trigger::Keysym(Keysym::q),
+        Modifiers::empty(),
+        Action::SwayCommand(command.into()),
+    )
+    .with_group(group)
+}
+
+fn bind(trigger: Trigger, modifiers: Modifiers, action: Action) -> TestBind {
+    TestBind(Bind {
+        key: Key { trigger, modifiers },
+        action,
         mouse_regions: MouseRegions::empty(),
         input_device: "*".into(),
-        group,
+        group: None,
         release: false,
         repeat: true,
         cooldown: None,
         allow_when_locked: false,
         allow_inhibiting: true,
         hotkey_overlay_title: None,
+    })
+}
+
+struct TestBind(Bind);
+
+impl TestBind {
+    fn with_group(mut self, group: Option<u8>) -> Bind {
+        self.0.group = group;
+        self.0
+    }
+
+    fn release(mut self) -> Bind {
+        self.0.release = true;
+        self.0.repeat = false;
+        self.0
+    }
+
+    fn allowing_lock_and_inhibition(mut self) -> Bind {
+        self.0.allow_when_locked = true;
+        self.0.allow_inhibiting = false;
+        self.0
     }
 }
 
@@ -106,7 +133,12 @@ fn exact_xkb_group_beats_the_wildcard_and_wrong_groups_do_not_match() {
 #[test]
 fn exact_input_beats_group_lock_and_inhibition_matches() {
     let wildcard = binding("nop wildcard", Some(1));
-    let mut exact = binding("nop exact", None);
+    let mut exact = bind(
+        Trigger::Keysym(Keysym::q),
+        Modifiers::empty(),
+        Action::SwayCommand("nop exact".into()),
+    )
+    .allowing_lock_and_inhibition();
     exact.input_device = "0:0:keyboard".into();
     let bindings = [&wildcard, &exact];
 
@@ -119,8 +151,8 @@ fn exact_input_beats_group_lock_and_inhibition_matches() {
             BindingContext {
                 input_device: "0:0:keyboard",
                 group: 1,
-                locked: false,
-                inhibited: false,
+                locked: true,
+                inhibited: true,
             },
         )
         .as_ref(),
@@ -155,22 +187,12 @@ fn group_agnostic_binding_matches_every_xkb_group() {
 fn release_bindings_fire_only_when_the_chord_is_released() {
     let keysym = Keysym::x;
     let key_code = Keycode::from(keysym.raw() + 8);
-    let bindings = Binds(vec![Bind {
-        key: Key {
-            trigger: Trigger::Keysym(keysym),
-            modifiers: Modifiers::SHIFT,
-        },
-        action: Action::SwayCommand("nop release".into()),
-        mouse_regions: MouseRegions::empty(),
-        input_device: "*".into(),
-        group: None,
-        release: true,
-        repeat: false,
-        cooldown: None,
-        allow_when_locked: false,
-        allow_inhibiting: true,
-        hotkey_overlay_title: None,
-    }]);
+    let bindings = Binds(vec![bind(
+        Trigger::Keysym(keysym),
+        Modifiers::SHIFT,
+        Action::SwayCommand("nop release".into()),
+    )
+    .release()]);
     let screenshot_ui = ScreenshotUi::new(Clock::default(), Default::default());
     let mods = ModifiersState {
         shift: true,
@@ -237,22 +259,12 @@ fn release_bindings_fire_only_when_the_chord_is_released() {
 
 #[test]
 fn numlock_is_a_distinct_locked_modifier_for_binding_match() {
-    let bind = Bind {
-        key: Key {
-            trigger: Trigger::Keysym(Keysym::a),
-            modifiers: Modifiers::NUM,
-        },
-        action: Action::CloseWindow,
-        mouse_regions: MouseRegions::empty(),
-        input_device: "*".into(),
-        group: None,
-        release: false,
-        repeat: true,
-        cooldown: None,
-        allow_when_locked: false,
-        allow_inhibiting: true,
-        hotkey_overlay_title: None,
-    };
+    let bind = bind(
+        Trigger::Keysym(Keysym::a),
+        Modifiers::NUM,
+        Action::CloseWindow,
+    )
+    .with_group(None);
     assert!(find_configured_bind(
         [&bind],
         ModKey::Super,
