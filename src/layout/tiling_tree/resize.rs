@@ -125,7 +125,9 @@ impl<W: LayoutElement> TilingTree<W> {
             Layout::SplitV
         };
         let before = edge.intersects(ResizeEdge::LEFT | ResizeEdge::TOP);
-        let Some((first, second, _, _, axis_size, _)) = self.resize_boundary(id, layout, before)
+        let ipc_nodes = self.compute_geometry().ipc_nodes;
+        let Some((first, second, _, _, axis_size, _)) =
+            self.resize_boundary(&ipc_nodes, id, layout, before)
         else {
             return false;
         };
@@ -136,7 +138,7 @@ impl<W: LayoutElement> TilingTree<W> {
                     .nodes
                     .get(&first)
                     .and_then(|node| node.parent)
-                    .and_then(|parent| self.node_geometry(parent))
+                    .and_then(|parent| ipc_nodes.get(&parent))
                     .map(|rect| if horizontal { rect.size.w } else { rect.size.h })
                     .unwrap_or(axis_size);
                 parent_extent * value / 100. / axis_size.max(1.)
@@ -222,6 +224,7 @@ impl<W: LayoutElement> TilingTree<W> {
         // as sway's seatop_begin_resize_tiling does
         // (`sway/input/seatop_resize_tiling.c:106-127`). An axis with no
         // boundary in that direction is skipped, not fatal.
+        let ipc_nodes = self.compute_geometry().ipc_nodes;
         let axes: Vec<_> = [
             (true, edges.intersection(ResizeEdge::LEFT_RIGHT)),
             (false, edges.intersection(ResizeEdge::TOP_BOTTOM)),
@@ -236,7 +239,7 @@ impl<W: LayoutElement> TilingTree<W> {
             };
             let toward_before = edge.intersects(ResizeEdge::LEFT | ResizeEdge::TOP);
             let (first, second, initial_first, initial_second, axis_size, sign) =
-                self.resize_boundary(id, layout, toward_before)?;
+                self.resize_boundary(&ipc_nodes, id, layout, toward_before)?;
             Some(ResizeAxis {
                 horizontal,
                 first,
@@ -544,8 +547,10 @@ impl<W: LayoutElement> TilingTree<W> {
         false
     }
 
+    /// `ipc_nodes` is the IPC rect map of a geometry computed for the current tree.
     fn resize_boundary(
         &self,
+        ipc_nodes: &HashMap<NodeId, Rectangle<f64, Logical>>,
         id: NodeId,
         layout: Layout,
         toward_before: bool,
@@ -573,7 +578,7 @@ impl<W: LayoutElement> TilingTree<W> {
                     Some(index + 1).filter(|index| *index < children.len())
                 };
                 if let Some(&neighbor) = neighbor_index.and_then(|index| children.get(index)) {
-                    let axis_size = self.node_geometry(parent_id).map(|rect| {
+                    let axis_size = ipc_nodes.get(&parent_id).map(|rect| {
                         let extent = if layout == Layout::SplitH {
                             rect.size.w
                         } else {

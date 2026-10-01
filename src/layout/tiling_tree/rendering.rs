@@ -79,12 +79,21 @@ impl<W: LayoutElement> TilingTree<W> {
     ) -> impl Iterator<Item = (&Tile<W>, Point<f64, Logical>, bool)> {
         let geometries = self.compute_geometry();
         let visible = self.visible_leaves();
+        self.tile_render_positions(geometries.leaf_boxes, visible)
+    }
+
+    /// Visible-tile render positions from already computed leaf boxes, in depth-first order.
+    fn tile_render_positions<'a>(
+        &'a self,
+        leaf_boxes: HashMap<NodeId, Rectangle<f64, Logical>>,
+        visible: HashSet<NodeId>,
+    ) -> impl Iterator<Item = (&'a Tile<W>, Point<f64, Logical>, bool)> + 'a {
         let scale = self.scale;
         self.iter_depth_first().filter_map(move |(id, node)| {
             let TreeNode::Leaf { tile } = node else {
                 return None;
             };
-            let rect = geometries.leaf_boxes.get(&id)?;
+            let rect = leaf_boxes.get(&id)?;
             let pos = (rect.loc + tile.render_offset())
                 .to_physical_precise_round(scale)
                 .to_logical(scale);
@@ -186,7 +195,8 @@ impl<W: LayoutElement> TilingTree<W> {
                 }
             }
         }
-        self.tiles_with_render_positions()
+        let visible = self.visible_leaves();
+        self.tile_render_positions(geometries.leaf_boxes, visible)
             .filter(|(_, _, visible)| *visible)
             .find_map(|(tile, tile_pos, _)| HitType::hit_tile(tile, tile_pos, pos))
     }

@@ -132,19 +132,23 @@ impl<W: LayoutElement> TilingTree<W> {
                 TitlebarState::FocusedInactive
             };
         }
-        let is_tab_title_with_focused_descendant = self.nodes.values().any(|node| {
-            let TreeNode::Split {
-                layout: Layout::Tabbed | Layout::Stacked,
-                children,
-                ..
-            } = &node.value
-            else {
-                return false;
-            };
-            children.iter().any(|child| {
-                self.first_leaf_in(*child) == Some(id) && self.contains_node(*child, focus)
-            })
-        });
+        // A tab or stack entry labels its first leaf. It shows the focused-tab colour when the
+        // entry's subtree holds the focus, so only the focus's ancestors can be such entries.
+        let is_tab_title_with_focused_descendant =
+            std::iter::successors(Some(focus), |child| self.nodes.get(child)?.parent).any(
+                |child| {
+                    let parent = self.nodes.get(&child).and_then(|node| node.parent);
+                    matches!(
+                        parent
+                            .and_then(|parent| self.nodes.get(&parent))
+                            .map(|node| &node.value),
+                        Some(TreeNode::Split {
+                            layout: Layout::Tabbed | Layout::Stacked,
+                            ..
+                        })
+                    ) && self.first_leaf_in(child) == Some(id)
+                },
+            );
         if is_tab_title_with_focused_descendant {
             TitlebarState::FocusedTabTitle
         } else {
