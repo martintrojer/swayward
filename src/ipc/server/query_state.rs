@@ -291,7 +291,7 @@ pub(super) fn refresh_query_state(
     >,
     state: &mut QueryState,
 ) {
-    let tree = describe_tree(layout, global_space, marks, container_marks);
+    let tree = describe_tree_with_power(layout, global_space, marks, container_marks, output_power);
     state.tree = serde_json::to_string(&tree)
         .unwrap_or_else(|_| r#"{"success":false,"error":"serialization failed"}"#.into());
     state.workspaces = serde_json::to_string(&describe_workspaces_with_marks(

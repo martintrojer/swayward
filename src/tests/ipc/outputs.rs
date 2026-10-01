@@ -821,3 +821,34 @@ fn get_outputs_focus_lists_every_workspace_in_focus_order() {
         .unwrap();
     assert_eq!(output_node.focus, expected, "GET_TREE and GET_OUTPUTS agree");
 }
+
+/// Oracle: output_config_live_changes / output_power_off (tree). Sway's output
+/// node carries the same runtime `power` and `dpms` as GET_OUTPUTS
+/// (`sway/sway/ipc-json.c:368-372`, shared by both replies).
+#[test]
+fn get_tree_output_nodes_report_runtime_power_like_get_outputs() {
+    let (mut fixture, socket) = ipc_fixture();
+    fixture.add_output(1, (800, 600));
+    fixture.add_output(2, (1024, 768));
+    let mut stream = UnixStream::connect(socket).unwrap();
+
+    for (command, powered) in [("output * power off", false), ("output * power on", true)] {
+        assert!(crate::command::execute(fixture.niri_state(), command)[0].success);
+        fixture.niri_state().refresh_and_flush_clients();
+        let outputs = query_ipc(&mut fixture, &mut stream, MessageType::GetOutputs);
+        let tree = query_ipc(&mut fixture, &mut stream, MessageType::GetTree);
+        for output in outputs.as_array().unwrap() {
+            let name = output["name"].as_str().unwrap();
+            let node = tree["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|node| node["name"] == name)
+                .unwrap();
+            for field in ["power", "dpms"] {
+                assert_eq!(output[field], powered, "{command}: GET_OUTPUTS {name} {field}");
+                assert_eq!(node[field], powered, "{command}: GET_TREE {name} {field}");
+            }
+        }
+    }
+}

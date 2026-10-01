@@ -42,111 +42,121 @@ pub fn describe_outputs_with_power(
         .reduce(|a, b| a.merge(b));
     layout
         .monitors()
-        .map(|monitor| {
-            let output = monitor.output();
-            let mode = output.current_mode();
-            let physical = output.physical_properties();
-            let transform = sway_transform(output.current_transform());
-            let subpixel_hinting = sway_subpixel_hinting(physical.subpixel);
-            let current_mode = mode.map_or(
-                OutputMode {
-                    width: 0,
-                    height: 0,
-                    refresh: 0,
-                },
-                |mode| OutputMode {
-                    width: mode.size.w,
-                    height: mode.size.h,
-                    refresh: mode.refresh,
-                },
-            );
-            let powered = output_power
-                .get(monitor.output_name())
-                .copied()
-                .unwrap_or(true);
-            // This serializer receives the active layout, not backend connector
-            // state. Therefore active is true and primary is false. Runtime
-            // power state supplies sway's identical dpms and power fields.
-            // Like sway's default scale filter, integer scales use nearest and
-            // fractional scales use linear (`sway/config/output.c:650-665`).
-            // Backend adaptive-sync, tearing, HDR, and render-time capability/state do
-            // not reach this query, so those fields conservatively report their
-            // disabled defaults. Keep GET_OUTPUTS documented as Partial until
-            // that state is plumbed in.
-            Output {
-                active: true,
-                adaptive_sync_status: "disabled".into(),
-                allow_tearing: false,
-                border: NodeBorder::None,
-                current_border_width: 0,
-                current_mode,
-                current_workspace: Some(
-                    monitor
-                        .active_workspace_ref()
-                        .sway_name()
-                        .unwrap_or_else(|| (monitor.active_workspace_idx() + 1).to_string()),
-                ),
-                deco_rect: Rect::default(),
-                dpms: powered,
-                features: OutputFeatures {
-                    adaptive_sync: false,
-                    hdr: false,
-                },
-                floating: None,
-                floating_nodes: vec![],
-                focus: output_focus(monitor),
-                focused: layout
-                    .active_monitor_ref()
-                    .is_some_and(|active| active.output() == output),
-                fullscreen_mode: 0,
-                geometry: Rect::default(),
-                hdr: false,
-                id: output_id(monitor.output_name()),
-                layout: NodeLayout::Output,
-                make: physical.make.clone(),
-                marks: vec![],
-                max_render_time: 0,
-                model: physical.model.clone(),
-                modes: mode
-                    .into_iter()
-                    .map(|mode| OutputMode {
-                        width: mode.size.w,
-                        height: mode.size.h,
-                        refresh: mode.refresh,
-                    })
-                    .collect(),
-                name: monitor.output_name().clone(),
-                nodes: vec![],
-                non_desktop: false,
-                orientation: "none".into(),
-                percent: root_rect.and_then(|root| {
-                    let root_area = i64::from(root.size.w) * i64::from(root.size.h);
-                    let rect = output_rect(global_space, output);
-                    let output_area = i64::from(rect.width) * i64::from(rect.height);
-                    (root_area != 0).then(|| output_area as f64 / root_area as f64)
-                }),
-                power: powered,
-                primary: false,
-                rect: output_rect(global_space, output),
-                scale: output.current_scale().fractional_scale(),
-                scale_filter: if output.current_scale().fractional_scale().fract() == 0. {
-                    "nearest"
-                } else {
-                    "linear"
-                }
-                .into(),
-                scratchpad_state: None,
-                serial: physical.serial_number.clone(),
-                sticky: false,
-                subpixel_hinting: subpixel_hinting.into(),
-                transform: transform.into(),
-                node_type: NodeType::Output,
-                urgent: false,
-                window: None,
-                window_rect: Rect::default(),
-            }
-        })
+        .map(|monitor| output_properties(layout, global_space, monitor, output_power, root_rect))
         .collect()
+}
+
+/// One monitor's GET_OUTPUTS entry. GET_TREE output nodes reuse it, as sway
+/// serialises both from one function (`sway/sway/ipc-json.c:331-372`).
+fn output_properties(
+    layout: &Layout<Mapped>,
+    global_space: &Space<Window>,
+    monitor: &crate::layout::monitor::Monitor<Mapped>,
+    output_power: &std::collections::HashMap<String, bool>,
+    root_rect: Option<smithay::utils::Rectangle<i32, smithay::utils::Logical>>,
+) -> Output {
+    let output = monitor.output();
+    let mode = output.current_mode();
+    let physical = output.physical_properties();
+    let transform = sway_transform(output.current_transform());
+    let subpixel_hinting = sway_subpixel_hinting(physical.subpixel);
+    let current_mode = mode.map_or(
+        OutputMode {
+            width: 0,
+            height: 0,
+            refresh: 0,
+        },
+        |mode| OutputMode {
+            width: mode.size.w,
+            height: mode.size.h,
+            refresh: mode.refresh,
+        },
+    );
+    let powered = output_power
+        .get(monitor.output_name())
+        .copied()
+        .unwrap_or(true);
+    // This serializer receives the active layout, not backend connector
+    // state. Therefore active is true and primary is false. Runtime
+    // power state supplies sway's identical dpms and power fields.
+    // Like sway's default scale filter, integer scales use nearest and
+    // fractional scales use linear (`sway/config/output.c:650-665`).
+    // Backend adaptive-sync, tearing, HDR, and render-time capability/state do
+    // not reach this query, so those fields conservatively report their
+    // disabled defaults. Keep GET_OUTPUTS documented as Partial until
+    // that state is plumbed in.
+    Output {
+        active: true,
+        adaptive_sync_status: "disabled".into(),
+        allow_tearing: false,
+        border: NodeBorder::None,
+        current_border_width: 0,
+        current_mode,
+        current_workspace: Some(
+            monitor
+                .active_workspace_ref()
+                .sway_name()
+                .unwrap_or_else(|| (monitor.active_workspace_idx() + 1).to_string()),
+        ),
+        deco_rect: Rect::default(),
+        dpms: powered,
+        features: OutputFeatures {
+            adaptive_sync: false,
+            hdr: false,
+        },
+        floating: None,
+        floating_nodes: vec![],
+        focus: output_focus(monitor),
+        focused: layout
+            .active_monitor_ref()
+            .is_some_and(|active| active.output() == output),
+        fullscreen_mode: 0,
+        geometry: Rect::default(),
+        hdr: false,
+        id: output_id(monitor.output_name()),
+        layout: NodeLayout::Output,
+        make: physical.make.clone(),
+        marks: vec![],
+        max_render_time: 0,
+        model: physical.model.clone(),
+        modes: mode
+            .into_iter()
+            .map(|mode| OutputMode {
+                width: mode.size.w,
+                height: mode.size.h,
+                refresh: mode.refresh,
+            })
+            .collect(),
+        name: monitor.output_name().clone(),
+        nodes: vec![],
+        non_desktop: false,
+        orientation: "none".into(),
+        percent: root_rect.and_then(|root| {
+            let root_area = i64::from(root.size.w) * i64::from(root.size.h);
+            let rect = output_rect(global_space, output);
+            let output_area = i64::from(rect.width) * i64::from(rect.height);
+            (root_area != 0).then(|| output_area as f64 / root_area as f64)
+        }),
+        power: powered,
+        primary: false,
+        rect: output_rect(global_space, output),
+        scale: output.current_scale().fractional_scale(),
+        scale_filter: if output.current_scale().fractional_scale().fract() == 0. {
+            "nearest"
+        } else {
+            "linear"
+        }
+        .into(),
+        scratchpad_state: None,
+        serial: physical.serial_number.clone(),
+        sticky: false,
+        subpixel_hinting: subpixel_hinting.into(),
+        transform: transform.into(),
+        node_type: NodeType::Output,
+        urgent: false,
+        window: None,
+        window_rect: Rect::default(),
+    }
 }
 
 /// The output's workspaces in focus order, most recent first.
@@ -174,6 +184,7 @@ pub(super) fn describe_output_node(
     layout: &Layout<Mapped>,
     global_space: &Space<Window>,
     monitor: &crate::layout::monitor::Monitor<Mapped>,
+    output_power: &std::collections::HashMap<String, bool>,
     root_rect: Rect,
     marks: &std::collections::HashMap<MappedId, Vec<String>>,
     container_marks: &std::collections::HashMap<(WorkspaceId, NodeId), Vec<String>>,
@@ -209,14 +220,8 @@ pub(super) fn describe_output_node(
         })
         .collect::<Vec<_>>();
     let focus = output_focus(monitor);
-    // `describe_outputs` iterates this same immutable layout and emits exactly
-    // one entry for every monitor, copying `output_name` verbatim.
-    // `describe_outputs` iterates this same immutable layout and emits exactly
-    // one entry for every monitor, copying `output_name` verbatim.
-    let output = describe_outputs(layout, global_space)
-        .into_iter()
-        .find(|output| output.name == *monitor.output_name())
-        .expect("the described monitor must have a matching output entry");
+    // The node computes its own percent below, so the GET_OUTPUTS root is unused.
+    let output = output_properties(layout, global_space, monitor, output_power, None);
     let mut node = common_node(CommonNodeContext {
         id: output.id,
         node_type: NodeType::Output,

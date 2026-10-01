@@ -50,6 +50,24 @@ pub fn describe_tree(
     marks: &std::collections::HashMap<MappedId, Vec<String>>,
     container_marks: &std::collections::HashMap<(WorkspaceId, NodeId), Vec<String>>,
 ) -> Node {
+    describe_tree_with_power(
+        layout,
+        global_space,
+        marks,
+        container_marks,
+        &std::collections::HashMap::new(),
+    )
+}
+
+/// [`describe_tree`] with runtime output power, which only the GET_TREE reply
+/// observes. Event payloads never carry output nodes.
+pub fn describe_tree_with_power(
+    layout: &Layout<Mapped>,
+    global_space: &Space<Window>,
+    marks: &std::collections::HashMap<MappedId, Vec<String>>,
+    container_marks: &std::collections::HashMap<(WorkspaceId, NodeId), Vec<String>>,
+    output_power: &std::collections::HashMap<String, bool>,
+) -> Node {
     let outputs: Vec<_> = layout.monitors().collect();
     let root_rect = outputs
         .iter()
@@ -63,6 +81,7 @@ pub fn describe_tree(
             layout,
             global_space,
             monitor,
+            output_power,
             root_rect,
             marks,
             container_marks,

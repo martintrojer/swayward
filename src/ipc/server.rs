@@ -28,7 +28,7 @@ use swayward_ipc::{
     CommandOutcome, KeyboardLayouts, MessageType, Timestamp, Version, WindowLayout,
 };
 
-use crate::ipc::tree::{describe_tree, describe_workspaces_with_marks};
+use crate::ipc::tree::{describe_tree_with_power, describe_workspaces_with_marks};
 use crate::layout::workspace::WorkspaceId;
 use crate::swayward::State;
 use crate::utils::{version, with_toplevel_role, SWAYWARD_IPC_VERSION};
