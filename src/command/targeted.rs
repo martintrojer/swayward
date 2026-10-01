@@ -580,91 +580,91 @@ pub(super) fn focused_con_id(state: &State) -> Option<u64> {
     }
 }
 
-type WindowSnapshot = (
-    crate::window::mapped::MappedId,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    bool,
-    Option<Duration>,
-    Option<i32>,
-    Option<crate::swayward::SecurityContextMetadata>,
-    Option<std::sync::Arc<str>>,
-);
+/// The criteria-visible state of one window, copied out so matching does not
+/// hold a layout borrow.
+struct WindowSnapshot {
+    id: crate::window::mapped::MappedId,
+    title: Option<String>,
+    app_id: Option<String>,
+    workspace: Option<String>,
+    floating: bool,
+    urgent_since: Option<Duration>,
+    pid: Option<i32>,
+    security: Option<crate::swayward::SecurityContextMetadata>,
+    tag: Option<std::sync::Arc<str>>,
+}
 
-fn snapshot_info<'a>(state: &'a State, snapshot: &'a WindowSnapshot) -> criteria::WindowInfo<'a> {
-    criteria::WindowInfo {
-        title: snapshot.1.as_deref(),
-        shell: Some("xdg_shell"),
-        app_id: snapshot.2.as_deref(),
-        marks: state
-            .swayward
-            .marks_by_window
-            .get(&snapshot.0)
-            .map(Vec::as_slice)
-            .unwrap_or(&[]),
-        con_id: crate::ipc::tree::window_id(snapshot.0) as u64,
-        floating: snapshot.4,
-        urgent_since: snapshot.5,
-        workspace: snapshot.3.as_deref(),
-        pid: snapshot.6.and_then(|pid| u32::try_from(pid).ok()),
-        sandbox_engine: snapshot
-            .7
-            .as_ref()
-            .and_then(|context| context.sandbox_engine.as_deref()),
-        sandbox_app_id: snapshot
-            .7
-            .as_ref()
-            .and_then(|context| context.app_id.as_deref()),
-        sandbox_instance_id: snapshot
-            .7
-            .as_ref()
-            .and_then(|context| context.instance_id.as_deref()),
-        tag: snapshot.8.as_deref(),
+impl WindowSnapshot {
+    fn new(mapped: &crate::window::Mapped, workspace: Option<String>, floating: bool) -> Self {
+        let (title, app_id) = crate::utils::with_toplevel_role(mapped.toplevel(), |role| {
+            (role.title.clone(), role.app_id.clone())
+        });
+        Self {
+            id: mapped.id(),
+            title,
+            app_id,
+            workspace,
+            floating,
+            urgent_since: mapped.urgent_since(),
+            pid: mapped.credentials().map(|c| c.pid),
+            security: mapped.security_context().cloned(),
+            tag: mapped.tag(),
+        }
+    }
+
+    fn info<'a>(&'a self, state: &'a State) -> criteria::WindowInfo<'a> {
+        let security = self.security.as_ref();
+        criteria::WindowInfo {
+            title: self.title.as_deref(),
+            shell: Some("xdg_shell"),
+            app_id: self.app_id.as_deref(),
+            marks: state
+                .swayward
+                .marks_by_window
+                .get(&self.id)
+                .map(Vec::as_slice)
+                .unwrap_or(&[]),
+            con_id: crate::ipc::tree::window_id(self.id) as u64,
+            floating: self.floating,
+            urgent_since: self.urgent_since,
+            workspace: self.workspace.as_deref(),
+            pid: self.pid.and_then(|pid| u32::try_from(pid).ok()),
+            sandbox_engine: security.and_then(|context| context.sandbox_engine.as_deref()),
+            sandbox_app_id: security.and_then(|context| context.app_id.as_deref()),
+            sandbox_instance_id: security.and_then(|context| context.instance_id.as_deref()),
+            tag: self.tag.as_deref(),
+        }
     }
 }
 
 pub(super) fn matching_targets(state: &State, criteria: &criteria::Criteria) -> Vec<CommandTarget> {
-    use crate::utils::with_toplevel_role;
-
+    let workspace_names = state
+        .swayward
+        .layout
+        .workspaces()
+        .map(|(_, _, ws)| (ws.id(), ws.sway_name()))
+        .collect::<std::collections::HashMap<_, _>>();
     let focused_id = focused_id(state);
     let mut snapshots = Vec::new();
     state
         .swayward
         .layout
         .with_windows(|mapped, _, workspace_id, _| {
-            let (title, app_id) = with_toplevel_role(mapped.toplevel(), |role| {
-                (role.title.clone(), role.app_id.clone())
-            });
-            let workspace = workspace_id.and_then(|id| {
-                state
-                    .swayward
-                    .layout
-                    .workspaces()
-                    .find_map(|(_, _, ws)| (ws.id() == id).then(|| ws.sway_name()).flatten())
-            });
-            snapshots.push((
-                mapped.id(),
-                title,
-                app_id,
-                workspace,
-                mapped.is_floating(),
-                mapped.urgent_since(),
-                mapped.credentials().map(|c| c.pid),
-                mapped.security_context().cloned(),
-                mapped.tag(),
-            ));
+            let workspace = workspace_id
+                .and_then(|id| workspace_names.get(&id).cloned())
+                .flatten();
+            snapshots.push(WindowSnapshot::new(mapped, workspace, mapped.is_floating()));
         });
     let focused = snapshots
         .iter()
-        .find(|snapshot| Some(snapshot.0) == focused_id);
+        .find(|snapshot| Some(snapshot.id) == focused_id);
     let focused_info = focused
-        .map(|snapshot| snapshot_info(state, snapshot))
+        .map(|snapshot| snapshot.info(state))
         .unwrap_or_default();
     let mut targets = snapshots
         .iter()
-        .filter(|snapshot| criteria.matches(&snapshot_info(state, snapshot), &focused_info))
-        .map(|snapshot| CommandTarget::Window(snapshot.0))
+        .filter(|snapshot| criteria.matches(&snapshot.info(state), &focused_info))
+        .map(|snapshot| CommandTarget::Window(snapshot.id))
         .collect::<Vec<_>>();
     if let Some(order) = criteria.urgent() {
         targets.sort_by_key(|target| {
@@ -673,8 +673,8 @@ pub(super) fn matching_targets(state: &State, criteria: &criteria::Criteria) -> 
             };
             snapshots
                 .iter()
-                .find(|snapshot| snapshot.0 == *id)
-                .and_then(|snapshot| snapshot.5)
+                .find(|snapshot| snapshot.id == *id)
+                .and_then(|snapshot| snapshot.urgent_since)
         });
         if matches!(order, criteria::Urgent::Latest) {
             targets.reverse();
@@ -701,21 +701,8 @@ pub(super) fn matching_targets(state: &State, criteria: &criteria::Criteria) -> 
                             warn!("criteria: floating leaf {node:?} has no mapped window");
                             continue;
                         };
-                        let (title, app_id) = with_toplevel_role(mapped.toplevel(), |role| {
-                            (role.title.clone(), role.app_id.clone())
-                        });
-                        let snapshot = (
-                            mapped.id(),
-                            title,
-                            app_id,
-                            workspace.sway_name(),
-                            true,
-                            mapped.urgent_since(),
-                            mapped.credentials().map(|c| c.pid),
-                            mapped.security_context().cloned(),
-                            mapped.tag(),
-                        );
-                        if criteria.matches(&snapshot_info(state, &snapshot), &focused_info)
+                        let snapshot = WindowSnapshot::new(mapped, workspace.sway_name(), true);
+                        if criteria.matches(&snapshot.info(state), &focused_info)
                             && !targets.contains(&CommandTarget::Window(mapped.id()))
                         {
                             targets.push(CommandTarget::Window(mapped.id()));
