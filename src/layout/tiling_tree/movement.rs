@@ -342,15 +342,32 @@ impl<W: LayoutElement> TilingTree<W> {
         true
     }
 
+    /// Whether sway's ancestor walk from `id` reaches the workspace without
+    /// finding a parallel parent, so it reorients the workspace
+    /// (sway/commands/move.c:322-349). The moved node's own parallel parent
+    /// does not stop the walk: with no sibling that way, it escapes.
+    fn walk_reaches_unparallel_root(&self, id: NodeId, wanted_layout: Layout) -> bool {
+        let mut current = id;
+        while let Some(parent) = self.nodes.get(&current).and_then(|node| node.parent) {
+            let Some(&TreeNode::Split { layout, .. }) =
+                self.nodes.get(&parent).map(|node| &node.value)
+            else {
+                return false;
+            };
+            if Self::layouts_parallel(layout, wanted_layout) && current != id {
+                return false;
+            }
+            current = parent;
+        }
+        current == self.root
+            && !matches!(
+                self.nodes.get(&self.root).map(|node| &node.value),
+                Some(TreeNode::Split { layout, .. }) if Self::layouts_parallel(*layout, wanted_layout)
+            )
+    }
+
     fn move_only_window(&mut self, id: NodeId, direction: Direction, wanted_layout: Layout) {
-        let Some(&TreeNode::Split {
-            layout: root_layout,
-            ..
-        }) = self.nodes.get(&self.root).map(|node| &node.value)
-        else {
-            return;
-        };
-        if !Self::layouts_parallel(root_layout, wanted_layout) {
+        if self.walk_reaches_unparallel_root(id, wanted_layout) {
             self.set_layout(self.root, wanted_layout);
             // `set_layout` compacts the tree, which squashes a singleton split.
             // When the moved node was that split, continue with the one window

@@ -540,3 +540,36 @@ fn move_out_of_a_singleton_workspace_child_is_a_no_op() {
     assert_eq!(format!("{:?}", t.ipc_tree()), before);
     t.check_invariants();
 }
+
+// random seed 9 step 5 (sway-1.12-random): the only window sits in a split
+// inside a stacked container on an H workspace. `move up` finds the stacked
+// container as a parallel ancestor and promotes the window into it; sway
+// reorients the workspace only when the walk finds no parallel parent
+// (sway/commands/move.c:322-349).
+#[test]
+fn lone_window_move_stops_at_a_parallel_stacked_ancestor() {
+    let mut t = tree((1200., 800.), 0.);
+    let window = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let split = t.wrap_node(window, Layout::SplitH);
+    t.wrap_node(split, Layout::Stacked);
+
+    t.move_direction(window, Direction::Up);
+
+    let tree = t.ipc_tree();
+    assert!(
+        matches!(
+            tree,
+            IpcNode::Split {
+                layout: Layout::SplitH,
+                ref children,
+                ..
+            } if matches!(
+                &children[..],
+                [IpcNode::Split { layout: Layout::Stacked, children: stack, .. }]
+                    if matches!(&stack[..], [IpcNode::Leaf { id, .. }] if *id == window)
+            )
+        ),
+        "{tree:?}"
+    );
+    t.check_invariants();
+}
