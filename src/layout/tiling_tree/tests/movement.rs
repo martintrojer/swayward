@@ -371,3 +371,36 @@ fn reordering_a_subtree_preserves_its_share() {
     assert_eq!(t.geometry(b).unwrap().loc.x, 920.);
     t.check_invariants();
 }
+
+#[test]
+fn swapping_the_root_is_refused_instead_of_panicking() {
+    let mut t = tree((1200., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    let root = t.root;
+
+    assert_eq!(
+        t.swap_nodes(root, first),
+        Err("Cannot swap ancestor and descendant")
+    );
+    let other = tree((1200., 800.), 0.).root;
+    t.nodes.insert(
+        other,
+        Node {
+            parent: None,
+            value: TreeNode::Split {
+                layout: Layout::SplitH,
+                children: Vec::new(),
+                percents: Vec::new(),
+            },
+        },
+    );
+    // A second parentless node is not a container, as sway requires
+    // (sway/commands/swap.c:73-75).
+    assert_eq!(
+        t.swap_nodes(other, first),
+        Err("Can only swap with containers and views")
+    );
+    t.nodes.remove(&other);
+    t.check_invariants();
+}

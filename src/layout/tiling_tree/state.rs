@@ -92,10 +92,15 @@ impl<W: LayoutElement> TilingTree<W> {
         if !self.resident_root {
             return None;
         }
-        let TreeNode::Split { children, .. } = &self.nodes[&self.root].value else {
-            unreachable!()
+        let Some(TreeNode::Split { children, .. }) =
+            self.nodes.get(&self.root).map(|node| &node.value)
+        else {
+            return None;
         };
-        (children.len() == 1).then(|| children[0])
+        match children.as_slice() {
+            [only] => Some(*only),
+            _ => None,
+        }
     }
 
     pub fn detach_resident_root(mut self, id: NodeId) -> Option<DetachedSubtree<W>> {
@@ -113,7 +118,9 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub fn representation_layout(&self) -> Layout {
-        let TreeNode::Split { layout, .. } = self.nodes[&self.root].value else {
+        let Some(&TreeNode::Split { layout, .. }) =
+            self.nodes.get(&self.root).map(|node| &node.value)
+        else {
             unreachable!()
         };
         if self.is_empty() {
@@ -143,7 +150,9 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub fn preserve_empty_auto_layout(&mut self) {
-        let TreeNode::Split { layout, .. } = self.nodes[&self.root].value else {
+        let Some(&TreeNode::Split { layout, .. }) =
+            self.nodes.get(&self.root).map(|node| &node.value)
+        else {
             unreachable!();
         };
         self.preserved_auto_layout = Some(layout);
@@ -156,8 +165,8 @@ impl<W: LayoutElement> TilingTree<W> {
         if self.is_empty()
             && self.options.layout.default_orientation == swayward_config::DefaultOrientation::Auto
             && matches!(
-                self.nodes[&self.root].value,
-                TreeNode::Split { layout, .. } if layout == preserved
+                self.nodes.get(&self.root).map(|node| &node.value),
+                Some(TreeNode::Split { layout, .. }) if *layout == preserved
             )
         {
             self.reset_empty_layout();
@@ -179,8 +188,8 @@ impl<W: LayoutElement> TilingTree<W> {
             && self.is_empty()
             && self.options.layout.default_orientation == swayward_config::DefaultOrientation::Auto
             && matches!(
-                self.nodes[&self.root].value,
-                TreeNode::Split { layout, .. } if layout == old_auto_layout
+                self.nodes.get(&self.root).map(|node| &node.value),
+                Some(TreeNode::Split { layout, .. }) if *layout == old_auto_layout
             )
         {
             self.set_layout(self.root, new_auto_layout);

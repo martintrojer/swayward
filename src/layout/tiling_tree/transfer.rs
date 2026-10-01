@@ -274,10 +274,10 @@ impl<W: LayoutElement> TilingTree<W> {
         if old_id != self.root {
             remapped.push((old_id, self.root));
         }
-        let TreeNode::Split {
+        let Some(TreeNode::Split {
             layout: root_layout,
             ..
-        } = &mut self.nodes.get_mut(&self.root).unwrap().value
+        }) = self.nodes.get_mut(&self.root).map(|node| &mut node.value)
         else {
             unreachable!();
         };
@@ -298,9 +298,9 @@ impl<W: LayoutElement> TilingTree<W> {
             .into_iter()
             .map(|child| self.insert_detached_node(child, Some(self.root), remapped))
             .collect::<Vec<_>>();
-        let TreeNode::Split {
+        let Some(TreeNode::Split {
             children, percents, ..
-        } = &mut self.nodes.get_mut(&self.root).unwrap().value
+        }) = self.nodes.get_mut(&self.root).map(|node| &mut node.value)
         else {
             unreachable!();
         };

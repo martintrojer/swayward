@@ -17,18 +17,29 @@ impl<W: LayoutElement> TilingTree<W> {
             return Err(TOO_DEEP);
         }
 
+        // The workspace root is not a container (sway's swap only accepts
+        // containers and views, sway/commands/swap.c:73-75); its missing
+        // parent is what the lookups below would trip over.
+        let (Some(first_parent), Some(second_parent)) = (
+            self.nodes.get(&first).and_then(|node| node.parent),
+            self.nodes.get(&second).and_then(|node| node.parent),
+        ) else {
+            return Err("Can only swap with containers and views");
+        };
+        let (Some(first_index), Some(second_index)) = (
+            self.child_index(first_parent, first),
+            self.child_index(second_parent, second),
+        ) else {
+            return Err("No matching node.");
+        };
         let old = self.compute_geometry();
-        let first_parent = self.nodes[&first].parent.unwrap();
-        let second_parent = self.nodes[&second].parent.unwrap();
-        let first_index = self.child_index(first_parent, first).unwrap();
-        let second_index = self.child_index(second_parent, second).unwrap();
         let parent_is_tabbed = |parent| {
             matches!(
-                self.nodes[&parent].value,
-                TreeNode::Split {
+                self.nodes.get(&parent).map(|node| &node.value),
+                Some(TreeNode::Split {
                     layout: Layout::Tabbed | Layout::Stacked,
                     ..
-                }
+                })
             )
         };
         let focus_after_swap = if self.focus == Some(first) && parent_is_tabbed(second_parent) {
@@ -38,29 +49,35 @@ impl<W: LayoutElement> TilingTree<W> {
         } else {
             self.focus
         };
+        // Both parents and indices were resolved above and nothing has
+        // mutated the arena since.
         if first_parent == second_parent {
-            let TreeNode::Split { children, .. } =
-                &mut self.nodes.get_mut(&first_parent).unwrap().value
-            else {
-                unreachable!();
-            };
-            children.swap(first_index, second_index);
+            if let Some(TreeNode::Split { children, .. }) = self
+                .nodes
+                .get_mut(&first_parent)
+                .map(|node| &mut node.value)
+            {
+                children.swap(first_index, second_index);
+            }
         } else {
-            let TreeNode::Split { children, .. } =
-                &mut self.nodes.get_mut(&first_parent).unwrap().value
-            else {
-                unreachable!();
-            };
-            children[first_index] = second;
-            let TreeNode::Split { children, .. } =
-                &mut self.nodes.get_mut(&second_parent).unwrap().value
-            else {
-                unreachable!();
-            };
-            children[second_index] = first;
+            for (parent, index, child) in [
+                (first_parent, first_index, second),
+                (second_parent, second_index, first),
+            ] {
+                if let Some(TreeNode::Split { children, .. }) =
+                    self.nodes.get_mut(&parent).map(|node| &mut node.value)
+                {
+                    if let Some(slot) = children.get_mut(index) {
+                        *slot = child;
+                    }
+                }
+            }
         }
-        self.nodes.get_mut(&first).unwrap().parent = Some(second_parent);
-        self.nodes.get_mut(&second).unwrap().parent = Some(first_parent);
+        for (id, parent) in [(first, second_parent), (second, first_parent)] {
+            if let Some(node) = self.nodes.get_mut(&id) {
+                node.parent = Some(parent);
+            }
+        }
         self.swap_fullscreen_modes(first, second);
         if self.focus != focus_after_swap {
             self.set_focus_id(focus_after_swap);
@@ -108,21 +125,21 @@ impl<W: LayoutElement> TilingTree<W> {
             .into_iter()
             .filter_map(|leaf| self.tile(leaf).map(|tile| tile.window().id().clone()))
             .collect::<Vec<_>>();
-        let (parent, after) = match self.nodes[&destination] {
-            Node {
+        let (parent, after) = match self.nodes.get(&destination) {
+            Some(Node {
                 parent: Some(parent),
                 value: TreeNode::Leaf { .. },
-            } => (parent, Some(destination)),
-            Node {
+            }) => (*parent, Some(destination)),
+            Some(Node {
                 value: TreeNode::Split { .. },
                 ..
-            } => (destination, None),
+            }) => (destination, None),
             _ => return false,
         };
         if !self.fits_below(parent, self.subtree_height(id)) {
             return false;
         }
-        let already_there = self.nodes[&id].parent == Some(parent)
+        let already_there = self.nodes.get(&id).and_then(|node| node.parent) == Some(parent)
             && self.child_index(parent, id)
                 == after
                     .and_then(|node| self.child_index(parent, node))
@@ -320,9 +337,12 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     fn move_only_window(&mut self, id: NodeId, wanted_layout: Layout) {
-        let root_layout = match self.nodes[&self.root].value {
-            TreeNode::Split { layout, .. } => layout,
-            TreeNode::Leaf { .. } => unreachable!(),
+        let Some(&TreeNode::Split {
+            layout: root_layout,
+            ..
+        }) = self.nodes.get(&self.root).map(|node| &node.value)
+        else {
+            return;
         };
         if Self::layouts_parallel(root_layout, wanted_layout) {
             return;
@@ -339,7 +359,7 @@ impl<W: LayoutElement> TilingTree<W> {
         else {
             return;
         };
-        let old_parent = self.nodes[&id].parent;
+        let old_parent = self.nodes.get(&id).and_then(|node| node.parent);
         if let Some(parent) = old_parent.filter(|parent| *parent != self.root) {
             self.detach_subtree_only(id);
             self.insert_child_at(self.root, id, 0);

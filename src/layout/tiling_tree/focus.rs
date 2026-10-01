@@ -206,9 +206,9 @@ impl<W: LayoutElement> TilingTree<W> {
         let target = if let Some(fullscreen) = self.fullscreen_node() {
             self.focused_leaf_in(fullscreen)
         } else {
-            let TreeNode::Split {
+            let Some(TreeNode::Split {
                 layout, children, ..
-            } = &self.nodes[&self.root].value
+            }) = self.nodes.get(&self.root).map(|node| &node.value)
             else {
                 return false;
             };
@@ -256,7 +256,9 @@ impl<W: LayoutElement> TilingTree<W> {
         let active = self.focused_child_in(parent)?;
         let index = children.iter().position(|child| *child == active)?;
         let desired = (index as i32 + steps).clamp(0, children.len() as i32 - 1) as usize;
-        let focus = self.focused_leaf_in(children[desired]);
+        let focus = children
+            .get(desired)
+            .and_then(|child| self.focused_leaf_in(*child));
         self.set_focus_id(focus);
         focus.and_then(|focus| self.tile(focus).map(|tile| tile.window().id().clone()))
     }
@@ -268,7 +270,8 @@ impl<W: LayoutElement> TilingTree<W> {
         let Some(parent) = self.nodes.get(&focus).and_then(|node| node.parent) else {
             return false;
         };
-        let TreeNode::Split { layout, .. } = &self.nodes[&parent].value else {
+        let Some(TreeNode::Split { layout, .. }) = self.nodes.get(&parent).map(|node| &node.value)
+        else {
             return false;
         };
         let direction_layout = match layout {
@@ -278,14 +281,16 @@ impl<W: LayoutElement> TilingTree<W> {
         let mut current = focus;
         let mut wrap = None;
         while let Some(parent) = self.nodes.get(&current).and_then(|node| node.parent) {
-            let TreeNode::Split {
+            let Some(TreeNode::Split {
                 layout, children, ..
-            } = &self.nodes[&parent].value
+            }) = self.nodes.get(&parent).map(|node| &node.value)
             else {
                 return false;
             };
             if Self::layouts_parallel(*layout, direction_layout) {
-                let index = children.iter().position(|child| *child == current).unwrap();
+                let Some(index) = children.iter().position(|child| *child == current) else {
+                    return false;
+                };
                 let target = if next {
                     children.get(index + 1).copied()
                 } else {
@@ -328,7 +333,8 @@ impl<W: LayoutElement> TilingTree<W> {
         else {
             return false;
         };
-        let TreeNode::Split { layout, .. } = self.nodes[&parent].value else {
+        let Some(&TreeNode::Split { layout, .. }) = self.nodes.get(&parent).map(|node| &node.value)
+        else {
             return false;
         };
         let direction = match (next, layout) {
@@ -368,9 +374,9 @@ impl<W: LayoutElement> TilingTree<W> {
             if Some(current) == barrier {
                 break;
             }
-            let TreeNode::Split {
+            let Some(TreeNode::Split {
                 layout, children, ..
-            } = &self.nodes[&parent].value
+            }) = self.nodes.get(&parent).map(|node| &node.value)
             else {
                 return None;
             };
@@ -382,7 +388,9 @@ impl<W: LayoutElement> TilingTree<W> {
                     children.get(index + 1).map(|_| index + 1)
                 };
                 if let Some(desired) = desired {
-                    return self.focused_leaf_in(children[desired]);
+                    return children
+                        .get(desired)
+                        .and_then(|child| self.focused_leaf_in(*child));
                 }
                 if allow_wrap
                     && self.options.layout.focus_wrapping != swayward_config::FocusWrapping::No
@@ -396,7 +404,9 @@ impl<W: LayoutElement> TilingTree<W> {
                     if self.options.layout.focus_wrapping == swayward_config::FocusWrapping::Force {
                         return candidate.and_then(|id| self.focused_leaf_in(id));
                     }
-                    wrap.get_or_insert(candidate.unwrap());
+                    if let Some(candidate) = candidate {
+                        wrap.get_or_insert(candidate);
+                    }
                 }
             }
             if Some(parent) == barrier {

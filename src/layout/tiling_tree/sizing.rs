@@ -194,7 +194,7 @@ impl<W: LayoutElement> TilingTree<W> {
         };
         let first = children.iter().position(|id| *id == first)?;
         let second = children.iter().position(|id| *id == second)?;
-        Some((percents[first], percents[second]))
+        Some((*percents.get(first)?, *percents.get(second)?))
     }
 
     pub fn node_geometry(&self, id: NodeId) -> Option<Rectangle<f64, Logical>> {

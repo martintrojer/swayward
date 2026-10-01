@@ -18,7 +18,7 @@ impl<W: LayoutElement> TilingTree<W> {
         geometry
             .titlebars
             .into_iter()
-            .find(|(titlebar_id, _)| geometry.titlebar_leaves[titlebar_id] == id)
+            .find(|(titlebar_id, _)| geometry.titlebar_leaves.get(titlebar_id) == Some(&id))
             .map(|(_, bar)| bar.ipc_rect)
     }
 
@@ -200,13 +200,13 @@ impl<W: LayoutElement> TilingTree<W> {
             id: NodeId,
             percent: Option<f64>,
             geometries: &geometry::Geometry<W::Id>,
-        ) -> IpcNode<W::Id> {
+        ) -> Option<IpcNode<W::Id>> {
             let inside_pending_wrapper = tree.fullscreen_node().is_some()
                 && tree
                     .fullscreen_layout_wrappers
                     .iter()
                     .any(|wrapper| tree.contains_node(*wrapper, id));
-            match &tree.nodes[&id].value {
+            Some(match &tree.nodes.get(&id)?.value {
                 TreeNode::Split {
                     layout,
                     children,
@@ -252,7 +252,7 @@ impl<W: LayoutElement> TilingTree<W> {
                         .iter()
                         .zip(percents)
                         .enumerate()
-                        .map(|(index, (child, stored_percent))| {
+                        .filter_map(|(index, (child, stored_percent))| {
                             let percent = match layout {
                                 Layout::Tabbed | Layout::Stacked
                                     if tree.fullscreen_node().is_some()
@@ -279,8 +279,9 @@ impl<W: LayoutElement> TilingTree<W> {
                                     let parent_extent = extent(parent_rect).round();
                                     let allocated = if index + 1 == children.len() {
                                         parent_extent
-                                            - percents[..index]
+                                            - percents
                                                 .iter()
+                                                .take(index)
                                                 .map(|percent| (parent_extent * percent).round())
                                                 .sum::<f64>()
                                     } else {
@@ -352,8 +353,9 @@ impl<W: LayoutElement> TilingTree<W> {
                                         .sum::<f64>();
                                     let allocated = if index + 1 == children.len() {
                                         available.round()
-                                            - percents[..index]
+                                            - percents
                                                 .iter()
+                                                .take(index)
                                                 .map(|percent| (available * percent).round())
                                                 .sum::<f64>()
                                     } else {
@@ -366,7 +368,7 @@ impl<W: LayoutElement> TilingTree<W> {
                                     })
                                 }
                             };
-                            let mut node = snapshot(tree, *child, percent, geometries);
+                            let mut node = snapshot(tree, *child, percent, geometries)?;
                             let titlebar_rows = match layout {
                                 Layout::Tabbed | Layout::Stacked
                                     if tree.fullscreen_node().is_some()
@@ -382,19 +384,30 @@ impl<W: LayoutElement> TilingTree<W> {
                                 &mut node,
                                 tree.titlebar_height * titlebar_rows as f64,
                             );
-                            node
+                            Some(node)
                         })
                         .collect(),
                 },
                 TreeNode::Leaf { tile } => {
                     snapshot_leaf(tree, id, tile, percent, geometries, inside_pending_wrapper)
                 }
-            }
+            })
         }
 
         let geometries = self.compute_geometry();
         let root = self.resident_root().unwrap_or(self.root);
-        snapshot(self, root, None, &geometries)
+        snapshot(self, root, None, &geometries).unwrap_or_else(|| IpcNode::Split {
+            id: root,
+            layout: Layout::SplitH,
+            title: None,
+            percent: None,
+            rect: Rectangle::default(),
+            focus: Vec::new(),
+            focused: false,
+            fullscreen_mode: 0,
+            sticky: false,
+            children: Vec::new(),
+        })
     }
 
     /// Which decoration layers the tiling tree collects, front to back.

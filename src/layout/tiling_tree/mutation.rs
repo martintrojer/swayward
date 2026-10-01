@@ -17,17 +17,27 @@ impl<W: LayoutElement> TilingTree<W> {
         } else {
             Layout::SplitV
         };
-        let parent = self.nodes[&target].parent.unwrap_or(self.root);
+        // tiled_drop_target computes the target before the drop completes; a
+        // target that has since gone falls back to an ordinary insertion.
+        let Some(parent) = self
+            .nodes
+            .get(&target)
+            .map(|node| node.parent.unwrap_or(self.root))
+        else {
+            return self.add_tile_with_activation(tile, InsertTarget::Focused, activate);
+        };
         if !matches!(
-            self.nodes[&parent].value,
-            TreeNode::Split { layout: current, .. } if current == layout
+            self.nodes.get(&parent).map(|node| &node.value),
+            Some(TreeNode::Split { layout: current, .. }) if *current == layout
         ) {
             self.split(target, layout);
         }
         let id = self.add_tile_with_activation(tile, InsertTarget::Node(target), activate);
         if edge.intersects(ResizeEdge::LEFT | ResizeEdge::TOP) {
-            let parent = self.nodes[&id]
-                .parent
+            let parent = self
+                .nodes
+                .get(&id)
+                .and_then(|node| node.parent)
                 .expect("invariant: an inserted tile has a parent");
             let first = self
                 .child_index(parent, target)
@@ -200,7 +210,9 @@ impl<W: LayoutElement> TilingTree<W> {
             self.reap_empty_from(parent);
         }
         if self.windows().next().is_none() {
-            let TreeNode::Split { layout, .. } = self.nodes[&self.root].value else {
+            let Some(&TreeNode::Split { layout, .. }) =
+                self.nodes.get(&self.root).map(|node| &node.value)
+            else {
                 unreachable!()
             };
             self.empty_representation_layout = Some(layout);
@@ -308,7 +320,9 @@ impl<W: LayoutElement> TilingTree<W> {
     ) -> Option<Tile<W>> {
         let id = self.node_for_window(window)?;
         let target = (self.focus == Some(id) && self.fullscreen_node().is_none())
-            .then(|| self.transfer_focus_target(Some(id), self.nodes[&id].parent))
+            .then(|| {
+                self.transfer_focus_target(Some(id), self.nodes.get(&id).and_then(|n| n.parent))
+            })
             .flatten();
         let tile = self.remove_tile(window, transaction)?;
         if self.focus.is_some() {
@@ -400,14 +414,14 @@ impl<W: LayoutElement> TilingTree<W> {
         self.interactive_resize = None;
         let old = self.compute_geometry();
         self.remove_child(parent, id);
-        let sibling_percent = match &self.nodes[&parent].value {
-            TreeNode::Split {
+        let sibling_percent = match self.nodes.get(&parent).map(|node| &node.value) {
+            Some(TreeNode::Split {
                 children, percents, ..
-            } => children
+            }) => children
                 .iter()
                 .position(|child| *child == sibling)
-                .map(|index| percents[index]),
-            TreeNode::Leaf { .. } => None,
+                .and_then(|index| percents.get(index).copied()),
+            _ => None,
         };
         let Some(sibling_percent) = sibling_percent else {
             return false;
@@ -432,8 +446,12 @@ impl<W: LayoutElement> TilingTree<W> {
         }) = self.nodes.get_mut(&parent)
         {
             if let Some(index) = children.iter().position(|child| *child == sibling) {
-                children[index] = wrapper;
-                percents[index] = sibling_percent;
+                if let (Some(child), Some(percent)) =
+                    (children.get_mut(index), percents.get_mut(index))
+                {
+                    *child = wrapper;
+                    *percent = sibling_percent;
+                }
             }
         }
         self.nodes
@@ -473,11 +491,12 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub(super) fn insert_child(&mut self, parent: NodeId, child: NodeId, after: Option<NodeId>) {
-        let index = match &self.nodes[&parent].value {
-            TreeNode::Split { children, .. } => after
+        let index = match self.nodes.get(&parent).map(|node| &node.value) {
+            None => return,
+            Some(TreeNode::Split { children, .. }) => after
                 .and_then(|id| children.iter().position(|child| *child == id))
                 .map_or(children.len(), |index| index + 1),
-            TreeNode::Leaf { .. } => return,
+            Some(TreeNode::Leaf { .. }) => return,
         };
         self.insert_child_at(parent, child, index);
     }
@@ -538,8 +557,11 @@ impl<W: LayoutElement> TilingTree<W> {
         let Some(target_index) = children.iter().position(|id| *id == split_share_of) else {
             return;
         };
-        percents[target_index] /= 2.;
-        let percent = percents[target_index];
+        let Some(target_percent) = percents.get_mut(target_index) else {
+            return;
+        };
+        *target_percent /= 2.;
+        let percent = *target_percent;
         let index = index.min(children.len());
         children.insert(index, child);
         percents.insert(index, percent);
@@ -730,7 +752,9 @@ impl<W: LayoutElement> TilingTree<W> {
             let Some(index) = children.iter().position(|node| *node == id) else {
                 return;
             };
-            children[index] = child;
+            if let Some(slot) = children.get_mut(index) {
+                *slot = child;
+            }
             self.nodes
                 .get_mut(&child)
                 .expect("invariant: a split's only child is present in the arena")
@@ -826,11 +850,11 @@ impl<W: LayoutElement> TilingTree<W> {
         let Some(child) = self.squashable_child(id) else {
             return;
         };
-        let (grandchildren, child_percents) = match &self.nodes[&child].value {
-            TreeNode::Split {
+        let (grandchildren, child_percents) = match self.nodes.get(&child).map(|node| &node.value) {
+            Some(TreeNode::Split {
                 children, percents, ..
-            } => (children.clone(), percents.clone()),
-            TreeNode::Leaf { .. } => return,
+            }) => (children.clone(), percents.clone()),
+            _ => return,
         };
         let Some(Node {
             value: TreeNode::Split {

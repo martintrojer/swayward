@@ -290,7 +290,9 @@ impl<W: LayoutElement> TilingTree<W> {
                 }
                 DecorationLayer::Titlebars => {
                     for (id, titlebar) in &geometries.titlebars {
-                        let leaf = geometries.titlebar_leaves[id];
+                        // A strip entry maps to the leaf it labels; anything
+                        // else is its own leaf.
+                        let leaf = geometries.titlebar_leaves.get(id).copied().unwrap_or(*id);
                         let mut titlebar = titlebar.clone();
                         titlebar.state = self.titlebar_state(leaf, focus_ring);
                         if titlebar.visible {
