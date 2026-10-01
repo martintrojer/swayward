@@ -38,9 +38,14 @@ const CON_ID_COMMANDS: &[&str] = &[
 // entries changes what every `cc` line replays; named tests below are the durable
 // record of each shrunk sequence.
 //
-// Keep at least one executable form of every accepted family in
+// Keep at least one hermetic executable form of every accepted family in
 // tests/sway/compatibility.toml. Variants below exercise forms with distinct
-// runtime paths rather than only the census probe.
+// runtime paths rather than only the census probe. Commands with host or
+// fixture-lifecycle effects are intentionally covered elsewhere:
+// - exec/exec_always: wire::{exec_does_not_inherit_the_ipc_listener,
+//   exec_no_startup_id_suppresses_only_the_desktop_token};
+// - exit: events/lifecycle::shutdown_subscription_emits_exact_exit_event;
+// - reload: config_commands/reload.rs, with real config watchers.
 const COMMANDS: &[&str] = &[
     "assign [app_id=\"app-3\"] workspace number 3",
     "bindcode 38 nop",
@@ -54,9 +59,6 @@ const COMMANDS: &[&str] = &[
     "create_output",
     "default_border pixel 2",
     "default_floating_border normal",
-    "exec nop",
-    "exec_always nop",
-    "exit",
     "floating_maximum_size 900 x 700",
     "floating_minimum_size 75 x 50",
     "floating_modifier Mod4",
@@ -85,7 +87,6 @@ const COMMANDS: &[&str] = &[
     "output * position 0 0",
     "output * power toggle",
     "popup_during_fullscreen smart",
-    "reload",
     "rename workspace to fuzzed",
     "resize set 640 480",
     "resize set width 50 ppt",
