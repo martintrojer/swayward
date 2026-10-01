@@ -329,6 +329,35 @@ impl Data {
     }
 }
 
+/// Sway's floating size constraints, from `floating_minimum_size` and
+/// `floating_maximum_size`: -1 means none, 0 automatic (75x50 minimum, the
+/// output layout box as maximum) and N a fixed bound
+/// (floating_calculate_constraints, sway/tree/container.c:779-816). An absent
+/// maximum is infinite.
+pub(super) fn floating_constraints(
+    minimum: swayward_config::FloatingSize,
+    maximum: swayward_config::FloatingSize,
+    automatic_maximum: Size<f64, Logical>,
+) -> (Size<f64, Logical>, Size<f64, Logical>) {
+    let min = |value: i32, automatic: f64| match value {
+        -1 => 0.,
+        0 => automatic,
+        value => f64::from(value),
+    };
+    let max = |value: i32, automatic: f64| match value {
+        -1 => f64::INFINITY,
+        0 => automatic,
+        value => f64::from(value),
+    };
+    (
+        Size::from((min(minimum.width, 75.), min(minimum.height, 50.))),
+        Size::from((
+            max(maximum.width, automatic_maximum.w),
+            max(maximum.height, automatic_maximum.h),
+        )),
+    )
+}
+
 fn constrain_floating_size(
     mut size: Size<i32, Logical>,
     minimum: swayward_config::FloatingSize,
@@ -337,38 +366,17 @@ fn constrain_floating_size(
     client_minimum: Size<i32, Logical>,
     client_maximum: Size<i32, Logical>,
 ) -> Size<i32, Logical> {
-    let minimum: Size<i32, Logical> = Size::from((
-        if minimum.width == -1 {
-            0
-        } else if minimum.width == 0 {
-            75
+    let (minimum, maximum) = floating_constraints(minimum, maximum, automatic_maximum);
+    // ensure_min_max_size reads a bound of 0 as none.
+    let bound = |value: f64| {
+        if value.is_finite() {
+            value.round() as i32
         } else {
-            minimum.width
-        },
-        if minimum.height == -1 {
             0
-        } else if minimum.height == 0 {
-            50
-        } else {
-            minimum.height
-        },
-    ));
-    let maximum: Size<i32, Logical> = Size::from((
-        if maximum.width == -1 {
-            0
-        } else if maximum.width == 0 {
-            automatic_maximum.w.round() as i32
-        } else {
-            maximum.width
-        },
-        if maximum.height == -1 {
-            0
-        } else if maximum.height == 0 {
-            automatic_maximum.h.round() as i32
-        } else {
-            maximum.height
-        },
-    ));
+        }
+    };
+    let minimum = Size::<i32, Logical>::from((bound(minimum.w), bound(minimum.h)));
+    let maximum = Size::<i32, Logical>::from((bound(maximum.w), bound(maximum.h)));
     size.w = ensure_min_max_size(size.w, minimum.w, maximum.w);
     size.h = ensure_min_max_size(size.h, minimum.h, maximum.h);
     size.w = ensure_min_max_size(size.w, client_minimum.w, client_maximum.w);

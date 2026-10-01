@@ -2345,42 +2345,17 @@ impl<W: LayoutElement> Workspace<W> {
 
         // Sway sizes a tiled window from the workspace box when it first enters
         // the scratchpad (sway/tree/container.c:913-932).
-        let minimum = self.options.layout.floating_minimum_size;
-        let maximum = self.options.layout.floating_maximum_size;
-        let min_width = if minimum.width == -1 {
-            0.
-        } else if minimum.width == 0 {
-            75.
-        } else {
-            f64::from(minimum.width)
-        };
-        let min_height = if minimum.height == -1 {
-            0.
-        } else if minimum.height == 0 {
-            50.
-        } else {
-            f64::from(minimum.height)
-        };
-        let max_width = if maximum.width == -1 {
-            f64::INFINITY
-        } else if maximum.width == 0 {
-            f64::from(automatic_maximum.w)
-        } else {
-            f64::from(maximum.width)
-        };
-        let max_height = if maximum.height == -1 {
-            f64::INFINITY
-        } else if maximum.height == 0 {
-            f64::from(automatic_maximum.h)
-        } else {
-            f64::from(maximum.height)
-        };
+        let (minimum, maximum) = super::floating_tree::floating_constraints(
+            self.options.layout.floating_minimum_size,
+            self.options.layout.floating_maximum_size,
+            automatic_maximum.to_f64(),
+        );
         let tile_width = (self.working_area.size.w * 0.5)
-            .min(max_width)
-            .max(min_width);
+            .min(maximum.w)
+            .max(minimum.w);
         let tile_height = (self.working_area.size.h * 0.75)
-            .min(max_height)
-            .max(min_height);
+            .min(maximum.h)
+            .max(minimum.h);
         let min_size = tile.window().min_size();
         let max_size = tile.window().max_size();
         let window_width = ensure_min_max_size(
