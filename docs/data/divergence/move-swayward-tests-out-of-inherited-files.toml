@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/tests/floating.rs", "src/tests/window_opening.rs"]
+what = "move swayward-specific floating, window-rule, and xdg-toplevel lifecycle tests into new floating_sway.rs, window_rules.rs, and toplevel_lifecycle.rs modules while leaving inherited niri tests and file-snapshot generators in place."
+why = "Keeping additive swayward tests out of inherited niri test files reduces future upstream merge conflicts; the moved floating snapshots are inline and the file-backed window-opening generators remain at their original module paths."
