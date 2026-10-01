@@ -8,6 +8,11 @@
 //! [`socket::Socket`] and [`legacy`] implement swayward's separate line-delimited JSON protocol on
 //! `$SWAYWARD_SOCKET`. New sway-compatible clients should not use that legacy endpoint.
 
+// The library parses untrusted IPC input, so its non-test code must not
+// panic. The attribute is crate-level, so it covers this library only:
+// `src/bin/swaywardmsg.rs` and `examples/command-census.rs` are separate
+// crates, a CLI client and dev tooling whose panic crashes only themselves,
+// and they stay exempt. Test code is exempt through `not(test)`.
 #![cfg_attr(
     not(test),
     deny(
