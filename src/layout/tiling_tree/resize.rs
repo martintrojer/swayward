@@ -333,7 +333,65 @@ impl<W: LayoutElement> TilingTree<W> {
         if presets.is_empty() {
             return;
         }
-        let index = if forwards { 0 } else { presets.len() - 1 };
+        let Some(id) = self.resolve_node(window) else {
+            return;
+        };
+        let wanted = if width {
+            Layout::SplitH
+        } else {
+            Layout::SplitV
+        };
+        let geometries = self.compute_geometry();
+        let extent = |rect: &Rectangle<f64, Logical>| {
+            if width {
+                rect.size.w
+            } else {
+                rect.size.h
+            }
+        };
+        let mut branch = id;
+        let mut parent = self.nodes.get(&id).and_then(|node| node.parent);
+        let current_and_available = loop {
+            let Some(parent_id) = parent else {
+                break None;
+            };
+            let Some(Node {
+                parent: grandparent,
+                value: TreeNode::Split {
+                    layout, children, ..
+                },
+            }) = self.nodes.get(&parent_id)
+            else {
+                break None;
+            };
+            if *layout == wanted && children.len() > 1 {
+                break geometries
+                    .ipc_nodes
+                    .get(&branch)
+                    .zip(geometries.ipc_nodes.get(&parent_id))
+                    .map(|(current, parent)| (extent(current), extent(parent)));
+            }
+            branch = parent_id;
+            parent = *grandparent;
+        };
+        let Some((current, available)) = current_and_available else {
+            return;
+        };
+        let resolved = |preset| match preset {
+            PresetSize::Fixed(value) => f64::from(value),
+            PresetSize::Proportion(value) => (available * value).trunc(),
+        };
+        let index = if forwards {
+            presets
+                .iter()
+                .position(|preset| current + 1. < resolved(*preset))
+                .unwrap_or(0)
+        } else {
+            presets
+                .iter()
+                .rposition(|preset| resolved(*preset) + 1. < current)
+                .unwrap_or(presets.len() - 1)
+        };
         let change = match presets[index] {
             PresetSize::Fixed(value) => SizeChange::SetFixed(value),
             PresetSize::Proportion(value) => SizeChange::SetProportion(value * 100.),

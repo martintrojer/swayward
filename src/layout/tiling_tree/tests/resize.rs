@@ -411,3 +411,35 @@ fn refresh_dispatches_pending_configures() {
     t.refresh(true, true);
     assert_eq!(state.0.configure_count.get(), 1);
 }
+#[test]
+fn tiled_presets_cycle_from_the_current_size_in_both_directions() {
+    let mut t = tree_with_options((1200., 900.), 0., |options| {
+        options.layout.preset_column_widths = vec![
+            PresetSize::Fixed(300),
+            PresetSize::Proportion(0.5),
+            PresetSize::Fixed(900),
+        ];
+        options.layout.preset_window_heights = vec![
+            PresetSize::Fixed(225),
+            PresetSize::Proportion(0.5),
+            PresetSize::Fixed(675),
+        ];
+    });
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+
+    t.toggle_window_width(Some(&1), true);
+    assert_eq!(t.geometry(first).unwrap().size.w, 900.);
+    t.toggle_window_width(Some(&1), true);
+    assert_eq!(t.geometry(first).unwrap().size.w, 300.);
+    t.toggle_window_width(Some(&1), false);
+    assert_eq!(t.geometry(first).unwrap().size.w, 900.);
+
+    t.set_layout(t.root, Layout::SplitV);
+    t.toggle_window_height(Some(&1), true);
+    assert_eq!(t.geometry(first).unwrap().size.h, 225.);
+    t.toggle_window_height(Some(&1), true);
+    assert_eq!(t.geometry(first).unwrap().size.h, 450.);
+    t.toggle_window_height(Some(&1), false);
+    assert_eq!(t.geometry(first).unwrap().size.h, 225.);
+}
