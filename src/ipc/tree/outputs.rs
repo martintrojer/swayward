@@ -94,7 +94,7 @@ pub fn describe_outputs_with_power(
                 },
                 floating: None,
                 floating_nodes: vec![],
-                focus: vec![workspace_id(monitor.active_workspace_ref().id().get())],
+                focus: output_focus(monitor),
                 focused: layout
                     .active_monitor_ref()
                     .is_some_and(|active| active.output() == output),
@@ -149,6 +149,27 @@ pub fn describe_outputs_with_power(
         .collect()
 }
 
+/// The output's workspaces in focus order, most recent first.
+///
+/// Sway builds an output's `focus` from the seat's focus-inactive children
+/// (ipc_json_describe_node, sway/ipc-json.c:827-835), so GET_OUTPUTS and the
+/// GET_TREE output node list every workspace on the output, not just the
+/// active one. Only workspaces the replies describe are included: an empty,
+/// non-persistent, inactive workspace is already gone in sway.
+fn output_focus(monitor: &crate::layout::monitor::Monitor<Mapped>) -> Vec<i64> {
+    let active = monitor.active_workspace_ref().id();
+    let described = |id: WorkspaceId| {
+        monitor.sway_workspaces().any(|(_, workspace)| {
+            workspace.id() == id && (workspace.must_be_kept() || id == active)
+        })
+    };
+    monitor
+        .workspace_focus_history()
+        .filter(|id| described(*id))
+        .map(|id| workspace_id(id.get()))
+        .collect()
+}
+
 pub(super) fn describe_output_node(
     layout: &Layout<Mapped>,
     global_space: &Space<Window>,
@@ -187,11 +208,7 @@ pub(super) fn describe_output_node(
             })
         })
         .collect::<Vec<_>>();
-    let focus = monitor
-        .workspace_focus_history()
-        .map(|id| workspace_id(id.get()))
-        .filter(|id| workspaces.iter().any(|workspace| workspace.id == *id))
-        .collect();
+    let focus = output_focus(monitor);
     // `describe_outputs` iterates this same immutable layout and emits exactly
     // one entry for every monitor, copying `output_name` verbatim.
     // `describe_outputs` iterates this same immutable layout and emits exactly

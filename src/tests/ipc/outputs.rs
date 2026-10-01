@@ -773,3 +773,51 @@ fn tiny_scale_on_large_output_does_not_overflow_tree_percentages() {
     );
     assert_eq!(tree.nodes[0].rect.width, 76800);
 }
+
+/// Oracle: numbered_sparse/outputs. Sway lists every workspace on the output
+/// in focus order (sway/ipc-json.c:827-835): after visiting 1, 3 and 7 the
+/// focus is [7, 3, 1], the same list the GET_TREE output node carries.
+#[test]
+fn get_outputs_focus_lists_every_workspace_in_focus_order() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1280, 720));
+    let client = f.add_client();
+    for (workspace, app_id) in [("1", "fixture-1"), ("3", "fixture-3"), ("7", "fixture-7")] {
+        let outcome =
+            crate::command::execute(f.niri_state(), &format!("workspace {workspace}"));
+        assert!(outcome[0].success, "{outcome:?}");
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+    let swayward = f.swayward();
+    let workspaces = describe_workspaces(&swayward.layout, &swayward.global_space);
+    let id_of = |name: &str| {
+        workspaces
+            .iter()
+            .find(|workspace| workspace.name == name)
+            .unwrap()
+            .id
+    };
+    let expected = vec![id_of("7"), id_of("3"), id_of("1")];
+    let outputs = crate::ipc::tree::describe_outputs(&swayward.layout, &swayward.global_space);
+    assert_eq!(outputs[0].focus, expected);
+    let tree = describe_tree(
+        &swayward.layout,
+        &swayward.global_space,
+        &swayward.marks_by_window,
+        &swayward.marks_by_container,
+    );
+    let output_node = tree
+        .nodes
+        .iter()
+        .find(|node| node.name.as_deref() == Some(outputs[0].name.as_str()))
+        .unwrap();
+    assert_eq!(output_node.focus, expected, "GET_TREE and GET_OUTPUTS agree");
+}
