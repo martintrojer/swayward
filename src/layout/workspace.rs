@@ -1911,14 +1911,6 @@ impl<W: LayoutElement> Workspace<W> {
             .refresh(is_active && self.floating_is_active.get(), is_focused);
     }
 
-    pub fn scroll_amount_to_activate(&self, window: &W::Id) -> f64 {
-        if self.floating.has_window(window) {
-            return 0.;
-        }
-
-        self.tiling.scroll_amount_to_activate(window)
-    }
-
     pub fn is_urgent(&self) -> bool {
         self.windows().any(|win| win.is_urgent())
     }
@@ -2004,22 +1996,21 @@ impl<W: LayoutElement> Workspace<W> {
         }
     }
 
-    pub fn view_offset_gesture_begin(&mut self, is_touchpad: bool) {
-        self.tiling.view_offset_gesture_begin(is_touchpad);
-    }
+    /// The tiling tree has no view offset to scroll, so these keep niri's gesture plumbing
+    /// compiling while never starting or reporting a gesture.
+    pub fn view_offset_gesture_begin(&mut self, _is_touchpad: bool) {}
 
     pub fn view_offset_gesture_update(
         &mut self,
-        delta_x: f64,
-        timestamp: Duration,
-        is_touchpad: bool,
+        _delta_x: f64,
+        _timestamp: Duration,
+        _is_touchpad: bool,
     ) -> Option<bool> {
-        self.tiling
-            .view_offset_gesture_update(delta_x, timestamp, is_touchpad)
+        None
     }
 
-    pub fn view_offset_gesture_end(&mut self, is_touchpad: Option<bool>) -> bool {
-        self.tiling.view_offset_gesture_end(is_touchpad)
+    pub fn view_offset_gesture_end(&mut self, _is_touchpad: Option<bool>) -> bool {
+        false
     }
 
     pub fn dnd_scroll_gesture_begin(&mut self) {

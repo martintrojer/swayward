@@ -50,11 +50,8 @@ impl Swayward {
                     return;
                 }
 
-                if let Some(threshold) = ffm.max_scroll_amount {
-                    if self.layout.scroll_amount_to_activate(window) > threshold.0 {
-                        return;
-                    }
-                }
+                // niri's `max-scroll-amount` limited how far focus-follows-mouse may scroll
+                // the strip; the tiling tree never scrolls to activate, so it never applies.
 
                 self.layout.activate_window_without_raising(window);
                 self.layer_shell_on_demand_focus = None;

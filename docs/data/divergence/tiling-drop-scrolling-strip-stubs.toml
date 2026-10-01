@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/mod.rs", "src/layout/workspace.rs", "src/swayward/focus.rs"]
+what = "delete niri's scroll-to-activate and view-offset-gesture plumbing below the workspace: Layout::scroll_amount_to_activate, the focus-follows-mouse max-scroll-amount check, the one-gesture-per-workspace invariant, and the TilingTree stubs that returned constants. Workspace keeps no-op view_offset_gesture_* entry points for the inherited gesture callers."
+why = "The tiling tree has no scrolling strip, so scroll_amount_to_activate was always 0, has_view_offset_gesture always false and the view-offset gesture never started; the callers ran dead branches and an invariant that could not fail."

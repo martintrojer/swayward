@@ -1754,24 +1754,6 @@ impl<W: LayoutElement> Layout<W> {
         mon.update_output_size();
     }
 
-    pub fn scroll_amount_to_activate(&self, window: &W::Id) -> f64 {
-        if let Some(InteractiveMoveState::Moving(move_)) = &self.interactive_move {
-            if move_.tile.window().id() == window {
-                return 0.;
-            }
-        }
-
-        for mon in self.monitors() {
-            for ws in &mon.workspaces {
-                if ws.has_window(window) {
-                    return ws.scroll_amount_to_activate(window);
-                }
-            }
-        }
-
-        0.
-    }
-
     pub fn scroll_tab_indicator(&mut self, window: &W::Id, steps: i32) -> Option<W::Id> {
         self.workspaces_mut()
             .find(|workspace| workspace.has_window(window))?
@@ -2904,8 +2886,6 @@ impl<W: LayoutElement> Layout<W> {
         assert!(primary_idx < monitors.len());
         assert!(active_monitor_idx < monitors.len());
 
-        let mut saw_view_offset_gesture = false;
-
         for (idx, monitor) in monitors.iter().enumerate() {
             assert_eq!(self.clock, monitor.clock);
             assert_eq!(
@@ -2966,19 +2946,6 @@ impl<W: LayoutElement> Layout<W> {
                 }
 
                 workspace.verify_invariants(move_win_id.as_ref());
-
-                let has_view_offset_gesture = workspace.tiling().has_view_offset_gesture();
-                if self.dnd.is_some() || self.interactive_move.is_some() {
-                    // We would like to check that all workspaces have the gesture here, and only
-                    // while an interactive move targets the tiling layout. The gesture starts and
-                    // stops lazily, so that invariant does not hold at this boundary.
-                } else if saw_view_offset_gesture {
-                    assert!(
-                        !has_view_offset_gesture,
-                        "only one workspace can have an ongoing view offset gesture"
-                    );
-                }
-                saw_view_offset_gesture = has_view_offset_gesture;
             }
         }
     }

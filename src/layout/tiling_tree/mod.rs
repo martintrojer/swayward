@@ -19,7 +19,6 @@ mod tree_layout;
 
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
-use std::time::Duration;
 
 #[cfg(test)]
 pub(crate) use depth::MAX_TREE_DEPTH;

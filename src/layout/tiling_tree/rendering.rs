@@ -19,10 +19,6 @@ impl<W: LayoutElement> TilingTree<W> {
         Some(target)
     }
 
-    pub fn scroll_amount_to_activate(&self, _window: &W::Id) -> f64 {
-        0.
-    }
-
     pub fn render_above_top_layer(&self) -> bool {
         self.is_active_pending_fullscreen()
     }
@@ -443,21 +439,6 @@ impl<W: LayoutElement> TilingTree<W> {
             })
     }
 
-    pub fn view_offset_gesture_begin(&mut self, _is_touchpad: bool) {}
-
-    pub fn view_offset_gesture_update(
-        &mut self,
-        _delta_x: f64,
-        _timestamp: Duration,
-        _is_touchpad: bool,
-    ) -> Option<bool> {
-        None
-    }
-
-    pub fn view_offset_gesture_end(&mut self, _is_touchpad: Option<bool>) -> bool {
-        false
-    }
-
     pub fn dnd_scroll_gesture_begin(&mut self) {}
 
     pub fn dnd_scroll_gesture_scroll(&mut self, _delta: f64) -> bool {
@@ -465,14 +446,6 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     pub fn dnd_scroll_gesture_end(&mut self) {}
-
-    pub fn has_view_offset_gesture(&self) -> bool {
-        false
-    }
-
-    pub fn view_pos(&self) -> f64 {
-        0.
-    }
 
     fn first_tile_in(&self, id: NodeId) -> Option<&Tile<W>> {
         self.first_leaf_in(id).and_then(|id| self.tile(id))
