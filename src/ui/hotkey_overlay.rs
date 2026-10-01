@@ -258,8 +258,8 @@ fn collect_entries(config: &Config) -> Vec<Entry> {
             let first = matching.first()?;
             let label = first
                 .hotkey_overlay_title
-                .as_ref()
-                .and_then(Clone::clone)
+                .clone()
+                .flatten()
                 .unwrap_or_else(|| command_label(commands));
             Some(Entry {
                 keys: matching.iter().map(|bind| bind.key).collect(),
@@ -268,14 +268,17 @@ fn collect_entries(config: &Config) -> Vec<Entry> {
         })
         .collect::<Vec<_>>();
 
-    for bind in binds
+    let titled = binds
         .iter()
-        .filter(|bind| matches!(bind.hotkey_overlay_title, Some(Some(_))))
-    {
+        .filter_map(|bind| match &bind.hotkey_overlay_title {
+            Some(Some(title)) => Some((bind, title)),
+            _ => None,
+        });
+    for (bind, title) in titled {
         if !entries.iter().any(|entry| entry.keys.contains(&bind.key)) {
             entries.push(Entry {
                 keys: vec![bind.key],
-                label: bind.hotkey_overlay_title.clone().flatten().unwrap(),
+                label: title.clone(),
             });
         }
     }
