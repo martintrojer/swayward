@@ -7,8 +7,8 @@ use super::movement::{
     move_workspace_to_output, output_target,
 };
 use super::{
-    execute, failure, focus, layout, movement, parse_boolean, scratchpad, success, window,
-    ClientColorClass, Command, CommandTarget, Direction, OutputTarget,
+    execute, failure, focus, layout, movement, scratchpad, success, window, ClientColorClass,
+    Command, CommandTarget, Direction, OutputTarget,
 };
 use crate::swayward::State;
 use crate::window::mapped::ShortcutsInhibitPolicy;
@@ -363,20 +363,9 @@ pub(super) fn execute_targeted(
             }
         }
         Command::Urgent(value) => {
-            let CommandTarget::Window(target) = target else {
-                return failure("Only views can be urgent");
-            };
-            let urgent = state
-                .swayward
-                .layout
-                .windows()
-                .find_map(|(_, window)| (window.id() == target).then(|| window.is_urgent()));
-            let Some(urgent) = urgent else {
-                return failure("No matching node.");
-            };
-            let urgent = parse_boolean(value, urgent);
-            state.swayward.set_window_urgent(target, urgent);
-            state.swayward.queue_redraw_all();
+            if let Err(error) = window::urgent(state, target, value) {
+                return error;
+            }
         }
         Command::Kill => {
             if let Err(error) = window::kill(state, target) {

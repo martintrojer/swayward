@@ -3,7 +3,10 @@ use swayward_ipc::command::Border;
 use swayward_ipc::legacy::SizeChange;
 use swayward_ipc::CommandOutcome;
 
-use super::{failure, tiling_target, CommandTarget, ResizeAmount, ResizeAxis, ResizeUnit, Toggle};
+use super::{
+    failure, parse_boolean, tiling_target, CommandTarget, ResizeAmount, ResizeAxis, ResizeUnit,
+    Toggle,
+};
 use crate::swayward::State;
 
 fn target_window(
@@ -57,6 +60,26 @@ pub(super) fn sticky(
     if !applied.unwrap_or_else(|| state.swayward.layout.set_window_sticky(&window, value)) {
         return Err(failure("Expected output to have a workspace"));
     }
+    state.swayward.queue_redraw_all();
+    Ok(())
+}
+
+pub(super) fn urgent(
+    state: &mut State,
+    target: CommandTarget,
+    value: &str,
+) -> Result<(), CommandOutcome> {
+    let CommandTarget::Window(target) = target else {
+        return Err(failure("Only views can be urgent"));
+    };
+    let urgent = state
+        .swayward
+        .layout
+        .windows()
+        .find_map(|(_, window)| (window.id() == target).then(|| window.is_urgent()))
+        .ok_or_else(|| failure("No matching node."))?;
+    let urgent = parse_boolean(value, urgent);
+    state.swayward.set_window_urgent(target, urgent);
     state.swayward.queue_redraw_all();
     Ok(())
 }

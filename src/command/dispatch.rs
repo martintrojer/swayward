@@ -15,9 +15,9 @@ use super::targeted::{
     move_direction, set_client_colors, set_shortcuts_inhibitor, unmark_globally, unmark_target,
 };
 use super::{
-    command_failure, create_output, failure, focus, layout, movement, parse_boolean, scratchpad,
-    success, window, Command, CommandTarget, Direction, ParsedCommand, PositionChange, Toggle,
-    WorkspaceTarget, XkbLayoutTarget,
+    command_failure, create_output, failure, focus, layout, movement, scratchpad, success, window,
+    Command, CommandTarget, Direction, ParsedCommand, PositionChange, Toggle, WorkspaceTarget,
+    XkbLayoutTarget,
 };
 use crate::swayward::State;
 use crate::utils::spawning::{spawn_sh, spawn_sh_without_startup_id};
@@ -242,13 +242,14 @@ fn execute_one(
             let Some(workspace) = state.swayward.layout.active_workspace() else {
                 return failure("Cannot move workspaces in a direction");
             };
-            let target = focused_target(state);
-            if target.is_none()
-                || matches!(target, Some(CommandTarget::Container(workspace, node))
-                    if state.swayward.layout.is_tiling_root(workspace, node))
-            {
+            let Some(target) = focused_target(state) else {
                 return command_failure("Cannot move workspaces in a direction");
             };
+            if matches!(target, CommandTarget::Container(workspace, node)
+                if state.swayward.layout.is_tiling_root(workspace, node))
+            {
+                return command_failure("Cannot move workspaces in a direction");
+            }
             let fullscreen_floating = workspace.active_floating_is_fullscreen();
             if workspace.floating_is_active() || fullscreen_floating {
                 if fullscreen_floating {
@@ -277,9 +278,6 @@ fn execute_one(
                 state.swayward.queue_redraw_all();
                 None
             } else {
-                let Some(target) = target else {
-                    unreachable!();
-                };
                 let outcome = move_direction(
                     state,
                     target,
@@ -384,14 +382,13 @@ fn execute_one(
                 .layout
                 .active_workspace()
                 .and_then(crate::layout::workspace::Workspace::focused_floating_tree_root);
-            let target = focused_target(state);
-            if target.is_none() {
+            let Some(target) = focused_target(state) else {
                 return swayward_ipc::command::parse_error(
                     "Can't move an empty workspace to the scratchpad",
                 );
-            }
+            };
             let window = match target {
-                Some(CommandTarget::Container(workspace, node)) => {
+                CommandTarget::Container(workspace, node) => {
                     let window = state.swayward.layout.window_in_node(workspace, node);
                     if state
                         .swayward
@@ -403,8 +400,7 @@ fn execute_one(
                     }
                     window
                 }
-                Some(CommandTarget::Window(_)) => None,
-                None => unreachable!(),
+                CommandTarget::Window(_) => None,
             };
             state.ipc_order_scratchpad_events(crate::ipc::server::ScratchpadEventOrder::Hide);
             state.swayward.layout.move_to_scratchpad(window.as_ref());
@@ -424,7 +420,9 @@ fn execute_one(
                     )
                     .cloned()
                     {
-                        container.as_object_mut().unwrap().remove("visible");
+                        if let Some(container) = container.as_object_mut() {
+                            container.remove("visible");
+                        }
                         server.send_event(swayward_ipc::legacy::Event::SwayWindowChanged {
                             change: "move".into(),
                             container,
@@ -631,22 +629,9 @@ fn execute_one(
             let Some(target) = focused_target(state) else {
                 return failure("No current container");
             };
-            let CommandTarget::Window(target) = target else {
-                return failure("Only views can be urgent");
-            };
-            // `target` came from `layout.focus()` through `focused_target`, and
-            // no layout mutation occurs before this lookup. `Layout::windows`
-            // includes every focus source, including interactive moves and the
-            // scratchpad, so the focused ID must still be present here.
-            let urgent = state
-                .swayward
-                .layout
-                .windows()
-                .find_map(|(_, window)| (window.id() == target).then(|| window.is_urgent()))
-                .expect("the focused window must be yielded by the same layout");
-            let urgent = parse_boolean(&value, urgent);
-            state.swayward.set_window_urgent(target, urgent);
-            state.swayward.queue_redraw_all();
+            if let Err(error) = window::urgent(state, target, &value) {
+                return error;
+            }
             None
         }
         Command::Workspace {
@@ -791,7 +776,7 @@ fn execute_one(
                     XkbLayoutTarget::Next => context.cycle_next_layout(),
                     XkbLayoutTarget::Prev => context.cycle_prev_layout(),
                     XkbLayoutTarget::Index(index) => {
-                        let count = context.xkb().lock().unwrap().layouts().count();
+                        let count = context.xkb().lock().map_or(0, |xkb| xkb.layouts().count());
                         if (index as usize) < count {
                             context.set_layout(smithay::input::keyboard::Layout(index));
                         }
@@ -963,22 +948,20 @@ fn execute_one(
             // retroactively change a workspace that already exists.
             {
                 let mut config = state.swayward.config.borrow_mut();
-                let entry = match config
+                let index = config
                     .workspaces
-                    .iter_mut()
-                    .find(|ws| ws.name.0.eq_ignore_ascii_case(&name))
-                {
-                    Some(entry) => entry,
-                    None => {
+                    .iter()
+                    .position(|ws| ws.name.0.eq_ignore_ascii_case(&name))
+                    .unwrap_or_else(|| {
                         config.workspaces.push(swayward_config::Workspace {
                             name: swayward_config::workspace::WorkspaceName(name.clone()),
                             sway_output_assignment: None,
                             open_on_output: None,
                             layout: None,
                         });
-                        config.workspaces.last_mut().unwrap()
-                    }
-                };
+                        config.workspaces.len() - 1
+                    });
+                let entry = &mut config.workspaces[index];
                 let layout = entry.layout.get_or_insert_with(|| {
                     swayward_config::WorkspaceLayoutPart(swayward_config::LayoutPart::default())
                 });
@@ -1070,7 +1053,8 @@ fn execute_one(
                             return failure(error);
                         }
                     }
-                    _ => unreachable!("mode parser only admits reachable subcommands"),
+                    // The mode parser admits only the subcommands above.
+                    _ => return failure("Unknown/invalid mode subcommand"),
                 }
                 None
             } else {
