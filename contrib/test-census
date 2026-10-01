@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""Count swayward's Rust tests by crate and area, and its proptest seeds.
+
+    contrib/test-census                    print the census
+    contrib/test-census --json             print it as JSON
+    contrib/test-census --inherited DIR    compare with the niri fork base
+
+The counts come from `cargo test -- --list`, so they are what cargo runs, not
+a grep of `#[test]`. `--inherited` checks out the commit in docs/FORK-BASE.md
+as a git worktree in DIR (outside /tmp, it builds a full target directory),
+lists its tests the same way, and reports which niri tests still exist here,
+matched by test function name. Remove DIR with `git worktree remove` after.
+
+Needs a build environment (run it inside the dev
+container). docs/wiki/Testing-and-Conformance.md quotes this output.
+"""
+
+import argparse
+import collections
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+CRATES = ["swayward", "swayward-config", "swayward-ipc", "swayward-visual-tests"]
+
+
+def listed(crate, root=ROOT, env=None):
+    output = subprocess.run(
+        ["cargo", "test", "-p", crate, "--all-targets", "--", "--list", "--format=terse"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=True,
+        env=env,
+    ).stdout
+    return [line.removesuffix(": test") for line in output.splitlines() if line.endswith(": test")]
+
+
+def area(name):
+    parts = name.split("::")
+    if parts[0] == "tests" and len(parts) > 2:
+        return "tests::" + parts[1]
+    if parts[0] == "tests":
+        return "tests (top level)"
+    return parts[0]
+
+
+def seeds():
+    counts = {}
+    for path in sorted((ROOT / "proptest-regressions").rglob("*.txt")):
+        lines = path.read_text().splitlines()
+        counts[str(path.relative_to(ROOT))] = sum(line.startswith("cc ") for line in lines)
+    return counts
+
+
+def inherited(directory, current):
+    base = re.search(r"commit ([0-9a-f]{40})", (ROOT / "docs" / "FORK-BASE.md").read_text())
+    if not base:
+        sys.exit("test-census: no full base commit in docs/FORK-BASE.md")
+    worktree = Path(directory).resolve()
+    if not worktree.exists():
+        subprocess.run(
+            ["git", "-C", ROOT, "-c", "core.hooksPath=/dev/null", "worktree", "add", "--detach", worktree, base.group(1)],
+            check=True,
+        )
+    env = dict(os.environ, CARGO_TARGET_DIR=str(worktree / "target"))
+    names = []
+    for crate in ["niri", "niri-config", "niri-ipc", "niri-visual-tests"]:
+        names += listed(crate, worktree, env)
+    leaves = {name.split("::")[-1] for crate in current.values() for name in crate}
+    removed = sorted(name for name in names if name.split("::")[-1] not in leaves)
+    return {
+        "base_commit": base.group(1),
+        "base_tests": len(names),
+        "still_present": len(names) - len(removed),
+        "removed": removed,
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--json", action="store_true")
+    parser.add_argument("--inherited", metavar="DIR")
+    args = parser.parse_args()
+
+    crates = {crate: listed(crate) for crate in CRATES}
+    areas = collections.Counter(area(name) for name in crates["swayward"])
+    census = {
+        "total": sum(len(names) for names in crates.values()),
+        "crates": {crate: len(names) for crate, names in crates.items()},
+        "swayward_areas": dict(areas.most_common()),
+        "proptest_seeds": seeds(),
+    }
+    if args.inherited:
+        census["inherited"] = inherited(args.inherited, crates)
+    if args.json:
+        json.dump(census, sys.stdout, indent=2)
+        print()
+        return
+    print(f"tests listed by cargo   {census['total']}")
+    for crate, count in census["crates"].items():
+        print(f"  {crate:<22}{count}")
+    print("swayward crate by area")
+    for name, count in census["swayward_areas"].items():
+        print(f"  {name:<40}{count}")
+    print("proptest regression seeds")
+    for path, count in census["proptest_seeds"].items():
+        print(f"  {path:<64}{count}")
+    if "inherited" in census:
+        report = census["inherited"]
+        print(f"niri fork base {report['base_commit'][:12]}")
+        print(f"  tests at the base     {report['base_tests']}")
+        print(f"  still present         {report['still_present']}")
+        print(f"  removed               {len(report['removed'])}")
+        for name in report["removed"]:
+            print(f"    {name}")
+
+
+if __name__ == "__main__":
+    main()
