@@ -413,7 +413,7 @@ impl<W: LayoutElement> Workspace<W> {
         }) {
             return;
         }
-        self.tiling.nest_or_unnest_window_left(window);
+        self.tiling.expel_or_consume(window, false);
     }
 
     pub fn nest_or_unnest_window_right(&mut self, window: Option<&W::Id>) {
@@ -422,35 +422,39 @@ impl<W: LayoutElement> Workspace<W> {
         }) {
             return;
         }
-        self.tiling.nest_or_unnest_window_right(window);
+        self.tiling.expel_or_consume(window, true);
     }
 
     pub fn nest_focused_window(&mut self) {
         if self.floating_is_active.get() {
             return;
         }
-        self.tiling.nest_focused_window();
+        self.tiling.consume_focused();
     }
 
     pub fn unnest_focused_window(&mut self) {
         if self.floating_is_active.get() {
             return;
         }
-        self.tiling.unnest_focused_window();
+        self.tiling.expel_focused();
     }
 
     pub fn swap_window_horizontal(&mut self, right: bool) {
         if self.floating_is_active.get() {
             return;
         }
-        self.tiling.swap_window_horizontal(right);
+        if right {
+            self.tiling.move_right();
+        } else {
+            self.tiling.move_left();
+        }
     }
 
     pub fn toggle_focused_tabbed_display(&mut self) {
         if self.floating_is_active.get() {
             return;
         }
-        self.tiling.toggle_focused_tabbed_display();
+        self.tiling.toggle_focused_tabbed();
     }
 
     pub fn set_focused_layout(
@@ -527,7 +531,13 @@ impl<W: LayoutElement> Workspace<W> {
         if self.floating_is_active.get() {
             return;
         }
-        self.tiling.set_focused_display(display);
+        // niri's column display maps onto the parent split: tabbed, or a vertical stack.
+        self.tiling
+            .set_focused_parent_layout(if display == ColumnDisplay::Tabbed {
+                crate::layout::tiling_tree::Layout::Tabbed
+            } else {
+                crate::layout::tiling_tree::Layout::SplitV
+            });
     }
 
     pub fn set_focused_width(&mut self, change: SizeChange) {

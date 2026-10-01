@@ -132,7 +132,9 @@ impl<W: LayoutElement> TilingTree<W> {
         }
     }
 
-    pub fn toggle_focused_tabbed_display(&mut self) {
+    /// Toggles the focused leaf's parent between tabbed and SplitH, splitting the leaf when it
+    /// has no parent split. This backs niri's toggle-column-tabbed-display action.
+    pub fn toggle_focused_tabbed(&mut self) {
         let Some(parent) = self.focus.and_then(|id| self.nodes.get(&id)?.parent) else {
             return;
         };
@@ -388,18 +390,12 @@ impl<W: LayoutElement> TilingTree<W> {
         self.split(focus, layout);
     }
 
-    pub fn set_focused_display(&mut self, display: ColumnDisplay) {
+    /// Sets the layout of the focused leaf's parent split.
+    pub fn set_focused_parent_layout(&mut self, layout: Layout) {
         let Some(parent) = self.focus.and_then(|id| self.nodes.get(&id)?.parent) else {
             return;
         };
-        self.set_layout(
-            parent,
-            if display == ColumnDisplay::Tabbed {
-                Layout::Tabbed
-            } else {
-                Layout::SplitV
-            },
-        );
+        self.set_layout(parent, layout);
     }
 
     /// Wraps `id` in a new container, or returns `id` unchanged when the

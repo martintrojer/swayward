@@ -31,7 +31,7 @@ use smithay::utils::{Logical, Point, Rectangle, Scale, Serial, Size};
 use swayward_config::utils::MergeWith as _;
 use swayward_config::PresetSize;
 use swayward_ipc::command::{LayoutToggle, LayoutToggleEntry};
-use swayward_ipc::{ColumnDisplay, SizeChange, WindowLayout};
+use swayward_ipc::{SizeChange, WindowLayout};
 
 use super::closing_window::{ClosingWindow, ClosingWindowRenderElement};
 use super::tab_indicator::{TabIndicator, TabIndicatorRenderElement, TabInfo};

@@ -542,47 +542,30 @@ impl<W: LayoutElement> TilingTree<W> {
             .is_some_and(|id| self.move_subtree_to_index(id, index))
     }
 
-    pub fn nest_or_unnest_window_left(&mut self, window: Option<&W::Id>) {
+    /// Expels `window` (or the focused leaf) from its split toward `right`, or consumes the
+    /// neighbour into it when there is nothing to expel. This backs niri's consume-or-expel
+    /// actions.
+    pub fn expel_or_consume(&mut self, window: Option<&W::Id>, right: bool) {
         let id = window
             .and_then(|window| self.node_for_window(window))
             .or(self.focus);
         if let Some(id) = id {
             self.set_focus_id(Some(id));
-            if !self.expel(id, false) {
-                self.consume(id, false);
+            if !self.expel(id, right) {
+                self.consume(id, right);
             }
         }
     }
 
-    pub fn nest_or_unnest_window_right(&mut self, window: Option<&W::Id>) {
-        let id = window
-            .and_then(|window| self.node_for_window(window))
-            .or(self.focus);
-        if let Some(id) = id {
-            self.set_focus_id(Some(id));
-            if !self.expel(id, true) {
-                self.consume(id, true);
-            }
-        }
-    }
-
-    pub fn nest_focused_window(&mut self) {
+    pub fn consume_focused(&mut self) {
         if let Some(id) = self.focus {
             self.consume(id, true);
         }
     }
 
-    pub fn unnest_focused_window(&mut self) {
+    pub fn expel_focused(&mut self) {
         if let Some(id) = self.focus {
             self.expel(id, true);
-        }
-    }
-
-    pub fn swap_window_horizontal(&mut self, right: bool) {
-        if right {
-            self.move_right();
-        } else {
-            self.move_left();
         }
     }
 }
