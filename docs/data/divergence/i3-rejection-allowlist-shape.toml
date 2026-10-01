@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/tests/i3_conformance.rs"]
+what = "store exact occurrence counts with each reviewed i3 command rejection, replace six literal wildcard special cases with anchored ordered glob matching, factor the repeated layout-stacked reason, and remove the unused repeatable path."
+why = "The rejection table is a reviewed exception list; each row must describe its own shape and count so adding or auditing one exception does not require synchronized logic hundreds of lines away."

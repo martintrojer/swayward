@@ -190,6 +190,21 @@ pub(super) fn rejection_allowlist_is_keyed_by_file_and_exact_command() {
         "294-focus-order.t",
         &["[id=1] swap container with con_id 2"]
     ));
+    assert!(!rejections_match(
+        "294-focus-order.t",
+        &[
+            "[id=1] swap container with id 2",
+            "[id=3] swap container with id 4",
+        ]
+    ));
+    assert!(glob_matches(
+        "[con_mark=\"*\"] focus",
+        "[con_mark=\"mark.A1b2\"] focus"
+    ));
+    assert!(!glob_matches(
+        "[con_mark=\"*\"] focus",
+        "prefix [con_mark=\"mark.A1b2\"] focus"
+    ));
     assert!(ALLOWED_REJECTIONS
         .iter()
         .all(|rejection| !rejection.reason.is_empty()));
