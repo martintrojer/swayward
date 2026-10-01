@@ -687,3 +687,21 @@ fn comp_mod_handling() {
         None,
     );
 }
+
+/// Sway lists binding modifiers in get_modifier_names order: Shift, Lock,
+/// Control, Mod1, Mod2, Mod3, Mod4, Mod5 (sway/sway/input/keyboard.c:26-38).
+#[test]
+fn binding_event_state_mask_uses_sways_modifier_names_and_order() {
+    let mut bind = binding("nop all", None);
+    bind.key.modifiers = Modifiers::all() - Modifiers::COMPOSITOR;
+    let Some(swayward_ipc::legacy::Event::SwayBinding {
+        event_state_mask, ..
+    }) = sway_binding_event(&bind, ModKey::Super)
+    else {
+        panic!("expected a binding event");
+    };
+    assert_eq!(
+        event_state_mask,
+        ["Shift", "Lock", "Control", "Mod1", "Mod2", "Mod3", "Mod4", "Mod5"]
+    );
+}

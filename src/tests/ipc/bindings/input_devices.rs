@@ -677,3 +677,91 @@ fn input_and_reload_without_a_seat_keyboard_do_not_panic() {
     fixture.niri_state().reload_config(Ok(config));
     assert!(fixture.swayward().seat.get_keyboard().is_none());
 }
+
+/// Oracle: sway-ipc-oracle 5fb0576, events scenarios binding_mouse_buttons
+/// and binding_mouse_wheel, captured from sway 88869399. Sway names
+/// BTN_LEFT..BTN_LEFT+8 `buttonN` and its scroll pseudo-buttons, KEY_MAX + 1..4,
+/// by their raw xkb keysym name (sway/sway/ipc-server.c:434-439). The pinned
+/// oracle predates the capture, so the captured symbols are copied here; every
+/// other field matches the capture byte for byte.
+#[test]
+fn mouse_binding_events_name_buttons_and_wheel_like_sway() {
+    let config = swayward_config::Config::parse_mem(
+        r#"binds {
+            MouseLeft { command "nop left"; }
+            MouseMiddle { command "nop middle"; }
+            MouseRight { command "nop right"; }
+            MouseBack { command "nop back"; }
+            MouseForward { command "nop forward"; }
+            WheelScrollUp { command "nop wheel-up"; }
+            WheelScrollDown { command "nop wheel-down"; }
+            WheelScrollLeft { command "nop wheel-left"; }
+            WheelScrollRight { command "nop wheel-right"; }
+        }"#,
+    )
+    .unwrap();
+    let mut fixture = Fixture::with_config(config);
+    let handle = fixture.swayward().event_loop.clone();
+    let ipc_server =
+        crate::ipc::server::IpcServer::start_at(&handle, Some(test_socket_path())).unwrap();
+    let socket = ipc_server.socket_path.clone().unwrap();
+    fixture.swayward().ipc_server = Some(ipc_server);
+    fixture.add_output(1, (1280, 720));
+    let mut subscriber = UnixStream::connect(&socket).unwrap();
+    subscriber
+        .write_all(&swayward_ipc::wire::encode(
+            MessageType::Subscribe,
+            r#"["binding"]"#,
+        ))
+        .unwrap();
+    let _ = read_ipc_reply(&mut fixture, &mut subscriber);
+
+    let mut remainder = Vec::new();
+    let mut next_binding = |fixture: &mut Fixture| {
+        let ((event_type, payload), rest) = read_ipc_reply_with_remainder(
+            fixture,
+            &mut subscriber,
+            std::mem::take(&mut remainder),
+        );
+        remainder = rest;
+        assert_eq!(event_type, (1 << 31) | 5, "{payload}");
+        serde_json::from_str::<Value>(&payload).unwrap()
+    };
+    let sway = |command: &str, symbol: &str| {
+        serde_json::json!({
+            "change": "run",
+            "binding": {
+                "command": command,
+                "event_state_mask": [],
+                "input_code": 0,
+                "input_codes": [],
+                "input_type": "mouse",
+                "symbol": symbol,
+                "symbols": [symbol],
+            }
+        })
+    };
+
+    for (button, (command, symbol)) in [0x110, 0x112, 0x111, 0x113, 0x114].into_iter().zip([
+        ("nop left", "button1"),
+        ("nop middle", "button3"),
+        ("nop right", "button2"),
+        ("nop back", "button4"),
+        ("nop forward", "button5"),
+    ]) {
+        pointer_button(&mut fixture, button, true);
+        pointer_button(&mut fixture, button, false);
+        assert_eq!(next_binding(&mut fixture), sway(command, symbol));
+    }
+    for ((horizontal, vertical), (command, symbol)) in
+        [(0., -120.), (0., 120.), (-120., 0.), (120., 0.)].into_iter().zip([
+            ("nop wheel-up", "0x00000300"),
+            ("nop wheel-down", "0x00000301"),
+            ("nop wheel-left", "0x00000302"),
+            ("nop wheel-right", "0x00000303"),
+        ])
+    {
+        pointer_axis(&mut fixture, horizontal, vertical);
+        assert_eq!(next_binding(&mut fixture), sway(command, symbol));
+    }
+}

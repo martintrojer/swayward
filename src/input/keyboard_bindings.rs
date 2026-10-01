@@ -382,10 +382,13 @@ pub(super) fn sway_binding_event(
         modifiers.remove(Modifiers::COMPOSITOR);
         modifiers.insert(mod_key.to_modifiers());
     }
+    // Sway's get_modifier_names order (sway/sway/input/keyboard.c:26-38).
     let event_state_mask = [
         (Modifiers::SHIFT, "Shift"),
+        (Modifiers::CAPS, "Lock"),
         (Modifiers::CTRL, "Control"),
         (Modifiers::ALT, "Mod1"),
+        (Modifiers::NUM, "Mod2"),
         (Modifiers::ISO_LEVEL5_SHIFT, "Mod3"),
         (Modifiers::SUPER, "Mod4"),
         (Modifiers::ISO_LEVEL3_SHIFT, "Mod5"),
@@ -409,16 +412,22 @@ pub(super) fn sway_binding_event(
         | Trigger::WheelScrollUp
         | Trigger::WheelScrollLeft
         | Trigger::WheelScrollRight => {
+            // Sway names BTN_LEFT..BTN_LEFT+8 "button{code - BTN_LEFT + 1}"
+            // (BTN_RIGHT is button2, BTN_MIDDLE button3, BTN_SIDE button4,
+            // BTN_EXTRA button5) and passes everything else to
+            // xkb_keysym_get_name. Scroll bindings are SWAY_SCROLL_UP..RIGHT =
+            // KEY_MAX + 1..4 (include/sway/input/cursor.h:13-16), which xkb
+            // names as raw hex (sway/sway/ipc-server.c:434-439).
             let symbol: String = match bind.key.trigger {
                 Trigger::MouseLeft => "button1",
                 Trigger::MouseRight => "button2",
                 Trigger::MouseMiddle => "button3",
                 Trigger::MouseBack => "button4",
                 Trigger::MouseForward => "button5",
-                Trigger::WheelScrollUp => "button4",
-                Trigger::WheelScrollDown => "button5",
-                Trigger::WheelScrollLeft => "button6",
-                Trigger::WheelScrollRight => "button7",
+                Trigger::WheelScrollUp => "0x00000300",
+                Trigger::WheelScrollDown => "0x00000301",
+                Trigger::WheelScrollLeft => "0x00000302",
+                Trigger::WheelScrollRight => "0x00000303",
                 _ => unreachable!(),
             }
             .into();
