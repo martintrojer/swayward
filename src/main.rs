@@ -241,7 +241,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(count) = headless_outputs {
         let (backend, swayward) = (&mut state.backend, &mut state.swayward);
         backend.headless().add_startup_outputs(swayward, count);
-        state.focus_startup_monitor();
+        state.focus_configured_monitor();
     }
 
     publish_environment(&mut state);

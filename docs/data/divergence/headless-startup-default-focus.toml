@@ -1,4 +1,4 @@
 [[edit]]
-paths = ["src/main.rs", "src/swayward/outputs.rs"]
-what = "apply configured output coordinates verbatim even when they overlap, then focus the explicit focus-at-startup output or first configured connected startup output."
-why = "sway passes explicit coordinates directly to wlroots and fake-output tests begin on fake-0; rejecting overlap changed directional adjacency while retaining reverse headless creation order offset initial focus in i3 502-focus-output and 506-focus-right."
+paths = ["src/swayward/outputs.rs"]
+what = "apply configured output coordinates verbatim even when they overlap."
+why = "sway passes explicit coordinates directly to wlroots; rejecting overlap changed directional adjacency in i3 506-focus-right."
