@@ -60,8 +60,11 @@ machine, so it runs off the critical path.
 | Behavior change | `./contrib/fast-gate`, plus the oracle rows it can affect | integrator sweep on the batch tip |
 
 Select the affected rows with `contrib/targeted-oracle --out-dir <scratch>`.
-Review the printed commands, then add `--run`. It uses a release binary and
-fails closed for an unmapped production path. A sway-compatibility fix still
+Review the printed commands, then commit and add `--run` (inside the dev
+container). It builds the release binary, pins the oracle cache to `HEAD` for
+the run, and exits 1 only for rows that match in the pinned swayward snapshot
+and mismatch now; known mismatches are listed but pass. It fails closed for an
+unmapped production path. A sway-compatibility fix still
 names its oracle row in the commit message (see Invariants).
 
 The integrator owns the full sweep. It lands behavior commits in batches, runs

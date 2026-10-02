@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
-"""Print or run focused oracle rows selected from changed production paths."""
+"""Print or run focused oracle rows selected from changed production paths.
+
+With --run it builds the release binary, pins the oracle checkout to HEAD for
+the run, and compares every row with the oracle's committed swayward snapshot.
+It exits 1 only for rows that match in the snapshot and mismatch now.
+"""
 
 import argparse
+import os
+import re
 import shlex
 import subprocess
 import sys
@@ -29,6 +36,7 @@ def commands(changed: list[str], oracle: Path, binary: Path, out_dir: Path) -> l
     with MAP.open("rb") as file:
         targets = tomllib.load(file)["target"]
     selected = {"state": set(), "events": set(), "i3_derived": set(), "random_seeds": set()}
+    corpora = scenario_corpora(oracle)
     mapped = set()
     for target in targets:
         matches = [path for path in changed if any(path.startswith(prefix) for prefix in target["paths"])]
@@ -47,6 +55,13 @@ def commands(changed: list[str], oracle: Path, binary: Path, out_dir: Path) -> l
             "production paths lack targeted oracle coverage: " + ", ".join(unknown)
             + "; add tests/oracle-targets.toml entries or pass explicit sway-ipc-run rows"
         )
+    for corpus in ("state", "events"):
+        wrong = sorted(name for name in selected[corpus] if corpus not in corpora.get(name, (corpus,)))
+        if wrong:
+            raise RuntimeError(
+                f"tests/oracle-targets.toml lists {corpus} scenarios outside the {corpus} corpus: "
+                + ", ".join(wrong)
+            )
     runner = oracle / "contrib" / "sway-ipc-run"
     common = ["--compositor", "swayward", "--binary", str(binary)]
     result = []
@@ -74,6 +89,80 @@ def commands(changed: list[str], oracle: Path, binary: Path, out_dir: Path) -> l
     return result
 
 
+def scenario_corpora(oracle: Path) -> dict[str, tuple[str, ...]]:
+    """Scenario name -> corpora, or {} when the oracle is not fetched."""
+    path = oracle / "sway-ipc" / "scenarios.toml"
+    if not path.exists():
+        return {}
+    with path.open("rb") as file:
+        return {
+            item["name"]: tuple(item.get("corpora", ("state", "events")))
+            for item in tomllib.load(file)["scenario"]
+        }
+
+
+RESULT_SUFFIX = {"state": "", "events": "-events", "i3-derived": "-i3-derived", "random": "-random"}
+
+
+def verdicts(path: Path) -> dict[tuple, str]:
+    with path.open("rb") as file:
+        rows = tomllib.load(file).get("result", [])
+    return {
+        (row["seed"],) if "seed" in row else (row["scenario"], row["request"]): row["verdict"]
+        for row in rows
+    }
+
+
+def compare(result: Path, baseline: Path) -> tuple[list, list, list]:
+    """New, known and fixed mismatches of one result against the baseline snapshot."""
+    now, before = verdicts(result), verdicts(baseline)
+    new = sorted(key for key, verdict in now.items() if verdict != "match" and before.get(key) == "match")
+    known = sorted(key for key, verdict in now.items() if verdict != "match" and key not in new)
+    fixed = sorted(key for key, verdict in now.items() if verdict == "match" and before.get(key, "match") != "match")
+    return new, known, fixed
+
+
+def build_release() -> None:
+    if subprocess.check_output(["git", "-C", ROOT, "status", "--porcelain"], text=True).strip():
+        raise RuntimeError("commit first: sway-ipc-run refuses a dirty build")
+    # sway-ipc-run finds the source commit by walking up from the binary, so
+    # the binary must live inside this checkout whatever CARGO_TARGET_DIR says.
+    env = os.environ | {"CARGO_TARGET_DIR": str(ROOT / "target")}
+    subprocess.run(["cargo", "build", "--release", "-p", "swayward"], cwd=ROOT, env=env, check=True)
+
+
+def run(selected: list[list[str]], oracle: Path) -> int:
+    pins = oracle / "pins.toml"
+    original = pins.read_text()
+    head = subprocess.check_output(["git", "-C", ROOT, "rev-parse", "HEAD"], text=True).strip()
+    with pins.open("rb") as file:
+        snapshot = tomllib.load(file)["snapshot"]["swayward"]
+    # Only the top-level 40-hex pin; [snapshot] swayward stays the result name.
+    pins.write_text(re.sub(r'^swayward = "[0-9a-f]{40}"$', f'swayward = "{head}"', original, flags=re.M))
+    new_total = 0
+    try:
+        for command in selected:
+            print(shlex.join(command), flush=True)
+            out = Path(command[command.index("--out") + 1])
+            out.unlink(missing_ok=True)
+            # sway-ipc-run exits 1 on any mismatch, so the result file decides.
+            subprocess.run(command, cwd=ROOT)
+            if not out.exists():
+                print(f"targeted-oracle: {command[1]} wrote no result", file=sys.stderr)
+                return 2
+            corpus = out.stem
+            baseline = oracle / "sway-ipc" / "results" / f"{snapshot}{RESULT_SUFFIX[corpus]}.toml"
+            new, known, fixed = compare(out, baseline)
+            new_total += len(new)
+            print(f"{corpus}: {len(new)} new, {len(known)} known, {len(fixed)} fixed vs {baseline.name}")
+            for label, keys in (("NEW", new), ("known", known), ("fixed", fixed)):
+                for key in keys:
+                    print(f"  {label} {corpus} " + " ".join(map(str, key)))
+    finally:
+        pins.write_text(original)
+    return 1 if new_total else 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("paths", nargs="*")
@@ -83,6 +172,7 @@ def main() -> int:
     parser.add_argument("--out-dir", type=Path, required=True)
     parser.add_argument("--run", action="store_true")
     args = parser.parse_args()
+    args.out_dir = args.out_dir.resolve()
     try:
         selected = commands(
             changed_paths(args.base, args.paths), args.oracle, args.binary, args.out_dir
@@ -94,11 +184,17 @@ def main() -> int:
         print("targeted-oracle: no oracle rows selected (non-production changes only)")
         return 0
     args.out_dir.mkdir(parents=True, exist_ok=True)
-    for command in selected:
-        print(shlex.join(command), flush=True)
-        if args.run and subprocess.run(command, cwd=ROOT).returncode:
-            return 1
-    return 0
+    if not args.run:
+        for command in selected:
+            print(shlex.join(command))
+        return 0
+    try:
+        if args.binary == ROOT / "target/release/swayward":
+            build_release()
+        return run(selected, args.oracle)
+    except (OSError, subprocess.CalledProcessError, RuntimeError) as error:
+        print(f"targeted-oracle: {error}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":
