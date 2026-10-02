@@ -7,9 +7,9 @@ The launch-critical task chain is `oracle-swayward-snapshot-repin`, `oracle-read
 Paths below assume these checkouts:
 
 ```sh
-export SWAYWARD=/var/home/martintrojer/hacking/swayward
-export ORACLE=/var/home/martintrojer/hacking/sway-ipc-oracle
-export SCRATCH=/var/home/martintrojer/hacking/swayward-scratch/maintainer
+export SWAYWARD=$HOME/hacking/swayward-wm/swayward
+export ORACLE=$HOME/hacking/swayward-wm/oracle
+export SCRATCH=$HOME/hacking/swayward-wm/scratch/maintainer
 mkdir -p "$SCRATCH"
 ```
 
@@ -49,9 +49,9 @@ Create a worktree from current oracle `origin/main`:
 ```sh
 git -C "$ORACLE" fetch origin
 git -C "$ORACLE" worktree add \
-  /var/home/martintrojer/hacking/sway-ipc-oracle.worktrees/launch-repin \
+  $HOME/hacking/swayward-wm/oracle.worktrees/launch-repin \
   -b launch-repin origin/main
-export ORACLE_WORKTREE=/var/home/martintrojer/hacking/sway-ipc-oracle.worktrees/launch-repin
+export ORACLE_WORKTREE=$HOME/hacking/swayward-wm/oracle.worktrees/launch-repin
 ```
 
 In `pins.toml`, set `swayward` to `$SWAYWARD_SHA` and rename the snapshot to `swayward-${SWAYWARD_SHA:0:8}`. Rename all old swayward result and classification files to that snapshot name. Build the pinned image from the committed pin:

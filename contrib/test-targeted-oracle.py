@@ -5,7 +5,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "contrib" / "targeted-oracle"
-OUT = Path("/var/home/martintrojer/hacking/swayward-scratch/worker-7/targeted-test")
+# Scratch output stays beside the repo, never in /tmp (AGENTS.md).
+OUT = ROOT.parent / "scratch" / "targeted-oracle-test"
 
 
 class TargetedOracleTest(unittest.TestCase):

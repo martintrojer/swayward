@@ -14,6 +14,18 @@ distrobox enter swayward-dev -- bash -lc 'cd <repo> && cargo test --all'
 
 Setup: [`docs/BUILDING.md`](docs/BUILDING.md).
 
+On the operator's machine the three `swayward-wm` repos live side by side:
+
+| Path | Repo |
+|---|---|
+| `~/hacking/swayward-wm/swayward` | `swayward-wm/swayward`, this repo |
+| `~/hacking/swayward-wm/oracle` | `swayward-wm/sway-ipc-oracle` |
+| `~/hacking/swayward-wm/org` | `swayward-wm/.github`, the org profile and logo |
+
+Worktrees, scratch output and extra target directories go beside them under
+`~/hacking/swayward-wm/`, never inside a repo. See "Scratch space lives on
+disk" for where.
+
 Format with **nightly**: `cargo +nightly fmt --all`. `rustfmt.toml` uses four
 nightly-only options and the CI fmt job runs nightly, so stable rustfmt reports
 clean while leaving nightly diffs in place.
@@ -66,7 +78,8 @@ note that names a commit must name one that exists on the remote.
 
 `/tmp` is a RAM-backed tmpfs: whatever accumulates there is memory, and then
 swap on the operator's session. Put extra `CARGO_TARGET_DIR`s, clones, logs
-and measurement output under `~/hacking/<name>` and delete them when done.
+and measurement output under `~/hacking/swayward-wm/scratch/<name>` and delete
+them when done.
 A stray 5.5 GB target directory and 16,000 leaked test socket directories
 once took `/tmp` to 5.8 GB. Tests clean up what they create, including
 directories that still hold a socket (`remove_dir_all`).
@@ -238,11 +251,11 @@ Measure swayward against the oracle from a clean worktree of it, passing
 `--out` outside the repo: the runners' default output path is a tracked
 results file, and a measurement taken from a worker's half-edited clone gave
 misleading numbers. The operator's own oracle checkout is
-`~/hacking/sway-ipc-oracle`; leave it alone and add a worktree beside it:
-`git -C ~/hacking/sway-ipc-oracle worktree add
-~/hacking/sway-ipc-oracle.worktrees/<name> -b <branch> origin/main`. Thirteen
-separate clones accumulated before this rule, and agents edited the operator's
-checkout because it was the obvious local copy.
+`~/hacking/swayward-wm/oracle`; leave it alone and add a worktree beside it:
+`git -C ~/hacking/swayward-wm/oracle worktree add
+~/hacking/swayward-wm/oracle.worktrees/<name> -b <branch> origin/main`.
+Thirteen separate clones accumulated before this rule, and agents edited the
+operator's checkout because it was the obvious local copy.
 
 `tests/i3/coverage.toml` is the source of truth for what the in-process harness measures.
 Use `./contrib/coverage-report` for the current census; its `--json` output is
