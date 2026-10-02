@@ -216,7 +216,7 @@ pub(super) fn headless_startup_outputs_apply_configured_geometry_and_focus() {
     let state = fixture.niri_state();
     *state.swayward.config.borrow_mut() = swayward_config::Config::parse_mem(
         r#"
-        output "headless-1" { mode custom=true "1080x1920@60"; position x=0 y=0; }
+        output "headless-1" { mode custom=true "1080x1920@60"; position x=0 y=0; focus-at-startup; }
         output "headless-2" { mode custom=true "1920x200@60"; position x=1080 y=1720; }
         output "headless-3" { mode custom=true "1080x1920@60"; position x=1280 y=0; }
         "#,
@@ -224,7 +224,7 @@ pub(super) fn headless_startup_outputs_apply_configured_geometry_and_focus() {
     .unwrap();
     let swayward = &mut state.swayward;
     state.backend.headless().add_startup_outputs(swayward, 3);
-    state.focus_startup_monitor();
+    state.focus_configured_monitor();
 
     let swayward = fixture.swayward();
     let actual = crate::ipc::tree::describe_outputs(&swayward.layout, &swayward.global_space);
