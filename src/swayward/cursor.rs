@@ -116,6 +116,25 @@ impl State {
         }
     }
 
+    pub fn focus_startup_monitor(&mut self) {
+        if self.focus_configured_monitor() {
+            return;
+        }
+        let target = {
+            let config = self.swayward.config.borrow();
+            config
+                .outputs
+                .0
+                .iter()
+                .find_map(|config| self.swayward.output_by_name_match(&config.name))
+                .cloned()
+        };
+        if let Some(target) = target {
+            self.swayward.layout.focus_output(&target);
+            self.move_cursor_to_output(&target);
+        }
+    }
+
     pub fn focus_configured_monitor(&mut self) -> bool {
         let target = {
             let config = self.swayward.config.borrow();

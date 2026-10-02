@@ -214,8 +214,15 @@ pub(super) fn rejection_allowlist_is_keyed_by_file_and_exact_command() {
 pub(super) fn headless_startup_outputs_follow_sways_backend_order() {
     let mut fixture = Fixture::new();
     let state = fixture.niri_state();
+    state.swayward.config.borrow_mut().outputs.0 = (1..=3)
+        .map(|n| swayward_config::Output {
+            name: format!("headless-{n}"),
+            ..Default::default()
+        })
+        .collect();
     let swayward = &mut state.swayward;
     state.backend.headless().add_startup_outputs(swayward, 3);
+    state.focus_startup_monitor();
 
     let swayward = fixture.swayward();
     let actual = crate::ipc::tree::describe_outputs(&swayward.layout, &swayward.global_space);
@@ -229,6 +236,10 @@ pub(super) fn headless_startup_outputs_follow_sways_backend_order() {
             ("headless-2", 1280),
             ("headless-1", 2560)
         ]
+    );
+    assert_eq!(
+        swayward.layout.active_output().unwrap().name(),
+        "headless-1"
     );
 }
 
