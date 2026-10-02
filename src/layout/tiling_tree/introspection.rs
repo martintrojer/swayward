@@ -386,7 +386,10 @@ impl<'a, W: LayoutElement> IpcSnapshot<'a, W> {
             .filter_map(|child| geometries.ipc_nodes.get(child).copied())
             .map(|rect| geometry::axis_extent(layout, rect))
             .sum::<f64>();
-        let allocated = child_shares(available, percents);
+        // Sway's container widths are integers, so its child_total_width is too
+        // (apply_horiz_layout, sway/tree/arrange.c:70-88). A floating group's fractional rect
+        // would otherwise round the first child's share the other way.
+        let allocated = child_shares(available.round(), percents);
         percents
             .iter()
             .zip(allocated)

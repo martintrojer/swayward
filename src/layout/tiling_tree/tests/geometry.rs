@@ -243,3 +243,31 @@ fn a_sub_pixel_last_child_reports_a_non_negative_percent() {
         "negative percent in {percents:?}"
     );
 }
+
+#[test]
+fn a_fractional_split_width_rounds_shares_like_sway() {
+    // A floating group's box is fractional (here 634.6 px). Sway's widths are integers: it
+    // splits the integer child_total_width (sway/tree/arrange.c:70-88), giving round(317.5) =
+    // 318 then the 317 px remainder. Splitting 634.6 directly gave 317 then 318, and focus
+    // events reported the two percents swapped (oracle rows events/grouped_raise_events and
+    // events/grouped_scratchpad_events).
+    let mut t = tree_with_options((634.6, 400.), 0., |options| {
+        options.layout.border.off = true;
+    });
+    t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+
+    let IpcNode::Split { children, .. } = t.ipc_tree() else {
+        panic!("root must be a split");
+    };
+    let percents = children
+        .iter()
+        .map(|child| match child {
+            IpcNode::Split { percent, .. } | IpcNode::Leaf { percent, .. } => percent.unwrap(),
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        percents[0] > percents[1],
+        "the first child takes the rounded-up half: {percents:?}"
+    );
+}
