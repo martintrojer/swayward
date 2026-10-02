@@ -1045,6 +1045,18 @@ impl<W: LayoutElement> FloatingLayout<W> {
             .collect()
     }
 
+    /// Focuses the most recently focused view of group `root`.
+    pub fn focus_tree_view(&mut self, root: NodeId) {
+        if let Some(entry) = self
+            .tree_entries
+            .iter_mut()
+            .find(|entry| entry.root == root)
+        {
+            entry.tree.focus_inactive_leaf_of(root);
+            self.active_window_id = entry.tree.active_window().map(|window| window.id().clone());
+        }
+    }
+
     pub fn tree_rect(&self, root: NodeId) -> Option<Rectangle<f64, Logical>> {
         self.tree_entries
             .iter()

@@ -130,6 +130,10 @@ impl<W: LayoutElement> Workspace<W> {
         root
     }
 
+    pub fn focus_floating_tree_view(&mut self, root: NodeId) {
+        self.floating.focus_tree_view(root);
+    }
+
     pub fn remove_active_tiling_tile(&mut self) -> Option<Tile<W>> {
         if self.floating_is_active.get() {
             return None;

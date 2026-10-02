@@ -197,6 +197,14 @@ impl<W: LayoutElement> TilingTree<W> {
         true
     }
 
+    /// Moves focus from `id` down to its most recently focused leaf, as sway's
+    /// `seat_set_focus(seat_get_focus_inactive(node))` focuses a view.
+    pub fn focus_inactive_leaf_of(&mut self, id: NodeId) {
+        if let Some(leaf) = self.focused_leaf_in(id) {
+            self.set_focus_id(Some(leaf));
+        }
+    }
+
     pub fn focus_child(&mut self) -> bool {
         let Some(focus) = self.focus else {
             return false;

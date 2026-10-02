@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/scratchpad.rs", "src/layout/floating_tree.rs", "src/layout/workspace/tree_commands.rs", "src/layout/tiling_tree/focus.rs"]
+what = "after showing a hidden floating group from the scratchpad, focus its most recently focused view."
+why = "sway's root_scratchpad_show focuses seat_get_focus_inactive(con), which is a view; swayward kept the group's internal focus, so a group hidden from `focus parent` came back with the container itself focused (sway/tree/root.c:185-186)."

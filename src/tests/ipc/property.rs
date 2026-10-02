@@ -600,11 +600,10 @@ fn killed_windows_can_receive_late_configures() {
         run.last_outcome_ending_with("move scratchpad"),
         "move scratchpad",
     );
-    assert_failure(
-        run.last_outcome("layout tabbed"),
-        "layout tabbed",
-        "Unable to change layout of floating windows",
-    );
+    // `scratchpad show` focuses the group's view, not the group root
+    // (sway/tree/root.c:185-186), so `layout tabbed` changes the group's
+    // layout: pinned sway answers success.
+    assert_success(run.last_outcome("layout tabbed"), "layout tabbed");
     let tree = run.tree();
     assert!(find_app(&tree, "app-0").is_none(), "killed window remained");
     assert_eq!(

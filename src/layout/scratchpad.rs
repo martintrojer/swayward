@@ -89,8 +89,12 @@ impl<W: LayoutElement> Layout<W> {
             return None;
         }
         let removed = self.scratchpad_trees.remove(index)?;
-        self.workspace_mut(workspace)?
-            .add_floating_tree(removed, true);
+        let workspace = self.workspace_mut(workspace)?;
+        let root = workspace.add_floating_tree(removed, true);
+        // root_scratchpad_show focuses seat_get_focus_inactive(con), the
+        // group's most recently focused view, even when the group itself was
+        // focused when it was hidden (sway/tree/root.c:185-186).
+        workspace.focus_floating_tree_view(root);
         Some(shown)
     }
 

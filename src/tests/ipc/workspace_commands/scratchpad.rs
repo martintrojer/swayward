@@ -278,6 +278,35 @@ fn hidden_scratchpad_group_children_report_no_titlebar() {
     }
 }
 
+/// Random oracle seeds 323 and 380: showing a group hidden with `focus parent;
+/// move scratchpad` focuses its most recently focused view, not the group
+/// (root_scratchpad_show: seat_set_focus(seat_get_focus_inactive(con)),
+/// sway/tree/root.c:185-186).
+#[test]
+fn showing_a_hidden_group_focuses_its_view() {
+    let (mut f, _) = ipc_fixture();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+    for command in ["focus parent", "move scratchpad", "scratchpad show"] {
+        let reply = crate::command::execute(f.niri_state(), command);
+        assert!(reply[0].success, "{command}: {reply:?}");
+    }
+
+    let tree: swayward_ipc::Node = serde_json::from_value(get_tree(&mut f)).unwrap();
+    let mut focused = Vec::new();
+    collect_focused_nodes(&tree, &mut focused);
+    let group = &tree.nodes[1].nodes[0].floating_nodes[0];
+    assert_eq!(focused, [group.nodes[0].id]);
+}
+
 #[test]
 fn scratchpad_hides_focused_window_and_show_cycles_windows() {
     let mut f = Fixture::new();

@@ -839,8 +839,11 @@ fn floating_toggle_after_moving_scratchpad_window_between_workspaces_does_not_pa
         ("move scratchpad", true),
         ("scratchpad show", true),
         ("move container to workspace 2", true),
-        ("floating toggle", false),
-        ("move container to workspace 2", false),
+        // `scratchpad show` focuses the group's most recently focused view
+        // (sway/tree/root.c:185-186), so the moved view leaves its sibling
+        // focused: pinned sway answers success to both of these.
+        ("floating toggle", true),
+        ("move container to workspace 2", true),
         ("workspace 2", true),
         ("floating toggle", true),
     ] {
