@@ -218,8 +218,12 @@ fn directional_move_preserves_a_nonsquashable_singleton_source() {
     t.check_invariants();
 }
 
+// random seed 102 step 6 (sway-1.12-random): moving right into a
+// perpendicular branch descends to its focus-inactive view and promotes the
+// moved container to a sibling of that cousin, before it when moving right
+// or down (sway/commands/move.c:124-138, 152-165).
 #[test]
-fn directional_move_descends_after_the_inactive_child_of_a_perpendicular_branch() {
+fn directional_move_descends_before_the_inactive_child_of_a_perpendicular_branch() {
     let mut t = tree((1200., 800.), 0.);
     let left = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
     let top_right = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
@@ -240,8 +244,8 @@ fn directional_move_descends_after_the_inactive_child_of_a_perpendicular_branch(
             ..
         } if matches!(&children[..], [
             IpcNode::Leaf { id: top, .. },
-            IpcNode::Leaf { id: inactive, .. },
             IpcNode::Leaf { id, .. },
+            IpcNode::Leaf { id: inactive, .. },
         ] if *top == top_right && *inactive == bottom_right && *id == left)
     ));
     let parent = t.nodes[&left].parent.unwrap();

@@ -265,12 +265,7 @@ impl<W: LayoutElement> TilingTree<W> {
                         let new_index = if backwards { index - 1 } else { index + 1 };
                         return self.move_subtree_to_index_inner(id, new_index);
                     }
-                    return self.move_into_directional_destination(
-                        id,
-                        destination,
-                        direction,
-                        false,
-                    );
+                    return self.move_into_directional_destination(id, destination, direction);
                 }
                 // Past the moved node itself, the first parallel parent ends
                 // sway's walk even with no sibling that way: the node is
@@ -470,7 +465,6 @@ impl<W: LayoutElement> TilingTree<W> {
         id: NodeId,
         destination: NodeId,
         direction: Direction,
-        descended_perpendicularly: bool,
     ) -> bool {
         let wanted_layout = direction.axis();
         let backwards = direction.is_backwards();
@@ -485,11 +479,10 @@ impl<W: LayoutElement> TilingTree<W> {
                 let Some(old_parent) = self.detach_subtree_only(id) else {
                     return false;
                 };
-                self.insert_child_at(
-                    parent,
-                    id,
-                    index + usize::from(backwards || descended_perpendicularly),
-                );
+                // "Promoting to sibling of cousin": before the cousin when
+                // moving right or down, after it when moving left or up
+                // (sway/commands/move.c:124-131).
+                self.insert_child_at(parent, id, index + usize::from(backwards));
                 self.reap_empty_from(old_parent);
             }
             Some(TreeNode::Split {
@@ -509,7 +502,7 @@ impl<W: LayoutElement> TilingTree<W> {
                 let Some(child) = self.focused_child_in(destination) else {
                     return false;
                 };
-                return self.move_into_directional_destination(id, child, direction, true);
+                return self.move_into_directional_destination(id, child, direction);
             }
             None => return false,
         }

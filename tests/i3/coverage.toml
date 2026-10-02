@@ -3687,8 +3687,30 @@ note = "`does_i3_live` after `focus mode_toggle` on an empty workspace. The comm
 [files."274-move-branch-position.t"]
 assertions = 16
 tap_plan = 16
-pass = 16
-note = "Directional moves prepend into parallel branches for right/down movement and insert after the focused inactive leaf in perpendicular branches. Same-parent leaf moves remain swaps. New children receive equal shares, matching sway's zero-fraction normalization (`sway/commands/move.c:80-89,112-165`; `sway/tree/arrange.c:16-52`)."
+pass = 12
+reason = "i3_only_semantics"
+reason_verified = true
+note = "Directional moves prepend into parallel branches for right/down movement. In a perpendicular branch they promote beside the focus-inactive cousin, before it for right/down. Same-parent leaf moves remain swaps. New children receive equal shares, matching sway's zero-fraction normalization (`sway/commands/move.c:80-89,112-165`; `sway/tree/arrange.c:16-52`). Assertions 3, 4, 7 and 8 expect i3's after-the-inactive-leaf placement for right/down; pinned sway fails exactly those four, and random seeds 102 step 6 and 435 step 17 (sway-1.12-random) record sway's before-the-cousin placement."
+[[files."274-move-branch-position.t".skip]]
+n = 3
+desc = "moving con right into a stack placed it below the focused-inactive leaf"
+reason = "Sway descends a perpendicular branch to its focus-inactive view and promotes the moved container to a sibling of that cousin, before it for right/down and after it for left/up. i3 always places it after the focus-inactive leaf. The pinned sway-1.12 run fails this assertion (oracle i3/results/sway-1.12.toml)."
+citation = "sway/sway/commands/move.c:124-138,152-165"
+[[files."274-move-branch-position.t".skip]]
+n = 4
+desc = "moving con right into a stack from a branch placed it below the focused-inactive leaf"
+reason = "Sway descends a perpendicular branch to its focus-inactive view and promotes the moved container to a sibling of that cousin, before it for right/down and after it for left/up. i3 always places it after the focus-inactive leaf. The pinned sway-1.12 run fails this assertion (oracle i3/results/sway-1.12.toml)."
+citation = "sway/sway/commands/move.c:124-138,152-165"
+[[files."274-move-branch-position.t".skip]]
+n = 7
+desc = "moving con down into tabs placed it after the focused-inactive tab"
+reason = "Sway descends a perpendicular branch to its focus-inactive view and promotes the moved container to a sibling of that cousin, before it for right/down and after it for left/up. i3 always places it after the focus-inactive leaf. The pinned sway-1.12 run fails this assertion (oracle i3/results/sway-1.12.toml)."
+citation = "sway/sway/commands/move.c:124-138,152-165"
+[[files."274-move-branch-position.t".skip]]
+n = 8
+desc = "moving con down into tabs from a branch placed it after the focused-inactive tab"
+reason = "Sway descends a perpendicular branch to its focus-inactive view and promotes the moved container to a sibling of that cousin, before it for right/down and after it for left/up. i3 always places it after the focus-inactive leaf. The pinned sway-1.12 run fails this assertion (oracle i3/results/sway-1.12.toml)."
+citation = "sway/sway/commands/move.c:124-138,152-165"
 
 [files."275-ipc-window-close.t"]
 assertions = 2
