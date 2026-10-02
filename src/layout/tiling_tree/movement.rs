@@ -544,6 +544,14 @@ impl<W: LayoutElement> TilingTree<W> {
     }
 
     fn finish_directional_move(&mut self, id: NodeId) {
+        // Sway's directional move never changes focus (`cmd_move_in_direction`,
+        // sway/commands/move.c:713-750), so a focused container stays focused
+        // rather than handing focus to its first view.
+        if self.focus == Some(id) {
+            self.set_focus_id(Some(id));
+            self.request_window_sizes();
+            return;
+        }
         self.set_focus_id(self.first_leaf_in(id).or(self.focus));
         self.request_window_sizes();
     }
@@ -590,8 +598,7 @@ impl<W: LayoutElement> TilingTree<W> {
         let percent = percents.remove(old_index);
         children.insert(new_index, child);
         percents.insert(new_index, percent);
-        self.set_focus_id(self.first_leaf_in(id).or(self.focus));
-        self.request_window_sizes();
+        self.finish_directional_move(id);
         true
     }
 

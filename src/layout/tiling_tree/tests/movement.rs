@@ -750,3 +750,25 @@ fn promotion_from_a_parallel_split_keeps_the_moved_fraction() {
     }
     t.check_invariants();
 }
+
+// random seed 467 step 20 (sway-1.12-random): with a split container
+// focused, `move up` swaps it with its sibling and leaves the container
+// focused. Sway's directional move never changes focus
+// (`cmd_move_in_direction`, sway/commands/move.c:713-750).
+#[test]
+fn a_focused_container_stays_focused_after_a_directional_move() {
+    let mut t = tree((1200., 800.), 0.);
+    t.set_focused_layout(Layout::SplitV);
+    t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let b = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.split(b, Layout::SplitH);
+    t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+    assert!(t.focus_parent());
+    let container = t.focus().unwrap();
+    assert!(t.is_split(container));
+
+    assert!(t.move_direction(container, Direction::Up));
+
+    assert_eq!(t.focus(), Some(container));
+    t.check_invariants();
+}
