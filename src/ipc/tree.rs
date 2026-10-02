@@ -149,6 +149,7 @@ fn scratch_output(
             node.scratchpad_state = Some("fresh".into());
             node.sticky = sticky;
             set_windows_visible(&mut node, false);
+            drop_hidden_titlebars(&mut node);
             // The tree keeps its internal focus for when it is shown again,
             // but a hidden container never holds the seat focus: hiding it
             // refocuses the parent's focus-inactive node
@@ -238,6 +239,22 @@ fn scratch_output(
         focused: false,
         properties: NodeProperties::None {},
     })
+}
+
+/// A hidden container has no titlebar in GET_TREE: get_deco_rect returns an
+/// empty box once the container has no workspace, so the reported box is not
+/// shortened by one either (sway/ipc-json.c:543-553,816-824). Give each
+/// descendant its full slot and an empty `deco_rect`.
+fn drop_hidden_titlebars(node: &mut Node) {
+    for child in &mut node.nodes {
+        let deco = child.deco_rect.height;
+        if deco > 0 {
+            child.rect.y -= deco;
+            child.rect.height += deco;
+        }
+        child.deco_rect = Rect::default();
+        drop_hidden_titlebars(child);
+    }
 }
 
 #[cfg(test)]

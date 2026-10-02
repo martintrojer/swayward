@@ -239,6 +239,45 @@ fn hiding_a_shown_scratchpad_window_after_focus_parent_refocuses_the_tiled_view(
     assert_eq!(focused, [tiled]);
 }
 
+/// A hidden group's children have no titlebar in GET_TREE and report their
+/// whole slot (get_deco_rect with no workspace, sway/ipc-json.c:543-553).
+#[test]
+fn hidden_scratchpad_group_children_report_no_titlebar() {
+    let (mut f, _) = ipc_fixture();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    for _ in 0..2 {
+        let window = f.client(client).create_window();
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+    // Tabbed, so every child has a titlebar while the group is shown. Pinned
+    // sway then reports each hidden child at the group's full box with an
+    // empty deco_rect.
+    for command in [
+        "focus parent",
+        "layout tabbed",
+        "floating enable",
+        "move scratchpad",
+    ] {
+        let reply = crate::command::execute(f.niri_state(), command);
+        assert!(reply[0].success, "{command}: {reply:?}");
+    }
+
+    let tree: swayward_ipc::Node = serde_json::from_value(get_tree(&mut f)).unwrap();
+    let group = &tree.nodes[0].nodes[0].floating_nodes[0];
+    assert_eq!(group.nodes.len(), 2);
+    for child in &group.nodes {
+        assert_eq!(child.deco_rect, swayward_ipc::Rect::default());
+        assert_eq!(child.rect, group.rect);
+    }
+}
+
 #[test]
 fn scratchpad_hides_focused_window_and_show_cycles_windows() {
     let mut f = Fixture::new();

@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/ipc/tree.rs"]
+what = "describe the children of a hidden scratchpad group without a titlebar: an empty deco_rect and a rect that covers the full slot."
+why = "sway's get_deco_rect returns an empty box for a container with no workspace, so GET_TREE neither reports a titlebar nor shortens the box (sway/ipc-json.c:543-553,816-824)."
