@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/mod.rs", "src/layout/workspace/tree_commands.rs", "src/layout/tiling_tree/movement.rs"]
+what = "move a focused floating-group child inside its group on `move <direction>` instead of moving the group by pixels, and stop the directional walk at a floating group's root."
+why = "sway's container_is_floating is true only for the floating root: a child moves like a tiled container, and the walk returns at the floating container rather than escaping it (sway/commands/move.c:326-330,722-728); swayward moved the whole group, and a walk escaping the root replaced the group's root node."

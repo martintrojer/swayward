@@ -358,6 +358,12 @@ impl<W: LayoutElement> Workspace<W> {
         }
     }
 
+    pub fn move_focused_floating_tree_child(&mut self, direction: Direction) -> bool {
+        self.floating
+            .move_focused_tree_child(direction)
+            .unwrap_or(false)
+    }
+
     pub fn move_window_in_direction(
         &mut self,
         window: &W::Id,

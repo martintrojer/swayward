@@ -289,6 +289,12 @@ impl<W: LayoutElement> TilingTree<W> {
                     return self.promote_to_boundary(id, parent_id, backwards, wanted_layout);
                 }
             }
+            // A floating group's root is the floating container: sway's walk
+            // stops there rather than escaping it (`container_is_floating`,
+            // sway/commands/move.c:326-330).
+            if parent_id == boundary_root && boundary_root != self.root {
+                return false;
+            }
             branch = parent_id;
             parent = *grandparent;
         }

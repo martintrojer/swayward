@@ -902,6 +902,24 @@ pub(super) fn direction_focused(
         {
             return Err(success());
         }
+        // A floating group's child is not floating, so it moves inside the
+        // group like a tiled child; only the floating root moves by pixels
+        // (`container_is_floating`, sway/commands/move.c:326-330,
+        // 722-728).
+        if workspace.focused_floating_tree_child() {
+            let direction = match direction {
+                Direction::Left => crate::layout::tiling_tree::Direction::Left,
+                Direction::Right => crate::layout::tiling_tree::Direction::Right,
+                Direction::Up => crate::layout::tiling_tree::Direction::Up,
+                Direction::Down => crate::layout::tiling_tree::Direction::Down,
+            };
+            state
+                .swayward
+                .layout
+                .move_focused_floating_tree_child(direction);
+            state.swayward.queue_redraw_all();
+            return Ok(None);
+        }
         let pixels = f64::from(pixels.unwrap_or(10));
         let (x, y) = match direction {
             Direction::Left => (-pixels, 0.),

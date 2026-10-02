@@ -795,6 +795,53 @@ fn mapping_with_a_floating_group_child_focused_joins_the_group() {
     assert_eq!(group_sizes(&mut f), (1, vec![3]));
 }
 
+/// Oracle: floating_group_child_move_direction. A floating group's child is
+/// not floating, so `move left` moves it inside the group like a tiled child
+/// instead of moving the whole group by pixels (`container_is_floating`,
+/// sway/commands/move.c:326-330, 722-728).
+#[test]
+fn directional_move_of_a_floating_group_child_reorders_inside_the_group() {
+    let (mut f, _) = ipc_fixture();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    for app_id in ["group-first", "group-second"] {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+    for command in ["focus parent", "floating enable", "focus child"] {
+        let reply = crate::command::execute(f.niri_state(), command);
+        assert!(reply[0].success, "{command}: {reply:?}");
+    }
+    let focus = crate::command::execute(f.niri_state(), r#"[app_id="^group-second$"] focus"#);
+    assert!(focus[0].success, "{focus:?}");
+    let before: swayward_ipc::Node = serde_json::from_value(get_tree(&mut f)).unwrap();
+    let group_rect = before.nodes[1].nodes[0].floating_nodes[0].rect;
+
+    let reply = crate::command::execute(f.niri_state(), "move left");
+    assert!(reply[0].success, "{reply:?}");
+
+    let json = get_tree(&mut f);
+    let tree: swayward_ipc::Node = serde_json::from_value(json.clone()).unwrap();
+    assert_eq!(
+        tree.nodes[1].nodes[0].floating_nodes[0].rect, group_rect,
+        "the group did not move"
+    );
+    let order = json["nodes"][1]["nodes"][0]["floating_nodes"][0]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|node| node["app_id"].as_str().unwrap_or_default().to_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(order, ["group-second", "group-first"]);
+}
+
 #[test]
 fn directional_resize_of_a_floating_group_child_resizes_inside_the_group() {
     // A floating group's child is not itself floating, so sway resizes it like

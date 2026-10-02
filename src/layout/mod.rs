@@ -3786,6 +3786,13 @@ impl<W: LayoutElement> Layout<W> {
         })
     }
 
+    /// Moves the focused child of the active floating group inside the group.
+    pub fn move_focused_floating_tree_child(&mut self, direction: tiling_tree::Direction) {
+        if let Some(workspace) = self.active_workspace_mut() {
+            workspace.move_focused_floating_tree_child(direction);
+        }
+    }
+
     pub fn move_floating_window(
         &mut self,
         id: Option<&W::Id>,

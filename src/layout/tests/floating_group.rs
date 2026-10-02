@@ -872,3 +872,33 @@ fn floating_windows_and_groups_share_one_stacking_order() {
     workspace.activate_window(&3);
     assert_eq!(workspace.floating().stacking_order(), [Some(root), None]);
 }
+
+/// A move inside a floating group stops at the group's root: the root is the
+/// floating container, and sway's ancestor walk returns there instead of
+/// escaping it (`container_is_floating`, sway/commands/move.c:326-330).
+/// Shrunk from proptest cc d17cdea7.
+#[test]
+fn moves_inside_a_floating_group_keep_the_group_root() {
+    let mut layout = check_ops([
+        Op::AddOutput(1),
+        Op::AddWindow {
+            params: TestWindowParams::new(3),
+        },
+        Op::SplitFocused(tiling_tree::Layout::SplitV),
+        Op::AddWindow {
+            params: TestWindowParams::new(1),
+        },
+        Op::FocusParent,
+        Op::ToggleFocusedContainerFloating,
+        Op::FocusWindow(1),
+    ]);
+    check_ops_on_layout(
+        &mut layout,
+        [
+            Op::MoveLeft,
+            Op::MoveWindowDownOrToWorkspaceDown,
+            Op::MoveLeft,
+        ],
+    );
+    assert!(layout.has_window(&1) && layout.has_window(&3));
+}
