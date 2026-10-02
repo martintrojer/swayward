@@ -394,8 +394,7 @@ fn order_focus(
     // container whenever focus enters it (`seat_set_raw_focus`,
     // sway/input/seat.c). A container keeps that place after the focused
     // view leaves it, so a tiled entry ranks as recent as the last time
-    // focus entered it, and at least as recent as every tiled entry after
-    // it. Timestamps then only interleave floating windows.
+    // focus entered it.
     let tiled_ids = nodes.iter().map(|node| node.id).collect::<Vec<_>>();
     let last_entered = workspace
         .tiling()
@@ -407,14 +406,10 @@ fn order_focus(
             Some((container_id(node), mapped.focus_timestamp()?))
         })
         .collect::<std::collections::HashMap<_, _>>();
-    let mut effective = std::collections::HashMap::new();
-    let mut newer = None;
-    for id in focus.iter().rev().filter(|id| tiled_ids.contains(id)) {
-        newer = newer
-            .max(timestamp_of(id))
-            .max(last_entered.get(id).copied());
-        effective.insert(*id, newer);
-    }
+    let effective = tiled_ids
+        .iter()
+        .map(|id| (*id, timestamp_of(id).max(last_entered.get(id).copied())))
+        .collect::<std::collections::HashMap<_, _>>();
     focus.sort_by_key(|id| {
         let timestamp = timestamp_of(id);
         let rank = match (stale_tiling.contains(id), timestamp.is_some()) {

@@ -1186,3 +1186,74 @@ fn a_container_keeps_its_focus_place_after_the_focused_view_leaves() {
         workspace["representation"]
     );
 }
+
+// random seed 15 step 15 (sway-1.12-random): window 1 moves to workspace
+// 2, then `focus parent` up to workspace 1 and `move container to workspace
+// 2` moves the whole workspace. Its children were focused after window 1,
+// so the moved wrapper ranks first on workspace 2 even though window 1 sits
+// after it in tree order, which once pulled the wrapper behind window 1.
+#[test]
+fn a_moved_workspace_ranks_by_its_own_focus_not_tree_order() {
+    let (mut f, socket) = ipc_fixture();
+    f.add_output(1, (1280, 720));
+    let client = f.add_client();
+    let mut stream = UnixStream::connect(socket).unwrap();
+    let map = |f: &mut Fixture, app_id: &str| {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    };
+    let run = |f: &mut Fixture, stream: &mut UnixStream, command: &str| {
+        let outcome = query_ipc_with_payload(f, stream, MessageType::RunCommand, command);
+        assert_eq!(outcome[0]["success"], true, "{command}: {outcome}");
+    };
+    // The seed's commands, minus a no-op `sticky toggle` on a tiled window.
+    map(&mut f, "1");
+    run(&mut f, &mut stream, "splith");
+    run(&mut f, &mut stream, "splitv");
+    map(&mut f, "2");
+    run(&mut f, &mut stream, "splith");
+    map(&mut f, "3");
+    for command in [
+        "layout tabbed",
+        "focus child",
+        "focus parent",
+        "focus child",
+        "focus up",
+        "move container to workspace 2",
+        "focus parent",
+        "move container to workspace 2",
+    ] {
+        query_ipc_with_payload(&mut f, &mut stream, MessageType::RunCommand, command);
+    }
+
+    let tree = query_ipc(&mut f, &mut stream, MessageType::GetTree);
+    let target = tree["nodes"][1]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|workspace| workspace["name"] == "2")
+        .unwrap();
+    let kind = |id: &serde_json::Value| {
+        target["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["id"] == *id)
+            .map(|node| node["app_id"].as_str().unwrap_or("wrapper").to_owned())
+            .unwrap()
+    };
+    let order: Vec<_> = target["focus"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(kind)
+        .collect();
+    assert_eq!(order, ["wrapper", "1"], "{}", target["representation"]);
+}

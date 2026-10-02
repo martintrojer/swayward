@@ -116,6 +116,7 @@ impl<W: LayoutElement> TilingTree<W> {
                 node,
                 focus_history,
                 root_focused,
+                wrapped_workspace: id == self.root,
             },
             parent,
         ))
@@ -200,6 +201,7 @@ impl<W: LayoutElement> TilingTree<W> {
             }
         }
         let focus_history = subtree.focus_history;
+        let wrapped_workspace = subtree.wrapped_workspace;
         let mut remapped = Vec::new();
         let node = if self.is_empty() && unwrap_into_empty_root {
             match subtree.node.into_split() {
@@ -229,6 +231,9 @@ impl<W: LayoutElement> TilingTree<W> {
             .is_some_and(|fullscreen| self.contains_node(id, fullscreen))
         {
             self.fullscreen_arrived = true;
+        }
+        if wrapped_workspace {
+            self.ipc_stale_nodes.insert(id);
         }
         self.restore_transferred_focus(focus_history);
         if self.focus.is_none() {

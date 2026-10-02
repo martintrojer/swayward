@@ -79,6 +79,10 @@ pub struct DetachedSubtree<W: LayoutElement> {
     node: DetachedNode<W>,
     focus_history: Vec<W::Id>,
     root_focused: bool,
+    /// The workspace's children, wrapped in a container sway creates for the
+    /// move (`workspace_wrap_children`, sway/commands/move.c:476-484). It was
+    /// never focused, so it arrives at the tail of the focus stack.
+    wrapped_workspace: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
