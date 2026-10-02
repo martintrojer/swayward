@@ -34,10 +34,11 @@ def git(*args: str) -> str:
 def load_ledger(root: Path) -> tuple[int | None, list[dict]]:
     directory = root / "docs" / "data" / "divergence"
     legacy = root / "docs" / "data" / "divergence.toml"
-    if not directory.is_dir():
-        with legacy.open("rb") as file:
-            data = tomllib.load(file)
-        return data.get("migrated_entries"), data.get("edit", [])
+    if legacy.exists():
+        raise ValueError(
+            f"{legacy.relative_to(root)} is retired; add one file under "
+            "docs/data/divergence/ instead"
+        )
 
     with (directory / "_meta.toml").open("rb") as file:
         expected = tomllib.load(file).get("migrated_entries")

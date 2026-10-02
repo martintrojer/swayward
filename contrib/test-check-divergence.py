@@ -116,6 +116,13 @@ class CheckDivergenceTest(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("must contain exactly one [[edit]], found 2", result.stderr)
 
+    def test_legacy_monolith_is_rejected(self):
+        legacy = self.root / "docs" / "data" / "divergence.toml"
+        legacy.write_text("migrated_entries = 0\n")
+        result = self.check()
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("divergence.toml is retired", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
