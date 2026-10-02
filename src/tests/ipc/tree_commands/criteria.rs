@@ -402,6 +402,40 @@ fn kill_closes_every_window_of_a_floating_group_split() {
     assert_eq!(closed, [false, true, true], "the inner split closes");
 }
 
+/// Oracle: opacity_floating_group. `opacity` on a floating group root
+/// succeeds like on a tiled split (`cmd_opacity`,
+/// sway/commands/opacity.c:15-44).
+#[test]
+fn opacity_applies_to_a_floating_group() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    for _ in 0..2 {
+        let window = f.client(client).create_window();
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+    for command in ["focus parent", "floating toggle"] {
+        let reply = crate::command::execute(f.niri_state(), command);
+        assert!(reply[0].success, "{command}: {reply:?}");
+    }
+
+    let outcome = crate::command::execute(f.niri_state(), "opacity 0.5");
+    assert!(outcome[0].success, "{outcome:?}");
+    let opacities = f
+        .swayward()
+        .layout
+        .windows()
+        .map(|(_, mapped)| mapped.command_opacity())
+        .collect::<Vec<_>>();
+    assert_eq!(opacities, [0.5, 0.5]);
+}
+
 #[test]
 fn container_mark_survives_singleton_flattening() {
     let mut f = Fixture::new();

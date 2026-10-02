@@ -97,8 +97,11 @@ pub(super) fn opacity(
                 (mapped.id() == target).then(|| vec![mapped.window.clone()])
             })
         }
+        // Sway sets the container's alpha, which the scene applies to every
+        // view below it, a floating group included (`cmd_opacity`,
+        // sway/commands/opacity.c:15-44); set it on each window instead.
         CommandTarget::Container(workspace, node) => {
-            state.swayward.layout.tiling_node_windows(workspace, node)
+            state.swayward.layout.container_windows(workspace, node)
         }
     }
     .ok_or_else(|| failure("No matching node."))?;
