@@ -442,3 +442,39 @@ fn arranging_the_fullscreen_parent_reports_the_tile_slot() {
     assert_eq!(*percent, Some(0.5));
     t.check_invariants();
 }
+
+/// Oracle: fullscreen_floating_stacked_group_keeps_strip_offset. A
+/// fullscreen container that is not a view is arranged like any other
+/// (`arrange_fullscreen`, sway/desktop/transaction.c:492-509), so its stacked
+/// strip still reserves a titlebar row per child (`apply_stacked_layout`,
+/// sway/tree/arrange.c:199-210). Random seed 314 step 17.
+#[test]
+fn fullscreen_stacked_container_keeps_its_strip() {
+    let mut t = tree((1000., 800.), 0.);
+    let first = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let second = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.split(second, Layout::SplitH);
+    let third = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+    t.set_layout(t.root, Layout::Stacked);
+    let nested = t.parent_of_window(&3).unwrap();
+    assert_ne!(nested, t.root);
+    let before = [first, second, third].map(|id| t.geometry(id).unwrap().loc.y);
+
+    assert!(t.set_node_fullscreen(t.root, Some(FullscreenMode::Workspace)));
+
+    let rows = t.titlebar_height * 2.;
+    assert_eq!(before, [rows, rows, rows]);
+    assert_eq!(
+        [first, second, third].map(|id| t.geometry(id).unwrap().loc.y),
+        before,
+        "the strip stays under fullscreen"
+    );
+    let IpcNode::Split { children, .. } = t.ipc_tree() else {
+        panic!("IPC root must be a split");
+    };
+    let IpcNode::Split { rect, .. } = &children[1] else {
+        panic!("second child must be the nested split");
+    };
+    assert_eq!(rect.loc.y, t.titlebar_height * 4.);
+    t.check_invariants();
+}

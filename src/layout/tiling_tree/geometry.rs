@@ -306,7 +306,6 @@ fn assign_leaf<W: LayoutElement>(
     // arrange_container() likewise derives the content and each border from the container
     // dimensions (sway/desktop/transaction.c:392-472).
     result.leaf_boxes.insert(id, rect);
-    let decorated_by_parent = decorated_by_parent && fullscreen.is_empty();
     if decorated_by_parent {
         result.titlebar_attached.insert(id);
         result.titlebar_owned_by_parent.insert(id);
@@ -625,12 +624,9 @@ fn assign_strip<W: LayoutElement>(
 ) {
     let nodes = context.nodes;
     let titlebar_height = context.titlebar_height;
-    let fullscreen = context.fullscreen;
 
     let count = children.len();
-    let total_height = if !fullscreen.is_empty() {
-        0.
-    } else if layout == Layout::Stacked {
+    let total_height = if layout == Layout::Stacked {
         titlebar_height * count as f64
     } else {
         titlebar_height
@@ -742,7 +738,7 @@ fn emit_strip_titlebar<W: LayoutElement>(
                 })
                 .unwrap_or_default(),
             state: TitlebarState::Unfocused,
-            visible: context.fullscreen.is_empty(),
+            visible: true,
         },
     );
 }
