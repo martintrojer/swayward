@@ -54,7 +54,7 @@ def check(root: Path, tag: str | None) -> list[str]:
         )
     expected_srcinfo_source = (
         f"source = swayward-{arch_version}.tar.gz::"
-        f"https://github.com/martintrojer/swayward/archive/refs/tags/"
+        f"https://github.com/swayward-wm/swayward/archive/refs/tags/"
         f"swayward-v{version}.tar.gz"
     )
     srcinfo_text = srcinfo_path.read_text()

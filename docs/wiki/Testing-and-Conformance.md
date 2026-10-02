@@ -4,7 +4,7 @@ here instead of quoting test counts.
 Every number on this page comes from a command, named next to it. Numbers go
 stale: rerun the command for the current value. The oracle figures are those
 recorded at the oracle revision pinned in
-[`tests/oracle.toml`](https://github.com/martintrojer/swayward/blob/main/tests/oracle.toml)
+[`tests/oracle.toml`](https://github.com/swayward-wm/swayward/blob/main/tests/oracle.toml)
 (`db7147c`). They measure swayward commit `eb170906` against sway 1.12.
 
 A passing test is evidence for the behaviour it exercises, not a compatibility
@@ -12,7 +12,7 @@ percentage.
 
 ## Where each check runs
 
-| Check | Local | CI on every push ([`ci.yml`](https://github.com/martintrojer/swayward/blob/main/.github/workflows/ci.yml)) | Nightly ([`live-soak.yml`](https://github.com/martintrojer/swayward/blob/main/.github/workflows/live-soak.yml)) |
+| Check | Local | CI on every push ([`ci.yml`](https://github.com/swayward-wm/swayward/blob/main/.github/workflows/ci.yml)) | Nightly ([`live-soak.yml`](https://github.com/swayward-wm/swayward/blob/main/.github/workflows/live-soak.yml)) |
 |---|---|---|---|
 | Rust unit and headless tests | `cargo test --all` | `test` job | |
 | Slow and randomized tests | `RUN_SLOW_TESTS=1 PROPTEST_CASES=20000` | `randomized-tests` job, 200,000 cases, release build | |
@@ -35,7 +35,7 @@ binaries and take hours across the full corpus.
 ## Inherited niri unit tests
 
 Swayward forked niri at commit `9e72e491`
-([`docs/FORK-BASE.md`](https://github.com/martintrojer/swayward/blob/main/docs/FORK-BASE.md)).
+([`docs/FORK-BASE.md`](https://github.com/swayward-wm/swayward/blob/main/docs/FORK-BASE.md)).
 The niri test suite came with it.
 
 | Measure | Count |
@@ -133,7 +133,7 @@ needed, so CI runs them. IPC tests talk to a private socket created for each
 test. They never touch the session's `SWAYSOCK`.
 
 Many IPC tests compare whole replies with values captured from real sway 1.12.
-[IPC oracle coverage](https://github.com/martintrojer/swayward/blob/main/docs/IPC_ORACLE_COVERAGE.md)
+[IPC oracle coverage](https://github.com/swayward-wm/swayward/blob/main/docs/IPC_ORACLE_COVERAGE.md)
 records which mutations these tests catch, and which parts of each reply they do
 not check.
 
@@ -155,7 +155,7 @@ The oracle's own command-fuzz and wire-fuzz corpora are described in
 
 ## The oracle: i3's own test suite
 
-The [sway IPC oracle](https://github.com/martintrojer/sway-ipc-oracle) is a
+The [sway IPC oracle](https://github.com/swayward-wm/sway-ipc-oracle) is a
 separate repository. It holds i3's upstream Perl tests unchanged, plus the
 adapters that run them against i3, sway, and swayward. A test you can edit to
 pass is not evidence, so swayward never edits these files.
@@ -182,14 +182,14 @@ X11 window manager, config parser, bar, in-place restart, or tree nodes that
 sway does not expose. Comparing with sway is therefore more useful than the raw
 count. After removing the reviewed X11-only assertions in the five files with
 the largest gaps, swayward passes 1,217 of the 1,447 assertions that sway passes
-(84%). [Reading the i3 suite results](https://github.com/martintrojer/swayward/blob/main/docs/I3_SUITE_RESULTS.md)
+(84%). [Reading the i3 suite results](https://github.com/swayward-wm/swayward/blob/main/docs/I3_SUITE_RESULTS.md)
 breaks down the remaining rows.
 
 ### In-process run
 
 Swayward also runs the same unchanged files inside its own test process. This
 is faster and runs on every build.
-[`tests/i3/coverage.toml`](https://github.com/martintrojer/swayward/blob/main/tests/i3/coverage.toml)
+[`tests/i3/coverage.toml`](https://github.com/swayward-wm/swayward/blob/main/tests/i3/coverage.toml)
 is the source of truth: one row per file, with every non-passing assertion
 itemized.
 
@@ -258,7 +258,7 @@ seeds that a change can affect.
 
 ## Intentional differences from sway
 
-[Known deviations](https://github.com/martintrojer/swayward/blob/main/docs/KNOWN_DEVIATIONS.md)
+[Known deviations](https://github.com/swayward-wm/swayward/blob/main/docs/KNOWN_DEVIATIONS.md)
 lists every user-visible difference from sway, with the sway source it departs
 from. The tests encode these in three ways:
 

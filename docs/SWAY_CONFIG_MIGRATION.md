@@ -63,7 +63,7 @@ Sway binding modes become KDL `mode "name" { ... }` blocks. Bindings can enter
 and leave modes with commands such as `mode "resize"` and `mode "default"`.
 
 Commands outside swayward's current subset are also reported. Check the
-[Sway compatibility guide](https://github.com/martintrojer/swayward/wiki/Sway-Compatibility)
+[Sway compatibility guide](https://github.com/swayward-wm/swayward/wiki/Sway-Compatibility)
 before replacing or retaining a command by hand.
 
 ## Review unsupported directives
@@ -150,7 +150,7 @@ the repository's internal migration audit;
 the larger one-time sample was kept outside the repository because many source
 repositories declare no reusable license.
 
-Read [Differences from sway](https://github.com/martintrojer/swayward/wiki/Differences-from-Sway)
+Read [Differences from sway](https://github.com/swayward-wm/swayward/wiki/Differences-from-Sway)
 before switching sessions.
 
 ## Review SwayFX effects
@@ -178,5 +178,5 @@ features.
 
 Swayward's IPC tests compare live replies with captured sway fixtures, but they
 do not verify every scalar value, request, event change, or byte-level JSON
-encoding. Read [Testing and conformance](https://github.com/martintrojer/swayward/wiki/Testing-and-Conformance)
+encoding. Read [Testing and conformance](https://github.com/swayward-wm/swayward/wiki/Testing-and-Conformance)
 before relying on an untested client behavior.

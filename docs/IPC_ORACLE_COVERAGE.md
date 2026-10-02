@@ -2,7 +2,7 @@ This reference records what `src/tests/ipc/` verifies against sway and where it 
 
 This page describes swayward's focused in-process mutation checks, one part of
 a very extensive test suite. [Testing and
-conformance](https://github.com/martintrojer/swayward/wiki/Testing-and-Conformance)
+conformance](https://github.com/swayward-wm/swayward/wiki/Testing-and-Conformance)
 describes the whole suite and has the black-box oracle results.
 
 ## Why we break things on purpose

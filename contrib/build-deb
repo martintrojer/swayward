@@ -98,7 +98,7 @@ Maintainer: Martin Trojer <martin.trojer@gmail.com>
 Depends: $shlibdeps, python3, mesa-utils | libgl1-mesa-dri
 Recommends: xdg-desktop-portal-gnome, xdg-desktop-portal-gtk, gnome-keyring, xwayland-satellite
 Suggests: waybar, fuzzel, foot, swaylock, swayidle
-Homepage: https://github.com/martintrojer/swayward
+Homepage: https://github.com/swayward-wm/swayward
 Description: i3/sway-compatible Wayland compositor
  swayward gives you i3's fully nested container tree on a modern Wayland
  compositor: splits inside splits, tabbed and stacked containers, marks,

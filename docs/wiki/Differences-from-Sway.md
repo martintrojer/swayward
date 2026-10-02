@@ -4,7 +4,7 @@ it is not a drop-in replacement for every sway subsystem.
 Check these differences before moving a session:
 
 - **Configuration uses KDL.** Run `swayward-sway-to-kdl` and review every
-  manual-attention item. See [Migrate a sway config](https://github.com/martintrojer/swayward/wiki/SWAY_CONFIG_MIGRATION).
+  manual-attention item. See [Migrate a sway config](https://github.com/swayward-wm/swayward/wiki/SWAY_CONFIG_MIGRATION).
 - **No managed bar.** Swayward has no `bar {}` block and does not launch
   swaybar. Configure Waybar or another layer-shell bar directly.
 - **X11 identity is limited.** `xwayland-satellite` presents X11 applications as
@@ -18,6 +18,6 @@ Check these differences before moving a session:
 - **Desktop integration differs.** Swayward defaults to the GNOME portal
   backend for its window picker and dynamic cast target.
 
-The [source-cited decision ledger](https://github.com/martintrojer/swayward/blob/main/docs/KNOWN_DEVIATIONS.md)
+The [source-cited decision ledger](https://github.com/swayward-wm/swayward/blob/main/docs/KNOWN_DEVIATIONS.md)
 covers exact command behavior, workspace rules, Xwayland boundaries, and the
 reasons behind each deliberate difference.

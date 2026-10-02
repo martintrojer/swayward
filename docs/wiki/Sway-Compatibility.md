@@ -22,6 +22,6 @@ Use [IPC](IPC.md) for commands and examples. Read [Differences from
 sway](Differences-from-Sway.md) before migrating an existing session.
 
 For exact request, event, and command rows, open the
-[compatibility reference](https://github.com/martintrojer/swayward/blob/main/docs/SWAY_COMPATIBILITY.md).
+[compatibility reference](https://github.com/swayward-wm/swayward/blob/main/docs/SWAY_COMPATIBILITY.md).
 swayward has a very extensive suite of tests. [Testing and
 conformance](Testing-and-Conformance.md) has the current numbers.

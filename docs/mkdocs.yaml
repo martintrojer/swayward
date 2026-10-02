@@ -1,6 +1,6 @@
 site_name: swayward
 site_url: https://martintrojer.github.io/swayward
-repo_url: https://github.com/martintrojer/swayward
+repo_url: https://github.com/swayward-wm/swayward
 edit_uri: edit/main/docs/wiki/
 docs_dir: wiki
 use_directory_urls: false
@@ -71,7 +71,7 @@ nav:
   - Getting started: Getting-Started.md
   - FAQ: FAQ.md
   - Coming from sway or i3:
-    - Migrate a sway config: https://github.com/martintrojer/swayward/wiki/SWAY_CONFIG_MIGRATION
+    - Migrate a sway config: https://github.com/swayward-wm/swayward/wiki/SWAY_CONFIG_MIGRATION
     - Sway compatibility: Sway-Compatibility.md
     - Differences from sway: Differences-from-Sway.md
     - Testing and conformance: Testing-and-Conformance.md

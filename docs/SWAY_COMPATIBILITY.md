@@ -12,10 +12,10 @@ this page.
 ## Start with the measurements
 
 swayward has a very extensive suite of tests. [Testing and
-conformance](https://github.com/martintrojer/swayward/wiki/Testing-and-Conformance)
+conformance](https://github.com/swayward-wm/swayward/wiki/Testing-and-Conformance)
 has the current numbers, including the unchanged i3 suite and the sway IPC
 scenarios measured by the independent
-[`sway-ipc-oracle`](https://github.com/martintrojer/sway-ipc-oracle). The
+[`sway-ipc-oracle`](https://github.com/swayward-wm/sway-ipc-oracle). The
 [IPC oracle coverage](IPC_ORACLE_COVERAGE.md) page explains where the faster
 in-process tests are still blind. These are measurements, not a compatibility
 percentage. One passing assertion does not vouch for the command beside it.
@@ -34,7 +34,7 @@ KDL as sway config text. Sway uses the same kind of refusal for `IPC_SYNC`
 (`sway/sway/ipc-server.c:919-925`).
 
 The raw request and event inventory lives in
-[`tests/sway/compatibility.toml`](https://github.com/martintrojer/swayward/blob/main/tests/sway/compatibility.toml).
+[`tests/sway/compatibility.toml`](https://github.com/swayward-wm/swayward/blob/main/tests/sway/compatibility.toml).
 `contrib/command-census --check` checks the inventory against the parser and the
 figures quoted here. Markdown is not generated from the TOML.
 
@@ -124,7 +124,7 @@ Parse failures also include `"parse_error": true`. The parser never turns an
 unknown form into a successful no-op.
 
 For the full list, use the hand-maintained data in
-[`tests/sway/compatibility.toml`](https://github.com/martintrojer/swayward/blob/main/tests/sway/compatibility.toml).
+[`tests/sway/compatibility.toml`](https://github.com/swayward-wm/swayward/blob/main/tests/sway/compatibility.toml).
 Each command row includes a realistic probe, its sway source, parser result,
 execution classification, state path, and rough cost. The
 [`RUN_COMMAND` audit](RUN_COMMAND_AUDIT.md) explains the categories and shows

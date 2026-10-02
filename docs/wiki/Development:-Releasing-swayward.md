@@ -130,7 +130,7 @@ a separate post-beta step:
 - **Fedora**: publish `swayward.spec.rpkg` through COPR when the package has
   survived real installations.
 - **Arch**: publish the checked `contrib/PKGBUILD` and `contrib/.SRCINFO` to
-  the AUR. See [AUR.md](https://github.com/martintrojer/swayward/blob/main/contrib/AUR.md).
+  the AUR. See [AUR.md](https://github.com/swayward-wm/swayward/blob/main/contrib/AUR.md).
 - **Nix**: the flake tracks the repository, so the tag is enough.
 
 ## Publish swayward-ipc

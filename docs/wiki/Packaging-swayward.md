@@ -68,7 +68,7 @@ Set them as automatically-installed optional dependencies, if possible.
 Working hardware acceleration is required for running swayward.
 - Some notification daemon like `mako`, generally required for apps to work correctly.
 
-Finally, you may want to auto-install some of the applications bound in swayward's [default configuration file](https://github.com/martintrojer/swayward/blob/main/resources/default-config.kdl) (search for `exec` and `spawn`), such as `foot`, `fuzzel`, and `swaylock`.
+Finally, you may want to auto-install some of the applications bound in swayward's [default configuration file](https://github.com/swayward-wm/swayward/blob/main/resources/default-config.kdl) (search for `exec` and `spawn`), such as `foot`, `fuzzel`, and `swaylock`.
 
 ### Running tests
 

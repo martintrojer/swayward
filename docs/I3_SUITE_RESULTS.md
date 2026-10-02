@@ -1,7 +1,7 @@
 # Reading the i3 suite results
 
 This page explains one part of swayward's test suite. [Testing and
-conformance](https://github.com/martintrojer/swayward/wiki/Testing-and-Conformance)
+conformance](https://github.com/swayward-wm/swayward/wiki/Testing-and-Conformance)
 describes the whole suite.
 
 The oracle runs i3's own tests unchanged against i3, sway, and swayward. This is
@@ -13,7 +13,7 @@ The raw count mostly measures "is this i3?" Sway 1.12 has 2,197 non-passes,
 swayward has 2,277, and they share 1,936 of them.
 
 The figures below come from oracle commit
-[`db7147c`](https://github.com/martintrojer/sway-ipc-oracle/tree/db7147c0908021f18090f73517daaa3f420ed54e),
+[`db7147c`](https://github.com/swayward-wm/sway-ipc-oracle/tree/db7147c0908021f18090f73517daaa3f420ed54e),
 the revision pinned in `tests/oracle.toml`.
 Run this command to reproduce them from an oracle checkout:
 
@@ -43,13 +43,13 @@ This filter is deliberately narrow. It does not claim that every remaining row
 is a product bug, or that these five files contain every X11-bound assertion.
 It states only what the black-box review established. The
 [X11 window identity](KNOWN_DEVIATIONS.md#x11-window-identity) section and the
-[Xwayland guide](https://github.com/martintrojer/swayward/wiki/Xwayland) explain
+[Xwayland guide](https://github.com/swayward-wm/swayward/wiki/Xwayland) explain
 the design: the satellite presents X11 clients as ordinary `xdg_toplevel`
 surfaces, without a separate XID, class, instance, role, or window type. Work on
 standard protocols that can carry more of this metadata is planned after beta 1.
 
 The oracle's
-[classification file](https://github.com/martintrojer/sway-ipc-oracle/blob/db7147c0908021f18090f73517daaa3f420ed54e/i3/classifications/swayward-eb170906.toml)
+[classification file](https://github.com/swayward-wm/sway-ipc-oracle/blob/db7147c0908021f18090f73517daaa3f420ed54e/i3/classifications/swayward-eb170906.toml)
 records the assertion-level review. Of the 341 swayward-only non-passes, 240
 currently use a `swayward_*_finding` family. Those are compatibility findings,
 not exceptions hidden by the comparison, and they remain bugs or harness

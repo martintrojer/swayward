@@ -11,7 +11,7 @@ description = "An i3-compatible Wayland compositor based on niri"
 authors = ["Ivan Molodetskikh <yalterz@gmail.com>"]
 license = "GPL-3.0-or-later"
 edition = "2021"
-repository = "https://github.com/martintrojer/swayward"
+repository = "https://github.com/swayward-wm/swayward"
 rust-version = "1.87"
 
 [workspace.dependencies]

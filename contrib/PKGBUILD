@@ -16,7 +16,7 @@ _tagver=26.4.0
 pkgrel=1
 pkgdesc="An i3/sway-compatible Wayland compositor, built in Rust on Smithay"
 arch=('x86_64' 'aarch64')
-url="https://github.com/martintrojer/swayward"
+url="https://github.com/swayward-wm/swayward"
 license=('GPL-3.0-or-later')
 
 # Arch enables LTO by default. libspa-sys generates a C shim for SPA's static

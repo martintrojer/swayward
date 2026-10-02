@@ -6,7 +6,7 @@
 
 ## Coming from sway or i3
 
-* [Migrate a sway config](https://github.com/martintrojer/swayward/wiki/SWAY_CONFIG_MIGRATION)
+* [Migrate a sway config](https://github.com/swayward-wm/swayward/wiki/SWAY_CONFIG_MIGRATION)
 * [Sway compatibility](Sway-Compatibility.md)
 * [Differences from sway](Differences-from-Sway.md)
 * [Important software](Important-Software.md)

@@ -1,7 +1,7 @@
 # Contributing to swayward
 
 Open a GitHub issue if you have questions or want to discuss anything:
-https://github.com/martintrojer/swayward/issues
+https://github.com/swayward-wm/swayward/issues
 GitHub Discussions is not enabled, so issues are the only channel.
 
 ## Issues
@@ -30,7 +30,7 @@ small enough that a second pair of eyes makes a visible difference.
 ### Testing
 
 Pick a pull request you like, then build it and give it a go.
-The [Developing swayward wiki page](https://github.com/martintrojer/swayward/wiki/Development:-Developing-swayward) has guidance on running swayward test builds.
+The [Developing swayward wiki page](https://github.com/swayward-wm/swayward/wiki/Development:-Developing-swayward) has guidance on running swayward test builds.
 
 Be really thorough with your testing.
 We're striving for polished features in swayward, so point out any issues and bugs, even small ones like animation jank.
@@ -81,7 +81,7 @@ Extra pairs of eyes catch more problems.
     - For bigger features, starting with one messy commit and gradually splitting self-contained changes out of it as the code settles works well.
     - [git-rebase.io](https://git-rebase.io/) is a helpful guide for splitting commits and cleaning up history in git.
 - When you address a review comment, mark it as resolved.
-- Remember to [run tests](https://github.com/martintrojer/swayward/wiki/Development:-Developing-swayward#tests) and format the code with `cargo +nightly fmt --all`.
+- Remember to [run tests](https://github.com/swayward-wm/swayward/wiki/Development:-Developing-swayward#tests) and format the code with `cargo +nightly fmt --all`.
 - For new layout actions, remember to add them to the randomized tests. For weird Wayland handling, adding client-server tests in `src/tests/` could be very useful.
 - Test your changes by hand thoroughly, including for edge cases and weird interactions. See the Testing section above for some tips.
 - Remember to document new config options on the wiki.
@@ -125,7 +125,7 @@ authorship:
 - Behaviour that differs from sway needs a citation into sway's source, and a
   line in [`docs/KNOWN_DEVIATIONS.md`](docs/KNOWN_DEVIATIONS.md) saying why.
 - Never edit the unchanged i3 tests in
-  [`sway-ipc-oracle`](https://github.com/martintrojer/sway-ipc-oracle). Swayward
+  [`sway-ipc-oracle`](https://github.com/swayward-wm/sway-ipc-oracle). Swayward
   pins them in `tests/oracle.toml`; a test you can edit to pass is not evidence.
 - Read what you submit. Unverified output wastes a reviewer's time whether a
   model or a person produced it, and reviewers here are scarce.

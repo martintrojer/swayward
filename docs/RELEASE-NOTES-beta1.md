@@ -180,10 +180,10 @@ than asking the compositor to send two protocols under one name.
 
 The unchanged i3 tests, sway captures, calibration tools, and black-box runners
 now live in
-[`sway-ipc-oracle`](https://github.com/martintrojer/sway-ipc-oracle). Swayward
+[`sway-ipc-oracle`](https://github.com/swayward-wm/sway-ipc-oracle). Swayward
 pins one oracle commit in [`tests/oracle.toml`](../tests/oracle.toml), and CI
 fetches that exact revision. [Testing and
-conformance](https://github.com/martintrojer/swayward/wiki/Testing-and-Conformance)
+conformance](https://github.com/swayward-wm/swayward/wiki/Testing-and-Conformance)
 describes the whole test suite.
 Run `./contrib/fetch-oracle` before the in-process conformance tests and coverage
 tools.

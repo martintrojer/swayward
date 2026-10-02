@@ -19,7 +19,7 @@ the name of this tutorial.
 | `Mod+Shift+Q` | Close the focused window |
 
 Every key in this tutorial comes from
-[`resources/default-config.kdl`](https://github.com/martintrojer/swayward/blob/main/resources/default-config.kdl). Keys that
+[`resources/default-config.kdl`](https://github.com/swayward-wm/swayward/blob/main/resources/default-config.kdl). Keys that
 swayward ships unbound are labelled *(unbound by default)* where they appear.
 The full list is in the [tree command reference](Tree-Command-Reference.md).
 

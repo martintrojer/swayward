@@ -12,7 +12,7 @@ import tempfile
 from pathlib import Path, PurePosixPath
 from urllib.parse import unquote
 
-REPOSITORY = "martintrojer/swayward"
+REPOSITORY = "swayward-wm/swayward"
 REMOTE = f"git@github.com:{REPOSITORY}.wiki.git"
 # Publishing pushes over SSH; reading only needs anonymous HTTPS, which is what
 # a CI runner has. raw.githubusercontent.com is NOT an option: it serves a

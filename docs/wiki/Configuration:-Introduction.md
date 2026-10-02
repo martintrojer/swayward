@@ -29,7 +29,7 @@ You can find documentation for various sections of the config on these wiki page
 ### Loading
 
 swayward will load configuration from `$XDG_CONFIG_HOME/swayward/config.kdl` or `~/.config/swayward/config.kdl`, falling back to `/etc/swayward/config.kdl`.
-If both of these files are missing, swayward will create `$XDG_CONFIG_HOME/swayward/config.kdl` with the contents of [the default configuration file](https://github.com/martintrojer/swayward/blob/main/resources/default-config.kdl), which are embedded into the swayward binary at build time.
+If both of these files are missing, swayward will create `$XDG_CONFIG_HOME/swayward/config.kdl` with the contents of [the default configuration file](https://github.com/swayward-wm/swayward/blob/main/resources/default-config.kdl), which are embedded into the swayward binary at build time.
 Please use the default configuration file as the starting point for your custom configuration.
 
 The configuration is live-reloaded.

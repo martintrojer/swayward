@@ -1,12 +1,12 @@
 ## Install
 
 There is no public build yet. For now, install the current source with Nix or
-[build swayward](https://github.com/martintrojer/swayward/blob/main/docs/BUILDING.md).
+[build swayward](https://github.com/swayward-wm/swayward/blob/main/docs/BUILDING.md).
 There is no COPR repository or AUR package either. Both wait until the release
 packages have survived real installations.
 
 The first beta will put these x86_64 downloads on the [releases
-page](https://github.com/martintrojer/swayward/releases), where `VERSION` is the
+page](https://github.com/swayward-wm/swayward/releases), where `VERSION` is the
 release version:
 
 | File | For |
@@ -44,10 +44,10 @@ rather than installing.
 With Nix, install the current repository version on any supported Linux system:
 
 ```sh
-nix profile install github:martintrojer/swayward
+nix profile install github:swayward-wm/swayward
 ```
 
-On NixOS, you can also consume `github:martintrojer/swayward` as a flake input.
+On NixOS, you can also consume `github:swayward-wm/swayward` as a flake input.
 The flake exports the `swayward` and `swayward-debug` packages, an overlay, and
 a development shell.
 

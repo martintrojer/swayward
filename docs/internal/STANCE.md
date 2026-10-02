@@ -80,7 +80,7 @@ not ship.
 Not on trust. On evidence you can check without our help:
 
 - **An oracle we cannot edit.** i3's own suite lives byte-for-byte in
-  [`sway-ipc-oracle`](https://github.com/martintrojer/sway-ipc-oracle), pinned
+  [`sway-ipc-oracle`](https://github.com/swayward-wm/sway-ipc-oracle), pinned
   by `tests/oracle.toml`. Its black-box results report passes, skips, and
   failures together. A test we could edit to pass would not be evidence.
 - **Deviations cited to source.** Every intentional difference from sway is

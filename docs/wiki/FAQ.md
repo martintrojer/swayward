@@ -119,7 +119,7 @@ second source of truth.
 
 Swayward therefore keeps KDL and ships `swayward-sway-to-kdl` to migrate sway,
 i3, and SwayFX configurations. The translator refuses directives it cannot
-preserve instead of quietly dropping them. See [Migrate a sway config](https://github.com/martintrojer/swayward/wiki/SWAY_CONFIG_MIGRATION).
+preserve instead of quietly dropping them. See [Migrate a sway config](https://github.com/swayward-wm/swayward/wiki/SWAY_CONFIG_MIGRATION).
 
 ### How can swayward claim sway compatibility when its config is different?
 
@@ -216,7 +216,7 @@ swayward validate -c ~/.config/swayward/config.kdl
 ```
 
 The translator prints source-located errors for directives it cannot preserve.
-The [migration guide](https://github.com/martintrojer/swayward/wiki/SWAY_CONFIG_MIGRATION) explains the remaining manual
+The [migration guide](https://github.com/swayward-wm/swayward/wiki/SWAY_CONFIG_MIGRATION) explains the remaining manual
 work.
 
 ### Do Waybar and sway tools work?
@@ -246,11 +246,11 @@ and an Ubuntu 24.04 binary tarball. It installs each package in a clean containe
 before drafting the release.
 
 The repository also provides a Nix flake. Install the current source with
-`nix profile install github:martintrojer/swayward`, or use the flake as a NixOS
+`nix profile install github:swayward-wm/swayward`, or use the flake as a NixOS
 input. `nix flake check` runs the test suite.
 
 Until beta 1 is published, use the Nix flake or [build from
-source](https://github.com/martintrojer/swayward/blob/main/docs/BUILDING.md).
+source](https://github.com/swayward-wm/swayward/blob/main/docs/BUILDING.md).
 COPR and AUR publication are deliberately waiting until the release-page
 packages have survived real installations. We would prefer the first package
 review not double as the first installation test, thrilling though that would
@@ -258,7 +258,7 @@ be.
 
 ### Where should I report a difference from sway?
 
-[Open an issue](https://github.com/martintrojer/swayward/issues) with the command
+[Open an issue](https://github.com/swayward-wm/swayward/issues) with the command
 or request, the result, what sway does, and enough configuration to reproduce
 it. A short failing example is better than a broad compatibility claim.
 

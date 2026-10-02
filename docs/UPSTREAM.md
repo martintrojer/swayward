@@ -2,7 +2,7 @@ swayward is a permanent fork of niri. It keeps niri's whole history, replaces
 the layout engine and the IPC layer, and expects to absorb upstream work for
 as long as both projects exist.
 
-See [`docs/FORK-BASE.md`](https://github.com/martintrojer/swayward/blob/main/docs/FORK-BASE.md) for the current base and
+See [`docs/FORK-BASE.md`](https://github.com/swayward-wm/swayward/blob/main/docs/FORK-BASE.md) for the current base and
 [`docs/DIVERGENCE.md`](DIVERGENCE.md) for every edit to an inherited file.
 
 ## The rule
@@ -53,7 +53,7 @@ for human legibility only.
    goes in `docs/KNOWN_DEVIATIONS.md` with a citation into sway's source.
 4. Run `./contrib/fast-gate` before pushing. A merge touches `src/layout/`,
    so it also runs the slow layout tests.
-   [Testing and conformance](https://github.com/martintrojer/swayward/wiki/Testing-and-Conformance)
+   [Testing and conformance](https://github.com/swayward-wm/swayward/wiki/Testing-and-Conformance)
    describes each check.
 5. Update `docs/FORK-BASE.md` to the new tag, and add any new inherited-file
    edits to `docs/data/divergence/`.
@@ -124,4 +124,4 @@ histories read consistently in a log that contains both.
 
 Fixes that belong to niri are reported as issues, or rewritten by hand by
 someone who can stand behind them. See
-[`CONTRIBUTING.md`](https://github.com/martintrojer/swayward/blob/main/CONTRIBUTING.md).
+[`CONTRIBUTING.md`](https://github.com/swayward-wm/swayward/blob/main/CONTRIBUTING.md).

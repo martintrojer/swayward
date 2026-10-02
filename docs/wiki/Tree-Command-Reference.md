@@ -5,7 +5,7 @@ management.
 ## Cheat sheet
 
 Every binding below is in
-[`resources/default-config.kdl`](https://github.com/martintrojer/swayward/blob/main/resources/default-config.kdl). Rows
+[`resources/default-config.kdl`](https://github.com/swayward-wm/swayward/blob/main/resources/default-config.kdl). Rows
 marked *(unbound by default)* name a command swayward implements but ships no
 key for. Bind those yourself.
 

@@ -19,7 +19,7 @@ another rectangle, but correctly.
 **Status: beta.** swayward has a very extensive suite of tests, including
 i3's own test suite run unchanged and IPC replies compared with captures from
 real sway. [Testing and
-conformance](https://github.com/martintrojer/swayward/wiki/Testing-and-Conformance)
+conformance](https://github.com/swayward-wm/swayward/wiki/Testing-and-Conformance)
 has the current numbers and how each one is measured. It is also somebody's
 desktop now: the maintainer's two work machines run it every day,
 both Fedora 44, one a single-monitor setup with Waybar and kanshi, the other
@@ -33,7 +33,7 @@ swayward with a wallpaper, Waybar and four windows: a `splitv` inside a tabbed
 container inside a `splith`. Yeah, someone really tried to impress here, they
 might have taken it too far while trying to prove the awesomeness idea in one
 picture.
-[Cult of the Tree](https://github.com/martintrojer/swayward/wiki/Sway-School)
+[Cult of the Tree](https://github.com/swayward-wm/swayward/wiki/Sway-School)
 pairs more captures with the tree each one produced.
 
 swayward is a fork of the niri project, thus the longish git history and many collaborators on the GitHub page.
@@ -46,11 +46,11 @@ be appreciated.
 Particularly useful: running your real sway or i3 config through
 [`contrib/sway-to-kdl`](contrib/sway-to-kdl); telling us where it differs from
 sway in a way that matters to you, especially differences not already
-[explained](https://github.com/martintrojer/swayward/wiki/Differences-from-Sway); breaking the tree with deeply
+[explained](https://github.com/swayward-wm/swayward/wiki/Differences-from-Sway); breaking the tree with deeply
 nested splits and awkwardly timed scratchpad calls; and telling us where the docs
 were confusing.
 
-[Open an issue](https://github.com/martintrojer/swayward/issues) with what you
+[Open an issue](https://github.com/swayward-wm/swayward/issues) with what you
 ran, what happened, and what you expected. A vague "this felt wrong" is worth
 more than silence.
 
@@ -64,9 +64,9 @@ and is responsible for it, following the Linux kernel's rule that
 [AI does not sign off](https://www.kernel.org/doc/html/next/process/coding-assistants.html).
 
 The tokens went into checks, not just features. [Testing and
-conformance](https://github.com/martintrojer/swayward/wiki/Testing-and-Conformance)
+conformance](https://github.com/swayward-wm/swayward/wiki/Testing-and-Conformance)
 describes the test suite, and every intentional difference from sway is
-[recorded](https://github.com/martintrojer/swayward/wiki/Differences-from-Sway)
+[recorded](https://github.com/swayward-wm/swayward/wiki/Differences-from-Sway)
 with a citation into sway's source.
 
 ## Why the i3/sway model
@@ -89,12 +89,12 @@ We still think that tree is the best window-management model there is:
   next window goes. You told it, and the arrangement is a structure you built
   rather than a side effect of the order you opened things in.
 
-[Cult of the Tree](https://github.com/martintrojer/swayward/wiki/Sway-School) teaches the model from first
-principles, and [who planted the tree](https://github.com/martintrojer/swayward/wiki/Who-Planted-The-Tree)
+[Cult of the Tree](https://github.com/swayward-wm/swayward/wiki/Sway-School) teaches the model from first
+principles, and [who planted the tree](https://github.com/swayward-wm/swayward/wiki/Who-Planted-The-Tree)
 traces it back through wmii to Plan 9.
 
 That explains why the tree. The
-[FAQ](https://github.com/martintrojer/swayward/wiki/FAQ#why-does-swayward-exist) handles the awkward follow-up:
+[FAQ](https://github.com/swayward-wm/swayward/wiki/FAQ#why-does-swayward-exist) handles the awkward follow-up:
 why this project exists alongside sway, SwayFX, hy3, and niri; how AI-assisted
 development fits into it; and why the test suite is the main reason we think a
 new compositor is worth your time.
@@ -107,7 +107,7 @@ came from, and swayward deliberately does not offer a scrollable mode.
 
 There is no public build yet. For now, install the current source with Nix or
 [build swayward](docs/BUILDING.md). The first beta will put these prebuilt
-x86_64 packages on the [release page](https://github.com/martintrojer/swayward/releases):
+x86_64 packages on the [release page](https://github.com/swayward-wm/swayward/releases):
 
 | File | For |
 |---|---|
@@ -120,7 +120,7 @@ x86_64 packages on the [release page](https://github.com/martintrojer/swayward/r
 The release workflow installs and executes every package in a clean container
 before it drafts the release. The tarball is an Ubuntu 24.04 build needing
 GLIBC 2.39 and `libdisplay-info.so.1`, not a generic Linux build. See [Getting
-started](https://github.com/martintrojer/swayward/wiki/Getting-Started) for the
+started](https://github.com/swayward-wm/swayward/wiki/Getting-Started) for the
 install commands once beta 1 is published.
 
 There is no COPR repository or AUR package. Both wait until the release packages
@@ -129,7 +129,7 @@ have survived real installations.
 To install the current source with Nix:
 
 ```sh
-nix profile install github:martintrojer/swayward
+nix profile install github:swayward-wm/swayward
 ```
 
 The repository flake provides `swayward`, `swayward-debug`, and a development
@@ -151,7 +151,7 @@ nested, so your outer session keeps its Super keys), `Mod+Return` opens a
 terminal, `Mod+D` runs a launcher, `Mod+Shift+Q` closes a window, and
 `Mod+Shift+E` exits. The full set is in
 [resources/default-config.kdl](resources/default-config.kdl), and the
-[getting-started guide](https://github.com/martintrojer/swayward/wiki/Getting-Started) walks through it.
+[getting-started guide](https://github.com/swayward-wm/swayward/wiki/Getting-Started) walks through it.
 
 Press `Mod+Shift+Slash` at any time for the hotkey overlay.
 
@@ -179,12 +179,12 @@ a deliberate difference from sway, which conventionally uses
 implemented.
 
 Portals need a full swayward session and a few packages installed; see
-[Important software](https://github.com/martintrojer/swayward/wiki/Important-Software).
+[Important software](https://github.com/swayward-wm/swayward/wiki/Important-Software).
 
 Waybar 0.15.0 has been smoke-tested unmodified. Mako, swaybg, swayidle and
 swaylock use standard Wayland protocols rather than sway IPC. Scripts work to
 the extent they stay inside the implemented surface, and the
-[sway compatibility guide](https://github.com/martintrojer/swayward/wiki/Sway-Compatibility) explains the
+[sway compatibility guide](https://github.com/swayward-wm/swayward/wiki/Sway-Compatibility) explains the
 boundary.
 
 ### Configuration
@@ -207,15 +207,15 @@ See [Migrate a sway config](docs/SWAY_CONFIG_MIGRATION.md).
 ## How compatibility is measured
 
 swayward has a very extensive suite of tests. [Testing and
-conformance](https://github.com/martintrojer/swayward/wiki/Testing-and-Conformance)
+conformance](https://github.com/swayward-wm/swayward/wiki/Testing-and-Conformance)
 lists every part of it with current numbers. The independent [sway IPC
-oracle](https://github.com/martintrojer/sway-ipc-oracle) runs i3's unchanged
+oracle](https://github.com/swayward-wm/sway-ipc-oracle) runs i3's unchanged
 tests and sway IPC scenarios against i3, sway, and swayward, and the [i3 suite
 results guide](docs/I3_SUITE_RESULTS.md) explains how to read the i3 numbers.
 
 ## What differs from sway
 
-Read [differences from sway](https://github.com/martintrojer/swayward/wiki/Differences-from-Sway) before
+Read [differences from sway](https://github.com/swayward-wm/swayward/wiki/Differences-from-Sway) before
 migrating. The headlines:
 
 - **X11 identity is flattened.** Xwayland goes through
@@ -252,5 +252,5 @@ backend, protocol and portal work. See [Fork base](docs/FORK-BASE.md).
   us honest about it.
 
 Licensed under **GPL-3.0-or-later**. The i3 tests in
-[sway-ipc-oracle](https://github.com/martintrojer/sway-ipc-oracle) keep their
+[sway-ipc-oracle](https://github.com/swayward-wm/sway-ipc-oracle) keep their
 upstream BSD licence.

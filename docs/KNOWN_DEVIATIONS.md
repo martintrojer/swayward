@@ -4,7 +4,7 @@ internal changes inherited from the niri fork. See
 
 Start here. If a row sounds relevant to your setup, its details include the
 exact behaviour, the reason for it, and the sway source citations. [Testing and
-conformance](https://github.com/martintrojer/swayward/wiki/Testing-and-Conformance#intentional-differences-from-sway)
+conformance](https://github.com/swayward-wm/swayward/wiki/Testing-and-Conformance#intentional-differences-from-sway)
 explains how the tests encode these differences.
 
 | Deviation | What you will notice | Details |

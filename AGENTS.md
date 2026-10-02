@@ -146,7 +146,7 @@ prefer read-only queries.
 upstream's CI as though it were ours. Set the default once per clone:
 
 ```sh
-gh repo set-default martintrojer/swayward
+gh repo set-default swayward-wm/swayward
 ```
 
 This writes `remote.origin.gh-resolved = base` into `.git/config`, which is
@@ -226,7 +226,7 @@ or supposedly infallible data.
 
 ## Tests
 
-The unchanged i3 tests live in `martintrojer/sway-ipc-oracle` at the commit in
+The unchanged i3 tests live in `swayward-wm/sway-ipc-oracle` at the commit in
 `tests/oracle.toml`. Never edit those files: they are the external oracle, and a
 test you can edit to pass is not evidence. Run `./contrib/fetch-oracle` before
 the in-process harness. Where i3 and sway differ, record a skip with a citation

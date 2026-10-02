@@ -39,7 +39,7 @@ class WikiSyncTests(unittest.TestCase):
             errors,
             [
                 "README.md:1: link to docs/wiki/Page.md#section must use "
-                "https://github.com/martintrojer/swayward/wiki/Page#section"
+                "https://github.com/swayward-wm/swayward/wiki/Page#section"
             ],
         )
 
@@ -74,7 +74,7 @@ class WikiSyncTests(unittest.TestCase):
         # GitHub's Markdown renderer treats "Configuration:" as a URL scheme
         # and renders relative colon-page links as plain text. Publish those as
         # absolute wiki URLs so they remain clickable.
-        wiki = "https://github.com/martintrojer/swayward/wiki/"
+        wiki = "https://github.com/swayward-wm/swayward/wiki/"
         self.assertIn(f"[a]({wiki}Configuration:-Layout)", rewritten)
         self.assertIn(f"[b]({wiki}Configuration:-Layout#tab-indicator)", rewritten)
         # Assets keep their extension, and external links are untouched.
