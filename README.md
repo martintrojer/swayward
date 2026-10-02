@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/wiki/logo/swayward-logo.svg" alt="swayward logo: a sapling drawn as a neon circuit tree on an isometric island" width="256"></p>
+
 # swayward
 
 **An i3/sway-compatible Wayland compositor, built in Rust on Smithay.**
