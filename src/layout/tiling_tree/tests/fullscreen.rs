@@ -478,3 +478,33 @@ fn fullscreen_stacked_container_keeps_its_strip() {
     assert_eq!(rect.loc.y, t.titlebar_height * 4.);
     t.check_invariants();
 }
+
+/// Oracle: fullscreen_tab_child_percent. GET_TREE percent is the child's
+/// box over its parent's (sway/ipc-json.c:744-755), so a fullscreen child
+/// of a half-width tabbed container reports 2, not its siblings' 1.
+/// Random seed 60 step 18.
+#[test]
+fn fullscreen_tab_child_reports_its_area_over_the_tab_container() {
+    let mut t = tree((1280., 720.), 0.);
+    t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let tabbed = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.split(tabbed, Layout::Tabbed);
+    let fullscreen = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+
+    assert!(t.set_node_fullscreen(fullscreen, Some(FullscreenMode::Workspace)));
+
+    let IpcNode::Split { children, .. } = t.ipc_tree() else {
+        panic!("IPC root must be a split");
+    };
+    let IpcNode::Split { children, .. } = &children[1] else {
+        panic!("second child must be the tabbed container");
+    };
+    let percents = children
+        .iter()
+        .map(|child| match child {
+            IpcNode::Leaf { percent, .. } => *percent,
+            IpcNode::Split { .. } => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(percents, [Some(1.), Some(2.)]);
+}

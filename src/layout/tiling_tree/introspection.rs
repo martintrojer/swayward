@@ -326,7 +326,18 @@ impl<'a, W: LayoutElement> IpcSnapshot<'a, W> {
             // A pending wrapper reports a 0x0 box, and sway omits percent
             // when the parent box is empty (sway/ipc-json.c:744-755).
             _ if self.is_pending_wrapper(id) => vec![None; children.len()],
-            Layout::Tabbed | Layout::Stacked => vec![Some(1.); children.len()],
+            // Every child fills the strip's content box, so it reports 1,
+            // except a fullscreen child, whose box is the output's.
+            Layout::Tabbed | Layout::Stacked => children
+                .iter()
+                .map(|child| {
+                    Some(if self.fullscreen == Some(*child) {
+                        self.fullscreen_child_percent(id, *child, 1.)
+                    } else {
+                        1.
+                    })
+                })
+                .collect(),
             Layout::SplitH | Layout::SplitV if self.fullscreen.is_some() => {
                 self.pending_split_percents(id, layout, children, percents)
             }
@@ -374,17 +385,7 @@ impl<'a, W: LayoutElement> IpcSnapshot<'a, W> {
                 } else if !excluded.is_empty() && !is_fullscreen {
                     *stored_percent / visible_total
                 } else if is_fullscreen {
-                    let child_rect = tree
-                        .fullscreen_tile_slot_rect(*child, geometries)
-                        .or_else(|| geometries.ipc_nodes.get(child).copied())
-                        .unwrap_or_default();
-                    let parent_area = parent_rect.size.w.round() * parent_rect.size.h.round();
-                    let child_area = child_rect.size.w.round() * child_rect.size.h.round();
-                    if parent_area > 0. {
-                        child_area / parent_area
-                    } else {
-                        *stored_percent
-                    }
+                    self.fullscreen_child_percent(id, *child, *stored_percent)
                 } else if parent_extent > 0. {
                     allocated / parent_extent
                 } else {
@@ -392,6 +393,31 @@ impl<'a, W: LayoutElement> IpcSnapshot<'a, W> {
                 })
             })
             .collect()
+    }
+
+    /// A fullscreen child's percent: its box's area over its parent's
+    /// pending box (sway/ipc-json.c:744-755), both as before the fullscreen
+    /// pass unless the child reports its tile slot.
+    fn fullscreen_child_percent(&self, parent: NodeId, child: NodeId, fallback: f64) -> f64 {
+        let tree = self.tree;
+        let geometries = self.geometries;
+        let parent_rect = tree
+            .pre_layout_ipc_rects
+            .get(&parent)
+            .or_else(|| geometries.tiled_ipc_nodes.get(&parent))
+            .copied()
+            .unwrap_or_default();
+        let child_rect = tree
+            .fullscreen_tile_slot_rect(child, geometries)
+            .or_else(|| geometries.ipc_nodes.get(&child).copied())
+            .unwrap_or_default();
+        let parent_area = parent_rect.size.w.round() * parent_rect.size.h.round();
+        let child_area = child_rect.size.w.round() * child_rect.size.h.round();
+        if parent_area > 0. {
+            child_area / parent_area
+        } else {
+            fallback
+        }
     }
 
     /// Split percents without fullscreen. Sway reports percent as
