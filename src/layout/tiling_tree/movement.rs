@@ -761,6 +761,11 @@ impl<W: LayoutElement> TilingTree<W> {
             parent: Some(self.root),
             value: old_value,
         });
+        // `workspace_wrap_children` creates this container without focusing
+        // it, and a new node joins the tail of the seat focus stack
+        // (`handle_new_node`/`seat_node_from_node`, sway/input/seat.c:327-357),
+        // so it is the least recent focus entry.
+        self.ipc_stale_nodes.insert(old);
         if let TreeNode::Split { children, .. } = &self
             .nodes
             .get(&old)

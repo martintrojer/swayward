@@ -1014,3 +1014,50 @@ fn moving_a_window_onto_a_focused_split_joins_that_split() {
         "{target}"
     );
 }
+
+// random seed 368 step 5 (sway-1.12-random): `move down` from H[a b*] wraps
+// the workspace into V[H[a] b]. The new H wrapper was never focused, so it
+// joins the tail of sway's focus stack (`seat_node_from_node`,
+// sway/input/seat.c:327-349) and the workspace reports b first, the
+// floating window next, and the wrapper last.
+#[test]
+fn a_reorienting_move_lists_the_new_wrapper_last_in_focus() {
+    let (mut f, socket) = ipc_fixture();
+    f.add_output(1, (1280, 720));
+    let client = f.add_client();
+    let mut stream = UnixStream::connect(socket).unwrap();
+    let map = |f: &mut Fixture, app_id: &str| {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    };
+    map(&mut f, "floater");
+    let outcome = query_ipc_with_payload(
+        &mut f,
+        &mut stream,
+        MessageType::RunCommand,
+        "floating toggle",
+    );
+    assert_eq!(outcome[0]["success"], true, "{outcome}");
+    map(&mut f, "a");
+    map(&mut f, "b");
+    let outcome = query_ipc_with_payload(&mut f, &mut stream, MessageType::RunCommand, "move down");
+    assert_eq!(outcome[0]["success"], true, "{outcome}");
+
+    let tree = query_ipc(&mut f, &mut stream, MessageType::GetTree);
+    let workspace = &tree["nodes"][1]["nodes"][0];
+    let wrapper = workspace["nodes"][0]["id"].clone();
+    let b = workspace["nodes"][1]["id"].clone();
+    let floater = workspace["floating_nodes"][0]["id"].clone();
+    assert_eq!(
+        workspace["focus"],
+        serde_json::json!([b, floater, wrapper]),
+        "{workspace}"
+    );
+}

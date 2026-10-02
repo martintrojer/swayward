@@ -363,14 +363,22 @@ fn order_focus(
         })
         .collect::<std::collections::HashMap<_, _>>();
     let children = nodes.iter().chain(floating_nodes).collect::<Vec<_>>();
+    // A node that was never focused joins the tail of sway's focus stack
+    // (`seat_node_from_node`, sway/input/seat.c:327-349). So a wrapper that
+    // was never focused sorts behind every focused node. A never-focused
+    // window beside it was created after the wrapper took every workspace
+    // child, so it joined the tail later and sorts behind the wrapper.
     focus.sort_by_key(|id| {
-        Reverse((
-            !stale_tiling.contains(id),
-            children
-                .iter()
-                .find(|child| child.id == *id)
-                .and_then(|child| newest_focus_timestamp(child, &focus_timestamps)),
-        ))
+        let timestamp = children
+            .iter()
+            .find(|child| child.id == *id)
+            .and_then(|child| newest_focus_timestamp(child, &focus_timestamps));
+        let rank = match (stale_tiling.contains(id), timestamp.is_some()) {
+            (false, true) => 2,
+            (true, _) => 1,
+            (false, false) => 0,
+        };
+        Reverse((rank, timestamp))
     });
 }
 
