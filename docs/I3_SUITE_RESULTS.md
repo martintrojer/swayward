@@ -10,10 +10,10 @@ a sway compatibility percentage: many assertions require i3's X11 window
 manager, config parser, bar, restart mechanism, or private tree shapes.
 
 The raw count mostly measures "is this i3?" Sway 1.12 has 2,197 non-passes,
-swayward has 2,277, and they share 1,936 of them.
+swayward has 2,302, and they share 1,960 of them.
 
 The figures below come from oracle commit
-[`db7147c`](https://github.com/swayward-wm/sway-ipc-oracle/tree/db7147c0908021f18090f73517daaa3f420ed54e),
+[`021ed5f`](https://github.com/swayward-wm/sway-ipc-oracle/tree/021ed5f84918196276702754554e0ea1339dc39f),
 the revision pinned in `tests/oracle.toml`.
 Run this command to reproduce them from an oracle checkout:
 
@@ -24,20 +24,20 @@ Run this command to reproduce them from an oracle checkout:
 ## Compare the same assertions
 
 The two snapshots cover 3,755 assertions. Sway 1.12 has 2,197 non-passes, and
-swayward has 2,277. Both have a non-pass on 1,936 of the same assertions.
-Swayward alone has 341, while sway alone has 261. These counts include failures,
+swayward has 2,302. Both have a non-pass on 1,960 of the same assertions.
+Swayward alone has 342, while sway alone has 237. These counts include failures,
 skips, and assertions not reached after an earlier abort.
 
 The useful question is not whether a Wayland compositor reproduces every i3
-implementation detail. It is what explains the 341 assertions that sway passes
+implementation detail. It is what explains the 342 assertions that sway passes
 and swayward does not.
 
 The five files with the largest gaps account for 111 of those assertions. Every
 one requires X11 identity, window type, urgency hints, requested geometry, or
 client geometry that does not cross swayward's `xwayland-satellite` boundary.
-After removing those reviewed X11-boundary assertions, swayward passes **1,217
+After removing those reviewed X11-boundary assertions, swayward passes **1,216
 of the 1,447 assertions that sway passes (84%)**. The remaining sway-relative
-count is 230.
+count is 231.
 
 This filter is deliberately narrow. It does not claim that every remaining row
 is a product bug, or that these five files contain every X11-bound assertion.
@@ -49,16 +49,13 @@ surfaces, without a separate XID, class, instance, role, or window type. Work on
 standard protocols that can carry more of this metadata is planned after beta 1.
 
 The oracle's
-[classification file](https://github.com/swayward-wm/sway-ipc-oracle/blob/db7147c0908021f18090f73517daaa3f420ed54e/i3/classifications/swayward-eb170906.toml)
-records the assertion-level review. Of the 341 swayward-only non-passes, 240
-currently use a `swayward_*_finding` family. Those are compatibility findings,
-not exceptions hidden by the comparison, and they remain bugs or harness
-problems to investigate. The classification also has 78 rows in explicit
-`xwayland_satellite_*` families and 23 other or unclassified rows. The 111-row
-manual X11 review overlaps these categories because some geometry rows remain
-labelled as findings. The follow-up classification refresh will move those
-X11-bound rows out of the finding families and shrink the 240 figure without
-changing any measured outcome.
+[classification file](https://github.com/swayward-wm/sway-ipc-oracle/blob/021ed5f84918196276702754554e0ea1339dc39f/i3/classifications/swayward-54c5acd9.toml)
+records the assertion-level review. Of the 342 swayward-only non-passes, 41
+currently use swayward finding families. Those are compatibility findings, not
+exceptions hidden by the comparison, and they remain bugs or harness problems
+to investigate. Satellite families account for 236 rows; 65 are other or
+unclassified rows. The 111-row manual X11 review overlaps these categories
+because some geometry rows remain labelled as findings.
 
 ## Use the sway corpus for sway compatibility
 
@@ -70,12 +67,12 @@ The current snapshot records:
 
 | Corpus | Match | Mismatch | Not applicable |
 | --- | ---: | ---: | ---: |
-| Hand-picked scenarios | 499 | 51 | 0 |
-| Events | 32 | 13 | 0 |
-| Command fuzz | 24 | 0 | 0 |
-| Random sequences | 256 | 244 | 0 |
-| i3-derived scenarios | 3,568 | 442 | 0 |
-| Wire fuzz | 5 | 5 | 0 |
+| Hand-picked scenarios | 749 | 31 | 0 |
+| Events | 44 | 1 | 0 |
+| Command fuzz | 195 | 0 | 0 |
+| Random sequences | 329 | 171 | 0 |
+| i3-derived scenarios | 4,118 | 62 | 0 |
+| Wire fuzz | 6 | 4 | 0 |
 
 Read these as measurements by scenario, not as a ranking or one combined
 percentage. The [sway compatibility guide](SWAY_COMPATIBILITY.md) describes the
