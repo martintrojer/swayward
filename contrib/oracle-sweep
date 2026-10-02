@@ -1,0 +1,85 @@
+#!/bin/bash
+# Full oracle sweep (random, i3-derived, state, events) of one swayward commit.
+#
+# Usage: contrib/oracle-sweep <oracle-worktree> <out-dir> [swayward-checkout]
+#
+# Run inside the dev container. The checkout (default: this repo) must be
+# clean with target/release/swayward built from HEAD. The oracle worktree's
+# swayward pin is set to HEAD for the run and restored afterwards. Runs six
+# shards in parallel; a shard that dies (no result, or a socket failure in its
+# log) is retried once, because under load a dead shard otherwise shows up as
+# hundreds of false losses. Compare two sweeps with contrib/oracle-sweep-diff.
+set -u
+[ $# -ge 2 ] || { sed -n '2,12p' "$0"; exit 2; }
+OR=$(realpath "$1")
+OUT=$(realpath -m "$2")
+SW=$(realpath "${3:-$(dirname "$0")/..}")
+BIN=$SW/target/release/swayward
+RUN=$OR/contrib/sway-ipc-run
+RSHARDS=${RSHARDS:-2}
+DSHARDS=${DSHARDS:-2}
+
+[ -x "$BIN" ] || { echo "oracle-sweep: missing $BIN"; exit 2; }
+[ -z "$(git -C "$SW" status --porcelain)" ] || { echo "oracle-sweep: dirty $SW"; exit 2; }
+[ -z "$(git -C "$OR" status --porcelain)" ] || { echo "oracle-sweep: dirty $OR"; exit 2; }
+HEAD=$(git -C "$SW" rev-parse HEAD)
+sed -i "s/^swayward = \"[0-9a-f]\{40\}\"$/swayward = \"$HEAD\"/" "$OR/pins.toml"
+trap 'git -C "$OR" checkout -q -- pins.toml' EXIT
+mkdir -p "$OUT/logs"
+
+declare -A CMD
+common="--compositor swayward --binary $BIN"
+seeds=$(python3 -c "import json; print(' '.join(str(s['seed']) for s in json.load(open('$OR/sway-ipc/random/sequences.json'))['sequences']))")
+names=$(python3 -c "import json; print(' '.join(s['name'] for s in json.load(open('$OR/sway-ipc/i3-derived/scenarios.json'))['scenarios']))")
+for k in $(seq 0 $((RSHARDS - 1))); do
+    list=$(tr ' ' '\n' <<<"$seeds" | awk -v k="$k" -v n="$RSHARDS" 'NR % n == k' | paste -sd,)
+    CMD[random-$k]="$RUN random $common --seeds $list --out $OUT/random-$k.toml"
+done
+for k in $(seq 0 $((DSHARDS - 1))); do
+    args=$(tr ' ' '\n' <<<"$names" | awk -v k="$k" -v n="$DSHARDS" 'NR % n == k { printf " --scenario %s", $0 }')
+    CMD[i3d-$k]="$RUN i3-derived $common$args --out $OUT/i3d-$k.toml"
+done
+CMD[state]="$RUN scenarios $common --corpus state --out $OUT/state.toml"
+CMD[events]="$RUN scenarios $common --corpus events --out $OUT/events.toml"
+
+run_shards() {
+    for s in "$@"; do
+        # shellcheck disable=SC2086 # CMD values are word lists by design
+        (cd "$OR" && ${CMD[$s]} >"$OUT/logs/$s.log" 2>&1) &
+    done
+    wait
+}
+dead_shards() {
+    for s in "${!CMD[@]}"; do
+        if [ ! -s "$OUT/$s.toml" ] || grep -qE "Connection refused|timed out|Traceback" "$OUT/logs/$s.log"; then
+            echo "$s"
+        fi
+    done
+}
+
+start=$(date +%s)
+run_shards "${!CMD[@]}"
+retry=$(dead_shards)
+if [ -n "$retry" ]; then
+    echo "oracle-sweep: retrying dead shards:" $retry
+    for s in $retry; do
+        mv "$OUT/logs/$s.log" "$OUT/logs/$s.dead.log"
+        rm -f "$OUT/$s.toml"
+    done
+    # shellcheck disable=SC2086
+    run_shards $retry
+fi
+dead=$(dead_shards)
+
+echo "swayward $HEAD"
+python3 - "$OUT" <<'EOF'
+import collections, pathlib, sys, tomllib
+totals = collections.defaultdict(collections.Counter)
+for path in sorted(pathlib.Path(sys.argv[1]).glob("*.toml")):
+    for row in tomllib.loads(path.read_text()).get("result", []):
+        totals[path.stem.split("-")[0]][row["verdict"]] += 1
+for corpus, counts in sorted(totals.items()):
+    print(f"{corpus}: {counts['match']}/{sum(counts.values())} match")
+EOF
+echo "wall $((($(date +%s) - start) / 60)) min"
+[ -z "$dead" ] || { echo "oracle-sweep: DEAD SHARDS after retry:" $dead; exit 1; }

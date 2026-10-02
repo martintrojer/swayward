@@ -70,6 +70,11 @@ names its oracle row in the commit message (see Invariants).
 The integrator owns the full sweep. It lands behavior commits in batches, runs
 the sweep once on the pushed tip, and on a regression replays only the lost
 rows against each commit in the batch, then reverts or bounces the culprit.
+`contrib/oracle-sweep <oracle-worktree> <out-dir>` runs the sweep in six
+shards (about 10 minutes) and retries a dead shard once;
+`contrib/oracle-sweep-diff <before> <after>` lists lost, gained and missing
+rows and exits 1 on any loss. Keep the last main sweep under
+`~/hacking/swayward-wm/scratch/` as the baseline.
 Refactor batches are checked for zero per-row change. Nightly CI owns
 exhaustive coverage: 200k proptests and the live soak. Workers run the full
 corpus only when the integrator asks for it.

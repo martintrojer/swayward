@@ -144,7 +144,7 @@ jobs:
           # check-divergence diffs against the recorded niri base commit.
           fetch-depth: 0
       - run: sudo apt-get update -y && sudo apt-get install -y ripgrep shellcheck
-      - run: shellcheck -S warning contrib/*.sh resources/swayward-session
+      - run: shellcheck -S warning contrib/*.sh contrib/oracle-sweep resources/swayward-session
       - run: ./contrib/test-dev-run.sh
       - run: ./contrib/test-install-session.sh
       - run: ./contrib/test-session-environment.sh
@@ -152,6 +152,7 @@ jobs:
       - run: python3 contrib/test-check-divergence.py
       - run: python3 contrib/test-tap-count.py
       - run: python3 contrib/test-targeted-oracle.py
+      - run: python3 contrib/test-oracle-sweep-diff.py
       - run: python3 contrib/test-i3-suite-summary.py
       - run: ./contrib/check-divergence
       - run: ./contrib/fetch-oracle

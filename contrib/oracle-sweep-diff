@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+"""Per-row verdict diff between two contrib/oracle-sweep output directories.
+
+Usage: contrib/oracle-sweep-diff <before-dir> <after-dir>
+
+Prints rows lost (match -> mismatch), gained, and present in only one sweep.
+Exits 1 when any row is lost or missing, so a refactor batch with zero
+per-row change exits 0.
+"""
+
+import sys
+import tomllib
+from pathlib import Path
+
+
+def rows(directory: Path) -> dict[tuple[str, str, str], str]:
+    out = {}
+    for path in directory.glob("*.toml"):
+        corpus = path.stem.split("-")[0]
+        for row in tomllib.loads(path.read_text()).get("result", []):
+            # Random rows carry a request only when they mismatch: key by seed.
+            if "seed" in row:
+                key = (corpus, str(row["seed"]), "")
+            else:
+                key = (corpus, row["scenario"], row.get("request", ""))
+            out[key] = row["verdict"]
+    return out
+
+
+def diff(before: dict, after: dict) -> dict[str, list]:
+    both = before.keys() & after.keys()
+    return {
+        "lost": sorted(k for k in both if before[k] == "match" and after[k] != "match"),
+        "gained": sorted(k for k in both if before[k] != "match" and after[k] == "match"),
+        "missing": sorted(before.keys() ^ after.keys()),
+    }
+
+
+def main() -> int:
+    if len(sys.argv) != 3:
+        print(__doc__.strip(), file=sys.stderr)
+        return 2
+    result = diff(rows(Path(sys.argv[1])), rows(Path(sys.argv[2])))
+    for name, keys in result.items():
+        print(f"{name}: {len(keys)}")
+        for key in keys:
+            print("  " + " ".join(part for part in key if part))
+    return 1 if result["lost"] or result["missing"] else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
