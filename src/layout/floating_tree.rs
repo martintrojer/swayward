@@ -110,8 +110,11 @@ pub struct FloatingLayout<W: LayoutElement> {
     /// Ongoing interactive resize.
     interactive_resize: Option<InteractiveResize<W>>,
 
-    /// Windows in the closing animation.
-    closing_windows: Vec<ClosingWindow>,
+    /// Windows in the closing animation, each with the front-to-back index in `entries` it
+    /// closed at. Sway keeps a destroying view's saved buffer in its own scene tree, so the
+    /// closing window stays in its stack slot (`view_save_buffer`, sway/tree/view.c:1268-1287,
+    /// called from sway/desktop/transaction.c:843-846).
+    closing_windows: Vec<(usize, ClosingWindow)>,
 
     /// View size for this space.
     view_size: Size<f64, Logical>,
@@ -458,7 +461,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
             entry.tree.advance_animations();
         }
 
-        self.closing_windows.retain_mut(|closing| {
+        self.closing_windows.retain_mut(|(_, closing)| {
             closing.advance_animations();
             closing.are_animations_ongoing()
         });
@@ -836,7 +839,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
         let Some(index) = self.idx_of(&active) else {
             return;
         };
-        let FloatingEntry { tile, data, .. } = self.entries.remove(index);
+        let FloatingEntry { tile, data, .. } = self.remove_entry(index);
         let rect = Rectangle::new(data.logical_pos, data.size);
         let mut tree = TilingTree::new(
             self.view_size,
@@ -1342,6 +1345,32 @@ mod commands;
 mod interaction;
 mod rendering;
 
+/// One slot in the floating render order, front to back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FloatingStackElement {
+    /// Index into `closing_windows`.
+    Closing(usize),
+    /// Index into `entries`.
+    Live(usize),
+}
+
+/// Merges closing snapshots into the live stack. A snapshot recorded at index `i` renders just
+/// above the live entry now at `i`, which was below it when it closed.
+fn floating_stack_order(live_count: usize, closing_indices: &[usize]) -> Vec<FloatingStackElement> {
+    let mut closing: Vec<_> = closing_indices.iter().copied().enumerate().collect();
+    closing.sort_by_key(|(_, index)| *index);
+    let mut closing = closing.into_iter().peekable();
+    let mut order = Vec::with_capacity(live_count + closing_indices.len());
+    for live in 0..live_count {
+        while let Some((closing_idx, _)) = closing.next_if(|(_, index)| *index <= live) {
+            order.push(FloatingStackElement::Closing(closing_idx));
+        }
+        order.push(FloatingStackElement::Live(live));
+    }
+    order.extend(closing.map(|(closing_idx, _)| FloatingStackElement::Closing(closing_idx)));
+    order
+}
+
 fn compute_toplevel_bounds(
     border_config: swayward_config::Border,
     working_area_size: Size<f64, Logical>,
@@ -1362,5 +1391,27 @@ fn resolve_preset_size(preset: PresetSize, view_size: f64) -> ResolvedSize {
     match preset {
         PresetSize::Proportion(proportion) => ResolvedSize::Tile(view_size * proportion),
         PresetSize::Fixed(width) => ResolvedSize::Window(f64::from(width)),
+    }
+}
+
+#[cfg(test)]
+mod stack_order_tests {
+    use super::floating_stack_order;
+    use super::FloatingStackElement::*;
+
+    #[test]
+    fn closing_floating_window_keeps_its_stack_position() {
+        // A window closed from the middle of three stays between its neighbours.
+        assert_eq!(
+            floating_stack_order(2, &[1]),
+            vec![Live(0), Closing(0), Live(1)]
+        );
+        // Closed from the front, it stays in front; from the back, it stays behind.
+        assert_eq!(floating_stack_order(1, &[0]), vec![Closing(0), Live(0)]);
+        assert_eq!(floating_stack_order(1, &[1]), vec![Live(0), Closing(0)]);
+        assert_eq!(
+            floating_stack_order(1, &[1, 0]),
+            vec![Closing(1), Live(0), Closing(0)]
+        );
     }
 }

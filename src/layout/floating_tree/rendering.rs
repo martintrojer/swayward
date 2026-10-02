@@ -12,17 +12,6 @@ impl<W: LayoutElement> FloatingLayout<W> {
     ) {
         let scale = Scale::from(self.scale);
 
-        // Draw the closing windows on top of the other windows.
-        //
-        // Preserving the stacking order instead is tracked by mu task
-        // layout-closing-window-stack-order.
-        if layer.is_normal() {
-            for closing in self.closing_windows.iter().rev() {
-                let elem = closing.render(ctx.as_gles(), view_rect, scale);
-                push(elem.into());
-            }
-        }
-
         for entry in self.tree_entries.iter().rev() {
             entry
                 .tree
@@ -32,8 +21,26 @@ impl<W: LayoutElement> FloatingLayout<W> {
         }
         let active = self.active_window_id.clone();
         let workspace_focused = focus_ring;
-        for (entry, (tile, tile_pos)) in self.entries.iter().zip(self.tiles_with_render_positions())
-        {
+        let tiles: Vec<_> = self.tiles_with_render_positions().collect();
+        let closing_indices: Vec<_> = self
+            .closing_windows
+            .iter()
+            .map(|(index, _)| *index)
+            .collect();
+        for element in floating_stack_order(tiles.len(), &closing_indices) {
+            let index = match element {
+                FloatingStackElement::Closing(closing) => {
+                    // Closing windows sit in their former stack slot (see `closing_windows`).
+                    if layer.is_normal() {
+                        let (_, closing) = &self.closing_windows[closing];
+                        push(closing.render(ctx.as_gles(), view_rect, scale).into());
+                    }
+                    continue;
+                }
+                FloatingStackElement::Live(index) => index,
+            };
+            let (tile, tile_pos) = tiles[index];
+            let entry = &self.entries[index];
             // Skip tiles belonging to a different render layer.
             if layer.is_normal() == tile.is_moving_between_workspaces() {
                 continue;

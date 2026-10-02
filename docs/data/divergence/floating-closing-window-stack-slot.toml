@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/floating_tree.rs", "src/layout/floating_tree/commands.rs", "src/layout/floating_tree/rendering.rs"]
+what = "record each floating closing snapshot's front-to-back stack index, keep it current across insert, remove and raise, and render the snapshot in that slot instead of above every live floating window. A close started for a tile outside the stack (such as a dragged one) still renders in front."
+why = "Sway keeps a destroying view's saved buffer in the view's own scene tree until the transaction completes (view_save_buffer, sway/tree/view.c:1268-1287; sway/desktop/transaction.c:843-846), so the window keeps its stack position. niri drew closing windows on top, with a FIXME saying the stack order should be preserved; closing a covered window made it flash over the windows above it."

@@ -68,7 +68,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
         };
 
         let data = Data::new(self.view_size, self.working_area, &tile, pos);
-        self.entries.insert(
+        self.insert_entry(
             idx,
             FloatingEntry {
                 tile,
@@ -157,7 +157,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
     }
 
     fn remove_tile_by_idx(&mut self, idx: usize) -> RemovedTile<W> {
-        let FloatingEntry { mut tile, data, .. } = self.entries.remove(idx);
+        let FloatingEntry { mut tile, data, .. } = self.remove_entry(idx);
 
         if Some(tile.window().id()) == self.active_window_id.as_ref() {
             self.active_window_id = self.fallback_active_window();
@@ -190,6 +190,9 @@ impl<W: LayoutElement> FloatingLayout<W> {
             return;
         }
 
+        let Some(idx) = self.idx_of(id) else {
+            return;
+        };
         let Some((tile, tile_pos)) = self
             .tiles_with_render_positions_mut(false)
             .find(|(tile, _)| tile.window().id() == id)
@@ -203,7 +206,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
 
         let tile_size = tile.tile_size();
 
-        self.start_close_animation_for_tile(renderer, snapshot, tile_size, tile_pos, blocker);
+        self.start_close_animation_at(renderer, snapshot, tile_size, tile_pos, blocker, idx);
     }
 
     pub fn activate_window_without_raising(&mut self, id: &W::Id) -> bool {
@@ -238,10 +241,28 @@ impl<W: LayoutElement> FloatingLayout<W> {
     fn raise_window(&mut self, from_idx: usize, to_idx: usize) {
         assert!(to_idx <= from_idx);
 
-        let entry = self.entries.remove(from_idx);
-        self.entries.insert(to_idx, entry);
+        let entry = self.remove_entry(from_idx);
+        self.insert_entry(to_idx, entry);
     }
 
+    /// Inserts a live entry, keeping closing snapshots in their stack slots.
+    pub(super) fn insert_entry(&mut self, idx: usize, entry: FloatingEntry<W>) {
+        for (index, _) in &mut self.closing_windows {
+            *index += usize::from(*index >= idx);
+        }
+        self.entries.insert(idx, entry);
+    }
+
+    /// Removes a live entry, keeping closing snapshots in their stack slots.
+    pub(super) fn remove_entry(&mut self, idx: usize) -> FloatingEntry<W> {
+        for (index, _) in &mut self.closing_windows {
+            *index -= usize::from(*index > idx);
+        }
+        self.entries.remove(idx)
+    }
+
+    /// Starts a close animation for a tile that was not in this layout's stack, such as one
+    /// being dragged; it renders in front.
     pub fn start_close_animation_for_tile(
         &mut self,
         renderer: &mut GlesRenderer,
@@ -249,6 +270,18 @@ impl<W: LayoutElement> FloatingLayout<W> {
         tile_size: Size<f64, Logical>,
         tile_pos: Point<f64, Logical>,
         blocker: TransactionBlocker,
+    ) {
+        self.start_close_animation_at(renderer, snapshot, tile_size, tile_pos, blocker, 0);
+    }
+
+    fn start_close_animation_at(
+        &mut self,
+        renderer: &mut GlesRenderer,
+        snapshot: TileRenderSnapshot,
+        tile_size: Size<f64, Logical>,
+        tile_pos: Point<f64, Logical>,
+        blocker: TransactionBlocker,
+        stack_index: usize,
     ) {
         let anim = Animation::new(
             self.clock.clone(),
@@ -270,7 +303,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
         );
         match res {
             Ok(closing) => {
-                self.closing_windows.push(closing);
+                self.closing_windows.push((stack_index, closing));
             }
             Err(err) => {
                 warn!("error creating a closing window animation: {err:?}");
