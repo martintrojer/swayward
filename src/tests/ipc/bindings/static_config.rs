@@ -142,6 +142,76 @@ fn plain_mark_on_container_emits_clear_then_add_events() {
 }
 
 #[test]
+fn moving_a_mark_off_a_container_emits_the_containers_unmark_event() {
+    // cmd_mark calls container_find_and_unmark, which emits `mark` on the container that loses
+    // the mark (sway/tree/container.c:1582-1600). Oracle row
+    // events/criteria_order_split_before_child.
+    let (mut fixture, socket) = ipc_fixture();
+    fixture.add_output(1, (800, 600));
+    let client = fixture.add_client();
+    for index in 0..3 {
+        let window = fixture.client(client).create_window();
+        window.xdg_toplevel.set_app_id(format!("event-{index}"));
+        window.set_title(&format!("event-{index}"));
+        let surface = window.surface.clone();
+        window.commit();
+        fixture.roundtrip(client);
+        let window = fixture.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        fixture.double_roundtrip(client);
+        if index == 0 {
+            assert!(crate::command::execute(fixture.niri_state(), "splitv")[0].success);
+        }
+        if index == 1 {
+            assert!(crate::command::execute(fixture.niri_state(), "splith")[0].success);
+        }
+    }
+    assert!(crate::command::execute(fixture.niri_state(), "focus parent")[0].success);
+    assert!(crate::command::execute(fixture.niri_state(), "mark moving")[0].success);
+    assert!(crate::command::execute(fixture.niri_state(), "focus child")[0].success);
+    fixture.niri_state().ipc_refresh_layout();
+
+    let mut subscriber = UnixStream::connect(socket).unwrap();
+    subscriber
+        .write_all(&swayward_ipc::wire::encode(
+            MessageType::Subscribe,
+            r#"["window"]"#,
+        ))
+        .unwrap();
+    let _ = read_ipc_reply(&mut fixture, &mut subscriber);
+
+    assert!(crate::command::execute(fixture.niri_state(), "mark moving")[0].success);
+    fixture.niri_state().ipc_refresh_layout();
+    let mut events = Vec::new();
+    let mut remainder = Vec::new();
+    for _ in 0..3 {
+        let ((_, payload), rest) =
+            read_ipc_reply_with_remainder(&mut fixture, &mut subscriber, remainder);
+        remainder = rest;
+        let event = serde_json::from_str::<Value>(&payload).unwrap();
+        events.push((
+            event["change"].as_str().unwrap().to_owned(),
+            event["container"]["type"].as_str().unwrap().to_owned(),
+            event["container"]["name"].is_null(),
+            event["container"]["marks"].clone(),
+        ));
+    }
+    let empty = serde_json::json!([]);
+    let moving = serde_json::json!(["moving"]);
+    assert_eq!(
+        events,
+        [
+            // container_clear_marks on the window, then the split's unmark, then the add.
+            ("mark".to_owned(), "con".to_owned(), false, empty.clone()),
+            ("mark".to_owned(), "con".to_owned(), true, empty),
+            ("mark".to_owned(), "con".to_owned(), false, moving),
+        ]
+    );
+    assert!(remainder.is_empty());
+}
+
+#[test]
 fn close_event_matches_captured_sway_schema_before_removal() {
     let (mut fixture, socket) = ipc_fixture();
     fixture.add_output(1, (800, 600));
