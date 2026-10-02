@@ -1220,6 +1220,14 @@ impl<W: LayoutElement> FloatingLayout<W> {
             .unwrap_or(false)
     }
 
+    /// Whether the focused floating group root is itself fullscreen.
+    pub fn focused_tree_root_is_fullscreen(&self) -> bool {
+        self.active_tree_entry().is_some_and(|entry| {
+            entry.tree.focus() == Some(entry.root)
+                && entry.tree.fullscreen_node() == Some(entry.root)
+        })
+    }
+
     pub fn focused_child_tree_mut(&mut self) -> Option<&mut TilingTree<W>> {
         self.active_tree_entry_mut()
             .filter(|entry| entry.tree.focus().is_some_and(|focus| focus != entry.root))

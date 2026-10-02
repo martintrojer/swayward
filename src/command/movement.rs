@@ -897,7 +897,10 @@ pub(super) fn direction_focused(
     {
         return Err(super::failure("Cannot move workspaces in a direction"));
     }
-    let fullscreen_floating = workspace.active_floating_is_fullscreen();
+    // A fullscreen floating group root is a fullscreen floating container
+    // too (`cmd_move_in_direction`, sway/commands/move.c:688-692).
+    let fullscreen_floating = workspace.active_floating_is_fullscreen()
+        || workspace.focused_floating_tree_root_is_fullscreen();
     if workspace.floating_is_active() || fullscreen_floating {
         if fullscreen_floating {
             return Err(failure("Cannot move fullscreen floating container"));

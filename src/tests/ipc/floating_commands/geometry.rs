@@ -179,6 +179,37 @@ fn move_command_rejects_fullscreen_floating_windows() {
     );
 }
 
+/// Oracle: fullscreen_floating_group_move_refused. A fullscreen floating
+/// group root is a fullscreen floating container too
+/// (`cmd_move_in_direction`, sway/commands/move.c:688-692). Random seed 314
+/// step 18.
+#[test]
+fn directional_move_of_a_fullscreen_floating_group_is_refused() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    for _ in 0..2 {
+        let window = f.client(client).create_window();
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+    for command in ["focus parent", "floating toggle", "fullscreen toggle"] {
+        let reply = crate::command::execute(f.niri_state(), command);
+        assert!(reply[0].success, "{command}: {reply:?}");
+    }
+
+    let outcome = crate::command::execute(f.niri_state(), "move left");
+    assert_eq!(
+        outcome[0].error.as_deref(),
+        Some("Cannot move fullscreen floating container")
+    );
+}
+
 #[test]
 fn move_command_uses_sway_floating_pixel_distances() {
     let mut f = Fixture::new();

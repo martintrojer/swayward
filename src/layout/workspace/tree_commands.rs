@@ -226,6 +226,10 @@ impl<W: LayoutElement> Workspace<W> {
         self.floating_is_active.get() && self.floating.focused_tree_child()
     }
 
+    pub fn focused_floating_tree_root_is_fullscreen(&self) -> bool {
+        self.floating_is_active.get() && self.floating.focused_tree_root_is_fullscreen()
+    }
+
     pub fn is_workspace_focused(&self) -> bool {
         !self.floating_is_active.get()
             && (self.tiling.root_is_focused()
