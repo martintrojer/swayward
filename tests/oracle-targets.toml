@@ -19,5 +19,10 @@ state = ["disabled_output_evacuation", "output_config_live_changes"]
 events = ["disabled_output_evacuation"]
 
 [[target]]
+paths = ["src/main.rs", "src/swayward/cursor.rs", "src/swayward/outputs.rs"]
+state = ["two_outputs", "output_config_live_changes"]
+events = ["two_outputs"]
+
+[[target]]
 paths = ["swayward-config/", "contrib/sway-to-kdl"]
 state = ["command_coverage"]

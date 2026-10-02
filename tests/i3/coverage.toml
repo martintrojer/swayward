@@ -4817,8 +4817,25 @@ note = "On real 683×768 and 1024×768 outputs, twenty hide/show cycles per outp
 [files."506-focus-right.t"]
 assertions = 31
 tap_plan = 31
-pass = 31
-note = "The harness creates real fake outputs whose default workspaces receive sway's globally next-free names, so the unchanged file selects workspaces 1 and 2 without injected assignments. All 31 assertions pass with no rejected commands: the six formerly missing X input-focus results now select each destination output's window, and all output-name checks still prove geometric selection and wrapping (`sway/sway/tree/workspace.c:484-490`; `sway/sway/tree/output.c:318-330`; `sway/sway/commands/focus.c:310-352`)."
+pass = 28
+reason = "i3_only_semantics"
+reason_verified = true
+[[files."506-focus-right.t".skip]]
+n = 26
+desc = "right focus chooses i3's overlapping middle output"
+reason = "Sway delegates directional output selection to wlroots, which chooses the geometrically nearest eligible output; fake-2 is nearer than overlapping fake-1 from fake-0's center."
+citation = "sway/sway/tree/output.c:316-330; wlroots/types/wlr_output_layout.c:421-489"
+[[files."506-focus-right.t".skip]]
+n = 27
+desc = "second right focus reaches i3's rightmost output"
+reason = "After sway's first geometric selection differs, the next focus step starts from a different output."
+citation = "sway/sway/tree/output.c:316-330; wlroots/types/wlr_output_layout.c:421-489"
+[[files."506-focus-right.t".skip]]
+n = 30
+desc = "left focus wraps to i3's rightmost output"
+reason = "Sway's geometric predecessor differs for overlapping output rectangles."
+citation = "sway/sway/tree/output.c:316-330; wlroots/types/wlr_output_layout.c:421-489"
+note = "Fresh pinned sway 1.12 and swayward measurement both pass 28 assertions and differ from i3 only at 26, 27, and 30. Assertions 25, 29, and 31 prove startup focus and wrapping return to fake-0; assertions 1-24 preserve window focus behavior."
 
 [files."507-workspace-move-crash.t"]
 assertions = 2

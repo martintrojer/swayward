@@ -211,15 +211,17 @@ pub(super) fn rejection_allowlist_is_keyed_by_file_and_exact_command() {
 }
 
 #[test]
-pub(super) fn headless_startup_outputs_follow_sways_backend_order() {
+pub(super) fn headless_startup_outputs_apply_configured_geometry_and_focus() {
     let mut fixture = Fixture::new();
     let state = fixture.niri_state();
-    state.swayward.config.borrow_mut().outputs.0 = (1..=3)
-        .map(|n| swayward_config::Output {
-            name: format!("headless-{n}"),
-            ..Default::default()
-        })
-        .collect();
+    *state.swayward.config.borrow_mut() = swayward_config::Config::parse_mem(
+        r#"
+        output "headless-1" { mode custom=true "1080x1920@60"; position x=0 y=0; }
+        output "headless-2" { mode custom=true "1920x200@60"; position x=1080 y=1720; }
+        output "headless-3" { mode custom=true "1080x1920@60"; position x=1280 y=0; }
+        "#,
+    )
+    .unwrap();
     let swayward = &mut state.swayward;
     state.backend.headless().add_startup_outputs(swayward, 3);
     state.focus_startup_monitor();
@@ -232,9 +234,9 @@ pub(super) fn headless_startup_outputs_follow_sways_backend_order() {
             .map(|output| (output.name.as_str(), output.rect.x))
             .collect::<Vec<_>>(),
         [
-            ("headless-3", 0),
-            ("headless-2", 1280),
-            ("headless-1", 2560)
+            ("headless-3", 1280),
+            ("headless-2", 1080),
+            ("headless-1", 0)
         ]
     );
     assert_eq!(

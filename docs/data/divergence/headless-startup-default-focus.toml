@@ -1,4 +1,4 @@
 [[edit]]
-paths = ["src/main.rs"]
-what = "after creating startup headless outputs, focus the explicit focus-at-startup output or the first configured connected output instead of retaining reverse backend creation order."
-why = "sway fake-output tests begin on fake-0; retaining the reverse headless announcement's first-created output made i3 502-focus-output and 506-focus-right start on fake-1 or fake-2."
+paths = ["src/main.rs", "src/swayward/outputs.rs"]
+what = "apply configured output coordinates verbatim even when they overlap, then focus the explicit focus-at-startup output or first configured connected startup output."
+why = "sway passes explicit coordinates directly to wlroots and fake-output tests begin on fake-0; rejecting overlap changed directional adjacency while retaining reverse headless creation order offset initial focus in i3 502-focus-output and 506-focus-right."

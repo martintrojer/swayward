@@ -68,41 +68,11 @@ impl Swayward {
                 config,
             } = data;
 
-            let size = output_size(&output).to_i32_round();
-
+            // Sway passes explicit coordinates to wlr_output_layout_add even
+            // when outputs overlap (`sway/config/output.c:672`). Only outputs
+            // without a configured position use automatic non-overlap placement.
             let new_position = config
                 .map(|pos| Point::from((pos.x, pos.y)))
-                .filter(|pos| {
-                    // Ensure that the requested position does not overlap any existing output.
-                    let target_geom = Rectangle::new(*pos, size);
-
-                    let overlap = self
-                        .global_space
-                        .outputs()
-                        .map(|output| self.global_space.output_geometry(output).unwrap())
-                        .find(|geom| geom.overlaps(target_geom));
-
-                    if let Some(overlap) = overlap {
-                        warn!(
-                            "output {} at x={} y={} sized {}x{} \
-                             overlaps an existing output at x={} y={} sized {}x{}, \
-                             falling back to automatic placement",
-                            name.connector,
-                            pos.x,
-                            pos.y,
-                            size.w,
-                            size.h,
-                            overlap.loc.x,
-                            overlap.loc.y,
-                            overlap.size.w,
-                            overlap.size.h,
-                        );
-
-                        false
-                    } else {
-                        true
-                    }
-                })
                 .unwrap_or_else(|| {
                     let x = self
                         .global_space
