@@ -367,7 +367,7 @@ impl<W: LayoutElement> Layout<W> {
         target: tiling_tree::NodeId,
         tile: Tile<W>,
         source_workspace: WorkspaceId,
-        allow_to_activate_workspace: bool,
+        workspace_activation: WorkspaceActivation,
     ) -> Option<RemovedTile<W>> {
         let mut displaced = None;
         let ws_id = mon.workspaces[ws_idx].id();
@@ -389,7 +389,7 @@ impl<W: LayoutElement> Layout<W> {
                 column_idx: None,
             },
             ActivateWindow::Yes,
-            allow_to_activate_workspace,
+            workspace_activation,
             false,
         );
         if source_workspace == ws_id {

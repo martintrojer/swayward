@@ -17,7 +17,9 @@ use super::workspace::{
     compute_working_area, OutputId, Workspace, WorkspaceAddWindowTarget, WorkspaceId,
     WorkspaceRenderElement,
 };
-use super::{compute_overview_zoom, ActivateWindow, HitType, LayoutElement, Options};
+use super::{
+    compute_overview_zoom, ActivateWindow, HitType, LayoutElement, Options, WorkspaceActivation,
+};
 use crate::animation::{Animation, Clock};
 use crate::input::swipe_tracker::SwipeTracker;
 use crate::layout::RenderLayer;
@@ -699,7 +701,13 @@ impl<W: LayoutElement> Monitor<W> {
         // monitor. So we can use any workspace, not necessarily the exact target workspace.
         let tile = self.workspaces[0].make_tile(window);
 
-        self.add_tile(tile, target, activate, true, is_floating);
+        self.add_tile(
+            tile,
+            target,
+            activate,
+            WorkspaceActivation::Allow,
+            is_floating,
+        );
     }
 
     pub fn add_tiling_tile(&mut self, workspace_idx: usize, tile: Tile<W>, activate: bool) {
@@ -724,7 +732,7 @@ impl<W: LayoutElement> Monitor<W> {
         activate: ActivateWindow,
         // Kept separate from window activation until mu task layout-activate-window-api gives the
         // API an explicit workspace-activation policy.
-        allow_to_activate_workspace: bool,
+        workspace_activation: WorkspaceActivation,
         is_floating: bool,
     ) {
         let (workspace_idx, target) = self.resolve_add_window_target(target);
@@ -745,7 +753,7 @@ impl<W: LayoutElement> Monitor<W> {
             workspace.original_output = OutputId::new(&self.output);
         }
 
-        if allow_to_activate_workspace && activate.map_smart(|| false) {
+        if workspace_activation.allowed() && activate.map_smart(|| false) {
             self.activate_workspace(workspace_idx);
         }
     }
@@ -759,7 +767,7 @@ impl<W: LayoutElement> Monitor<W> {
         activate: bool,
         // Kept separate from window activation until mu task layout-activate-window-api gives the
         // API an explicit workspace-activation policy.
-        allow_to_activate_workspace: bool,
+        workspace_activation: WorkspaceActivation,
     ) {
         let workspace = &mut self.workspaces[workspace_idx];
 
@@ -769,7 +777,7 @@ impl<W: LayoutElement> Monitor<W> {
             workspace.original_output = OutputId::new(&self.output);
         }
 
-        if allow_to_activate_workspace && activate {
+        if workspace_activation.allowed() && activate {
             self.activate_workspace(workspace_idx);
         }
     }
@@ -1128,7 +1136,7 @@ impl<W: LayoutElement> Monitor<W> {
             } else {
                 ActivateWindow::No
             },
-            true,
+            WorkspaceActivation::Allow,
             removed.is_floating,
         );
         if let (Some(fullscreen), Some(fullscreen_window)) = (fullscreen, fullscreen_window) {

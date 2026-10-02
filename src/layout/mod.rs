@@ -571,6 +571,19 @@ pub enum ActivateWindow {
     No,
 }
 
+/// Whether adding a window may switch the monitor's active workspace.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkspaceActivation {
+    Allow,
+    KeepCurrent,
+}
+
+impl WorkspaceActivation {
+    fn allowed(self) -> bool {
+        matches!(self, Self::Allow)
+    }
+}
+
 /// Where to put a newly added window.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum AddWindowTarget<'a, W: LayoutElement> {
@@ -3950,7 +3963,7 @@ impl<W: LayoutElement> Layout<W> {
                     column_idx: None,
                 },
                 activate,
-                true,
+                WorkspaceActivation::Allow,
                 removed.is_floating,
             );
             if activate.map_smart(|| false) {
@@ -4807,7 +4820,11 @@ impl<W: LayoutElement> Layout<W> {
         }
 
         // Dragging in the overview shouldn't switch the workspace and so on.
-        let allow_to_activate_workspace = !self.overview_open;
+        let workspace_activation = if self.overview_open {
+            WorkspaceActivation::KeepCurrent
+        } else {
+            WorkspaceActivation::Allow
+        };
         let new_workspace_identity = self.monitor_for_output(&move_.output).and_then(|monitor| {
             matches!(
                 monitor.insert_position(move_.pointer_pos_within_output).0,
@@ -4903,7 +4920,7 @@ impl<W: LayoutElement> Layout<W> {
                                 column_idx: Some(column_idx),
                             },
                             ActivateWindow::Yes,
-                            allow_to_activate_workspace,
+                            workspace_activation,
                             false,
                         );
                     }
@@ -4914,7 +4931,7 @@ impl<W: LayoutElement> Layout<W> {
                             target,
                             move_.tile,
                             move_.source_workspace,
-                            allow_to_activate_workspace,
+                            workspace_activation,
                         );
                     }
                     InsertPosition::InsertAt(target, edge) => {
@@ -4924,7 +4941,7 @@ impl<W: LayoutElement> Layout<W> {
                             edge,
                             move_.tile,
                             true,
-                            allow_to_activate_workspace,
+                            workspace_activation,
                         );
                     }
                     InsertPosition::Floating => {
@@ -4965,7 +4982,7 @@ impl<W: LayoutElement> Layout<W> {
                                 column_idx: None,
                             },
                             ActivateWindow::Yes,
-                            allow_to_activate_workspace,
+                            workspace_activation,
                             true,
                         );
                     }
@@ -5002,7 +5019,7 @@ impl<W: LayoutElement> Layout<W> {
                                 column_idx: None,
                             },
                             ActivateWindow::No,
-                            false,
+                            WorkspaceActivation::KeepCurrent,
                             displaced.is_floating,
                         );
                     }
