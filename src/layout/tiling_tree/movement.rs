@@ -506,7 +506,8 @@ impl<W: LayoutElement> TilingTree<W> {
             }
             None => return false,
         }
-        self.compact_tree();
+        // `workspace_squash` (sway/commands/move.c:137,150).
+        self.squash_for_move(None);
         self.finish_directional_move(id);
         true
     }

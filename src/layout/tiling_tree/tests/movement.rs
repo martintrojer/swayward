@@ -667,3 +667,54 @@ fn promotion_beside_an_ancestor_shares_like_sway() {
     }
     t.check_invariants();
 }
+
+// random seed 267 step 16 (sway-1.12-random): in H[V[H[a b] c*]], `move up`
+// puts c into H[a b] at the end, then `workspace_squash` removes the
+// redundant H[V[H]] pair by reinserting its grandchildren at one index, so
+// they come out reversed: H[c b a] (sway/commands/move.c:142-151;
+// sway/tree/container.c:1686-1716).
+#[test]
+fn move_into_a_parallel_branch_squashes_like_sway() {
+    let mut t = tree((1200., 800.), 0.);
+    let a = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let b = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    let c = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+    let h = t.alloc(Node {
+        parent: None,
+        value: TreeNode::Split {
+            layout: Layout::SplitH,
+            children: vec![a, b],
+            percents: vec![0.5, 0.5],
+            meta: SplitMeta::default(),
+        },
+    });
+    let v = t.alloc(Node {
+        parent: Some(t.root),
+        value: TreeNode::Split {
+            layout: Layout::SplitV,
+            children: vec![h, c],
+            percents: vec![0.5, 0.5],
+            meta: SplitMeta::default(),
+        },
+    });
+    t.nodes.get_mut(&h).unwrap().parent = Some(v);
+    t.nodes.get_mut(&a).unwrap().parent = Some(h);
+    t.nodes.get_mut(&b).unwrap().parent = Some(h);
+    t.nodes.get_mut(&c).unwrap().parent = Some(v);
+    t.nodes.get_mut(&t.root).unwrap().value = TreeNode::Split {
+        layout: Layout::SplitH,
+        children: vec![v],
+        percents: vec![1.],
+        meta: SplitMeta::default(),
+    };
+    t.set_focus(c);
+    t.check_invariants();
+
+    assert!(t.move_direction(c, Direction::Up));
+
+    let TreeNode::Split { children, .. } = &t.nodes[&t.root].value else {
+        unreachable!()
+    };
+    assert_eq!(children, &[c, b, a]);
+    t.check_invariants();
+}
