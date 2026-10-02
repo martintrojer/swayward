@@ -772,3 +772,60 @@ fn a_focused_container_stays_focused_after_a_directional_move() {
     assert_eq!(t.focus(), Some(container));
     t.check_invariants();
 }
+
+// random seed 368 steps 7 and 9 (sway-1.12-random): in V[H[a] b] with b
+// fullscreen, `layout tabbed` wraps the workspace children in a pending
+// tabbed container that sway reports as 0x0. The H inside keeps its
+// pre-layout box less the tab bar, and once the wrapper turns splitv the
+// split children omit percent, because sway omits it under an empty parent
+// box (sway/ipc-json.c:744-755).
+#[test]
+fn a_split_under_a_pending_fullscreen_wrapper_keeps_its_box() {
+    let mut t = tree((1200., 800.), 0.);
+    t.set_focused_layout(Layout::SplitV);
+    let a = t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let b = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.split(a, Layout::SplitH);
+    t.set_focus(b);
+    let h = t.nodes[&a].parent.unwrap();
+    let before = t.compute_geometry().ipc_nodes[&h];
+    assert!(t.set_node_fullscreen(b, Some(FullscreenMode::Workspace)));
+
+    t.set_focused_layout(Layout::Tabbed);
+
+    let find = |node: &IpcNode<_>, id: NodeId| -> Option<(Rectangle<f64, Logical>, Option<f64>)> {
+        fn walk<W: Clone>(
+            node: &IpcNode<W>,
+            id: NodeId,
+        ) -> Option<(Rectangle<f64, Logical>, Option<f64>)> {
+            match node {
+                IpcNode::Split {
+                    id: own,
+                    rect,
+                    percent,
+                    children,
+                    ..
+                } => {
+                    if *own == id {
+                        return Some((*rect, *percent));
+                    }
+                    children.iter().find_map(|child| walk(child, id))
+                }
+                IpcNode::Leaf { .. } => None,
+            }
+        }
+        walk(node, id)
+    };
+    let (rect, _) = find(&t.ipc_tree(), h).unwrap();
+    assert_eq!(rect.loc.y, before.loc.y + t.titlebar_height, "{rect:?}");
+    assert_eq!(rect.size.h, before.size.h - t.titlebar_height, "{rect:?}");
+
+    // `focus parent; layout splitv` in the seed; the fullscreen view refuses
+    // `focus parent` here, so turn the wrapper directly.
+    let wrapper = t.nodes[&h].parent.unwrap();
+    t.set_layout(wrapper, Layout::SplitV);
+    let (rect, percent) = find(&t.ipc_tree(), h).unwrap();
+    assert_eq!(rect, before);
+    assert_eq!(percent, None);
+    t.check_invariants();
+}
