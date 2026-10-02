@@ -793,6 +793,19 @@ impl<W: LayoutElement> Workspace<W> {
                         self.floating_is_active = FloatingActive::Yes;
                     }
                 } else {
+                    // A new view whose focus-inactive container is inside a
+                    // floating group joins that group beside it; only a
+                    // focused floating root sends it to the tiling layer
+                    // (`view_map`, sway/tree/view.c:849-901).
+                    if activate
+                        && matches!(insert, InsertTarget::Focused)
+                        && self.floating_is_active.get()
+                        && tile.window().pending_sizing_mode().is_normal()
+                        && self.floating.maps_into_focused_group()
+                    {
+                        self.floating.add_tile_to_focused_group(tile);
+                        return;
+                    }
                     self.tiling.add_tile_with_activation(tile, insert, activate);
 
                     if activate {

@@ -1176,6 +1176,32 @@ impl<W: LayoutElement> FloatingLayout<W> {
             .is_some_and(|entry| entry.tree.set_window_border(id, style, width))
     }
 
+    /// Whether a new view should map into the active floating group: sway
+    /// maps it beside the seat's focus-inactive container when that is
+    /// inside a floating container but is not the floating root itself
+    /// (`view_map`, sway/tree/view.c:849-901).
+    pub fn maps_into_focused_group(&self) -> bool {
+        self.active_tree_entry().is_some_and(|entry| {
+            entry.tree.focus().is_some_and(|focus| {
+                focus != entry.root && entry.tree.contains_node(entry.root, focus)
+            })
+        })
+    }
+
+    /// Maps `tile` into the active floating group beside its focused child.
+    /// Check [`Self::maps_into_focused_group`] first.
+    pub fn add_tile_to_focused_group(&mut self, tile: Tile<W>) {
+        let id = tile.window().id().clone();
+        let Some(entry) = self.active_tree_entry_mut() else {
+            warn!("add_tile_to_focused_group: no active floating group");
+            return;
+        };
+        entry
+            .tree
+            .add_tile_with_activation(tile, super::tiling_tree::InsertTarget::Focused, true);
+        self.active_window_id = Some(id);
+    }
+
     pub fn focused_tree_child(&self) -> bool {
         self.active_tree_entry()
             .and_then(|entry| entry.tree.focus().map(|focus| focus != entry.root))

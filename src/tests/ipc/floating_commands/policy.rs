@@ -745,6 +745,56 @@ fn floating_nodes_list_groups_and_windows_in_one_stacking_order() {
     assert!(floating[1].focused);
 }
 
+/// A window mapped while a floating group's child is focused joins that group
+/// beside the child; with the group root itself focused it tiles instead
+/// (`view_map`, sway/tree/view.c:849-901). Random oracle seeds 290 and 330.
+#[test]
+fn mapping_with_a_floating_group_child_focused_joins_the_group() {
+    let (mut f, _) = ipc_fixture();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let map = |f: &mut Fixture| {
+        let window = f.client(client).create_window();
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    };
+    let group_sizes = |f: &mut Fixture| {
+        let tree: swayward_ipc::Node = serde_json::from_value(get_tree(f)).unwrap();
+        let workspace = &tree.nodes[1].nodes[0];
+        (
+            workspace.nodes.len(),
+            workspace
+                .floating_nodes
+                .iter()
+                .map(|node| node.nodes.len())
+                .collect::<Vec<_>>(),
+        )
+    };
+    map(&mut f);
+    map(&mut f);
+    for command in ["focus parent", "floating enable"] {
+        let reply = crate::command::execute(f.niri_state(), command);
+        assert!(reply[0].success, "{command}: {reply:?}");
+    }
+
+    // The root is focused: the new window tiles.
+    map(&mut f);
+    assert_eq!(group_sizes(&mut f), (1, vec![2]));
+
+    // A child is focused: the new window joins the group.
+    for command in ["focus floating", "focus child"] {
+        let reply = crate::command::execute(f.niri_state(), command);
+        assert!(reply[0].success, "{command}: {reply:?}");
+    }
+    map(&mut f);
+    assert_eq!(group_sizes(&mut f), (1, vec![3]));
+}
+
 #[test]
 fn directional_resize_of_a_floating_group_child_resizes_inside_the_group() {
     // A floating group's child is not itself floating, so sway resizes it like

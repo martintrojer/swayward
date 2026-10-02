@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/workspace.rs", "src/layout/floating_tree.rs"]
+what = "map a new tiled-by-default window into the active floating group beside its focused child when floating is focused and the focus is inside the group, not on its root."
+why = "sway's view_map adds the new view as a sibling of the seat's focus-inactive container unless that container is itself a floating root (sway/tree/view.c:849-901); swayward always sent it to the tiling layer."
