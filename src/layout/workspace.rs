@@ -942,6 +942,11 @@ impl<W: LayoutElement> Workspace<W> {
         transfer: bool,
     ) -> RemovedTile<W> {
         let mut from_floating = false;
+        let removed_focus = self.floating_is_active.get()
+            && self
+                .floating
+                .active_window()
+                .is_some_and(|window| window.id() == id);
         let removed = if self.floating.has_window(id) {
             from_floating = true;
             self.floating.remove_tile(id, transaction)
@@ -965,6 +970,16 @@ impl<W: LayoutElement> Workspace<W> {
         }
 
         self.update_focus_floating_tiling_after_removing(from_floating);
+        // Removing the focused floating window hands focus to the workspace's
+        // focus-inactive node (seat_get_focus_inactive(ws), as in
+        // root_scratchpad_hide, sway/tree/root.c:211-229), which is a view
+        // whenever the workspace has one. A `focus parent` up to the workspace
+        // before the floating window was focused must not leave the tiling
+        // focus on the root.
+        if removed_focus && !self.floating_is_active.get() && self.tiling.root_is_focused() {
+            self.tiling.focus_child();
+            while self.tiling.focus_child() {}
+        }
 
         removed
     }

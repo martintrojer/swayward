@@ -195,6 +195,50 @@ fn hiding_a_container_in_the_scratchpad_focuses_the_workspace() {
     assert_eq!(focused, [crate::ipc::tree::workspace_id(active)]);
 }
 
+/// Random oracle seed 487: hiding a shown scratchpad window again focuses the
+/// workspace's focus-inactive view, even after `focus parent` selected the
+/// workspace before the show (root_scratchpad_hide, sway/tree/root.c:211-229).
+#[test]
+fn hiding_a_shown_scratchpad_window_after_focus_parent_refocuses_the_tiled_view() {
+    let (mut f, _) = ipc_fixture();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let map = |f: &mut Fixture, app_id: &str| {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    };
+    map(&mut f, "scratch");
+    assert!(crate::command::execute(f.niri_state(), "move scratchpad")[0].success);
+    map(&mut f, "tiled");
+    for command in ["focus parent", "scratchpad show", "move scratchpad"] {
+        let reply = crate::command::execute(f.niri_state(), command);
+        assert!(reply[0].success, "{command}: {reply:?}");
+    }
+
+    let tree: swayward_ipc::Node = serde_json::from_value(get_tree(&mut f)).unwrap();
+    let mut focused = Vec::new();
+    collect_focused_nodes(&tree, &mut focused);
+    let tiled = f
+        .swayward()
+        .layout
+        .windows()
+        .find(|(_, mapped)| {
+            crate::utils::with_toplevel_role(mapped.toplevel(), |role| {
+                role.app_id.as_deref() == Some("tiled")
+            })
+        })
+        .map(|(_, mapped)| crate::ipc::tree::window_id(mapped.id()))
+        .unwrap();
+    assert_eq!(focused, [tiled]);
+}
+
 #[test]
 fn scratchpad_hides_focused_window_and_show_cycles_windows() {
     let mut f = Fixture::new();

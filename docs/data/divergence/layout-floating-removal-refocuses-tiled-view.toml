@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/workspace.rs"]
+what = "after removing the focused floating window, descend the tiling focus from the workspace root to its focus-inactive view."
+why = "`focus parent` to the workspace, then showing and hiding a scratchpad window, left the workspace node focused; sway focuses the workspace's focus-inactive view (root_scratchpad_hide, sway/tree/root.c:211-229)."
