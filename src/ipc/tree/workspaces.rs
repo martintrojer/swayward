@@ -451,6 +451,11 @@ fn apply_workspace_visibility(
     for node in floating_nodes {
         let shown = !tiling_fullscreen && (!floating_fullscreen || contains_fullscreen(node));
         set_windows_visible(node, workspace_visible && shown);
+        // Inside the floating group that holds the fullscreen view, only that
+        // view is visible (`view_is_visible`, sway/tree/view.c:1187-1193).
+        if shown && floating_fullscreen && node.fullscreen_mode == 0 {
+            apply_fullscreen_state(&mut node.nodes, workspace_visible);
+        }
         if tiling_fullscreen {
             clear_focused(node);
         }

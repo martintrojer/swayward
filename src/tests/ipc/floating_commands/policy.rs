@@ -842,6 +842,44 @@ fn directional_move_of_a_floating_group_child_reorders_inside_the_group() {
     assert_eq!(order, ["group-second", "group-first"]);
 }
 
+/// Random oracle seed 323: a fullscreen child of a floating group hides its
+/// siblings in the group (`view_is_visible`, sway/tree/view.c:1187-1193).
+#[test]
+fn fullscreen_floating_group_child_hides_its_siblings() {
+    let (mut f, _) = ipc_fixture();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    for app_id in ["group-first", "group-second"] {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    }
+    for command in [
+        "focus parent",
+        "floating enable",
+        "focus child",
+        r#"[app_id="^group-second$"] focus"#,
+        "fullscreen toggle",
+    ] {
+        let reply = crate::command::execute(f.niri_state(), command);
+        assert!(reply[0].success, "{command}: {reply:?}");
+    }
+    let tree = get_tree(&mut f);
+    let visible = |app_id| {
+        find_json_node_with_app_id(&tree, app_id).unwrap()["visible"]
+            .as_bool()
+            .unwrap()
+    };
+    assert!(visible("group-second"));
+    assert!(!visible("group-first"));
+}
+
 #[test]
 fn directional_resize_of_a_floating_group_child_resizes_inside_the_group() {
     // A floating group's child is not itself floating, so sway resizes it like

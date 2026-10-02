@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/ipc/tree/workspaces.rs"]
+what = "inside the floating group that holds a fullscreen view, report only that view as visible."
+why = "sway's view_is_visible hides every view outside the workspace's fullscreen container, siblings in the same floating group included (sway/tree/view.c:1187-1193); swayward marked the whole group visible."
