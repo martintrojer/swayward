@@ -294,7 +294,7 @@ impl<W: LayoutElement> Layout<W> {
     /// workspace config, else on the focused output
     /// (workspace_get_initial_output, sway/tree/workspace.c:153-175), so
     /// `workspace`, `move container to workspace` and `assign` agree.
-    fn initial_monitor_for_workspace(&self, name: &str) -> Option<usize> {
+    pub(super) fn initial_monitor_for_workspace(&self, name: &str) -> Option<usize> {
         let MonitorSet::Normal {
             monitors,
             active_monitor_idx,

@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/sway_workspace.rs", "src/layout/subtree_transfer.rs", "src/layout/floating_tree.rs", "src/layout/workspace_naming.rs"]
+what = "refuse to move a sticky floating container, or a child of one, to a workspace on its own output."
+why = "sway answers \"Can't move sticky container to another workspace on the same output\" because the container is already on every workspace there (sway/commands/move.c:498-511,542-546); swayward moved it."

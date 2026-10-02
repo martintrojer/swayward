@@ -204,6 +204,7 @@ impl<W: LayoutElement> Layout<W> {
         auto_back_and_forth: bool,
     ) -> Result<(WorkspaceId, Vec<(tiling_tree::NodeId, tiling_tree::NodeId)>), String> {
         if let Some(window) = self.floating_group_window(source_workspace, node) {
+            self.refuse_sticky_move_on_same_output(&window, &target, auto_back_and_forth)?;
             let target_workspace =
                 self.move_floating_group_to_sway_workspace(&window, target, auto_back_and_forth)?;
             return Ok((target_workspace, Vec::new()));

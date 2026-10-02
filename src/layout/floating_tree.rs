@@ -1269,6 +1269,18 @@ impl<W: LayoutElement> FloatingLayout<W> {
         })
     }
 
+    /// Whether `window`'s floating root, the window itself or the group it is
+    /// in, is sticky (`container_is_sticky_or_child`,
+    /// sway/tree/container.c:1648-1654).
+    pub fn window_root_is_sticky(&self, window: &W::Id) -> bool {
+        if let Some(entry) = self.tree_entry_with_window(window) {
+            return entry.sticky;
+        }
+        self.entries
+            .iter()
+            .any(|entry| entry.tile.window().id() == window && entry.tile.is_sticky)
+    }
+
     pub fn tree_is_sticky(&self, root: NodeId) -> bool {
         self.tree_entries
             .iter()

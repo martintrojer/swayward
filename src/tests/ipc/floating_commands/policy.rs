@@ -880,6 +880,47 @@ fn fullscreen_floating_group_child_hides_its_siblings() {
     assert!(!visible("group-first"));
 }
 
+/// Oracle: sticky_move_to_same_output_refused. A sticky floating container,
+/// or a child of one, is on every workspace of its output, so moving it to a
+/// workspace there is refused, the current one included
+/// (sway/commands/move.c:498-511, 542-546).
+#[test]
+fn moving_a_sticky_floating_container_on_its_output_is_refused() {
+    let (mut f, _) = ipc_fixture();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let window = f.client(client).create_window();
+    window.commit();
+    let surface = window.surface.clone();
+    f.roundtrip(client);
+    let window = f.client(client).window(&surface);
+    window.attach_new_buffer();
+    window.ack_last_and_commit();
+    f.double_roundtrip(client);
+    for command in ["floating toggle", "sticky toggle"] {
+        let reply = crate::command::execute(f.niri_state(), command);
+        assert!(reply[0].success, "{command}: {reply:?}");
+    }
+    for command in [
+        "move container to workspace 3",
+        "move container to workspace 1",
+    ] {
+        let reply = crate::command::execute(f.niri_state(), command);
+        assert_eq!(
+            reply[0].error.as_deref(),
+            Some("Can't move sticky container to another workspace on the same output"),
+            "{command}"
+        );
+    }
+    let swayward = f.swayward();
+    let names = swayward
+        .layout
+        .workspaces()
+        .filter_map(|(_, _, workspace)| workspace.sway_name())
+        .collect::<Vec<_>>();
+    assert_eq!(names, ["1"], "no workspace was created");
+}
+
 #[test]
 fn directional_resize_of_a_floating_group_child_resizes_inside_the_group() {
     // A floating group's child is not itself floating, so sway resizes it like

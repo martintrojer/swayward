@@ -490,6 +490,13 @@ pub(super) fn move_target_to_workspace(
             let Some(window) = window else {
                 return failure("No matching node.");
             };
+            if let Err(error) = state.swayward.layout.refuse_sticky_move_on_same_output(
+                &window,
+                &workspace_target,
+                auto_back_and_forth,
+            ) {
+                return failure(error);
+            }
             state.swayward.layout.detach_floating_group_child(&window);
             state
                 .swayward
