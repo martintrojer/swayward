@@ -508,3 +508,38 @@ fn fullscreen_tab_child_reports_its_area_over_the_tab_container() {
         .collect::<Vec<_>>();
     assert_eq!(percents, [Some(1.), Some(2.)]);
 }
+
+/// Oracle: map_beside_fullscreen_tab_child. A view mapped into the tabbed
+/// container holding the fullscreen view arranges that container
+/// (`arrange_container(parent)`, sway/tree/view.c:931-940), so the
+/// fullscreen view reports its tab slot, the container's whole box
+/// (`apply_tabbed_layout`, sway/tree/arrange.c:185-197). Random seed 60
+/// step 20.
+#[test]
+fn mapping_beside_a_fullscreen_tab_child_reports_its_tab_slot() {
+    let mut t = tree((1280., 720.), 0.);
+    t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let tabbed = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.split(tabbed, Layout::Tabbed);
+    let fullscreen = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+    assert!(t.set_node_fullscreen(fullscreen, Some(FullscreenMode::Workspace)));
+    t.add_tile(tile(4, t.view_size()), InsertTarget::Focused);
+
+    let IpcNode::Split { children, .. } = t.ipc_tree() else {
+        panic!("IPC root must be a split");
+    };
+    let IpcNode::Split {
+        rect: tab_rect,
+        children,
+        ..
+    } = &children[1]
+    else {
+        panic!("second child must be the tabbed container");
+    };
+    let IpcNode::Leaf { rect, percent, .. } = &children[1] else {
+        panic!("second tab must be the fullscreen view");
+    };
+    assert_eq!(rect, tab_rect);
+    assert_eq!(*percent, Some(1.));
+    t.check_invariants();
+}

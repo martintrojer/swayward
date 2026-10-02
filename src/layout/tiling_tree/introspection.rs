@@ -120,9 +120,27 @@ impl<W: LayoutElement> TilingTree<W> {
         id: NodeId,
         geometries: &geometry::Geometry<W::Id>,
     ) -> Option<Rectangle<f64, Logical>> {
-        (self.fullscreen_tile_slot && self.fullscreen_node() == Some(id))
-            .then(|| geometries.tiled_ipc_nodes.get(&id).copied())
-            .flatten()
+        if !self.fullscreen_tile_slot || self.fullscreen_node() != Some(id) {
+            return None;
+        }
+        // A view in a tabbed or stacked container is arranged at the
+        // container's whole box: the strip offsets only non-view children
+        // (`apply_tabbed_layout`/`apply_stacked_layout`,
+        // sway/tree/arrange.c:185-210).
+        let parent = self.nodes.get(&id).and_then(|node| node.parent);
+        let tab_parent = parent.filter(|parent| {
+            matches!(
+                self.nodes.get(parent).map(|node| &node.value),
+                Some(TreeNode::Split {
+                    layout: Layout::Tabbed | Layout::Stacked,
+                    ..
+                })
+            )
+        });
+        if let Some(parent) = tab_parent.filter(|_| self.tile(id).is_some()) {
+            return geometries.tiled_ipc_nodes.get(&parent).copied();
+        }
+        geometries.tiled_ipc_nodes.get(&id).copied()
     }
 
     pub fn ipc_tree(&self) -> IpcNode<W::Id> {

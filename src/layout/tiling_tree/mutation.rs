@@ -158,10 +158,7 @@ impl<W: LayoutElement> TilingTree<W> {
             && self.contains_node(parent, fullscreen)
             && matches!(
                 self.nodes.get(&parent).map(|node| &node.value),
-                Some(TreeNode::Split {
-                    layout: Layout::SplitH | Layout::SplitV,
-                    ..
-                })
+                Some(TreeNode::Split { .. })
             )
     }
 
