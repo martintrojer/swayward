@@ -635,3 +635,31 @@ fn move_promotes_into_the_first_parallel_ancestor_at_its_edge() {
     assert!(ok, "{tree:?}");
     t.check_invariants();
 }
+
+// random seed 335 step 8 (sway-1.12-random): in H[a V[b c*]], `move right`
+// promotes c beside the V. Sway zeroes the V's fraction and c has none on
+// this axis (sway/commands/move.c:394-412), so the next arrange gives both
+// the average share and the three children come out equal.
+#[test]
+fn promotion_beside_an_ancestor_shares_like_sway() {
+    let mut t = tree((1200., 800.), 0.);
+    t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let b = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.split(b, Layout::SplitV);
+    let c = t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+
+    assert!(t.move_direction(c, Direction::Right));
+
+    let TreeNode::Split {
+        children, percents, ..
+    } = &t.nodes[&t.root].value
+    else {
+        unreachable!()
+    };
+    assert_eq!(children.len(), 3);
+    assert_eq!(children.last(), Some(&c));
+    for percent in percents {
+        assert!((percent - 1. / 3.).abs() < 1e-9, "{percents:?}");
+    }
+    t.check_invariants();
+}

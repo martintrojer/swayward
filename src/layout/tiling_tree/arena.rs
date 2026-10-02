@@ -63,6 +63,42 @@ impl<W: LayoutElement> TilingTree<W> {
             .parent = Some(parent);
     }
 
+    /// Gives each of `fresh` (children of `parent` whose fraction sway
+    /// zeroed) the average share of the other children, then normalizes, as
+    /// sway's next arrange does (`apply_horiz_layout`/`apply_vert_layout`,
+    /// sway/tree/arrange.c). With no other children they split evenly.
+    pub(super) fn share_as_fresh(&mut self, parent: NodeId, fresh: &[NodeId]) {
+        let Some(Node {
+            value: TreeNode::Split {
+                children, percents, ..
+            },
+            ..
+        }) = self.nodes.get_mut(&parent)
+        else {
+            return;
+        };
+        let is_fresh = |child: &NodeId| fresh.contains(child);
+        let (count, total) = children
+            .iter()
+            .zip(percents.iter())
+            .filter(|(child, _)| !is_fresh(child))
+            .fold((0usize, 0.), |(count, total), (_, percent)| {
+                (count + 1, total + percent)
+            });
+        let share = if count == 0 { 1. } else { total / count as f64 };
+        for (child, percent) in children.iter().zip(percents.iter_mut()) {
+            if is_fresh(child) {
+                *percent = share;
+            }
+        }
+        let sum: f64 = percents.iter().sum();
+        if sum > 0. {
+            for percent in percents.iter_mut() {
+                *percent /= sum;
+            }
+        }
+    }
+
     pub(super) fn insert_existing_child(
         &mut self,
         parent: NodeId,

@@ -322,6 +322,11 @@ impl<W: LayoutElement> TilingTree<W> {
             return false;
         };
         self.insert_existing_child(boundary_root, id, insert_index, boundary);
+        // Sway zeroes the ancestor's fractions after promoting beside it
+        // (sway/commands/move.c:407-408). The moved node was laid out on the
+        // other axis, so it has no fraction on this one either; both take the
+        // average share.
+        self.share_as_fresh(boundary_root, &[id, boundary]);
         self.reap_empty_from(old_parent);
         self.compact_tree();
         self.finish_directional_move(id);
