@@ -85,13 +85,11 @@ impl<W: LayoutElement> Monitor<W> {
             // There's also a damage tracking bug which causes glitched
             // rendering for maximized GTK windows.
             //
-            // Proper workspace bounds depend on the Crop coordinate and damage fixes tracked by
-            // mu task layout-crop-bounds.
+            // Proper workspace bounds would need those Crop fixes first. The crop only matters
+            // during niri's animated workspace switch and overview; sway switches instantly
+            // (workspace_switch, sway/tree/workspace.c:731-743), so it is not pursued.
             //
             // Also, check cull here to avoid cropping windows moving between workspaces.
-            //
-            // Mu task layout-crop-bounds also tracks a workspace-height crop for moving windows,
-            // which prevents overflow from appearing and disappearing.
             let crop_bounds =
                 if cull && (self.workspace_switch.is_some() || self.overview_progress.is_some()) {
                     Rectangle::new(
