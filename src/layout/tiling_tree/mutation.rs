@@ -118,6 +118,19 @@ impl<W: LayoutElement> TilingTree<W> {
         {
             self.fullscreen_tile_slot = true;
         }
+        // Arranging the parent gives its children fresh boxes, so they drop
+        // any box kept from before a layout change.
+        if parent != self.root {
+            let arranged = self
+                .pre_layout_ipc_rects
+                .keys()
+                .copied()
+                .filter(|node| *node != parent && self.contains_node(parent, *node))
+                .collect::<Vec<_>>();
+            for node in arranged {
+                self.pre_layout_ipc_rects.remove(&node);
+            }
+        }
         if parent == self.root {
             if let Some(layout) = match self.options.layout.workspace_layout {
                 swayward_config::WorkspaceLayout::Default => None,

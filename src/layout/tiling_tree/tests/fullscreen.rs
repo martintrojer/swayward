@@ -543,3 +543,63 @@ fn mapping_beside_a_fullscreen_tab_child_reports_its_tab_slot() {
     assert_eq!(*percent, Some(1.));
     t.check_invariants();
 }
+
+/// Oracle: layout_under_fullscreen_keeps_sibling_boxes. With a fullscreen
+/// container, `arrange_workspace` arranges only that container
+/// (sway/tree/arrange.c:310-316), so `layout tabbed` on its parent leaves
+/// the siblings at their split boxes (sway/commands/layout.c:190-195).
+/// Random seed 323 step 18.
+#[test]
+fn layout_change_beside_fullscreen_keeps_sibling_boxes() {
+    let mut t = tree((1280., 720.), 0.);
+    t.add_tile(tile(1, t.view_size()), InsertTarget::Focused);
+    let first = t.add_tile(tile(2, t.view_size()), InsertTarget::Focused);
+    t.split(first, Layout::SplitH);
+    t.add_tile(tile(3, t.view_size()), InsertTarget::Focused);
+    let fullscreen = t.add_tile(tile(4, t.view_size()), InsertTarget::Focused);
+    let sibling_rects = |t: &TilingTree<TestWindow>| {
+        let IpcNode::Split { children, .. } = t.ipc_tree() else {
+            panic!("IPC root must be a split");
+        };
+        let IpcNode::Split { children, .. } = &children[1] else {
+            panic!("second child must be the nested container");
+        };
+        children[..2]
+            .iter()
+            .map(|child| match child {
+                IpcNode::Leaf { rect, percent, .. } => (*rect, *percent),
+                IpcNode::Split { .. } => panic!("children must be views"),
+            })
+            .collect::<Vec<_>>()
+    };
+    assert!(t.set_node_fullscreen(fullscreen, Some(FullscreenMode::Workspace)));
+    let before = sibling_rects(&t);
+
+    t.set_focused_layout(Layout::Tabbed);
+
+    let after = sibling_rects(&t);
+    assert_eq!(
+        after.iter().map(|(rect, _)| *rect).collect::<Vec<_>>(),
+        before.iter().map(|(rect, _)| *rect).collect::<Vec<_>>()
+    );
+    assert!(
+        after
+            .iter()
+            .all(|(_, percent)| percent.is_some_and(|percent| percent < 0.5)),
+        "{after:?}"
+    );
+
+    // Oracle: map_rearranges_boxes_kept_beside_fullscreen. Mapping into the
+    // container arranges it (`arrange_container(parent)`,
+    // sway/tree/view.c:931-940), so the kept boxes give way. Random seed 88
+    // step 18.
+    t.focus_left();
+    t.add_tile(tile(5, t.view_size()), InsertTarget::Focused);
+    assert!(
+        sibling_rects(&t)
+            .iter()
+            .all(|(_, percent)| *percent == Some(1.)),
+        "{:?}",
+        sibling_rects(&t)
+    );
+}

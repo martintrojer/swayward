@@ -352,7 +352,7 @@ impl<'a, W: LayoutElement> IpcSnapshot<'a, W> {
                     Some(if self.fullscreen == Some(*child) {
                         self.fullscreen_child_percent(id, *child, 1.)
                     } else {
-                        1.
+                        self.stale_child_percent(id, *child).unwrap_or(1.)
                     })
                 })
                 .collect(),
@@ -411,6 +411,20 @@ impl<'a, W: LayoutElement> IpcSnapshot<'a, W> {
                 })
             })
             .collect()
+    }
+
+    /// A child left unarranged under a fullscreen container reports its kept
+    /// box over its parent's (sway/ipc-json.c:744-755).
+    fn stale_child_percent(&self, parent: NodeId, child: NodeId) -> Option<f64> {
+        let tree = self.tree;
+        let child_rect = tree.pre_layout_ipc_rects.get(&child)?;
+        let parent_rect = tree
+            .pre_layout_ipc_rects
+            .get(&parent)
+            .or_else(|| self.geometries.tiled_ipc_nodes.get(&parent))?;
+        let parent_area = parent_rect.size.w.round() * parent_rect.size.h.round();
+        (parent_area > 0.)
+            .then(|| child_rect.size.w.round() * child_rect.size.h.round() / parent_area)
     }
 
     /// A fullscreen child's percent: its box's area over its parent's

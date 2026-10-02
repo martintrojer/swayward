@@ -520,6 +520,29 @@ impl<W: LayoutElement> TilingTree<W> {
     // (sway/commands/layout.c:134-149), unlike general tree compaction.
     fn set_layout_for_command(&mut self, id: NodeId, layout: Layout) {
         self.interactive_resize = None;
+        // With a fullscreen container, `arrange_workspace` arranges only that
+        // container (sway/tree/arrange.c:310-316), so the rest of a relaid
+        // container keeps the boxes it had (sway/commands/layout.c:190-195).
+        if let Some(fullscreen) = self
+            .fullscreen_node()
+            .filter(|fullscreen| *fullscreen != id && !self.contains_node(*fullscreen, id))
+        {
+            let rects = self.compute_geometry().ipc_nodes;
+            let stale = self
+                .iter_depth_first()
+                .map(|(node, _)| node)
+                .filter(|node| {
+                    *node != id
+                        && self.contains_node(id, *node)
+                        && !self.contains_node(fullscreen, *node)
+                })
+                .collect::<Vec<_>>();
+            for node in stale {
+                if let Some(rect) = rects.get(&node) {
+                    self.pre_layout_ipc_rects.entry(node).or_insert(*rect);
+                }
+            }
+        }
         self.fullscreen_tile_slot = false;
         if let Some(Node {
             value:
