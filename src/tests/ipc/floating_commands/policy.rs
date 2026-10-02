@@ -1,25 +1,14 @@
 #[test]
 fn runtime_command_refusals_are_sway_shaped() {
     let mut f = Fixture::new();
-    for (command, error) in [
-        (
-            "inhibit_idle visible",
-            "inhibit_idle requires user inhibitor policy support",
-        ),
-        (
-            "urgent allow",
-            "urgent allow|deny requires client urgency-request policy support",
-        ),
-    ] {
-        assert_eq!(
-            crate::command::execute(f.niri_state(), command),
-            [swayward_ipc::CommandOutcome {
-                success: false,
-                error: Some(error.into()),
-                parse_error: Some(true),
-            }]
-        );
-    }
+    assert_eq!(
+        crate::command::execute(f.niri_state(), "urgent allow"),
+        [swayward_ipc::CommandOutcome {
+            success: false,
+            error: Some("urgent allow|deny requires client urgency-request policy support".into()),
+            parse_error: Some(true),
+        }]
+    );
 }
 
 #[test]
@@ -902,5 +891,42 @@ fn floating_toggle_on_a_floating_group_child_tiles_the_whole_group() {
             vec!["splith[group-first group-second]".to_owned()],
             vec![]
         )]
+    );
+}
+
+#[test]
+fn inhibit_idle_updates_get_tree_user_policy_and_effective_state() {
+    let (mut f, _) = ipc_fixture();
+    f.add_output(1, (1280, 720));
+    let client = f.add_client();
+    windows::map_window(
+        &mut f,
+        client,
+        windows::WindowSpec {
+            app_id: Some("idle-policy"),
+            ..Default::default()
+        },
+    );
+
+    for (mode, effective) in [
+        ("open", true),
+        ("none", false),
+        ("focus", true),
+        ("visible", true),
+        ("fullscreen", false),
+    ] {
+        let outcome = crate::command::execute(f.niri_state(), &format!("inhibit_idle {mode}"));
+        assert!(outcome[0].success, "{mode}: {outcome:?}");
+        let tree = get_tree(&mut f);
+        let node = find_json_node_with_app_id(&tree, "idle-policy").unwrap();
+        assert_eq!(node["idle_inhibitors"]["user"], mode);
+        assert_eq!(node["inhibit_idle"], effective, "{mode}");
+    }
+
+    assert!(crate::command::execute(f.niri_state(), "fullscreen enable")[0].success);
+    let tree = get_tree(&mut f);
+    assert_eq!(
+        find_json_node_with_app_id(&tree, "idle-policy").unwrap()["inhibit_idle"],
+        true
     );
 }

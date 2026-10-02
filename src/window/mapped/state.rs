@@ -32,6 +32,7 @@ impl Mapped {
             has_xdg_decoration,
             is_window_cast_target: false,
             shortcuts_inhibit_policy: ShortcutsInhibitPolicy::Default,
+            inhibit_idle_mode: swayward_ipc::command::InhibitIdleMode::None,
             ignore_opacity_window_rule: false,
             command_opacity: 1.,
             block_out_buffer: RefCell::new(SolidColorBuffer::new((0., 0.), [0., 0., 0., 1.])),
@@ -187,6 +188,14 @@ impl Mapped {
 
     pub fn set_shortcuts_inhibit_policy(&mut self, policy: ShortcutsInhibitPolicy) {
         self.shortcuts_inhibit_policy = policy;
+    }
+
+    pub fn inhibit_idle_mode(&self) -> swayward_ipc::command::InhibitIdleMode {
+        self.inhibit_idle_mode
+    }
+
+    pub fn set_inhibit_idle_mode(&mut self, mode: swayward_ipc::command::InhibitIdleMode) {
+        self.inhibit_idle_mode = mode;
     }
 
     pub fn toggle_ignore_opacity_window_rule(&mut self) {

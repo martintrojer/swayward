@@ -366,7 +366,18 @@ fn parse_command(lower: &str, name: &str, rest: &[&str], input: &str) -> Result<
             }
         }
         "opacity" => parse_opacity(rest),
-        "inhibit_idle" => Err("inhibit_idle requires user inhibitor policy support".into()),
+        "inhibit_idle" => match rest {
+            ["focus"] => Ok(Command::InhibitIdle(InhibitIdleMode::Focus)),
+            ["fullscreen"] => Ok(Command::InhibitIdle(InhibitIdleMode::Fullscreen)),
+            ["open"] => Ok(Command::InhibitIdle(InhibitIdleMode::Open)),
+            ["none"] => Ok(Command::InhibitIdle(InhibitIdleMode::None)),
+            ["visible"] => Ok(Command::InhibitIdle(InhibitIdleMode::Visible)),
+            [_] => Err("Expected `inhibit_idle focus|fullscreen|open|none|visible`".into()),
+            _ => Err(format!(
+                "Invalid inhibit_idle command (expected 1 argument, got {})",
+                rest.len()
+            )),
+        },
         // Sway's developer-only create_output handler deliberately ignores argv.
         "create_output" => Ok(Command::CreateOutput),
         "input" => {

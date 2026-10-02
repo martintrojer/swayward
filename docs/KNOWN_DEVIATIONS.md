@@ -275,13 +275,16 @@ are deliberate safety deviations.
 
 **Command gap.**
 
-Swayward refuses `inhibit_idle`, `allow_tearing`, and `max_render_time`. Sway
-stores each value on the target view and exposes them in `GET_TREE`
-(`sway/commands/inhibit_idle.c:8-50`, `sway/commands/allow_tearing.c:6-25`, and
-`sway/commands/max_render_time.c:6-32`). Swayward has no equivalent mutable
-per-view state: idle inhibition comes from client protocol objects, and its
-frame clock has no per-view tearing or render-deadline controls. Returning
-success would therefore report state that the compositor does not apply.
+Swayward refuses `allow_tearing` and `max_render_time`. Sway stores each value
+on the target view and exposes it in `GET_TREE`
+(`sway/commands/allow_tearing.c:6-25` and
+`sway/commands/max_render_time.c:6-32`). Swayward's frame clock has no per-view
+tearing or render-deadline controls. Returning success would therefore report
+state that the compositor does not apply.
+
+`inhibit_idle` is implemented with sway's focus, fullscreen, open, none, and
+visible user policies and composes with application idle-inhibitor protocol
+objects.
 
 The `opacity` command is implemented as mutable per-window state and multiplies
 window-rule opacity. Unlike the configured opacity, it remains effective in

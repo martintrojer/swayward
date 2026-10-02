@@ -104,8 +104,8 @@ runtime commands go through `swayward-ipc`. Most command gaps come from that
 seam: the setting exists in KDL, but there is no safe live mutation path for
 it yet.
 
-The parser accepts 69 of sway 1.12's 82 unique runtime command names. Of those,
-28 command families are complete and 41 are partial. An accepted name means at
+The parser accepts 70 of sway 1.12's 82 unique runtime command names. Of those,
+29 command families are complete and 41 are partial. An accepted name means at
 least one real form works; it does not mean every option, target, or unit works.
 
 The commonly used forms include:
@@ -144,11 +144,11 @@ adaptive-sync, bit depth, modeline, and power have runtime paths. An `*` target
 applies to connected outputs; unlike sway, it is not retained as wildcard
 configuration for outputs connected later. Other output subcommands fail.
 
-Commands that promise state swayward cannot represent also fail. For example,
-`inhibit_idle` needs sway's user-inhibitor policy modes
-(`sway/commands/inhibit_idle.c:8-50`, `sway/tree/view.c:281-303`), and
+Commands that promise state swayward cannot represent still fail. For example,
 `allow_tearing` needs asynchronous page flips
 (`sway/commands/allow_tearing.c:6-25`, `sway/desktop/output.c:254-269`).
+`inhibit_idle` is implemented with sway's per-view focus, fullscreen, open,
+none, and visible user policies (`sway/commands/inhibit_idle.c:8-50`).
 `max_render_time` needs per-output and per-view render budgets, which
 swayward's frame clock does not have (`sway/commands/max_render_time.c:6-32`,
 `sway/desktop/output.c:150-185`, `src/frame_clock.rs`).

@@ -287,14 +287,26 @@ fn parses_opacity_modes_and_sway_errors() {
 }
 
 #[test]
-fn unsupported_runtime_state_commands_fail_loud() {
+fn inhibit_idle_parses_sway_modes_and_errors() {
+    for (value, mode) in [
+        ("focus", InhibitIdleMode::Focus),
+        ("fullscreen", InhibitIdleMode::Fullscreen),
+        ("open", InhibitIdleMode::Open),
+        ("none", InhibitIdleMode::None),
+        ("visible", InhibitIdleMode::Visible),
+    ] {
+        assert_eq!(
+            command(&format!("inhibit_idle {value}")),
+            Command::InhibitIdle(mode)
+        );
+    }
     assert_eq!(
-        parse("inhibit_idle visible")[0]
+        parse("inhibit_idle always")[0]
             .as_ref()
             .unwrap_err()
             .error
             .as_deref(),
-        Some("inhibit_idle requires user inhibitor policy support")
+        Some("Expected `inhibit_idle focus|fullscreen|open|none|visible`")
     );
 }
 

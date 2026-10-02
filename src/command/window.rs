@@ -544,6 +544,18 @@ pub(super) fn title_format_focused(state: &mut State, format: &str) -> super::Ha
     super::handled(title_format(state, target, format))
 }
 
+pub(super) fn inhibit_idle_focused(
+    state: &mut State,
+    mode: swayward_ipc::command::InhibitIdleMode,
+) -> super::HandlerResult {
+    let Some(target) = super::targeted::focused_target(state) else {
+        return Err(swayward_ipc::command::parse_error(
+            "Only views can have idle inhibitors",
+        ));
+    };
+    super::handled(super::targeted::set_inhibit_idle(state, target, mode))
+}
+
 pub(super) fn shortcuts_inhibitor_focused(state: &mut State, enable: bool) -> super::HandlerResult {
     let Some(target) = super::targeted::focused_target(state) else {
         return Err(failure("Only views can have shortcuts inhibitors"));

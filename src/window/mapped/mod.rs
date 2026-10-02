@@ -121,6 +121,9 @@ pub struct Mapped {
     /// Policy for future keyboard-shortcuts inhibitor requests from this window.
     shortcuts_inhibit_policy: ShortcutsInhibitPolicy,
 
+    /// User-configured sway idle-inhibition policy.
+    inhibit_idle_mode: swayward_ipc::command::InhibitIdleMode,
+
     /// Whether this window should ignore opacity set through window rules.
     ignore_opacity_window_rule: bool,
 

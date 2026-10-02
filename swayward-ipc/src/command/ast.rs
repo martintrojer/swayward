@@ -16,6 +16,15 @@ pub enum Toggle {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InhibitIdleMode {
+    Focus,
+    Fullscreen,
+    Open,
+    None,
+    Visible,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BorderStyle {
     Normal,
     None,
@@ -319,6 +328,7 @@ pub enum Command {
     TitleFormat(String),
     Sticky(String),
     ShortcutsInhibitor(bool),
+    InhibitIdle(InhibitIdleMode),
     Opacity(f32),
     OpacityRelative(f32),
     /// A sway directive that sets a layout option for the whole session.

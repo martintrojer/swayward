@@ -341,7 +341,35 @@ impl Swayward {
 
         self.idle_inhibiting_surfaces.retain(|s| s.is_alive());
 
+        let user_policies = self
+            .layout
+            .windows()
+            .map(|(_, mapped)| {
+                (
+                    mapped.window.clone(),
+                    mapped.inhibit_idle_mode(),
+                    mapped.is_focused(),
+                    mapped.pending_sizing_mode().is_fullscreen(),
+                )
+            })
+            .collect::<Vec<_>>();
+        let user_inhibited =
+            user_policies
+                .into_iter()
+                .any(|(window, mode, focused, fullscreen)| {
+                    use swayward_ipc::command::InhibitIdleMode;
+                    match mode {
+                        InhibitIdleMode::None => false,
+                        InhibitIdleMode::Open => true,
+                        InhibitIdleMode::Focus => focused,
+                        InhibitIdleMode::Fullscreen => fullscreen,
+                        InhibitIdleMode::Visible => {
+                            self.layout.window_is_on_visible_workspace(&window)
+                        }
+                    }
+                });
         let is_inhibited = self.is_fdo_idle_inhibited.load(Ordering::SeqCst)
+            || user_inhibited
             || self.idle_inhibiting_surfaces.iter().any(|surface| {
                 with_states(surface, |states| {
                     surface_primary_scanout_output(surface, states).is_some()

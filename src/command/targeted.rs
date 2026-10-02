@@ -302,6 +302,7 @@ fn run_targeted(
         Command::ShortcutsInhibitor(enable) => {
             super::handled(set_shortcuts_inhibitor(state, target, *enable))
         }
+        Command::InhibitIdle(mode) => super::handled(set_inhibit_idle(state, target, *mode)),
         Command::Sticky(value) => super::handled(window::sticky(state, target, value)),
         Command::SetClientColors { class, colors } => {
             set_client_colors(state, *class, *colors);
@@ -529,6 +530,28 @@ pub(super) fn unmark_target(state: &mut State, target: CommandTarget, mark: Opti
         }
     }
     refresh_titlebar_marks(state);
+}
+
+pub(super) fn set_inhibit_idle(
+    state: &mut State,
+    target: CommandTarget,
+    mode: swayward_ipc::command::InhibitIdleMode,
+) -> Result<(), CommandOutcome> {
+    let CommandTarget::Window(target) = target else {
+        return Err(failure("Only views can have idle inhibitors"));
+    };
+    let mut found = false;
+    state.swayward.layout.with_windows_mut(|window, _| {
+        if window.id() == target {
+            window.set_inhibit_idle_mode(mode);
+            found = true;
+        }
+    });
+    if !found {
+        return Err(failure("No matching node."));
+    }
+    state.swayward.refresh_idle_inhibit();
+    Ok(())
 }
 
 pub(super) fn set_shortcuts_inhibitor(

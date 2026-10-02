@@ -294,15 +294,32 @@ pub(super) fn describe_window(context: WindowNodeContext<'_>) -> Node {
         in_scratchpad,
         visible,
     } = context;
+    let inhibit_idle_mode = mapped.inhibit_idle_mode();
+    let inhibit_idle = match inhibit_idle_mode {
+        swayward_ipc::command::InhibitIdleMode::None => false,
+        swayward_ipc::command::InhibitIdleMode::Open => true,
+        swayward_ipc::command::InhibitIdleMode::Focus => mapped.is_focused(),
+        swayward_ipc::command::InhibitIdleMode::Fullscreen => {
+            mapped.pending_sizing_mode().is_fullscreen()
+        }
+        swayward_ipc::command::InhibitIdleMode::Visible => visible,
+    };
+    let user_inhibitor = match inhibit_idle_mode {
+        swayward_ipc::command::InhibitIdleMode::Focus => "focus",
+        swayward_ipc::command::InhibitIdleMode::Fullscreen => "fullscreen",
+        swayward_ipc::command::InhibitIdleMode::Open => "open",
+        swayward_ipc::command::InhibitIdleMode::None => "none",
+        swayward_ipc::command::InhibitIdleMode::Visible => "visible",
+    };
     let properties = with_toplevel_role(mapped.toplevel(), |role| ViewProperties {
         allow_tearing: false,
         app_id: role.app_id.clone(),
         foreign_toplevel_identifier: Some(mapped.id().to_protocol_identifier()),
         idle_inhibitors: IdleInhibitors {
             application: "none".into(),
-            user: "none".into(),
+            user: user_inhibitor.into(),
         },
-        inhibit_idle: false,
+        inhibit_idle,
         max_render_time: 0,
         pid: mapped
             .credentials()
