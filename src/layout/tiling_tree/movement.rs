@@ -552,9 +552,11 @@ impl<W: LayoutElement> TilingTree<W> {
     fn finish_directional_move(&mut self, id: NodeId) {
         // Sway's directional move never changes focus (`cmd_move_in_direction`,
         // sway/commands/move.c:713-750), so a focused container stays focused
-        // rather than handing focus to its first view.
+        // rather than handing focus to its first view. Nor does it raise the
+        // container's new ancestors on the seat focus stack, so a wrapper
+        // that was never focused keeps its place at the tail.
         if self.focus == Some(id) {
-            self.set_focus_id(Some(id));
+            self.ipc_focus_follows_history = false;
             self.request_window_sizes();
             return;
         }

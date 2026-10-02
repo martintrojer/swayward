@@ -725,3 +725,46 @@ fn workspace_next_and_prev_cross_outputs() {
         second_output
     );
 }
+
+/// Oracle: move_wrap_keeps_new_wrapper_at_focus_tail. When `move left` wraps
+/// the workspace children (`workspace_wrap_children`,
+/// sway/commands/move.c:336), the wrapper is never focused, because a
+/// directional move does not change focus (move.c:713-745). It stays at the
+/// tail of the seat focus stack (`seat_node_from_node`,
+/// sway/input/seat.c:327-349), behind an earlier-focused floating window.
+#[test]
+fn directional_move_wrapper_stays_behind_focused_floating_window() {
+    let (mut f, _) = ipc_fixture();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let map = |f: &mut Fixture| {
+        let window = f.client(client).create_window();
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    };
+    let run = |f: &mut Fixture, command: &str| {
+        let reply = crate::command::execute(f.niri_state(), command);
+        assert!(reply[0].success, "{command}: {reply:?}");
+    };
+    map(&mut f);
+    map(&mut f);
+    run(&mut f, "floating toggle");
+    run(&mut f, "focus mode_toggle");
+    map(&mut f);
+    run(&mut f, "layout tabbed");
+    run(&mut f, "splith");
+    run(&mut f, "move left");
+
+    let tree: swayward_ipc::Node = serde_json::from_value(get_tree(&mut f)).unwrap();
+    let workspace = &tree.nodes[1].nodes[0];
+    assert_eq!(workspace.nodes.len(), 1, "move left wrapped the children");
+    assert_eq!(
+        workspace.focus,
+        [workspace.floating_nodes[0].id, workspace.nodes[0].id]
+    );
+}
