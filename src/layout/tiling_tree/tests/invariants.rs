@@ -30,6 +30,9 @@ fn seed_side_table(t: &mut TilingTree<TestWindow>, name: &str, id: NodeId) {
         "tab_active" => {
             t.tab_active.insert(id, id);
         }
+        "last_entered_by" => {
+            t.last_entered_by.insert(id, id);
+        }
         other => panic!("seed_side_table does not cover side table {other}"),
     }
 }

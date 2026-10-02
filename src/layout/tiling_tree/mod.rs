@@ -412,6 +412,7 @@ macro_rules! side_tables {
         [
             ("focus_history", $($ref)+ $tree.focus_history as $($ref)+ dyn SideTable),
             ("ipc_stale_nodes", $($ref)+ $tree.ipc_stale_nodes),
+            ("last_entered_by", $($ref)+ $tree.last_entered_by),
             ("pending_modes", $($ref)+ $tree.pending_modes),
             ("mapped_under_fullscreen", $($ref)+ $tree.mapped_under_fullscreen),
             ("moved_under_fullscreen", $($ref)+ $tree.moved_under_fullscreen),
@@ -430,6 +431,11 @@ pub struct TilingTree<W: LayoutElement> {
     root: NodeId,
     focus: Option<NodeId>,
     ipc_stale_nodes: HashSet<NodeId>,
+    /// The leaf whose focus last raised each container in the focus stack.
+    /// The IPC focus list ranks a container by when focus last entered it,
+    /// which outlives that leaf moving away (`seat_set_raw_focus`,
+    /// sway/input/seat.c).
+    last_entered_by: HashMap<NodeId, NodeId>,
     has_had_tile: bool,
     empty_representation_layout: Option<Layout>,
     focus_history: Vec<NodeId>,

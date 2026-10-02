@@ -1122,3 +1122,64 @@ fn a_tabbed_childs_percent_uses_the_tabbed_containers_own_box() {
         "{percent} in {representation}"
     );
 }
+
+// random seed 183 step 17 (sway-1.12-random): in H[1 H[2 H[3*]]], 3 floats
+// and leaves H[1 H[2]]; 5 maps beside 2 and `move right` takes it out of
+// the split. The split keeps the place focus gave it when it entered 5
+// (`seat_set_raw_focus`, sway/input/seat.c), so the workspace focus list is
+// [5, split, 3, 1], not [5, 3, split, 1] ranked by 2's older focus.
+#[test]
+fn a_container_keeps_its_focus_place_after_the_focused_view_leaves() {
+    let (mut f, socket) = ipc_fixture();
+    f.add_output(1, (1280, 720));
+    let client = f.add_client();
+    let mut stream = UnixStream::connect(socket).unwrap();
+    let map = |f: &mut Fixture, app_id: &str| {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    };
+    let run = |f: &mut Fixture, stream: &mut UnixStream, command: &str| {
+        let outcome = query_ipc_with_payload(f, stream, MessageType::RunCommand, command);
+        assert_eq!(outcome[0]["success"], true, "{command}: {outcome}");
+    };
+    map(&mut f, "1");
+    map(&mut f, "2");
+    run(&mut f, &mut stream, "splith");
+    map(&mut f, "3");
+    run(&mut f, &mut stream, "splith");
+    run(&mut f, &mut stream, "floating toggle");
+    map(&mut f, "5");
+    run(&mut f, &mut stream, "move right");
+
+    let tree = query_ipc(&mut f, &mut stream, MessageType::GetTree);
+    let workspace = &tree["nodes"][1]["nodes"][0];
+    let name = |id: &serde_json::Value| {
+        workspace["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .chain(workspace["floating_nodes"].as_array().unwrap())
+            .find(|node| node["id"] == *id)
+            .map(|node| node["app_id"].as_str().unwrap_or("split").to_owned())
+            .unwrap()
+    };
+    let order: Vec<_> = workspace["focus"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(name)
+        .collect();
+    assert_eq!(
+        order,
+        ["5", "split", "3", "1"],
+        "{}",
+        workspace["representation"]
+    );
+}

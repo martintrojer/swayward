@@ -23,6 +23,8 @@ impl<W: LayoutElement> TilingTree<W> {
         }
         // tab_active also names nodes in its values: a container's shown child.
         self.tab_active.retain(|_, active| *active != id);
+        // So does last_entered_by: the leaf whose focus raised a container.
+        self.last_entered_by.retain(|_, leaf| *leaf != id);
         Some(node)
     }
 

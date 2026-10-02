@@ -368,17 +368,45 @@ fn order_focus(
     // was never focused sorts behind every focused node. A never-focused
     // window beside it was created after the wrapper took every workspace
     // child, so it joined the tail later and sorts behind the wrapper.
-    focus.sort_by_key(|id| {
-        let timestamp = children
+    let timestamp_of = |id: &i64| {
+        children
             .iter()
             .find(|child| child.id == *id)
-            .and_then(|child| newest_focus_timestamp(child, &focus_timestamps));
+            .and_then(|child| newest_focus_timestamp(child, &focus_timestamps))
+    };
+    // The tiled list already follows sway's focus stack, which raises a
+    // container whenever focus enters it (`seat_set_raw_focus`,
+    // sway/input/seat.c). A container keeps that place after the focused
+    // view leaves it, so a tiled entry ranks as recent as the last time
+    // focus entered it, and at least as recent as every tiled entry after
+    // it. Timestamps then only interleave floating windows.
+    let tiled_ids = nodes.iter().map(|node| node.id).collect::<Vec<_>>();
+    let last_entered = workspace
+        .tiling()
+        .last_entered_windows()
+        .filter_map(|(node, window)| {
+            let mapped = workspace
+                .windows()
+                .find(|mapped| &mapped.window == window)?;
+            Some((container_id(node), mapped.focus_timestamp()?))
+        })
+        .collect::<std::collections::HashMap<_, _>>();
+    let mut effective = std::collections::HashMap::new();
+    let mut newer = None;
+    for id in focus.iter().rev().filter(|id| tiled_ids.contains(id)) {
+        newer = newer
+            .max(timestamp_of(id))
+            .max(last_entered.get(id).copied());
+        effective.insert(*id, newer);
+    }
+    focus.sort_by_key(|id| {
+        let timestamp = timestamp_of(id);
         let rank = match (stale_tiling.contains(id), timestamp.is_some()) {
             (false, true) => 2,
             (true, _) => 1,
             (false, false) => 0,
         };
-        Reverse((rank, timestamp))
+        Reverse((rank, effective.get(id).copied().unwrap_or(timestamp)))
     });
 }
 
