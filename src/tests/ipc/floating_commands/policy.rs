@@ -702,6 +702,49 @@ fn ppt_resize_of_a_floating_group_child_resizes_inside_the_group() {
     assert!(width("group-second") > width("group-first"));
 }
 
+/// Random oracle seed 290: a group floated first and a window floated after it
+/// share sway's one floating list, so GET_TREE lists the group below the window
+/// and only the window is focused (workspace_add_floating appends,
+/// sway/tree/workspace.c:961-971; sway/ipc-json.c:532-540).
+#[test]
+fn floating_nodes_list_groups_and_windows_in_one_stacking_order() {
+    let (mut f, _) = ipc_fixture();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let map = |f: &mut Fixture| {
+        let window = f.client(client).create_window();
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    };
+    map(&mut f);
+    for command in ["focus parent", "floating toggle"] {
+        let reply = crate::command::execute(f.niri_state(), command);
+        assert!(reply[0].success, "{command}: {reply:?}");
+    }
+    map(&mut f);
+    let reply = crate::command::execute(f.niri_state(), "floating toggle");
+    assert!(reply[0].success, "{reply:?}");
+
+    let tree: swayward_ipc::Node = serde_json::from_value(get_tree(&mut f)).unwrap();
+    let floating = &tree.nodes[1].nodes[0].floating_nodes;
+    assert_eq!(floating.len(), 2);
+    assert!(
+        !floating[0].nodes.is_empty(),
+        "the older group is listed first"
+    );
+    assert!(
+        floating[1].nodes.is_empty(),
+        "the newer window is listed last"
+    );
+    assert!(!floating[0].focused && floating[0].nodes.iter().all(|node| !node.focused));
+    assert!(floating[1].focused);
+}
+
 #[test]
 fn directional_resize_of_a_floating_group_child_resizes_inside_the_group() {
     // A floating group's child is not itself floating, so sway resizes it like

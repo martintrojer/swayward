@@ -68,11 +68,18 @@ impl<W: LayoutElement> FloatingLayout<W> {
         };
 
         let data = Data::new(self.view_size, self.working_area, &tile, pos);
+        // A new root goes on top; one kept below its parent shares the parent's
+        // place relative to groups.
+        let stamp = match idx.checked_sub(1).and_then(|above| self.entries.get(above)) {
+            Some(above) => above.stamp,
+            None => self.bump_stamp(),
+        };
         self.insert_entry(
             idx,
             FloatingEntry {
                 tile,
                 data,
+                stamp,
                 titlebar: Box::default(),
             },
         );
@@ -233,6 +240,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
         };
         let mut entry = self.tree_entries.remove(idx);
         entry.tree.activate_window(id);
+        entry.stamp = self.bump_stamp();
         self.tree_entries.insert(0, entry);
         self.active_window_id = Some(id.clone());
         true
@@ -241,7 +249,14 @@ impl<W: LayoutElement> FloatingLayout<W> {
     fn raise_window(&mut self, from_idx: usize, to_idx: usize) {
         assert!(to_idx <= from_idx);
 
-        let entry = self.remove_entry(from_idx);
+        let mut entry = self.remove_entry(from_idx);
+        entry.stamp = match to_idx
+            .checked_sub(1)
+            .and_then(|above| self.entries.get(above))
+        {
+            Some(above) => above.stamp,
+            None => self.bump_stamp(),
+        };
         self.insert_entry(to_idx, entry);
     }
 

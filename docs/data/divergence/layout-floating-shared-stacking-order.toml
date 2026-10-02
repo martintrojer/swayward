@@ -1,0 +1,5 @@
+[[edit]]
+migrated = false
+paths = ["src/layout/floating_tree.rs", "src/layout/floating_tree/commands.rs", "src/layout/floating_tree/rendering.rs"]
+what = "stack single floating windows and floating groups in one order: each root records when it last reached the top, and rendering, hit testing and IPC walk the merged order."
+why = "sway keeps one list of floating containers per workspace (workspace_add_floating appends, container_raise_floating moves to the end); swayward kept two independent stacks, so every group sat above every single window regardless of creation or activation order."

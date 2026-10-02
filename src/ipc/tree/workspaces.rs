@@ -1,4 +1,5 @@
 use super::*;
+use crate::layout::floating_tree::StackSlot;
 
 pub(super) struct WorkspaceNodeContext<'a> {
     pub(super) compositor_layout: &'a Layout<Mapped>,
@@ -241,7 +242,7 @@ fn floating_part(context: &WorkspaceNodeContext<'_>, state: &WorkspaceState) -> 
         .flatten();
     let mut floating_nodes = workspace
         .ipc_floating_trees()
-        .filter_map(|(_, tree, sticky)| {
+        .filter_map(|(root, tree, sticky)| {
             // `container_replace` hands a scratchpad view's membership to the
             // container that `container_split` wraps it in
             // (sway/sway/tree/container.c:1471-1564), so a group holding a
@@ -261,10 +262,14 @@ fn floating_part(context: &WorkspaceNodeContext<'_>, state: &WorkspaceState) -> 
             node.sticky = sticky;
             // A floating group's own tree keeps its internal focus while another layer is
             // active; sway reports a container focused only when it holds the seat focus.
-            if !state.focused || !workspace.floating_is_active() {
+            let holds_focus = state.focused
+                && workspace.active_window().is_some_and(|active| {
+                    workspace.floating_tree_root_for_window(&active.window) == Some(root)
+                });
+            if !state.focused || !workspace.floating_is_active() || !holds_focus {
                 clear_focused(&mut node);
             }
-            Some(node)
+            Some((StackSlot::Tree(root), node))
         })
         .chain(
             workspace
@@ -273,12 +278,23 @@ fn floating_part(context: &WorkspaceNodeContext<'_>, state: &WorkspaceState) -> 
                 .map(|(tile, layout)| {
                     let mut node = describe_floating_window(context, tile, &layout);
                     node.focused = active_window == Some(tile.window().id());
-                    node
+                    (StackSlot::Window(tile.window().window.clone()), node)
                 }),
         )
         .collect::<Vec<_>>();
-    floating_nodes.reverse();
-    floating_nodes
+    // Sway lists the workspace's floating containers bottom to top, a group
+    // and a single window in one list (`workspace->floating`,
+    // sway/ipc-json.c:532-540). A fullscreen tile that restores to floating
+    // is not in the floating stack yet; it is listed on top.
+    let stacking = workspace.floating().stacking();
+    let depth = |slot: &StackSlot<_>| {
+        stacking
+            .iter()
+            .position(|candidate| candidate == slot)
+            .map_or(0, |index| index + 1)
+    };
+    floating_nodes.sort_by_key(|(slot, _)| std::cmp::Reverse(depth(slot)));
+    floating_nodes.into_iter().map(|(_, node)| node).collect()
 }
 
 fn describe_floating_window(

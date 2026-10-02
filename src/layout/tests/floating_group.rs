@@ -845,3 +845,30 @@ fn unfloat_last_group_after_focusing_parent_deactivates_floating() {
     assert!(workspace.floating().is_empty());
     assert!(!workspace.floating_is_active());
 }
+
+/// Sway keeps one stacking list for every floating container, whether a view
+/// or a split: a newly floated container goes on top (workspace_add_floating
+/// appends, sway/tree/workspace.c:961-971) and activation raises it
+/// (container_raise_floating, sway/tree/container.c:1625-1637). A single
+/// floating window and a floating group therefore stack against each other.
+#[test]
+fn floating_windows_and_groups_share_one_stacking_order() {
+    let (mut workspace, root) = floating_group_workspace();
+    let tile = workspace.make_tile(TestWindow::new(TestWindowParams::new(3)));
+    workspace.add_tile(
+        tile,
+        WorkspaceAddWindowTarget::Auto,
+        super::super::workspace::AddTileOptions {
+            activate: ActivateWindow::Yes,
+            is_floating: true,
+        },
+    );
+
+    // The newly floated single window is on top of the older group, and
+    // activating a group child raises the whole group above it.
+    assert_eq!(workspace.floating().stacking_order(), [Some(root), None]);
+    workspace.activate_window(&1);
+    assert_eq!(workspace.floating().stacking_order(), [None, Some(root)]);
+    workspace.activate_window(&3);
+    assert_eq!(workspace.floating().stacking_order(), [Some(root), None]);
+}

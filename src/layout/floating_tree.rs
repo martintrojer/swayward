@@ -98,6 +98,16 @@ pub struct FloatingLayout<W: LayoutElement> {
     /// Nested container roots, created by `floating enable` on a container.
     tree_entries: Vec<FloatingTreeEntry<W>>,
 
+    /// Source of [`FloatingEntry::stamp`] and [`FloatingTreeEntry::stamp`].
+    ///
+    /// Sway keeps one list of floating containers whichever kind they are
+    /// (`workspace->floating`): a new one is appended and a raised one moves
+    /// to the end (sway/tree/workspace.c:961-971, container.c:1625-1637). Each
+    /// root records when it last reached the top, and [`Self::stacking`]
+    /// merges the two vectors by it, so a single window and a group stack
+    /// against each other while each vector keeps its own order.
+    next_stamp: u64,
+
     /// Id of the active window.
     ///
     /// The active window is not necessarily the topmost window. Focus-follows-mouse should
@@ -141,11 +151,20 @@ swayward_render_elements! {
     }
 }
 
+/// A floating root, as listed by [`FloatingLayout::stacking`].
+#[derive(Debug, Clone, PartialEq)]
+pub enum StackSlot<I> {
+    Window(I),
+    Tree(NodeId),
+}
+
 /// A single-window floating root.
 #[derive(Debug)]
 struct FloatingEntry<W: LayoutElement> {
     tile: Tile<W>,
     data: Data,
+    /// When this root last reached the top; see [`FloatingLayout::next_stamp`].
+    stamp: u64,
     /// Lives with the entry, so raising a window keeps its titlebar buffer.
     /// Boxed so the cache keeps one address as the entry moves in the stack.
     titlebar: Box<TitlebarSlot>,
@@ -154,6 +173,8 @@ struct FloatingEntry<W: LayoutElement> {
 /// A nested container root resident in the floating layer.
 #[derive(Debug)]
 struct FloatingTreeEntry<W: LayoutElement> {
+    /// When this root last reached the top; see [`FloatingLayout::next_stamp`].
+    stamp: u64,
     tree: TilingTree<W>,
     root: NodeId,
     rect: Rectangle<f64, Logical>,
@@ -404,6 +425,7 @@ impl<W: LayoutElement> FloatingLayout<W> {
         Self {
             entries: Vec::new(),
             tree_entries: Vec::new(),
+            next_stamp: 0,
             active_window_id: None,
             interactive_resize: None,
             closing_windows: Vec::new(),
@@ -659,12 +681,30 @@ impl<W: LayoutElement> FloatingLayout<W> {
     }
 
     pub fn window_under(&self, pos: Point<f64, Logical>) -> Option<(&W, super::HitType)> {
-        for entry in self.tree_entries.iter().rev() {
-            if let Some(hit) = entry.tree.window_under(pos) {
-                return Some(hit);
-            }
-        }
-        for (tile, tile_pos) in self.tiles_with_render_positions() {
+        let positions = self.tiles_with_render_positions().collect::<Vec<_>>();
+        for slot in self.stacking() {
+            let (tile, tile_pos) = match slot {
+                StackSlot::Tree(root) => {
+                    let hit = self
+                        .tree_entries
+                        .iter()
+                        .find(|entry| entry.root == root)
+                        .and_then(|entry| entry.tree.window_under(pos));
+                    if hit.is_some() {
+                        return hit;
+                    }
+                    continue;
+                }
+                StackSlot::Window(window) => {
+                    let Some(&(tile, tile_pos)) = positions
+                        .iter()
+                        .find(|(tile, _)| tile.window().id() == &window)
+                    else {
+                        continue;
+                    };
+                    (tile, tile_pos)
+                }
+            };
             if self
                 .titlebar_rect(tile, tile_pos, tile.animated_tile_size().w)
                 .is_some_and(|rect| rect.contains(pos))
@@ -880,9 +920,11 @@ impl<W: LayoutElement> FloatingLayout<W> {
             .any(|entry| entry.tree.contains(root)));
         self.active_window_id = tree.active_window().map(|window| window.id().clone());
         let sticky = tree.is_split_sticky(root);
+        let stamp = self.bump_stamp();
         self.tree_entries.insert(
             0,
             FloatingTreeEntry {
+                stamp,
                 tree,
                 root,
                 rect,
@@ -913,9 +955,11 @@ impl<W: LayoutElement> FloatingLayout<W> {
         );
         let root = removed.root;
         self.active_window_id = tree.active_window().map(|window| window.id().clone());
+        let stamp = self.bump_stamp();
         self.tree_entries.insert(
             0,
             FloatingTreeEntry {
+                stamp,
                 tree,
                 root,
                 rect,
@@ -956,6 +1000,49 @@ impl<W: LayoutElement> FloatingLayout<W> {
             working_area: self.working_area,
             sticky: entry.sticky,
         })
+    }
+
+    fn bump_stamp(&mut self) -> u64 {
+        self.next_stamp += 1;
+        self.next_stamp
+    }
+
+    /// Every floating root, top to bottom: both vectors merged by stamp, each
+    /// keeping its own order.
+    pub fn stacking(&self) -> Vec<StackSlot<W::Id>> {
+        let mut windows = self.entries.iter().peekable();
+        let mut trees = self.tree_entries.iter().peekable();
+        let mut stacking = Vec::with_capacity(self.entries.len() + self.tree_entries.len());
+        loop {
+            let tree_first = match (windows.peek(), trees.peek()) {
+                (None, None) => break,
+                (Some(_), None) => false,
+                (None, Some(_)) => true,
+                (Some(window), Some(tree)) => tree.stamp > window.stamp,
+            };
+            if tree_first {
+                if let Some(tree) = trees.next() {
+                    stacking.push(StackSlot::Tree(tree.root));
+                }
+            } else if let Some(window) = windows.next() {
+                stacking.push(StackSlot::Window(window.tile.window().id().clone()));
+            }
+        }
+        stacking
+    }
+
+    /// Floating roots bottom to top: `Some(root)` for a group, `None` for a
+    /// single window.
+    #[cfg(test)]
+    pub(super) fn stacking_order(&self) -> Vec<Option<NodeId>> {
+        self.stacking()
+            .into_iter()
+            .rev()
+            .map(|slot| match slot {
+                StackSlot::Tree(root) => Some(root),
+                StackSlot::Window(_) => None,
+            })
+            .collect()
     }
 
     pub fn tree_rect(&self, root: NodeId) -> Option<Rectangle<f64, Logical>> {
