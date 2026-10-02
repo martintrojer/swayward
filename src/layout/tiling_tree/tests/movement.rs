@@ -718,3 +718,35 @@ fn move_into_a_parallel_branch_squashes_like_sway() {
     assert_eq!(children, &[c, b, a]);
     t.check_invariants();
 }
+
+// random seed 157 step 11 (sway-1.12-random): in H[a b c H[d e*]], `move
+// right` promotes e beside the inner H. e keeps its own fraction (0.5);
+// only the ancestor's is zeroed and takes the average of the others
+// (sway/commands/move.c:394-408; `apply_horiz_layout`, sway/tree/arrange.c).
+#[test]
+fn promotion_from_a_parallel_split_keeps_the_moved_fraction() {
+    let mut t = tree((1200., 800.), 0.);
+    for window in 1..=3 {
+        t.add_tile(tile(window, t.view_size()), InsertTarget::Focused);
+    }
+    let d = t.add_tile(tile(4, t.view_size()), InsertTarget::Focused);
+    t.split(d, Layout::SplitH);
+    let e = t.add_tile(tile(5, t.view_size()), InsertTarget::Focused);
+
+    assert!(t.move_direction(e, Direction::Right));
+
+    let TreeNode::Split {
+        children, percents, ..
+    } = &t.nodes[&t.root].value
+    else {
+        unreachable!()
+    };
+    assert_eq!(children.len(), 5);
+    assert_eq!(children.last(), Some(&e));
+    // a, b and c keep 0.25 and e keeps 0.5; the zeroed ancestor takes their
+    // average, 0.3125. Normalized: sway's 0.16 x 3, 0.2 and 0.32.
+    for (percent, expected) in percents.iter().zip([0.16, 0.16, 0.16, 0.2, 0.32]) {
+        assert!((percent - expected).abs() < 1e-9, "{percents:?}");
+    }
+    t.check_invariants();
+}

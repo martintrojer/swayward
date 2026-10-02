@@ -101,6 +101,25 @@ impl<W: LayoutElement> TilingTree<W> {
         }
     }
 
+    pub(super) fn set_child_percent(&mut self, parent: NodeId, child: NodeId, percent: f64) {
+        let Some(Node {
+            value: TreeNode::Split {
+                children, percents, ..
+            },
+            ..
+        }) = self.nodes.get_mut(&parent)
+        else {
+            return;
+        };
+        if let Some(slot) = children
+            .iter()
+            .position(|candidate| *candidate == child)
+            .and_then(|index| percents.get_mut(index))
+        {
+            *slot = percent;
+        }
+    }
+
     pub(super) fn insert_existing_child(
         &mut self,
         parent: NodeId,

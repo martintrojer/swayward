@@ -286,7 +286,7 @@ impl<W: LayoutElement> TilingTree<W> {
                     {
                         return false;
                     }
-                    return self.promote_to_boundary(id, parent_id, backwards);
+                    return self.promote_to_boundary(id, parent_id, backwards, wanted_layout);
                 }
             }
             branch = parent_id;
@@ -300,7 +300,13 @@ impl<W: LayoutElement> TilingTree<W> {
 
     /// Promotes `id` to the outer end of `boundary_root`, the first parallel ancestor it has
     /// escaped ("Container will be promoted", sway/commands/move.c:394-412).
-    fn promote_to_boundary(&mut self, id: NodeId, boundary_root: NodeId, backwards: bool) -> bool {
+    fn promote_to_boundary(
+        &mut self,
+        id: NodeId,
+        boundary_root: NodeId,
+        backwards: bool,
+        wanted_layout: Layout,
+    ) -> bool {
         let Some(TreeNode::Split { children, .. }) =
             self.nodes.get(&boundary_root).map(|node| &node.value)
         else {
@@ -313,15 +319,40 @@ impl<W: LayoutElement> TilingTree<W> {
             return false;
         };
         let insert_index = if backwards { 0 } else { children.len() };
+        // Sway moves the container with its fractions and zeroes only the
+        // ancestor's (sway/commands/move.c:394-408). The fraction it keeps is
+        // on its old parent's axis, and only split layouts set one
+        // (`apply_horiz_layout`, sway/tree/arrange.c), so it counts only when
+        // that parent is a split along this axis.
+        let old_share = self
+            .nodes
+            .get(&id)
+            .and_then(|node| node.parent)
+            .and_then(
+                |old_parent| match self.nodes.get(&old_parent).map(|node| &node.value) {
+                    Some(TreeNode::Split {
+                        layout,
+                        children,
+                        percents,
+                        ..
+                    }) if *layout == wanted_layout => children
+                        .iter()
+                        .position(|child| *child == id)
+                        .and_then(|index| percents.get(index).copied()),
+                    _ => None,
+                },
+            );
         let Some(old_parent) = self.detach_subtree_only(id) else {
             return false;
         };
         self.insert_existing_child(boundary_root, id, insert_index, boundary);
-        // Sway zeroes the ancestor's fractions after promoting beside it
-        // (sway/commands/move.c:407-408). The moved node was laid out on the
-        // other axis, so it has no fraction on this one either; both take the
-        // average share.
-        self.share_as_fresh(boundary_root, &[id, boundary]);
+        match old_share {
+            Some(share) => {
+                self.set_child_percent(boundary_root, id, share);
+                self.share_as_fresh(boundary_root, &[boundary]);
+            }
+            None => self.share_as_fresh(boundary_root, &[id, boundary]),
+        }
         self.reap_empty_from(old_parent);
         self.compact_tree();
         self.finish_directional_move(id);
