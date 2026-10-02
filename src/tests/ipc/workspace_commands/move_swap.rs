@@ -1061,3 +1061,64 @@ fn a_reorienting_move_lists_the_new_wrapper_last_in_focus() {
         "{workspace}"
     );
 }
+
+// random seed 197 step 12 (sway-1.12-random): a tabbed container in the
+// top half of a V workspace measures its child's percent against its own
+// box (`ipc_json_describe_container`, sway/ipc-json.c:744-754). The tab bar
+// takes one titlebar from the top of that box, so the split below it
+// reports (360 - titlebar) / 360 (0.925 with sway's 27px titlebar), not the
+// workspace-relative (720 - titlebar) / 720 (0.9625).
+#[test]
+fn a_tabbed_childs_percent_uses_the_tabbed_containers_own_box() {
+    let (mut f, socket) = ipc_fixture();
+    f.add_output(1, (1280, 720));
+    let client = f.add_client();
+    let mut stream = UnixStream::connect(socket).unwrap();
+    let map = |f: &mut Fixture, app_id: &str| {
+        let window = f.client(client).create_window();
+        window.xdg_toplevel.set_app_id(app_id.into());
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+    };
+    map(&mut f, "a");
+    for command in ["splitv", "layout tabbed"] {
+        let outcome = query_ipc_with_payload(&mut f, &mut stream, MessageType::RunCommand, command);
+        assert_eq!(outcome[0]["success"], true, "{command}: {outcome}");
+    }
+    map(&mut f, "b");
+    for command in ["splitv", "focus parent", "focus parent", "splith"] {
+        let outcome = query_ipc_with_payload(&mut f, &mut stream, MessageType::RunCommand, command);
+        assert_eq!(outcome[0]["success"], true, "{command}: {outcome}");
+    }
+    map(&mut f, "c");
+    let outcome = query_ipc_with_payload(&mut f, &mut stream, MessageType::RunCommand, "move down");
+    assert_eq!(outcome[0]["success"], true, "{outcome}");
+
+    let tree = query_ipc(&mut f, &mut stream, MessageType::GetTree);
+    let workspace = &tree["nodes"][1]["nodes"][0];
+    let representation = workspace["representation"].as_str().unwrap();
+    let tabbed = &workspace["nodes"][0]["nodes"][0];
+    assert_eq!(tabbed["layout"], "tabbed", "{representation}");
+    let split = tabbed["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["layout"] == "splitv")
+        .unwrap_or_else(|| panic!("{representation}"));
+    // The split's rect starts below the tab bar and its own titlebar, as in
+    // sway's capture (y = 2 * 27); only the tab bar comes out of the percent.
+    let titlebar =
+        (split["rect"]["y"].as_f64().unwrap() - tabbed["rect"]["y"].as_f64().unwrap()) / 2.;
+    assert!(titlebar > 0., "{representation}");
+    let box_height = tabbed["rect"]["height"].as_f64().unwrap();
+    let percent = split["percent"].as_f64().unwrap();
+    assert!(
+        (percent - (box_height - titlebar) / box_height).abs() < 1e-9,
+        "{percent} in {representation}"
+    );
+}

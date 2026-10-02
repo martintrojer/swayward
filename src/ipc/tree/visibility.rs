@@ -33,7 +33,13 @@ pub(super) fn set_tabbed_percentages(layout: NodeLayout, children: &mut [Node], 
     let area = |rect: Rect| f64::from(rect.width) * f64::from(rect.height);
     let parent_area = area(parent_rect);
     for child in children {
-        let mut pending_rect = parent_rect;
+        // Under a split each child has its own box, so its children measure
+        // against that box, not the split's.
+        let mut pending_rect = if offset == 0 && !child.nodes.is_empty() {
+            child.rect
+        } else {
+            parent_rect
+        };
         if offset > 0 && !child.nodes.is_empty() {
             pending_rect.y = pending_rect.y.saturating_add(offset);
             pending_rect.height = pending_rect.height.saturating_sub(offset).max(0);
