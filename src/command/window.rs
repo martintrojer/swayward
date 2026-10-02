@@ -3,10 +3,7 @@ use swayward_ipc::command::Border;
 use swayward_ipc::legacy::SizeChange;
 use swayward_ipc::CommandOutcome;
 
-use super::{
-    failure, parse_boolean, tiling_target, CommandTarget, ResizeAmount, ResizeAxis, ResizeUnit,
-    Toggle,
-};
+use super::{failure, parse_boolean, CommandTarget, ResizeAmount, ResizeAxis, ResizeUnit, Toggle};
 use crate::swayward::State;
 
 fn target_window(
@@ -246,13 +243,13 @@ pub(super) fn floating(
 pub(super) fn kill(state: &mut State, target: CommandTarget) -> Result<(), CommandOutcome> {
     let targets = match target {
         CommandTarget::Window(target) => vec![target.get()],
-        CommandTarget::Container(_, _) => {
-            let (workspace, node) =
-                tiling_target(state, target, "command requires a tiling target")?;
+        // Sway closes every view in the container, a floating group
+        // included (`cmd_kill`, sway/commands/kill.c:15-31).
+        CommandTarget::Container(workspace, node) => {
             let windows = state
                 .swayward
                 .layout
-                .tiling_node_windows(workspace, node)
+                .container_windows(workspace, node)
                 .ok_or_else(|| failure("No matching node."))?;
             state
                 .swayward

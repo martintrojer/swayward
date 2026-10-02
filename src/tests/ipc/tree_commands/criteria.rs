@@ -356,6 +356,52 @@ fn kill_closes_every_descendant_of_the_focused_split() {
     assert!(f.client(client).window(&surfaces[2]).close_requested);
 }
 
+/// Oracle: kill_floating_group. `kill` closes every view in the container,
+/// a floating group or a split inside one included (`cmd_kill`,
+/// sway/commands/kill.c:15-31). Random seed 314 step 19.
+#[test]
+fn kill_closes_every_window_of_a_floating_group_split() {
+    let mut f = Fixture::new();
+    f.add_output(1, (1920, 1080));
+    let client = f.add_client();
+    let mut surfaces = Vec::new();
+    let mut map = |f: &mut Fixture| {
+        let window = f.client(client).create_window();
+        window.commit();
+        let surface = window.surface.clone();
+        f.roundtrip(client);
+        let window = f.client(client).window(&surface);
+        window.attach_new_buffer();
+        window.ack_last_and_commit();
+        f.double_roundtrip(client);
+        surfaces.push(surface);
+    };
+    map(&mut f);
+    map(&mut f);
+    assert!(crate::command::execute(f.niri_state(), "splitv")[0].success);
+    map(&mut f);
+    for command in [
+        "focus parent",
+        "focus parent",
+        "floating toggle",
+        "focus child",
+        "focus child",
+        "focus parent",
+    ] {
+        let reply = crate::command::execute(f.niri_state(), command);
+        assert!(reply[0].success, "{command}: {reply:?}");
+    }
+
+    let outcome = crate::command::execute(f.niri_state(), "kill");
+    assert!(outcome[0].success, "{outcome:?}");
+    f.double_roundtrip(client);
+    let closed = surfaces
+        .iter()
+        .map(|surface| f.client(client).window(surface).close_requested)
+        .collect::<Vec<_>>();
+    assert_eq!(closed, [false, true, true], "the inner split closes");
+}
+
 #[test]
 fn container_mark_survives_singleton_flattening() {
     let mut f = Fixture::new();

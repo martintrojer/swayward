@@ -1259,6 +1259,23 @@ impl<W: LayoutElement> FloatingLayout<W> {
         })
     }
 
+    /// Every window under `node` in a floating group, or `None` when no
+    /// group holds `node`.
+    pub fn node_window_ids(&self, node: NodeId) -> Option<Vec<W::Id>> {
+        let entry = self
+            .tree_entries
+            .iter()
+            .find(|entry| entry.tree.contains(node))?;
+        Some(
+            entry
+                .tree
+                .windows()
+                .filter(|(leaf, _)| entry.tree.contains_node(node, *leaf))
+                .map(|(_, window)| window.id().clone())
+                .collect(),
+        )
+    }
+
     pub fn focus_parent(&mut self) -> bool {
         self.active_tree_entry_mut()
             .is_some_and(|entry| entry.tree.focus_parent())

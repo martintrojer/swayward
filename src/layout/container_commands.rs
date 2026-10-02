@@ -326,6 +326,15 @@ impl<W: LayoutElement> Layout<W> {
         self.workspace(workspace_id)?.tiling_node_windows(node)
     }
 
+    /// Every window under a container, tiled or in a floating group, as
+    /// `container_for_each_child` walks it (sway/tree/container.c).
+    pub fn container_windows(&self, workspace_id: WorkspaceId, node: NodeId) -> Option<Vec<W::Id>> {
+        let workspace = self.workspace(workspace_id)?;
+        workspace
+            .tiling_node_windows(node)
+            .or_else(|| workspace.floating().node_window_ids(node))
+    }
+
     pub fn toggle_focused_layout(
         &mut self,
         toggle: &swayward_ipc::command::LayoutToggle,
