@@ -20,8 +20,13 @@ integrator's machine, which CI does not have. Run it after each push to main and
 before closing a worker's task. contrib/check-task-drift covers the other
 direction, worker commits that are not on main.
 
+A pre-release history squash removed every commit made before it. Pass the
+squash's sha map (`old new` per line) with --squash-map: a sha listed there
+counts as shipped when its new sha is on the target ref.
+
 Usage:
     contrib/check-closed-commits [--ref origin/main] [--since 2026-09-24] [-w swayward]
+                                 [--squash-map FILE]
 Exit 1 on any violation.
 """
 
@@ -52,7 +57,30 @@ def main_index(ref):
     return ancestors, subjects, patch_ids
 
 
-def status(sha, ancestors, subjects, patch_ids):
+def load_squash_map(path):
+    if not path:
+        return {}
+    mapping = {}
+    with open(path) as file:
+        for line in file:
+            if line.strip() and not line.startswith("#"):
+                old, new = line.split()[:2]
+                mapping[old] = new
+    return mapping
+
+
+def squashed(sha, mapping):
+    """The new sha for an abbreviated pre-squash sha, if the map names one."""
+    for old, new in mapping.items():
+        if old.startswith(sha):
+            return new
+    return None
+
+
+def status(sha, ancestors, subjects, patch_ids, mapping):
+    new = squashed(sha, mapping)
+    if new is not None:
+        return "ok" if new in ancestors else "lost"
     full = git("rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}", check=False).strip()
     if not full:
         return "missing"
@@ -72,6 +100,7 @@ def main():
     ap.add_argument("--ref", default="origin/main")
     ap.add_argument("--since", default="", help="ignore tasks closed before this date")
     ap.add_argument("-w", "--workstream", default="swayward")
+    ap.add_argument("--squash-map", help="file of `old new` sha pairs from a history squash")
     args = ap.parse_args()
 
     workstream = args.workstream.replace("'", "''")
@@ -91,6 +120,7 @@ def main():
             entry["accepted"] = True
 
     ancestors, subjects, patch_ids = main_index(args.ref)
+    mapping = load_squash_map(args.squash_map)
     lost, missing = [], []
     for task, entry in sorted(tasks.items()):
         close = entry["close"]
@@ -99,7 +129,7 @@ def main():
         if args.since and close["created_at"] < args.since:
             continue
         for sha in dict.fromkeys(SHA.findall(close["content"])):
-            verdict = status(sha, ancestors, subjects, patch_ids)
+            verdict = status(sha, ancestors, subjects, patch_ids, mapping)
             if verdict == "lost":
                 lost.append((task, sha))
             elif verdict == "missing":
