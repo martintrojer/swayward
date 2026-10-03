@@ -1277,8 +1277,12 @@ impl<W: LayoutElement> FloatingLayout<W> {
     }
 
     pub fn focus_parent(&mut self) -> bool {
-        self.active_tree_entry_mut()
-            .is_some_and(|entry| entry.tree.focus_parent())
+        // The group root's parent is the workspace, not the tree's internal
+        // root node, which is not a sway container (`focus_parent`,
+        // sway/commands/focus.c:355-367 via node_get_parent).
+        self.active_tree_entry_mut().is_some_and(|entry| {
+            entry.tree.focus() != Some(entry.root) && entry.tree.focus_parent()
+        })
     }
 
     pub fn focus_child(&mut self) -> bool {

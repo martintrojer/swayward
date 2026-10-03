@@ -902,3 +902,34 @@ fn moves_inside_a_floating_group_keep_the_group_root() {
     );
     assert!(layout.has_window(&1) && layout.has_window(&3));
 }
+
+#[test]
+fn layout_change_after_fullscreening_a_floating_group_child_keeps_the_group_root() {
+    // Shrunk from floating_group_lifecycle_operations_preserve_reachability. A second
+    // `focus parent` from the group root used to focus the tree's internal root node, which is
+    // not a sway container; the layout command then flattened the group root away.
+    let mut layout = Layout::default();
+    for op in [
+        Op::AddOutput(1),
+        Op::AddOutput(2),
+        Op::AddWindow {
+            params: TestWindowParams::new(1),
+        },
+        Op::AddWindow {
+            params: TestWindowParams::new(2),
+        },
+        Op::SplitFocused(tiling_tree::Layout::SplitV),
+        Op::FocusParent,
+        Op::ToggleFocusedContainerFloating,
+        Op::FocusChild,
+        Op::FocusParent,
+        Op::FocusParent,
+        Op::SplitFocused(tiling_tree::Layout::SplitH),
+        Op::FullscreenWindow(2),
+        Op::SetFocusedLayout(tiling_tree::Layout::SplitH),
+    ] {
+        op.apply(&mut layout);
+        layout.verify_invariants();
+        verify_layout_windows_reachable_once(&layout);
+    }
+}
