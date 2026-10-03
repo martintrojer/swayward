@@ -45,6 +45,7 @@ class TargetedOracleTest(unittest.TestCase):
 
     def test_baseline_comparison_separates_new_known_and_fixed(self):
         module = load_module()
+        OUT.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=OUT.parent) as tmp:
             now, before = Path(tmp, "now.toml"), Path(tmp, "before.toml")
             row = '[[result]]\nscenario = "{}"\nrequest = "tree"\nverdict = "{}"\n'
