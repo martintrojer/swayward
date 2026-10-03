@@ -15,7 +15,7 @@ use crate::swayward::{NewClient, SecurityContextMetadata, Swayward};
 
 /// Field order is drop order and is load-bearing: `state`, which holds the
 /// clients and the compositor, must drop before `event_loop`, or backend
-/// resources outlive their poller and leak fds across fixtures (012ac559).
+/// resources outlive their poller and leak fds across fixtures.
 pub struct Fixture {
     pub state: State,
     pub handle: LoopHandle<'static, State>,

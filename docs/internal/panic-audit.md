@@ -1,6 +1,6 @@
 # Panic audit, second pass
 
-Base: `origin/main` at `3da5d858`. Scope: swayward-owned/changed non-test Rust relative to `v26.04`. Test modules and files are excluded. The table contains all 450 unique sites found by explicit-pattern search plus Clippy `unwrap_used`, `expect_used`, `indexing_slicing`, and `arithmetic_side_effects`. No `cast_possible_truncation` warning occurred in scope. Division sites are included in arithmetic rows and checked for zero guards below.
+Base: `origin/main` on 2026-09-28. Scope: swayward-owned/changed non-test Rust relative to `v26.04`. Test modules and files are excluded. The table contains all 450 unique sites found by explicit-pattern search plus Clippy `unwrap_used`, `expect_used`, `indexing_slicing`, and `arithmetic_side_effects`. No `cast_possible_truncation` warning occurred in scope. Division sites are included in arithmetic rows and checked for zero guards below.
 
 | Site | Candidate kind | Expression | Concrete invariant or reachable input | Verdict |
 |---|---|---|---|---|
@@ -464,10 +464,9 @@ Base: `origin/main` at `3da5d858`. Scope: swayward-owned/changed non-test Rust r
 
 ## Fixed before this pass
 
-- `9d3b5c52`: incomplete/out-of-order legacy event state no longer panics.
-- `3e9db821`: missing output geometry returns a structured command failure.
-- `56460db0`: incoming client reply frames are capped before allocation.
-- The duplicate first-pass commit `8098b183` was dropped by resetting to `origin/main`.
+- Incomplete or out-of-order legacy event state no longer panics.
+- Missing output geometry returns a structured command failure.
+- Incoming client reply frames are capped before allocation.
 
 ## Deferred root-cause groups
 

@@ -4,8 +4,9 @@ here instead of quoting test counts.
 Every number on this page comes from a command, named next to it. Numbers go
 stale: rerun the command for the current value. The oracle figures are those
 recorded at the oracle revision pinned in
-[`tests/oracle.toml`](https://github.com/swayward-wm/swayward/blob/main/tests/oracle.toml)
-(`db7147c`). They measure swayward commit `eb170906` against sway 1.12.
+[`tests/oracle.toml`](https://github.com/swayward-wm/swayward/blob/main/tests/oracle.toml).
+They measure the swayward commit named in that oracle's `pins.toml` against
+sway 1.12.
 
 A passing test is evidence for the behaviour it exercises, not a compatibility
 percentage.

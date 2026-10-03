@@ -159,7 +159,11 @@ jobs:
       - run: ./contrib/command-census --check
       - run: ./contrib/coverage-report --unvendored
       - run: ./contrib/coverage-report --check
-      - run: .cache/sway-ipc-oracle/contrib/coverage-report .cache/sway-ipc-oracle/i3/results/swayward-eb170906.toml --check
+      - name: oracle's swayward i3 snapshot validates
+        run: |
+          oracle=.cache/sway-ipc-oracle
+          snapshot=$(python3 -c 'import sys, tomllib; print(tomllib.load(open(sys.argv[1], "rb"))["snapshot"]["swayward"])' "$oracle/pins.toml")
+          "$oracle/contrib/coverage-report" "$oracle/i3/results/$snapshot.toml" --check
 
   release-consistency:
     name: release metadata agrees

@@ -3,13 +3,7 @@
 Status: implemented (option B), pre-beta1
 Date: 2026-09-27
 
-Implemented in these commit ranges:
-
-- Step 1: `5aad1943..3ab87f2a`
-- Step 2: `9cc7d422`
-- Step 3: `0374bf50..c252df99`
-- Step 4: `b0bcda97..e05dad6c`
-- Step 5: `f3580bc2..4f39b99f`
+All five implementation steps below have landed.
 
 ## Why this is pre-beta1
 

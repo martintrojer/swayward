@@ -219,7 +219,7 @@ fn assert_tree_rectangles_match_fixture(expected: &Value, actual: &Value, path: 
     // test environment's font. Keep enough tolerance for titlebar metrics, but
     // not enough for a wrong layout or unit-size placeholder rectangle.
     // `geometry` gets the same tolerance: the pinned capture's client
-    // geometry also moved with font metrics (c2fa773c), and callers assert
+    // geometry also moved with font metrics, and callers assert
     // their exact requested geometry separately.
     for rectangle in ["rect", "deco_rect", "window_rect", "geometry"] {
         for key in ["x", "y", "width", "height"] {

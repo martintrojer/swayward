@@ -489,8 +489,8 @@ fn run_operations(ops: Vec<Op>) {
 
 #[test]
 fn regression_stacked_then_tabbed_split_survives_window_removal() {
-    // Seed 08e57fa6, fixed by 216d2bb4: a one-window directional move read its parent before
-    // root compaction and left that parent empty.
+    // Seed 08e57fa6: a one-window directional move read its parent before root compaction and
+    // left that parent empty. Fixed by retaining singleton splits after window removal.
     run_operations(vec![
         Op::Add,
         Op::FocusChild,
@@ -508,8 +508,8 @@ fn regression_stacked_then_tabbed_split_survives_window_removal() {
 
 #[test]
 fn regression_transfer_fullscreen_and_drop_sequence() {
-    // Seed da2b5410, recorded by c15d1fbd (broaden tiling-tree mutation properties). The
-    // shrunk sequence no longer fails on c15d1fbd with its swap or attach fix reverted, so this
+    // Seed da2b5410, recorded when the tiling-tree mutation properties were broadened. The
+    // shrunk sequence no longer fails with that change's swap or attach fix reverted, so this
     // replays the recorded case rather than pinning a known failure.
     run_operations(vec![
         Op::Add,
@@ -572,8 +572,8 @@ fn regression_sub_pixel_last_child_reports_a_non_negative_percent() {
 
 #[test]
 fn regression_fullscreen_transfer_after_drop_and_expel() {
-    // Seed 30a67654, fixed by c15d1fbd: attaching a fullscreen subtree left two fullscreen
-    // nodes until attach_subtree_at cleared the destination's.
+    // Seed 30a67654: attaching a fullscreen subtree left two fullscreen nodes until
+    // attach_subtree_at cleared the destination's.
     run_operations(vec![
         Op::Add,
         Op::Drop(0, ResizeEdge::BOTTOM),

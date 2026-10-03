@@ -12,9 +12,8 @@ manager, config parser, bar, restart mechanism, or private tree shapes.
 The raw count mostly measures "is this i3?" Sway 1.12 has 2,197 non-passes,
 swayward has 2,302, and they share 1,960 of them.
 
-The figures below come from oracle commit
-[`021ed5f`](https://github.com/swayward-wm/sway-ipc-oracle/tree/021ed5f84918196276702754554e0ea1339dc39f),
-the revision pinned in `tests/oracle.toml`.
+The figures below come from the oracle revision pinned in
+[`tests/oracle.toml`](../tests/oracle.toml).
 Run this command to reproduce them from an oracle checkout:
 
 ```sh
@@ -49,7 +48,7 @@ surfaces, without a separate XID, class, instance, role, or window type. Work on
 standard protocols that can carry more of this metadata is planned after beta 1.
 
 The oracle's
-[classification file](https://github.com/swayward-wm/sway-ipc-oracle/blob/021ed5f84918196276702754554e0ea1339dc39f/i3/classifications/swayward-54c5acd9.toml)
+[classification file](https://github.com/swayward-wm/sway-ipc-oracle/blob/main/i3/classifications/swayward-54c5acd9.toml)
 records the assertion-level review. Of the 342 swayward-only non-passes, 41
 currently use swayward finding families. Those are compatibility findings, not
 exceptions hidden by the comparison, and they remain bugs or harness problems
