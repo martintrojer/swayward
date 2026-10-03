@@ -1009,10 +1009,16 @@ note = "`split h` on a focused stacked container changes its singleton parent ra
 [files."132-move-workspace.t"]
 assertions = 160
 tap_plan = 160
-pass = 159
+pass = 155
+fail = 3
 reason = "i3_only_semantics"
 reason_verified = true
-note = "Focused and criteria-selected parent containers move as intact subtrees, preserving internal focus and fullscreen state (`sway/commands/move.c:198-238,419-585`). Assertion 160 runs `mark a` with no focused container; sway rejects that command and preserves the globally unique mark on its existing container (`sway/commands/mark.c:20-23,46-58`), so the later criterion still resolves."
+note = "Focused and criteria-selected parent containers move as intact subtrees, preserving internal focus and fullscreen state (`sway/commands/move.c:198-238,419-585`). Assertion 160 runs `mark a` with no focused container; sway rejects that command and preserves the globally unique mark on its existing container (`sway/commands/mark.c:20-23,46-58`), so the later criterion still resolves. With the workspace focused, `move workspace X` wraps the workspace's tiling children first and refuses an empty workspace (`cmd_move_container`, sway/commands/move.c:431-436). So assertion 115 (`move workspace <current>` wraps the lone window in a new container instead of being a no-op) and 147/149 (`focus parent` from a lone floating view, then `move workspace`, fails with \"Can't move an empty workspace\") follow sway: pinned sway 1.12 gives the same results by direct IPC. Assertion 148 is the file's own skip after 147."
+[[files."132-move-workspace.t".skip]]
+n = 148
+desc = "floating node count after moving a workspace that does not exist"
+reason = "i3test.is_num_children skips when its workspace does not exist; sway refuses to move the empty source workspace, so the target workspace is never created."
+citation = "tests/i3/t/132-move-workspace.t:338-339; tests/i3/lib/i3test/Test.pm:47-55; sway/sway/commands/move.c:431-436"
 [[files."132-move-workspace.t".skip]]
 n = 160
 desc = "marking an empty workspace removes a global mark before a criteria move"
