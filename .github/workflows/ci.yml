@@ -153,9 +153,9 @@ jobs:
       - run: python3 contrib/test-tap-count.py
       - run: python3 contrib/test-targeted-oracle.py
       - run: python3 contrib/test-oracle-sweep-diff.py
+      - run: ./contrib/fetch-oracle
       - run: python3 contrib/test-i3-suite-summary.py
       - run: ./contrib/check-divergence
-      - run: ./contrib/fetch-oracle
       - run: ./contrib/command-census --check
       - run: ./contrib/coverage-report --unvendored
       - run: ./contrib/coverage-report --check
